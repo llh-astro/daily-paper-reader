@@ -1,0 +1,2264 @@
+Title: GRACE-DG: A Discontinuous Galerkin method-based code for general non-linear coagulation-fragmentation equations
+
+URL Source: https://arxiv.org/pdf/2607.13740v1
+
+Published Time: Thu, 16 Jul 2026 00:58:31 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+> Draft version July 16, 2026
+> Typeset using L ATEX twocolumn style in AASTeX631
+
+GRACE-DG : A Discontinuous Galerkin method-based code for general non-linear coagulation-fragmentation equations 
+
+Jing Yang ( 杨晶) ,1 Zhuo Chen ( 陈卓) ,1 and Xue-Ning Bai ( 白雪宁) 1, 2 
+
+> 1Institute for Advanced Study, Tsinghua University Beijing 100084, China
+> 2Department of Astronomy, Tsinghua University Beijing 100084, China
+
+ABSTRACT Dust plays a crucial role in protoplanetary disks (PPDs) evolution and planet formation, influenc-ing disk dynamics through gas-dust coupling, regulating disk temperature by dominating continuum opacity, and altering disk ionization fraction by capturing free electrons. In this work, we develop a high-order discontinuous Galerkin (DG) method-based open-source code GRACE-DG to solve the collision-induced coagulation-fragmentation equations. In particular, we have derived a new conserva-tive formulation for the non-linear fragmentation term, which enables the DG method to capture the mass transfer process. The new solver exhibits good convergence in coupled aggregation and breakage simulations, making it highly suitable for future integration into hydrodynamic codes. 
+
+Keywords: Computational methods (1965) — Dust physiscs (2229) — Planet formation (1241) 
+
+1. INTRODUCTION As the building blocks of planets, solid particles in pro-toplanetary disks (PPDs) must grow by more than ten orders of magnitude in size within a few million years. According to the widely accepted core accretion model (Bodenheimer & Pollack 1986; Pollack et al. 1996; Ida & Lin 2004), dust grains initially grow through coagu-lation into millimeter-sized pebbles. However, this colli-sional growth is soon limited by the fragmentation and drift barriers. To overcome these challenges, the stream-ing instability (SI) (Youdin & Goodman 2005; Johansen et al. 2007) emerges as a key mechanism, concentrating solids and facilitating the gravitational collapse of dust clumps into planetesimals. In particular, the threshold for dust clumping via SI depends sensitively on the dust size distribution (Bai & Stone 2010; Li & Youdin 2021), motivating a more detailed treatment beyond single-size approximation. Therefore, grain growth in the early 
+
+> Corresponding author: Zhuo Chen chenzhuo_astro@mail.tsinghua.edu.cn Corresponding author: Xue-Ning Bai xbai@mail.tsinghua.edu.cn
+
+stages is crucial for subsequent planetesimal formation and also the pebble accretion (Ormel & Klahr 2010). In addition to fueling planet formation, dust size dis-tribution is a fundamental component in PPDs and plays a key role in a wide range of physical processes. Dust grains dominate the disk’s opacity, which decreases significantly as grains grow, thereby affecting the disk’s radiative transfer and overall thermodynamic structure (Dullemond & Dominik 2004; Woitke et al. 2009). Be-sides, small grains are efficient in capturing free elec-trons, altering the ionization state of the disk (Okuzumi 2009; Ivlev et al. 2016; Marchand et al. 2023). The ther-modynamic conditions and magnetic coupling in PPDs influence the local turbulence state, which in turn, reg-ulate the dust size evolution (Terquem 2008; Okuzumi & Hirose 2012; Delage et al. 2022). To capture the com-plex interplay of these processes, numerical simulations that couple dust-gas dynamics with realistic dust coag-ulation and fragmentation physics are essential for ad-vancing our understanding of the early stages of planet formation (Dominik et al. 2007; Birnstiel et al. 2010). However, three-dimensional hydrodynamic simula-tions with an evolving dust size distribution are nu-merically costly. Vericel et al. (2021) implemented dust growth and fragmentation in a 3D smoothed particle hy-drodynamics (SPH) code, but their approach considered arXiv:2607.13740v1 [astro-ph.EP] 15 Jul 2026 2 Yang, Chen & Bai 
+
+only a single dust species locally. In contrast, Stamm-ler & Birnstiel (2022) modeled the 1D gas-dust evolu-tion using a full local dust mass distribution, accounting for both collisional growth and radial transport. Addi-tionally, attempts have been undertaken to simplify the coagulation process through the use of sub-grid mod-els (Birnstiel et al. 2012; Tamfal et al. 2018; Vorobyov et al. 2018; Pfeil et al. 2024) and machine-learning-aided techniques (Pfeil et al. 2022). Despite these advances, a key challenge remains: developing an efficient method to solve the coagulation-fragmentation equations, thus enabling dust collision simulations on top of multidimen-sional hydrodynamic frameworks. Pioneering efforts have been made in previous stud-ies to apply the discontinuous Galerkin (DG) method to solve the Smoluchowski equations (Liu et al. 2019; Lombart & Laibe 2021; Lombart et al. 2022, 2024). This high-order scheme has shown promising performance, ef-ficiently solving the coagulation equation with a reduced number of mass bins compared to other discretized methods (Nakagawa et al. 1981; Weidenschilling 1980; Brauer et al. 2008; Birnstiel et al. 2010; Charnoz & Tail-lifet 2012). Owing to its accuracy and computational ef-ficiency, this methodology has recently enabled the first three-dimensional magnetohydrodynamic (MHD) simu-lation that self-consistently accounts for both dust dy-namics and dust growth (Lombart et al. 2026). De-spite these successes, the DG fragmentation solver de-veloped by Lombart et al. (2024) restricts its applica-bility to pure destructive fragmentation. In this work, we introduce GRACE-DG (GRAin Collisional Evolution -Discontinuous Galerkin) 1(Yang et al. 2026). By refor-mulating the fragmentation flux analytically, we extend the DG framework to incorporate both coagulation and general fragmentation processes, including diverse colli-sional fragmentation outcomes ranging from destructive fragmentation to mass transfer. The structure of this paper is as follows. Section 2 presents the derivation of the conservative form of the Smoluchowski equations, which serve as the basis for the DG scheme. In Section 3, we describe the numerical im-plementation in detail. The numerical results are shown in Section 4. Finally, we provide further discussion in Section 5 and conclude in Section 6. 
+
+2. EQUATIONS The equations considered in this study describe the time evolution of dust size distribution under the com-bined effects of binary aggregation and multiple break-    
+
+> 1https://github.com/jing-xps/GRACE-DG Binary Collision Model for Grains
+> Coagulation Bouncing
+> Fragmantation
+> Destructive Fragmentation Cratering Mass Transfer
+
+Figure 1. Illustration of collision outcomes. Depending on the relative velocity between colliding particles, three main outcomes are possible: coagulation, bouncing, and fragmen-tation. In the case of fragmentation, the specific outcome further depends on the mass ratio of the colliding grains. (for example, Equation 48) 
+
+age. As illustrated in Figure 1, collisions between parti-cles lead to different outcomes. Among these, bouncing does not alter the global size distribution. Cratering and mass transfer are types of partial fragmentation. In these events, a large remnant of the original dust particle (shown in blue) survives the collision. We present the governing equations for coagulation and fragmentation in Section 2.1 and Section 2.2. 2.1. Coagulation 
+
+Mass conservation for a distribution of growing grains can be formulated by the Smoluchowski equation (Smoluchowski 1916), 
+
+∂f (x, τ )
+
+∂τ = 12
+
+Z x
+
+> 0
+
+Kcoag (x − y, y )f (x − y, τ )f (y, τ ) d y
+
+− f (x, τ )
+
+Z ∞
+
+> 0
+
+Kcoag (x, y )f (y, τ ) d y, 
+
+(1) where f (x, τ ) is the grain number density per unit mass of mass x at time τ , Kcoag (x, y ) is the coagulation ker-nel, denoting a collision rate of coagulation between two grains of mass x and mass y. Thus it has the units of 
+
+[length 3/time] . The first term on the right-hand-side (RHS) of Equation 1 represents the production of par-ticles with mass x through binary collisions, while the second term accounts for the loss of x-mass particles due to collisions with other grains. The Smoluchowski equation can be rewritten in to a conservative form using the mass density g(x, τ ) = 
+
+xf (x, τ ) (Tanaka et al. 1996), 
+
+∂g (x, τ )
+
+∂τ + ∂F coag [g]( x, τ )
+
+∂x = 0 , (2) GRACE-DG : a dust grain collisional evolution DG solver 3
+
+Fcoag [g]( x, τ ) = 
+
+Z x
+
+> 0
+
+du
+
+Z ∞
+
+> x−u
+
+dv Kcoag (u, v )g(u, τ ) g(v, τ )
+
+v ,
+
+(3) where Fcoag [g]( x, τ ) denotes the flux of g(x, τ ) across mass coordinate x induced by coagulation. Some intu-ition can be gained by considering the flux across x as arising from collisions between particles of mass u < x 
+
+and particles of mass v, such that the resulting mass 
+
+u + v > x .Unlike conventional fluxes in hydrodynamics, which typically only depend on neighboring cells, Fcoag [g]
+
+is nonlocal—it depends on the global distribution of 
+
+g(x, τ ), which is highlighted by [g]. To solve this scalar hyperbolic conservation equation, we employ a DG method tailored to handle the nonlocal nature of the flux. 2.2. Fragmentation 
+
+In addition to sticking upon collision, two colliding particles may also fragment into smaller grains when the collision velocity exceeds a certain threshold. The mass distribution of grains where mass transfers from large to small grains through this fragmentation process is modeled by the fragmentation equation. Liu et al. (2019) first considered a linear fragmentation model, 
+
+∂f (x, τ )
+
+∂τ =
+
+Z ∞
+
+> x
+
+b(x, y )S(y)f (y, τ ) d y − S(x)f (x, τ ),
+
+(4) where S(x) describes the rate at which particles of mass 
+
+x are selected to break, and the breakage function b(x, y )
+
+is the probability density function for the formation of particles of mass x from a parent particle of mass y. In this linear model, fragmentation is treated as a single-particle process, independent of any collisional partner. The integration domain y ≥ x reflects the physical con-straint that only particles with mass larger than x can produce fragments of mass x.Lombart et al. (2022) further considered a non-linear collision-induced fragmentation model, 
+
+∂f (x, τ )
+
+∂τ =
+
+Z ∞
+
+> 0
+
+dz
+
+Z ∞
+
+> x
+
+dy Kfrag (y, z )˜b(x, y ; z)f (y, τ )f (z, τ )
+
+− f (x, τ )
+
+Z ∞
+
+> 0
+
+Kfrag (x, y )f (y, τ ) d y, 
+
+(5) where Kfrag (x, y ) is the fragmentation kernel and 
+
+˜b(x, y ; z) is the breakage kernel describing the distribu-tion of fragments of mass x produced from a particle of mass y in a collision with a particle of mass z. It is im-portant to note that Equation 5 relies on the underlying assumption that, during a collision between particles of masses y and z, only particle y undergoes fragmenta-tion while particle z remains intact. Consequently, the breakage kernel is defined on x ∈ (0 , y ] and satisfies the local mass conservation condition R y 
+
+> 0
+
+x ˜b(x, y ; z) d x = y.While this assumption simplifies the modeling, it re-stricts the physical realism of the formulation, as it ne-glects the possibility that both colliding particles may fragment. A more general non-linear fragmentation equation was later considered by Lombart et al. (2024), 
+
+∂f (x, τ )
+
+∂τ = 12
+
+Z ∞
+
+> 0
+
+dz
+
+Z ∞
+
+> 0
+
+dy 1y+z≥xb(x, y, z )Kfrag (y, z )
+
+× f (y, τ )f (z, τ )
+
+− f (x, τ )
+
+Z ∞
+
+> 0
+
+Kfrag (x, y )f (y, τ ) d y, 
+
+(6) which accounts for a more realistic collision outcome by allowing the total mass of the two colliding particles to be redistributed among fragments. In this formulation, the breakage kernel b(x, y, z ) is defined on x ∈ (0 , y + z]
+
+and satisfies R y+z 
+
+> 0
+
+x b (x, y, z ) d x = y + z. The indicator function 1y+z≥x equals 1 when y + z ≥ x and 0 oth-erwise, ensuring that fragments of mass x can only be produced from collisions whose combined mass is suffi-cient. Similar to Equation 1, the first term on the RHS represents the formation of particles of mass x, while the second term describes the loss of particles of mass x
+
+due to collisions with other grains, occurring at a rate governed by the fragmentation kernel. To solve Equation 6 within the DG scheme, Lombart et al. (2024) derived the conservative form of this general non-linear fragmentation equation: 
+
+∂g (x, τ )
+
+∂τ + ∂F frag [g]( x, τ )
+
+∂x = 0 , (7) with the associated fragmentation flux 
+
+Ffrag [g]( x, τ ) = − 12
+
+Z x
+
+> 0
+
+dx′
+
+Z ∞
+
+> 0
+
+dz
+
+Z ∞
+
+> 0
+
+dy 1y+z≥x
+
+x′
+
+yz 
+
+× K frag (y, z )b(x′, y, z )g(y, τ )g(z, τ )+
+
+Z x
+
+> 0
+
+dz
+
+Z ∞
+
+> 0
+
+dy 1y+z≥x
+
+1
+
+y
+
+× K frag (y, z )g(z, τ )g(y, τ ).
+
+(8) As reported in Lombart et al. (2024), the numerical eval-uation of Ffrag [g] is performed using Gaussian quadra-ture. This numerical integration fails when the break-age kernel b(x, y, z ) incorporates a Dirac delta func-tion, which is required to model cratering or mass 4 Yang, Chen & Bai 
+
+transfer processes where b(x, y, z ) = Ax α + δ(x −
+
+mleft )(Kobayashi & Tanaka 2010; Hirashita et al. 2021). (See Equation 46 in Section 4.5 for a more detailed explanation of this breakage kernel). To bypass the delta function, the integration in Equation 8 must be reordered to R dz R dy R dx′, allowing the innermost in-tegral over the fragment mass x′ to be evaluated analyt-ically beforehand. In order to overcome this limitation, we introduce a novel conservative formulation of the mass flux 
+
+Ffrag [g]( x, τ ) that consistently accommodates general fragmentation processes; a rigorous derivation is pre-sented in Appendix A. 
+
+Ffrag [g]( x, τ ) = 
+
+Z x
+
+> 0
+
+du
+
+Z ∞
+
+> x−u
+
+dv
+
+Z u+vx
+
+wdwv(u + v)
+
+×K frag (u, v )b(w, u, v )g(u, τ )g(v, τ )
+
+| {z }
+
+> positive flux
+
+−
+
+Z ∞
+
+> x
+
+du
+
+Z ∞
+
+> 0
+
+dv
+
+Z x
+
+> 0
+
+wdwv(u + v)
+
+×K frag (u, v )b(w, u, v )g(u, τ )g(v, τ )
+
+| {z }
+
+> negative flux
+
+.
+
+(9) In this formulation, the innermost integration is per-formed with respect to the fragment mass w, and all physical constraints are explicitly encoded in the inte-gration limits. As illustrated in Figure 2, some physical intuition can also be gained by considering the origin of the flux: a positive flux is generated when a parti-cle of mass u < x collides with a particle of mass v
+
+such that the total mass u + v > x , resulting in the formation of a particle with mass w > x . Conversely, a negative flux is associated with collisions in which a particle of mass u > x is involved, producing a frag-ment with mass w < x. Noticeably, we could con-sider the coagulation process as a special case of this general fragmentation formalism by forbidding the col-lided particles to fragment, which is equivalent to setting 
+
+b(w, u, v ) = δ (w − (u + v)) . 
+
+> 3.
+
+NUMERICS We present the detailed implementation of the numerical algorithm used to solve the coagulation-fragmentation equations. 3.1. Discontinuous Galerkin Method 
+
+The discontinuous Galerkin (DG) method is a finite el-ement approach that employs completely discontinuous basis functions, typically chosen as piecewise polynomi-als (Shu 2008). DG methods have been successfully ap-plied to first-order hyperbolic problems, particularly for x                  
+
+> u<xv:u+v>xw>x
+> Positive Mass Flux
+> u>x
+> v
+> w<x
+> Negative Mass Flux
+> Figure 2. Schematic illustration on the physical interpre-tation of the fragmentation flux in Equation 9. The upper panel shows the processes inducing the positive flux, while the lower panel depicts the events responsible for the nega-tive flux.
+
+convection-dominated flows and local hyperbolic conser-vation laws (Cockburn & Shu 2001). In this work, we apply it to solve the following integro-differential equa-tion: ∂g (x, τ )
+
+∂τ + ∂F [g]( x, τ )
+
+∂x = 0 . (10) First, let us decompose the domain of interest [xmin , x max ] into N subintervals. Each mass bin is de-fined by Ij = [ xj−1/2, x j+1 /2], j ∈ [0 , N − 1] . The size of j−th cell is defined as hj = xj+1 /2 − xj−1/2, and it’s centered around the position xj = ( xj+1 /2 + xj−1/2)/2.Since the difference between xmax and xmin typically spans several orders of magnitude, we adopt a logarith-mic grid to efficiently resolve the wide range of particle masses. Next, we obtain the weak formulation of Equation 10 by multiplying by a test function ϕ(x), integrating over 
+
+Ij for each subinterval: 
+
+Z
+
+> Ij
+
+∂g j
+
+∂τ ϕ dx −
+
+Z
+
+> Ij
+
+F [g]( x, τ ) ∂ϕ ∂x dx
+
++ F [g]( xj+1 /2, τ )ϕ(xj+1 /2)
+
+− F [g]( xj−1/2, τ )ϕ(xj−1/2) = 0 .
+
+(11) Then, within each cell, we approximate the solution 
+
+g(x, t ) by a linear combination of Legendre polynomi-als of degree at most k:
+
+∀x ∈ Ij g(x, τ ) ≈ gj (x, τ ) = 
+
+> k
+
+X
+
+> i=0
+
+gij (τ )ϕi(ξj (x)) , (12) where gij (τ ) is the component of gj (x, τ ) on the 
+
+i−Legendre basis: 
+
+ϕ0(ξ) = 1 , ϕ1(ξ) = ξ, ϕ2(ξ) = 12 (3 ξ2 − 1) , .... 
+
+(13) GRACE-DG : a dust grain collisional evolution DG solver 5And ξj (x) = 2 
+
+> hj
+
+(x − xj ) is used to map x ∈ Ij onto 
+
+ξj ∈ [−1, 1] . In this way, the mass x and time τ variables are decoupled. In addition, the orthogonality of the Legendre func-tions gives, 
+
+Z 1
+
+> −1
+
+ϕi(ξ)ϕk(ξ) d ξ = δik · di, di = 22i + 1 . (14) Combining Equation 11, Equation 12 and Equation 14, and letting the test function in Equation 11 to be Leg-endre polynomials, one obtains equations with respect to the coefficients gj = ( g0 
+
+> j
+
+, g 1 
+
+> j
+
+, ..., g kj )T . We write it in a compact form, 
+
+dgj (τ )
+
+dτ = L[g], (15) where L is an operator acting on the global mass density distribution g(x, τ ),
+
+L[g] = 2
+
+hj
+
+·
+
+
+
+> 1/d 0
+
+. . .
+
+> 1/d k
+
+
+
+·
+
+Z
+
+> Ij
+
+F [g]( x, τ )∂xϕ(ξj (x)) d x
+
+− F [g]( xj+1 /2, τ )ϕ(ξj (xj+1 /2)) + F [g]( xj−1/2, τ )ϕ(ξj (xj−1/2)) 
+
+ ,
+
+(16) where ϕ = ( ϕ0, ϕ 1, ..., ϕ k)T denotes the vector of basis functions. As a result, the original system of partial differential equations (PDEs) is reduced to a system of ordinary differential equations (ODEs) onto the coeffi-cients gij (τ ).3.2. Algorithm Flowchart 
+
+We implement the following flowchart to solve the non-linear coagulation-fragmentation equation, with the flux term evaluated by Gaussian quadrature. The pos-itivity of cell-averaged mass density is guaranteed by the CFL condition, while a scaling limiter and recon-struction help to preserve the positivity of the global solution (Liu et al. 2019). For the higher-order time discretization, we employ the strong stability preserv-ing Runge-Kutta (SSPRK) third-order method (Got-tlieb et al. 2001). 3.2.1. Initialization 
+
+From the initial mass density distribution g0(x) = 
+
+g(x, 0) , we generate gj at τ = 0 by 
+
+∀ j ∈ [0 , N − 1] , ∀ i ∈ [0 , k ]
+
+gij (0) = 1
+
+di
+
+Z 1
+
+> −1
+
+g0( hj
+
+2 ξj + xj )ϕi(ξj ) d ξj . (17) 3.2.2. Reconstruction 
+
+The physical meaning of mass density g(x, τ ) requires 
+
+gj (x, τ ) ≥ 0, ∀ x ∈ Ij . This is achieved by a linear scaling reconstruction in each cell, using cell average as a reference (Liu et al. 2019; Lombart et al. 2022): 
+
+˜gj (x) = γj (gj (x) − ¯gj ) + ¯ gj , (18) where the scaling limiter γj is defined by 
+
+γj = min 
+
+1, ¯gj
+
+¯gj − min 
+
+> x∈Ij
+
+gj (x)
+
+ . (19) where ¯gj denotes the cell average of gj (x) over the inter-val Ij . It can be readily shown that ¯gj corresponds to the zeroth coefficient g0 
+
+> j
+
+in the polynomial expansion, 
+
+¯gj = 1
+
+hj
+
+Z
+
+> Ij
+
+gj (x) d x = 1
+
+hj
+
+Z
+
+> Ij
+> k
+
+X
+
+> i=0
+
+gij · ϕi(ξj (x)) d x
+
+= 1
+
+hjkX
+
+> i=0
+
+gij ·
+
+Z 1
+
+> −1
+
+ϕi(ξj ) · hj
+
+2 dξj = g0 
+
+> j
+
+.
+
+(20) The minimum mass density min 
+
+> x∈Ij
+
+gj (x) is calculated ana-lytically. It’s easy to check that the cell average of the reconstructed function ˜gj (x) is still g0 
+
+> j
+
+. The resulting 
+
+˜gj (x) therefore constitutes a scaled polynomial approxi-mation and is used as the solution representation in the subsequent evolution step. 3.2.3. Evolution 
+
+According to the ODE system, Equation 16, forward Euler discretization yields the update rule for the zeroth coefficients (cell averages ¯gj ) as, 
+
+(g0 
+
+> j
+
+)n+1 = ( g0 
+
+> j
+
+)n + ∆thj
+
+· [F [g]( xj−1/2) − F [g]( xj+1 /2)] ,
+
+(21) where hj = xj+1 /2 − xj−1/2 is the size of j-th cell. The Courant-Friedrichs-Lewy condition (CFL) of the scheme is chosen to guarantee the positivity of the cell averages 
+
+(g0 
+
+> j
+
+)n+1 > 0 (Liu et al. 2019; Lombart & Laibe 2021): 
+
+∆t < hj · (g0 
+
+> j
+
+)n
+
+|F [g]( xj−1/2) − F [g]( xj+1 /2)| . (22) In addition, we use multi-step time discretization to achieve higher-order accuracy in time while maintain-ing the strong stability property. An optimal third-order strong stability preserving Runge-Kutta (SSPRK) method with a CFL coefficient c = 1 is given by (Got-6 Yang, Chen & Bai 
+
+tlieb et al. 2001; Lombart & Laibe 2021), 
+
+g(1)  
+
+> j
+
+= gnj + ∆ tL[gn],
+
+g(2)  
+
+> j
+
+= 34 gnj + 14
+
+
+
+g(1)  
+
+> j
+
++ ∆ tL[g(1) ]
+
+
+
+, (23) 
+
+gn+1  
+
+> j
+
+= 13 gnj + 23
+
+
+
+g(2)  
+
+> j
+
++ ∆ tL[g(2) ]
+
+
+
+.
+
+We summarize the algorithm flowchart into the fol-lowing steps: 1. Initialization: generate ∀ j ∈ [0 , N − 1] , ∀ i ∈
+
+[0 , 1, ..., k ], gij (0) from the initial mass density dis-tribution g0(x) by Equation 17. 2. Reconstruction: use Equation 18 to reconstruct 
+
+gj (x), and continue with step 3. 3. Evolution: use Equation 23 to compute ∀ j ∈
+
+[0 , N − 1] , ∀ i ∈ [0 , 1, ..., k ], (gij )n+1 , and continue with step 2. 3.3. Flux Evaluation 
+
+The implementation of operator L[g] in Equation 16 involves two key components: i) the value of the flux at each cell interface; ii) the integral of the flux over each cell. Considering a mass interval [xmin , x max ], we truncate the mass density fluxes in Equations 3 and 9 as: 
+
+F tr coag [g]( x, τ ) = 
+
+Z xxmin 
+
+du
+
+Z xmax +∆ xx−u+xmin 
+
+dv
+
+×K coag (u, v )g(u, τ ) g(v, τ )
+
+v ,
+
+(24) 
+
+F tr frag [g]( x, τ ) = 
+
+Z xxmin 
+
+du
+
+Z xmax +∆ xx−u+xmin 
+
+dv
+
+Z u+vx
+
+wdwv(u + v)
+
+× b(w, u, v )Kfrag (u, v )g(u, τ )g(v, τ )
+
+−
+
+Z xmax 
+
+> x
+
+du
+
+Z xmax +∆ xxmin 
+
+dv
+
+Z xxmin 
+
+wdwv(u + v)
+
+× b(w, u, v )Kfrag (u, v )g(u, τ )g(v, τ ).
+
+(25) Here, ∆x serves as an adjustment parameter for the upper integration limit of the colliding particle mass 
+
+v, dictating how interactions at the upper boundary of the mass domain are handled. The choice of ∆x
+
+has an impact on the physical property of the fluxes. When ∆x = −u + xmin , Equation 24 and 25 en-sures that F tr coag (xmin ) = F tr frag (xmin ) = F tr coag (xmax ) = 
+
+F tr frag (xmax ) = 0 , and the mass in [xmin , x max ] will be conserved. We call them “conservative fluxes”. When 
+
+∆x = 0 , the integration is performed on the whole com-putational domain [xmin , x max ] uniformly, and we call them “non-conservative fluxes”. Consequently, for hy-drodynamic simulations that require mass conservation, setting ∆x = −u+xmin is more appropriate; for compar-ison with analytic solutions, which assume x ∈ (0 , ∞),setting ∆x = 0 may be a more appropriate choice (Lom-bart & Laibe 2021). In this work, ∆x = 0 is our default choice unless explicitly stated. For the numerical integration of the fluxes, we use Gaussian quadrature of order Q with the Gauss evalu-ation points sα ∈ (−1, 1) and the weights wα > 0 (Liu et al. 2019; Lombart et al. 2024): 
+
+Z ba
+
+f (x) d x = b − a
+
+2
+
+Z 1
+
+> −1
+
+f ( b + a
+
+2 + b − a
+
+2 s) d s
+
+= b − a
+
+2
+
+> Q
+
+X
+
+> α=1
+
+wαf ( b + a
+
+2 + b − a
+
+2 sα)+ O  (b − a)2Q ,
+
+(26) where the approximation residual is zero when f (x) is a polynomial of degree at most 2Q − 1. Our numerical experiments reveal optimal convergence at Q = k + 1 ,rather than the expected Q = k, an observation that was also previously noted by Liu et al. (2019). We there-fore choose a quadrature number of Q = k + 1 for all simulations. Taking the conservative coagulation flux (F tr coag [g]( xj+1 /2, τ ) with ∆x = −u + xmin ) as an exam-ple, 
+
+F tr coag [g]( xj+1 /2, τ ) = 
+
+Z xj+1 /2
+
+> xmin
+
+du
+
+Z xmax −u+xmin 
+
+> xj+1 /2−u+xmin
+
+dv
+
+× K coag (u, v )g(u, τ ) g(v, τ )
+
+v
+
+=
+
+> j
+
+X
+
+> l=0
+
+hl
+
+2
+
+> Q
+
+X
+
+> α=1
+
+wαg(xαl , τ )Γ αl ,
+
+(27) where hl = xl+1 /2 − xl−1/2 is the size of l-th cell, and 
+
+xαl = xl + hl/2 · sα.
+
+Γαl =
+
+Z xmax −xαl +xmin  
+
+> xj+1 /2−xαl+xmin
+
+Kcoag (xαl , v ) g(v, τ )
+
+v dv
+
+=
+
+> B
+
+X
+
+> m=A
+
+bm − am
+
+2
+
+> Q
+
+X
+
+> β=1
+
+wβ Kcoag (xαl , x βm) g(xβm, τ )
+
+xβm
+
+,
+
+(28) where the index A and B are chosen such that xj+1 /2 −
+
+xαl + xmin ∈ IA, xmax − xαl + xmin ∈ IB . When m = A,
+
+am = xj+1 /2 −xαl +xmin and when m = B, bm = xmax −GRACE-DG : a dust grain collisional evolution DG solver 7
+
+xαl +xmin . Otherwise, am = xm−1/2, bm = xm+1 /2. And the quadrature points are given by, 
+
+xβm = bm + am
+
+2 + bm − am
+
+2 · sβ . (29) Now, let’s consider the integral of the flux 
+
+F tr coag [g]( x, τ ) over Ij ,
+
+Z
+
+> Ij
+
+F tr coag [g]( x, τ )∂xϕ dx =
+
+Z 1
+
+> −1
+
+F tr coag [g]( ξ, τ )∂ξ ϕ dξ
+
+=
+
+> Q
+
+X
+
+> θ=1
+
+wθ ϕ′(sθ )F tr coag [g]( xθj , τ ),
+
+(30) where xθj = xj + hj /2 · sθ . The evaluation of F tr coag [g]( xθj , τ ) follows the same procedure as for 
+
+F tr coag [g]( xj+1 /2, τ ), with xj+1 /2 simply replaced by xθj .An additional consideration arises when the breakage kernel b(x, y, z ) contains Dirac delta functions in x. The presence of these delta functions necessitates the ana-lytical evaluation of the innermost integral in Equation 25, which requires a detailed piecewise discussion de-pending on the value of x (see Equation B9 and B10). Consequently, the fragmentation flux Ffrag [g]( x, τ ) be-comes discontinuous in x, which introduces challenges in evaluating R 
+
+> Ij
+
+F tr frag [g]( x, τ )∂xϕ dx. This issue is cir-cumvented by reordering the integration sequence, as detailed in Appendix B. 
+
+4. RESULTS This section presents three numerical benchmark tests to assess the performance of the proposed DG scheme by comparing our numerical results with analytical so-lutions. The two pure coagulation tests, which utilize a constant kernel and an additive kernel, follow the setups of Liu et al. (2019) and Lombart & Laibe (2021). For the additive kernel case, we compare our numerical results with the DustPy code to demonstrate the DG scheme’s ability to mitigate the over-diffusion problem often en-countered in standard numerical methods. The pure fragmentation test follows the configuration detailed by Lombart et al. (2022). In addition, we perform simu-lations that incorporate both aggregation and breakage processes to illustrate the convergence properties of the DG scheme. 4.1. Diagnostics 
+
+Numerical errors are measured using continuous and discrete norms, which are defined as (Liu et al. 2019), 
+
+ec,N (τ ) =  
+
+> N−1
+
+X
+
+> j=0
+
+hj
+
+2
+
+> R
+
+X
+
+> α=1
+
+ωα|gj (xαj , τ ) − g(xαj , τ )|, (31) 
+
+ed,N (τ ) =  
+
+> N−1
+
+X
+
+> j=0
+
+hj |gj (ˆ xj , τ ) − g(ˆ xj , τ )|, (32) where gj (x) and g(x) are the numerical and analytic solutions. R = 16 is the number of Gauss points we take within Ij , ωα is the corresponding weights. 
+
+xαj = xj + hj /2 · sα and ˆxj = √xj−1/2xj+1 /2 is the ge-ometric mean of the bin Ij . Formally, the errors are normalized by the integral of the analytical solution, yielding relative errors. However, for the benchmark tests considered here, the total mass of the system varies only marginally over the simulation time, and the same exponential initial condition is adopted in both cases. Consequently, R xmax  
+
+> xmin
+
+g(x, τ ) d x ≈ R ∞ 
+
+> 0
+
+x exp ( −x) d x = 1 .We therefore directly analyze the error magnitudes in the following. According to Liu et al. (2019), the moments of the numerical solution are defined as, 
+
+Mp,N (τ ) = 
+
+Z xmax 
+
+> xmin
+
+xp−1g(x, τ ) d x
+
+= 
+
+> N−1
+
+X
+
+> j=0
+
+Z
+
+> Ij
+
+xp−1gj (x, τ ) d x
+
+= 
+
+> N−1
+
+X
+
+> j=0
+> k
+
+X
+
+> i=0
+
+gij (τ )
+
+Z
+
+> Ij
+
+xp−1ϕi(ξj (x)) d x. 
+
+(33) Total mass of the system is the first moment M1,N (τ ) = 
+
+PN −1 
+
+> j=0
+
+hj g0 
+
+> j
+
+(τ ), which is exactly conserved by the scheme construction. The relatve errors on the moments are given by: 
+
+eMp,N (τ ) = |Mp,N (τ ) − Mp(τ )|
+
+Mp(τ ) . (34) where Mp(τ ) is the moments of the analytic solution. To investigate the experimental order of convergence (EOC), we follow Liu et al. (2019), 
+
+EOC = ln 
+
+ eN
+
+> e2N
+
+
+
+ln(2) , (35) where eN is the error evaluated for N mass bins and e2N
+
+for 2N mass bins. 4.2. Pure Coagulation Test with Constant Kernel 
+
+Explicit analytic solutions are available for the coagulation-fragmentation equations with simple kernels and specific initial conditions, providing valuable bench-marks for validating numerical algorithms. For a con-stant coagulation kernel Kcoag (x, y ) = 1 and an expo-nential initial condition of f (x, 0) = exp ( −x), the ana-lytic solution of Equation 1 is given by (Scott 1968), 
+
+f (x, τ ) = 4(2 + τ )2 exp 
+
+
+
+− 22 + τ x
+
+
+
+. (36) 8 Yang, Chen & Bai 0.0                           
+
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> mass density  g(x, )
+> 1e 13
+> Numerical solution (k=0)
+> Analytic solution
+> Numerical solution (k=1)
+> Analytic solution
+> 10 310 110 110 310 510 710 910 11 10 13 10 15
+> mass x
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> mass density  g(x, )
+> 1e 13
+> Numerical solution (k=2)
+> Analytic solution
+> 10 310 110 110 310 510 710 910 11 10 13 10 15
+> mass x
+> Numerical solution (k=4)
+> Analytic solution
+
+Figure 3. Numerical solutions for the pure coagulation test with constant kernel (Equation 36) with N = 40 cells and different 
+
+k at τ = 3 × 10 12 . The Black dashed lines are the analytic solution for comparison; the vertical gray lines delimit the mass bins. The approximation improves for a higher polynomial degree. 
+
+The mass density g(x, τ ) = xf (x, τ ) reaches its peak at x = 1 + τ / 2, which increases over time due to dust growth. The prefactor 4(2+ τ )2 reflects the decrease in number density as grains grow. Figure 3 shows the numerical solutions at τ = 3 ×
+
+10 12 with N = 40 mass bins and polynomial degree 
+
+k = 0 , 1, 2, 4. The computational domain is taken as 
+
+[10 −3, 10 15 ]. For k = 0 , a uniform (piecewise constant) value is assigned within each mass bin, representing the cell-averaged mass density. In contrast, the higher-order scheme allows each mass bin to represent a polynomial distribution of degree up to k, enabling more accurate resolution of intra-bin variations. Figure 4 shows the evolution of numerical errors for the constant kernel with N = 40 and k ranging from 0 to 
+
+4. As shown in the left panel of Figure 4, absolute error on the total mass does not show any dependency on k and is demonstrated to be relatively small ( ∼ 10 −6). This holds true as long as the mass density peak does not exceed the upper boundary. We provide a more in-depth discussion regarding mass conservation in Section 5.1. Both ec,N (τ ) and ed,N (τ ) decrease substantially with increasing k, an error of less than 1% is already achieved at k = 4 .In standard solvers, the gain and loss terms of Equa-tion 1 become huge and nearly equal when xmax ≳
+
+10 14 xmin , causing near cancellation and severe loss of floating-point precision due to limited arithmetic pre-cision. Consequently, traditional discretized solvers ad-dress this by rearranging the sums in the discrete Smolu-chowski equation (Dullemond & Dominik 2005; Brauer et al. 2008; Stammler & Birnstiel 2022). Our DG scheme, however, is based on the conservative equa-tion and evolves the bin-averaged values rather than pointwise values, which inherently avoids such a can-cellation issue. As demonstrated in this pure coagula-tion test, which covers 18 orders of magnitude in mass ([10 −3, 10 15 ]), Figure 4 clearly shows that the numerical errors remain strictly bounded throughout the simula-tion. To examine the experimental order of convergence (EOC) of our numerical scheme, we perform pure coagu-lation simulations while systematically varying the num-ber of mass bins N and the polynomial degree k.Figure GRACE-DG : a dust grain collisional evolution DG solver 910 1 10 3 10 5 10 7 10 9 10 11                       
+
+> Time
+> 10 10
+> 10 9
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> numerical error  eM1,  N
+> k=0
+> k=1
+> k=2
+> k=3
+> k=4
+> 10 110 310 510 710 910 11
+> Time
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> numerical error  ec, N
+> 10 110 310 510 710 910 11
+> Time
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> numerical error  ed, N
+
+Figure 4. Time evolution of numerical errors for the pure coagulation test (consatnt kernel) with N = 40 cells and different k.Errors remain bounded at large times (see Section 4.1 for error definitions). 10 1 10 2                 
+
+> Nbins
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> ec, N
+> N5bins
+> N2bins
+> k=0
+> k=1
+> k=2
+> k=3
+> k=4
+> 10 110 2
+> Nbins
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> ed, N
+> N5bins
+> N2bins
+> k=0
+> k=1
+> k=2
+> k=3
+> k=4
+
+Figure 5. Numerical errors for N = 10 , 20 , 40 , 100 , 200 and 
+
+k = 0 , 1, 2, 3, 4 at τ = 3 × 10 12 for the pure coagulation test with constant kernel. The experimental order of convergence is EOC = k + 1 .
+
+5 shows the numerical errors for N = 10 , 20 , 40 , 100 , 200 
+
+and k = 0, 1, 2, 3, 4 at τ = 3 × 10 12 . The numer-ical scheme exhibits progressively better accuracy for larger mass bins N and increased polynomial degree 
+
+k, demonstrating an experimental order of convergence 
+
+EOC = k + 1 . This performance is consistent with the findings reported by previous studies. (Liu et al. 2019; Lombart & Laibe 2021; Lombart et al. 2022, 2026) 4.3. Pure Coagulation Test with Additive Kernel 
+
+In this subsection, we present a pure coagulation test with an additive kernel Kcoag (x, y ) = x + y and compare our results with those obtained using the coagulation solver in Dustpy (Stammler & Birnstiel 2022). Initially, only the first mass bin is populated, with a total number density n0 = R ∞ 
+
+> 0
+
+f (x, 0) d x, while all other mass bins are set to zero. For the additive coagulation kernel, the solution of Equation 1 is given by (Wetherill 1990), 
+
+f (x, τ ) = n0
+
+2xmin 
+
+√π(x/x min )1.5
+
+T
+
+(1 − T )0.75 
+
+× exp 
+
+
+
+− xxmin 
+
+(1 − √1 − T )2
+
+
+
+,
+
+(37) where T = exp( −n0xmin τ ).The results are shown in Figure 6. The orange curve represents the simulation using the default mass reso-lution in Dustpy (N=119), while the analytical solution is shown as a purple dashed line. Our discontinuous Galerkin (DG) simulations are performed with a smaller number of mass bins ( N = 40 ), using polynomial orders 
+
+k = 0 and k = 1 . For the DG results, we plot the cell-averaged values in each mass bin, shown as green and blue dots, respectively. Despite the reduced mass resolution, the DG method accurately captures coagulation-driven growth and ef-fectively suppresses over-diffusion, which is particularly severe for large mass intervals and mass-dependent ker-nels. The artificial grain growth visible in the Dustpy 
+
+results originates from its mass redistribution algorithm (Stammler & Birnstiel 2022): because the combined mass of two colliding particles in a sticking event gener-ally does not coincide with a discrete mass grid point, the resulting mass must be distributed between neigh-boring bins. This procedure introduces artificial growth, as material is deposited into bins with masses larger than the true combined mass of the collision partners. 10 Yang, Chen & Bai 10 12 10 10 10 8 10 6 10 4 10 2 10 0 10 2 10 4        
+
+> mass x
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> f(x, ) x2
+> initial
+> analytical solution at = 10
+> Dustpy (N=119)
+> DG scheme with k=0 (N=40)
+> DG scheme with k=1 (N=40)
+
+Figure 6. Comparison of coagulation solutions with an ad-ditive kernel. The orange line shows Dustpy results, the pur-ple dashed line is the analytical solution, and the green/blue dots are DG results with N = 40 bins and k = {0, 1}.
+
+In summary, realistic coagulation kernels are highly sensitive to dust mass itself, and capturing dust growth from interstellar grains to pebbles requires a wide mass range. In conventional discretized methods like Dustpy ,this typically necessitates a few hundreds of mass bins to achieve accurate results. In contrast, the DG method mitigates the over-diffusion even with a coarse mass res-olution and low polynomial order ( k = 0 ) (Liu et al. 2019; Lombart & Laibe 2021), making it a robust and efficient approach for modeling dust growth when the mass interval considered is large. 4.4. Pure Fragmentation Test 
+
+In the pure fragmentation test, we consider a symmet-ric breakage kernel, 
+
+b(x, y, z ) = ˜b(x, y ; z) + ˜b(x, z ; y), (38) with which Equation 6 reduces to Equation 5. The bi-nary breakage takes a uniform fragments distribution, 
+
+˜b(x, y ; z) = 
+
+
+
+2/y 0 < x ≤ y, 
+
+0 x > y. 
+
+(39) The expected fragments number is R y 
+
+> 0
+
+˜b(x, y ; z) d x = 2 ,and the local mass conservation gives R y 
+
+> 0
+
+x˜b(x, y ; z) d x =
+
+y. For a multiplicative kernel Kfrag (x, y ) = xy and an exponential initial condition of f (x, 0) = exp ( −x), the analytic solution of Equation 5 is given by (Ziff & Mc-Grady 1985), 
+
+f (x, τ ) = (1 + τ )2 exp ( −x(1 + τ )) . (40) The mass density g(x, τ ) = xf (x, τ ) peaks at x =1/(1 + τ ), which decreases over time as a result of frag-mentation processes. The prefactor (1 + τ )2 captures the increase in number density as grains fragment into smaller pieces. Figure 7 shows the numerical solutions at τ = 500 for the multiplicative kernel with N = 20 mass bins and polynomial degree k = 0 , 1, 2, 4. The computational do-main is taken as [10 −6, 10 3]. Figure 8 shows evolutions of the numerical errors for the pure fragmentation simula-tion. Similar to the pure coagulation test, the numerical scheme achieves an error less than 1% with N = 20 and 
+
+k = 4 . The experimental order of convergence is not presented here, as it closely resembles that of the pure coagulation case. 4.5. Coupled Aggregation-Breakage 
+
+While the benchmark tests presented above adopt highly idealized kernels (constant, additive, and mul-tiplicative kernels), the collision rate in reality is consid-erably more complex. It depends not only on the sizes of the two colliding particles but also on their relative velocity, which plays a crucial role in determining both the collision frequency and the collisional outcome. In protoplanetary disks, the relative motion between dust grains can arise from various physical processes, including turbulent motion, Brownian motion, and sys-tematic drift in the radial, vertical, or azimuthal direc-tions, all of which are typically size-dependent (Ormel & Cuzzi 2007; Birnstiel 2024). To model the collisional evolution of dust aggregates, we consider three main col-lisional outcomes: coagulation, bouncing, and fragmen-tation. Instead of assuming a single relative velocity for all collisions, we allow the relative velocity to be drawn from a Maxwellian distribution with a size-dependent root-mean-square (rms) value. 
+
+fv = 4 πv 2
+
+ 32π∆v2rms (x, y )
+
+3/2
+
+exp 
+
+
+
+− 3v2
+
+2∆ v2rms (x, y )
+
+
+
+.
+
+(41) When the relative velocity exceeds the bouncing threshold vb, particles bounce back rather than stick to each other. If the relative velocity further exceeds the fragmentation threshold vf , particles undergo fragmen-tation. The probabilities of coagulation and fragmenta-tion are respectively given by, 
+
+βcoag (x, y ) = 
+
+Z vb
+
+> 0
+
+fv dv = erf 
+
+s
+
+32∆ v2rms 
+
+vb
+
+!
+
+− vb
+
+s
+
+6
+
+π∆v2rms 
+
+exp 
+
+
+
+− 3v2
+
+> b
+
+2∆ v2rms 
+
+
+
+,
+
+(42) GRACE-DG : a dust grain collisional evolution DG solver 11 0
+
+> 25
+> 50
+> 75
+> 100
+> 125
+> 150
+> 175
+> mass density  g(x, )
+
+Numerical solution (k=0) 
+
+Analytic solution 
+
+Numerical solution (k=1) 
+
+Analytic solution                
+
+> 10 610 510 410 310 210 110 010 110 210 3
+
+mass x
+
+> 0
+> 25
+> 50
+> 75
+> 100
+> 125
+> 150
+> 175
+> mass density  g(x, )
+
+Numerical solution (k=2) 
+
+Analytic solution                
+
+> 10 610 510 410 310 210 110 010 110 210 3
+
+mass x
+
+Numerical solution (k=4) 
+
+Analytic solution 
+
+Figure 7. Numerical solutions for the pure fragmentation test (Equation 40) with N = 20 cells and different k at τ = 500 . The black dashed line is the analytic solution for comparison; the vertical gray lines delimit the bins. The approximation improves for a higher polynomial degree. 10 1 10 2
+
+Time 
+
+10 10 
+
+10 9
+
+10 8
+
+10 7
+
+10 6
+
+10 5
+
+> numerical error  eM1,  N
+
+k=0 
+
+k=1 
+
+k=2 
+
+k=3 
+
+k=4 
+
+10 1 10 2
+
+Time 
+
+10 3
+
+10 2
+
+10 1
+
+10 0
+
+> numerical error  ec, N
+
+10 1 10 2
+
+Time 
+
+10 3
+
+10 2
+
+10 1
+
+10 0
+
+> numerical error  ed, N
+
+Figure 8. Time evolution of numerical errors for the pure fragmentation test with N = 20 cells and different k. Errors remain bounded at large times. (see Section 4.1 for error definitions) 
+
+βfrag (x, y ) = 
+
+Z ∞
+
+> vf
+
+fv dv =1 − erf 
+
+s
+
+32∆ v2rms 
+
+vf
+
+!
+
++ vf
+
+s
+
+6
+
+π∆v2rms 
+
+exp − 3v2
+
+> f
+
+2∆ v2rms 
+
+!
+
+,
+
+(43) Then the coagulation and fragmentation kernels are de-noted by, 
+
+Kcoag (x, y ) = σ(x, y ) · ∆vrms (x, y ) · βcoag (x, y ), (44) 
+
+Kfrag (x, y ) = σ(x, y ) · ∆vrms (x, y ) · βfrag (x, y ), (45) 12 Yang, Chen & Bai xmin mfrag mleft       
+
+> mass x
+> fragments distribution
+> x
+> remnant
+> Figure 9. The mass distribution of fragmentation outcomes described by Equation 46. The outcomes are divided into a continuous power-law fragment distribution ( xmin ≤x≤
+> mfrag ) and a discrete remnant particle ( mleft ).
+
+where σ(x, y ) = π(x1/3 + y1/3)2 is the geometric cross section. βcoag (x, y ) + βfrag (x, y ) may not be equal to 1 due to the bouncing effect. For fragmentation, we generally write the breakage kernel (Kobayashi & Tanaka 2010; Hirashita et al. 2021): 
+
+b(x, y, z ) = Ax α + δ(x − mleft ), (46) where the first term represents a power law distribution of fragments with a total mass of mfrag , the second term represents one remnant particle with mass of mleft =
+
+y + z − mfrag . Local mass conservation yields, 
+
+Z mfrag 
+
+> xmin
+
+xAx α dx = mfrag → A = (2 + α)mfrag 
+
+m2+ α 
+
+> frag
+
+− x2+ α
+
+> min
+
+. (47) As illustrated in Figure 9, we adopt a special case in our formulation where the upper cutoff of the power-law distribution (i.e., the maximum fragment mass) equals the total mass of all fragments, mfrag (for a gen-eral case, see Figure 1 of Kobayashi & Tanaka (2010)). Several theoretical works obtained a power-law index 
+
+α = −11 /6 ≈ −1.83 of the fragments distribution (Dohnanyi 1969; Jones et al. 1996). The remnant mass should satisfy mleft ≤ y + z, meaning that the collision between particles of mass y and z cannot create parti-cles larger than their combined mass y + z. However, it is possible that a collision between particles of mass y
+
+and z might generate a fragment larger than max ( y, z )
+
+due to the mass transfer from the smaller to the larger particle. The fraction of the total mass that ends up as frag-ments is typically modeled as a function of the mass ratio between the two colliding particles. Following Li et al. (2022), we take into account the effects of cratering and mass transfer in addition to destructive fragmentation by, 
+
+mfrag = ( y+z)·
+
+
+
+1 1 ≤ q ≤ 10 (destructive)  
+
+> 11+ q
+
+· f1(q) 10 < q ≤ 12 (transition I)  
+
+> 21+ q
+
+12 < q ≤ 15 (cratering)  
+
+> 11+ q
+
+· f2(q) 15 < q ≤ 50 (transition II)  
+
+> 0.91+ q
+
+q > 50 (mass transfer) (48) where q = max ( y, z )/ min ( y, z ) ≥ 1 is the mass ra-tio. f1(q) = 6 .5 + 4 .5 cos 
+
+ q−10 12 −10 π
+
+
+
+and f2(q) = 1 .45 + 0.55 cos 
+
+ q−15 50 −15 π
+
+
+
+are taken to make the transition be-tween different collisional outcomes smooth. A large mass ratio in collisions typically leads to the destruction of the smaller particle, while often lacking sufficient en-ergy to fragment the larger one. In cases of extremely high mass ratios, part of the smaller particle’s mass may even be deposited onto the larger one (Wurm et al. 2005; Kothe et al. 2010; Bukhari Syed et al. 2017). To our knowledge, there’s no known analyti-cal solution for the general non-linear coagulation-fragmentation equation. Therefore, we present a toy model that incorporates the coupled aggregation and breakage processes, a Maxwellian distribution of rela-tive velocities, and the general fragmentation prescrip-tion described by Equation 46 and 48, to show the ca-pability of our code. For simplicity, we adopt a constant root-mean-square relative velocity of ∆vrms = 0 .5, and fix the threshold velocities for bouncing and fragmenta-tion at vb = 0 .1, vf = 1 , respectively. These values are chosen to illustrate the combined effects of coagulation and fragmentation. We perform simulations using the same initial con-dition, f (x, 0) = exp ( −x) and adopt a power-law in-dex of α = −1.83 . The computational domain is taken as [10 −6, 10 3]. Figure 10 presents numerical results ob-tained using N = 20 mass bins, benchmarked against a reference solution computed with N = 300 and polyno-mial degree k = 4 . This configuration exhibits negligible differences compared to solutions with even higher res-olution. Although increasing the polynomial order k improves the accuracy of the intra-bin distribution within the smooth power-law regime, this internal refinement does not substantially enhance the accuracy of the mass dis-tribution at the high-mass end. This limitation is fun-damentally tied to the nature of polynomial basis func-GRACE-DG : a dust grain collisional evolution DG solver 13 0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+> mass density  g
+
+= 0 
+
+0.0 
+
+0.5 
+
+1.0 
+
+= 2 × 10 3
+
+0
+
+200 
+
+400 
+
+600 
+
+= 1 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+> mass density  g
+
+0.0 
+
+0.5 
+
+1.0 
+
+0
+
+200 
+
+400 
+
+600 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+> mass density  g
+
+0.0 
+
+0.5 
+
+1.0 
+
+0
+
+200 
+
+400 
+
+600 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+> mass density  g
+
+0.0 
+
+0.5 
+
+1.0 
+
+0
+
+200 
+
+400 
+
+600 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+> mass density  g
+
+0.0 
+
+0.5 
+
+1.0 
+
+0
+
+200 
+
+400 
+
+600 
+
+10 6 10 4 10 2 10 0 10 2
+
+mass x
+
+10 20 
+
+10 15 
+
+10 10 
+
+10 5
+
+10 0
+
+> mass density  g
+
+k=4, 
+
+N=300 
+
+k = 0 
+
+k = 1 
+
+k = 2 
+
+k = 3 
+
+k = 4 
+
+10 6 10 4 10 2 10 0 10 2
+
+mass x
+
+10 20 
+
+10 15 
+
+10 10 
+
+10 5
+
+10 0
+
+x 0.748 
+
+10 6 10 4 10 2 10 0 10 2
+
+mass x
+
+10 20 
+
+10 15 
+
+10 10 
+
+10 5
+
+10 0
+
+x 0.748 
+
+> k = 0 k = 1 k = 2 k = 3 k = 4
+
+Figure 10. Numerical solutions for the case with coupled aggregation and breakage using N = 20 mass bins. Vertical gray lines indicate the boundaries of each mass bin. Each row corresponds to a different polynomial degree k, while each column shows the solution at a different time τ . The black dashed line represents the reference solution computed with N = 300 and k = 4 .The last row presents the same numerical solutions on a log-log scale, where the circles represent the averaged mass density for each bin. 14 Yang, Chen & Bai 
+
+tions. While polynomials excel at resolving smooth dis-tributions, they struggle to capture the rapid, steep ex-ponential drop-off at the high-mass end. As a conse-quence, beyond the truncation scale, higher-order ap-proximations within individual bins cannot effectively compensate for the precision loss, making it difficult to further improve the accuracy of the flux computation. We defer to future work to address this issue. In the bottom row of Figure 10, we observe that the mass density distribution at the lower-mass end scales as g(x) ∝ x−0.748 . This result is consistent with the analytical scaling relation for a dust size distribution in coagulation-fragmentation equilibrium, n(a) ∝ aq ,where q = 2 − 32 (ν − α + 1) (Birnstiel et al. 2011). This translates to a mass distribution of g(x) ∝ xβ , where 
+
+β = ( q + 4) /3 − 1. For the power-law fragment distribu-tion, we adopt an index of α = −1.83 , while the kernel index ν dictates how collision kernels scale with particle mass. For simplicity in this test case, we assume a con-stant root-mean-square relative velocity; thus, the mass dependence of the collision kernel arises solely from the geometric cross section, yielding ν = 2 /3, q = −3.245 
+
+and β ≈ − 0.748 . 
+
+> 5.
+
+DISCUSSION 5.1. On the Choice of the Computational Domain 
+
+In numerical simulations of dust coagulation and frag-mentation, the computational domain is inherently re-stricted to a finite mass range [xmin , x max ]. The choice of these boundary limits can significantly influence the fidelity of the results. In this subsection, we discuss the physical and numerical considerations for selecting the lower and upper mass boundaries, highlighting how do-main truncation impacts the dust size distribution. In Section 4.5, we present a test case featuring coupled coagulation and fragmentation processes, with a con-stant ∆vrms . However, when accounting for the mass de-pendence of relative velocities, ν varies across physically distinct size regimes. This yields a piecewise power-law for the steady-state size distribution, with the in-dex q sequentially transitioning through −2.5, −3.75 ,and −3.5 as dust grain size increases (Birnstiel et al. 2011). Furthermore, in drift-dominated environments where dust has not yet reached the fragmentation bar-rier, the distribution typically follows q = −3 (Birn-stiel 2024). The mass density distribution scales as 
+
+aq+4 , meaning large grains consistently dominate the total mass. Conversely, the dust surface area distribu-tion, which is critical for electron adsorption and sur-face chemistry, scales as aq+3 , peaking at the transition between the Brownian motion and turbulent I regimes (aBT ≈ 0.1 − 1 μm) (Ormel & Cuzzi 2007). As demonstrated, despite the inevitable domain trun-cation at the lower-mass end, our numerical scheme successfully preserves the correct steady-state power-law slopes within the resolved domain. In dust co-agulation simulations, the monomer mass serves as a physically well-defined lower bound. Monomers are the fundamental constituent grains that assemble to form larger dust aggregates. They are typically assumed to be submicron-sized (Birnstiel et al. 2011). In practical computations, however, the appropriate choice of xmin 
+
+remains problem-dependent. For simulations focusing primarily on dust hydrodynamics, resolving these sub-micron grains is unnecessary because they remain fully coupled to the gas. Instead, one can safely adopt a hydrodynamical lower limit. By defining a minimum Stokes number for gas coupling (the dimensionless prod-uct of the particle stopping time and the local Keplerian orbital frequency, e.g., St min ∼ 10 −2), the lower bound-ary xmin can be set to correspond to the particle size ast 
+
+below which the dust dynamically mimics the gas. Con-versely, for simulations involving physics sensitive to the total dust surface area (e.g., non-ideal magnetohydrody-namics or surface chemistry), the computational domain must extend into the Brownian motion regime to fully capture the surface area peak, demanding a lower limit of a ≲ 0.1 μm for typical protoplanetary disks. Having established the physical criteria for the lower size boundary, we next discuss the upper size limit from a purely numerical perspective, setting aside physical ceilings like the fragmentation barrier (which grains can surpass; see Section 5.2). According to Equation 21, the change in mass within each mass bin Ij results from the net effect of fluxes at xj−1/2 and xj+1 /2. Under this construction, the total mass within the computa-tional domain [ xmin , x max ] is naturally conserved, pro-vided that the fluxes at the boundaries are set to 0.In Section 3.3, we have introduced two types of fluxes. The conservative flux with ∆x = −u + xmin satisfies 
+
+F (xmin ) = F (xmax ) = 0 , which helps conserve the total mass to machine precision. A natural concern arises when the coagulation pro-cess dominates: since the mass flux at xmax is zero, mass tends to accumulate near the upper boundary as grains grow rather than forming even larger particles. In contrast, the non-conservative flux allows particles with masses exceeding xmax to form, however, the total mass within [ xmin , x max ] is no longer conserved and instead decreases as grains grow. To illustrate the impact of the flux formulation, we simulate the pure coagulation test (see Section 4.2 for the setup) over an extended time using both conserva-tive and non-conservative fluxes with N = 40 and k = 2 .GRACE-DG : a dust grain collisional evolution DG solver 15 10 12 10 13 10 14 10 15 10 16 10 17 10 18        
+
+> Time
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> numerical total mass  M1,  N
+> conservative, N=40
+> non-conservative, N=40
+> non-conservative, N=100
+> exact mass
+
+Figure 11. Total mass evolution for the pure coagulation test with k = 2 . Conservative and non-conservative flux re-sults are shown in purple and green, respectively; the blue dashed line shows the higher-resolution non-conservative case. The orange line represents the evolution of M1,N from the exact solution. 
+
+In addition, a higher-resolution non-conservative case with N = 100 is included. Figure 11 shows the evo-lution of the total mass in each case, compared to the exact solution. The conservative-flux simulation (pur-ple line) preserves the total mass M1,N , as expected. In the non-conservative case, M1,N decreases over time due to particle growth beyond the upper mass boundary. Nonetheless, the results at both resolutions ( N = 40 and 
+
+N = 100 ) still deviate from the exact solution. This discrepancy is not caused by numerical error. Instead, it arises from the fact that we consider a fi-nite computational domain [ xmin , x max ], which excludes the grain mass distribution outside this range. How-ever, the mass flux at a given point within the domain can, in principle, be influenced by the global distribu-tion of g(x, τ ) over x ∈ (0 , ∞). For example, a par-ticle of mass u < x may collide with another parti-cle of mass v > x max , producing a particle of mass 
+
+u + v > x , thereby contributing to the flux at x. This process is not accounted for—even when using the non-conservative flux—because v > x max lies outside the do-main of g(x, τ ) considered in the simulation. Consequently, special care must be taken in practi-cal simulations when choosing the upper mass bound-ary. To ensure that the global solution is not artifi-cially affected by boundary truncation, the upper mass boundary xmax should be placed sufficiently beyond the region where the dust mass density distribution is signif-icant. In practice, this requires xmax to be large enough that the contribution from grains near and beyond the boundary is negligible over the timescale of interest. 5 10 20     
+
+> Nbins
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> real time [ s]
+> N3bins
+> N2bins
+> k=0
+> k=1
+> k=2
+> k=3
+> k=4
+
+Figure 12. The averaged elapsed real time (in seconds) for the case with coupled aggregation and breakage. As expected from the algorithmic construction, the high-order method exhibits a scaling of ∝ N 3, while the zeroth-order method which evolves only the cell-averaged mass density, shows a wall-clock time scaling of ∝ N 2.
+
+5.2. Toward Hydrodynamic Implementation 
+
+Our understanding of protoplanetary disks has been advanced by increasingly sophisticated numerical mod-els of gas (radiation- and magneto-) hydrodynamics. Recognizing the necessity of dust size evolution, recent simulations have begun to self-consistently incorporate dust dynamics and dust growth (e.g., Li et al. 2020; Robinson et al. 2024; Kaufmann et al. 2025; Vaikun-daraman et al. 2025; Lombart et al. 2026, to name a few). To further advance this frontier, we introduce a novel coagulation-fragmentation solver that employs a high-order discontinuous Galerkin (DG) algorithm, ca-pable of modeling a wide range of collisional outcomes as illustrated in Figure 1. The averaged elapsed wall-clock time per time step of this DG solver is presented in Figure 12. All simu-lations are performed for the case with coupled aggre-gation and breakage, as this represents a more realistic scenario when incorporated into hydrodynamical simu-lations. As before, the number of quadrature points cho-sen for a polynomial of degree k is Q = k + 1 . The high-order DG method demonstrates a computational cost that scales as ∝ N 3 with the number of mass bins, as an-ticipated based on the structure of the algorithm. Typ-ically, it takes ≈ 10 −6 s to update a cell in pure hydro-dynamical simulations, which is significantly faster than the wall-clock time required for solving the coagulation-fragmentation equations—for example, 8.5 × 10 −4 s in the configuration of N = 20 and k = 0 .16 Yang, Chen & Bai 
+
+Nonetheless, we anticipate that incorporating dust collisional evolution into hydrodynamic codes, such as 
+
+Athena++ and Guangqi (Stone et al. 2020; Huang & Bai 2022; Chen & Bai 2026), will not lead to a significant increase in computational cost. This is because, under realistic physical conditions in a typical protoplanetary disk, the timescale for dust growth is generally much longer than the hydrodynamic timescale. Simply con-sider a single-size approximation, the particle growth timescale is defined as (Okuzumi et al. 2016), 
+
+tgrowth = 1
+
+πa 2
+
+> d
+
+nd∆vd
+
+, (49) where ad denotes the representative dust size, nd and 
+
+∆vd are the dust number density and collision veloc-ity between dust grains. Taking dust-to-gas ratio to be Σd/Σg = 0 .01 , tgrowth ∼ 10 4 − 10 5 yr at 100 AU 
+
+and ∼ 1 − 100 yr at 1 AU (Sato et al. 2016), which is even longer than the corresponding orbital timescales. Therefore, the situation can be substantially alleviated by splitting the grain growth calculation from the evo-lution of hydrodynamics (Ho et al. 2024). In addition to the computational efficiency, ensuring the physical fidelity of dust collisional evolution model-ing requires particular attention to several key physical prescriptions. First, the relative velocity between dust grains must be accurately captured. In protoplanetary disks (PPDs), turbulent motion is the primary driver of relative velocity, which intrinsically scales with particle size (Ormel & Cuzzi 2007; Birnstiel et al. 2011). Equat-ing this turbulent relative velocity to the fragmentation velocity results in an approximate maximum grain size (Birnstiel et al. 2009), 
+
+amax ≈ 2Σ g
+
+παρ s
+
+· v2
+
+> f
+
+c2
+
+> s
+
+, (50) where Σg is the gas surface density, α is the turbulent viscosity parameter, ρs is the bulk density of dust grains, and cs is the sound speed. Second, the inclusion of a bouncing barrier is essential for capturing early-stage growth limits. Previous studies have shown that bouncing can halt dust growth before the fragmentation process becomes significant. This pre-vents the continuous replenishment of small dust grains and results in a quasi-monodisperse size distribution peaking around ∼ 100 μm (Zsom et al. 2010; Dominik & Dullemond 2024). Such a specific size distribution is crucial for keeping PPDs observationally bright for millions of years (Qian & Wu 2025). Third, the precise formulation of the fragmentation kernel, specifically the treatment of mass transfer, can significantly alter growth outcomes. When mass transfer is allowed, larger grains ( a > a max ) can continue to grow even during collisions where the relative velocity exceeds 
+
+vf , In such scenarios, high-velocity impacts involving particles with a large mass ratio effectively contribute to grain growth beyond the standard fragmentation bar-rier, resembling a form of coagulation (Windmark et al. 2012). In short, the complex interplay of these physical pro-cesses highlights the necessity of tracking the full size evolution of dust grains. While simplified model, such as Tripod (Pfeil et al. 2024; Kaufmann et al. 2025), is highly efficient and successful in modeling global radial drift and dust growth, it fails to resolve the exact shape of size distributions when deviating from a single power law (Eriksson et al. 2026). With the method developed in this study, we can accommodate a wide range of colli-sional outcomes, and more realistic threshold conditions based on laboratory experiments and collision simula-tions can be readily implemented. 5.3. Toward a Multidimensional Treatment 
+
+Currently, GRACE-DG characterizes dust grains us-ing a single parameter: mass, x. Astrophysical dust, however, exhibits a complex array of additional prop-erties, including porosity, shape, chemical composition, and electric charge. These physical and chemical at-tributes directly govern collisional outcomes, aerody-namic coupling, and observational signatures. Cap-turing these effects requires extending the standard coagulation-fragmentation framework into a multidi-mensional population balance equation, which dis-tributes the dust density across multiple internal coor-dinates. Tracking distinct chemical species is vital for inter-preting disk chemistry and meteoritic records. For in-stance, coupled models successfully explain water va-por depletion in upper disk layers (Krijt et al. 2016), observational signatures across CO snow lines (Stamm-ler et al. 2017), and the isotopic dichotomy of refrac-tory species like 54 Cr between meteorite groups (Homma et al. 2024). To avoid a costly multidimensional grid, simulations often assume dust grains are macroscopic mixtures of various species. Numerically, the frame-work retains the 1D mass grid and solves a parallel set of coagulation-fragmentation equations to trace the partial mass of each constituent species. Chemical composition can be efficiently tracked via parallel equations, and the surface composition of grains generally determines their fragmentation threshold (e.g., CO 2 ice, (Musiolik et al. 2016a,b); H 2O ice, (Musiolik & Wurm 2019); silicates, (Pillich et al. 2021)). How-ever, incorporating porosity poses a highly non-trivial GRACE-DG : a dust grain collisional evolution DG solver 17 challenge because its physical effects are even more per-vasive. Beyond influencing fragmentation threshold, porosity dictates the physical cross-sections and aero-dynamic coupling of dust grains, thereby dynamically altering the collision kernels. Resolving this structural evolution fundamentally reshapes the macroscopic path-ways of dust growth: highly porous aggregates present radically enlarged geometrical cross-sections, which ac-celerates coagulation and potentially enables them to safely bypass the radial drift barrier, particularly out-side the snow line (Ormel et al. 2007; Okuzumi et al. 2009, 2012). Conversely, subsequent collisional com-paction and the onset of bouncing can abruptly stall these growth at millimeter scales (Zsom et al. 2010, 2011). Numerically managing this added dimensionality re-quires solving the generalized multidimensional Smolu-chowski (coagulation) equation (Kostoglou & Konstan-dopoulos 2001; Okuzumi et al. 2009; Watanabe &Kataoka 2026): 
+
+∂f (τ, X )
+
+∂τ = 12
+
+Z Z
+
+d XId XII Kcoag (XI, X II )
+
+f (τ, X I)f (τ, X II )δ(X − XI+II (XI, X II )) 
+
+− f (τ, X )
+
+Z
+
+d XII K(X, X II )f (t, X II ),
+
+(51) which is a natural extension of Equation 1. The pa-rameter vector X = ( X(1) , X (2) , . . . , X (d)) characterizes the dust aggregate across d dimensions. The multidi-mensional Dirac delta function δ satisfies R dXδ (X −
+
+X0)f (X) = f (X0), while XI+II (XI, X II ) is a function that returns the properties of the newly formed dust aggregate following the coagulation of two precursors. Directly evaluating these multi-integrals on a fully discrete Eulerian mesh incurs a prohibitive computa-tional cost that scales as O(N 2d), where N is the num-ber of grid bins per dimension. To circumvent this severe bottleneck, several alternative approaches have been developed. Early works pioneered the use of Monte Carlo methods to simultaneously track mass and fractal dimension without relying on a rigid numerical grid (Kostoglou & Konstandopoulos 2001; Ormel et al. 2007). For Eulerian frameworks, computationally ef-ficient moment equations are widely adopted. Track-ing the zeroth- and first-order moments simultaneously evolves the grain size and volume distributions, directly yielding the aggregate porosity (Okuzumi et al. 2009; Hirashita et al. 2021). Most recently, algorithmic inno-vations have focused on directly accelerating the mul-tidimensional integration itself; Watanabe & Kataoka (2026) proposed a fast tree algorithm that groups distant nodes in phase space, successfully reducing the computa-tional cost of multi-component coagulation from O(N 2d)
+
+to O(dN d log N ).Extending the GRACE-DG to multidimensional spaces is mathematically natural. Taking a 2D mass-volume (x, v ) phase space as an example, within each two-dimensional cell Ij,m = Ij ×Im, we can approximate the continuous distribution solution g(x, v, τ ) by a linear combination of the tensor product of one-dimensional Legendre polynomials of degree at most k in each di-mension: 
+
+∀(x, v ) ∈ Ij,m g(x, v, τ ) ≈ gj,m (x, v, τ )=
+
+> k
+
+X
+
+> p=0
+> k
+
+X
+
+> q=0
+
+gp,q j,m (τ )ϕp(ξj (x)) ϕq (ηm(v)) ,
+
+(52) where gp,q j,m (τ ) is the component of gj,m (x, v, τ ) on the two-dimensional basis. Similarly, the local coordinates 
+
+ξj (x) and ηm(v) map the physical domain (x, v ) ∈ Ij,m 
+
+onto the reference square domain (ξ, η ) ∈ [−1, 1] ×
+
+[−1, 1] .Consequently, the calculation of the mass flux (e.g., Equation 3) transitions from a double integral to a 2d-dimensional integral. For example, it becomes a four-dimensional integral for the 2D mass-volume space. Al-though this direct integration fundamentally retains the steep O(N 2d) computational scaling, the core strength of the DG method lies in its ability to aggressively shrink the base grid resolution, N . By leveraging high-order local approximations, the DG method substantially re-duces the required grid resolution, N , effectively miti-gating the multidimensional scaling penalty. Ultimately, benchmarking its computational efficiency and accuracy against state-of-the-art tree algorithm presents a com-pelling direction for future work.  
+
+> 6.
+
+CONCLUSION In this work, we developed a high-order DG method-based open-source code GRACE-DG (GRAin Collisional Evolution - Discontinuous Galerkin) to solve the general non-linear coagulation-fragmentation equations. We de-rived a new mass flux formulation to accommodate gen-eral non-linear fragmentation processes (Equation 9), such as the cratering and mass transfer (Figure 1). The DG scheme is formulated based on the conser-vative form of the Smoluchowski equations, which is positivity-preserving for both coagulation and fragmen-tation processes (Liu et al. 2019; Lombart & Laibe 2021; Lombart et al. 2022, 2024), and can also alleviate the over-diffusion observed in existing discretized algo-rithms when solving the coagulation equation (Stamm-18 Yang, Chen & Bai 
+
+ler & Birnstiel 2022). We performed simulations com-bining aggregation and breakage effects (Section 4.5), demonstrating good convergence properties and robust-ness. The incorporation of GRACE-DG into hydrodynamic simulations is deferred to future studies. ACKNOWLEDGMENTS The authors are deeply grateful to the anonymous ref-eree for the careful reading and thoughtful, construc-tive comments, which have substantially improved the quality and clarity of this manuscript. The authors thank Maxime Lombart, Ziyan Xu, Rixin Li, Pinghui Huang, Chris Ormel, Thomas Pfeil, and Linn Eriksson for constructive discussions. This work is supported by the National Science Foundation of China under grants No. 12233004, 12325304, 12342501, Tsinghua University Dushi Program, and Tsinghua University Initiative Sci-entific Research Program No. 20233080026. The Center of High performance computing at Tsinghua University provided the computational resources. We also acknowl-edge the Chinese Center for Advanced Science and Tech-nology for hosting the Protoplanetary Disk and Planet Formation Summer School in 2024, which inspired this work. 
+
+## Software: GRACE-DG (Yang et al. 2026), DustPy 
+
+(Stammler & Birnstiel 2022) REFERENCES 
+
+Bai, X.-N., & Stone, J. M. 2010, ApJ, 722, 1437, doi: 10.1088/0004-637X/722/2/1437 Birnstiel, T. 2024, ARA&A, 62, 157, doi: 10.1146/annurev-astro-071221-052705 Birnstiel, T., Dullemond, C. P., & Brauer, F. 2009, A&A, 503, L5, doi: 10.1051/0004-6361/200912452 —. 2010, A&A, 513, A79, doi: 10.1051/0004-6361/200913731 Birnstiel, T., Klahr, H., & Ercolano, B. 2012, A&A, 539, A148, doi: 10.1051/0004-6361/201118136 Birnstiel, T., Ormel, C. W., & Dullemond, C. P. 2011, A&A, 525, A11, doi: 10.1051/0004-6361/201015228 Bodenheimer, P., & Pollack, J. B. 1986, Icarus, 67, 391, doi: 10.1016/0019-1035(86)90122-3 Brauer, F., Dullemond, C. P., & Henning, T. 2008, A&A, 480, 859, doi: 10.1051/0004-6361:20077759 Bukhari Syed, M., Blum, J., Wahlberg Jansson, K., & Johansen, A. 2017, ApJ, 834, 145, doi: 10.3847/1538-4357/834/2/145 Charnoz, S., & Taillifet, E. 2012, ApJ, 753, 119, doi: 10.1088/0004-637X/753/2/119 Chen, Z., & Bai, X.-N. 2026, ApJS, 283, 48, doi: 10.3847/1538-4365/ae4723 Cockburn, B., & Shu, C.-W. 2001, Journal of Scientific Computing, 16, 173, doi: 10.1023/A:1012873910884 Delage, T. N., Okuzumi, S., Flock, M., Pinilla, P., & Dzyurkevich, N. 2022, A&A, 658, A97, doi: 10.1051/0004-6361/202141689 Dohnanyi, J. S. 1969, J. Geophys. Res., 74, 2531, doi: 10.1029/JB074i010p02531 Dominik, C., Blum, J., Cuzzi, J. N., & Wurm, G. 2007, in Protostars and Planets V, ed. B. Reipurth, D. Jewitt, & K. Keil, 783, doi: 10.48550/arXiv.astro-ph/0602617 Dominik, C., & Dullemond, C. P. 2024, A&A, 682, A144, doi: 10.1051/0004-6361/202347716 Dullemond, C. P., & Dominik, C. 2004, A&A, 421, 1075, doi: 10.1051/0004-6361:20040284 —. 2005, A&A, 434, 971, doi: 10.1051/0004-6361:20042080 Eriksson, L. E. J., Pfeil, T., Kaufmann, N., & Vaikundaraman, V. 2026, arXiv e-prints, arXiv:2603.22550, doi: 10.48550/arXiv.2603.22550 Gottlieb, S., Shu, C.-W., & Tadmor, E. 2001, SIAM Review, 43, 89, doi: 10.1137/S003614450036757X Hirashita, H., Il’in, V. B., Pagani, L., & Lefèvre, C. 2021, MNRAS, 502, 15, doi: 10.1093/mnras/staa4018 Ho, K. W., Li, H., & Li, S. 2024, ApJL, 975, L34, doi: 10.3847/2041-8213/ad8655 Homma, K. A., Okuzumi, S., Arakawa, S., & Fukai, R. 2024, PASJ, doi: 10.1093/pasj/psae052 Huang, P., & Bai, X.-N. 2022, ApJS, 262, 11, doi: 10.3847/1538-4365/ac76cb Ida, S., & Lin, D. N. C. 2004, ApJ, 604, 388, doi: 10.1086/381724 Ivlev, A. V., Akimkin, V. V., & Caselli, P. 2016, ApJ, 833, 92, doi: 10.3847/1538-4357/833/1/92 Johansen, A., Oishi, J. S., Mac Low, M.-M., et al. 2007, Nature, 448, 1022, doi: 10.1038/nature06086 Jones, A. P., Tielens, A. G. G. M., & Hollenbach, D. J. 1996, ApJ, 469, 740, doi: 10.1086/177823 Kaufmann, N. L., Pfeil, T., Stammler, S., et al. 2025, arXiv e-prints, arXiv:2511.20764, doi: 10.48550/arXiv.2511.20764 Kobayashi, H., & Tanaka, H. 2010, Icarus, 206, 735, doi: 10.1016/j.icarus.2009.10.004 Kostoglou, M., & Konstandopoulos, A. G. 2001, Journal of Aerosol Science, 32, 1399, doi: 10.1016/S0021-8502(01)00056-8 GRACE-DG : a dust grain collisional evolution DG solver 19 
+
+Kothe, S., Güttler, C., & Blum, J. 2010, ApJ, 725, 1242, doi: 10.1088/0004-637X/725/1/1242 Krijt, S., Ciesla, F. J., & Bergin, E. A. 2016, ApJ, 833, 285, doi: 10.3847/1538-4357/833/2/285 Li, R., Chen, Y.-X., & Lin, D. N. C. 2022, MNRAS, 510, 5246, doi: 10.1093/mnras/stab3677 Li, R., & Youdin, A. N. 2021, ApJ, 919, 107, doi: 10.3847/1538-4357/ac0e9f Li, Y.-P., Li, H., Li, S., et al. 2020, ApJL, 892, L19, doi: 10.3847/2041-8213/ab7fb2 Liu, H., Gröpler, R., & Warnecke, G. 2019, SIAM Journal on Scientific Computing, 41, B448, doi: 10.1137/17M1150360 Lombart, M., Bréhier, C.-E., Hutchison, M., & Lee, Y.-N. 2024, MNRAS, 533, 4410, doi: 10.1093/mnras/stae2039 Lombart, M., Hutchison, M., & Lee, Y.-N. 2022, MNRAS, 517, 2012, doi: 10.1093/mnras/stac2232 Lombart, M., & Laibe, G. 2021, MNRAS, 501, 4298, doi: 10.1093/mnras/staa3682 Lombart, M., Lebreuilly, U., & Maury, A. 2026, arXiv e-prints, arXiv:2601.07088, doi: 10.48550/arXiv.2601.07088 Marchand, P., Lebreuilly, U., Mac Low, M.-M., & Guillet, V. 2023, A&A, 670, A61, doi: 10.1051/0004-6361/202244291 Musiolik, G., Teiser, J., Jankowski, T., & Wurm, G. 2016a, ApJ, 818, 16, doi: 10.3847/0004-637X/818/1/16 —. 2016b, ApJ, 827, 63, doi: 10.3847/0004-637X/827/1/63 Musiolik, G., & Wurm, G. 2019, ApJ, 873, 58, doi: 10.3847/1538-4357/ab0428 Nakagawa, Y., Nakazawa, K., & Hayashi, C. 1981, Icarus, 45, 517, doi: 10.1016/0019-1035(81)90018-X Okuzumi, S. 2009, ApJ, 698, 1122, doi: 10.1088/0004-637X/698/2/1122 Okuzumi, S., & Hirose, S. 2012, ApJL, 753, L8, doi: 10.1088/2041-8205/753/1/L8 Okuzumi, S., Momose, M., Sirono, S.-i., Kobayashi, H., & Tanaka, H. 2016, ApJ, 821, 82, doi: 10.3847/0004-637X/821/2/82 Okuzumi, S., Tanaka, H., Kobayashi, H., & Wada, K. 2012, ApJ, 752, 106, doi: 10.1088/0004-637X/752/2/106 Okuzumi, S., Tanaka, H., & Sakagami, M.-a. 2009, ApJ, 707, 1247, doi: 10.1088/0004-637X/707/2/1247 Ormel, C. W., & Cuzzi, J. N. 2007, A&A, 466, 413, doi: 10.1051/0004-6361:20066899 Ormel, C. W., & Klahr, H. H. 2010, A&A, 520, A43, doi: 10.1051/0004-6361/201014903 Ormel, C. W., Spaans, M., & Tielens, A. G. G. M. 2007, A&A, 461, 215, doi: 10.1051/0004-6361:20065949 Pfeil, T., Birnstiel, T., & Klahr, H. 2024, A&A, 691, A45, doi: 10.1051/0004-6361/202449337 Pfeil, T., Cranmer, M., Ho, S., et al. 2022, arXiv e-prints, arXiv:2211.04160, doi: 10.48550/arXiv.2211.04160 Pillich, C., Bogdan, T., Landers, J., Wurm, G., & Wende, H. 2021, A&A, 652, A106, doi: 10.1051/0004-6361/202140601 Pollack, J. B., Hubickyj, O., Bodenheimer, P., et al. 1996, Icarus, 124, 62, doi: 10.1006/icar.1996.0190 Qian, Y., & Wu, Y. 2025, arXiv e-prints, arXiv:2507.06298, doi: 10.48550/arXiv.2507.06298 Robinson, A., Booth, R. A., & Owen, J. E. 2024, MNRAS, 529, 1524, doi: 10.1093/mnras/stae624 Sato, T., Okuzumi, S., & Ida, S. 2016, A&A, 589, A15, doi: 10.1051/0004-6361/201527069 Scott, W. T. 1968, Journal of the Atmospheric Sciences, 25, 54, doi: 10.1175/1520-0469(1968)025<0054: ASOCDC>2.0.CO;2 Shu, C.-W. 2008. https://api.semanticscholar.org/CorpusID:52027743 Smoluchowski, M. V. 1916, Zeitschrift fur Physik, 17, 557 Stammler, S. M., & Birnstiel, T. 2022, ApJ, 935, 35, doi: 10.3847/1538-4357/ac7d58 Stammler, S. M., Birnstiel, T., Panić, O., Dullemond, C. P., & Dominik, C. 2017, A&A, 600, A140, doi: 10.1051/0004-6361/201629041 Stone, J. M., Tomida, K., White, C. J., & Felker, K. G. 2020, ApJS, 249, 4, doi: 10.3847/1538-4365/ab929b Tamfal, T., Drążkowska, J., Mayer, L., & Surville, C. 2018, ApJ, 863, 97, doi: 10.3847/1538-4357/aad1f4 Tanaka, H., Inaba, S., & Nakazawa, K. 1996, Icarus, 123, 450, doi: 10.1006/icar.1996.0170 Terquem, C. E. J. M. L. J. 2008, ApJ, 689, 532, doi: 10.1086/592597 Vaikundaraman, V., Gurrutxaga, N., & Drążkowska, J. 2025, arXiv e-prints, arXiv:2507.21239, doi: 10.48550/arXiv.2507.21239 Vericel, A., Gonzalez, J.-F., Price, D. J., Laibe, G., & Pinte, C. 2021, MNRAS, 507, 2318, doi: 10.1093/mnras/stab2263 Vorobyov, E. I., Akimkin, V., Stoyanovskaya, O., Pavlyuchenkov, Y., & Liu, H. B. 2018, A&A, 614, A98, doi: 10.1051/0004-6361/201731690 Watanabe, T. K., & Kataoka, A. 2026, arXiv e-prints, arXiv:2605.18353. https://arxiv.org/abs/2605.18353 Weidenschilling, S. J. 1980, Icarus, 44, 172, doi: 10.1016/0019-1035(80)90064-0 Wetherill, G. W. 1990, Icarus, 88, 336, doi: 10.1016/0019-1035(90)90086-O 20 Yang, Chen & Bai 
+
+Windmark, F., Birnstiel, T., Güttler, C., et al. 2012, A&A, 540, A73, doi: 10.1051/0004-6361/201118475 Woitke, P., Kamp, I., & Thi, W. F. 2009, A&A, 501, 383, doi: 10.1051/0004-6361/200911821 Wurm, G., Paraskov, G., & Krauss, O. 2005, Icarus, 178, 253, doi: 10.1016/j.icarus.2005.04.002 Yang, J., Chen, Z., & Bai, X.-N. 2026, GRACE-DG: A Discontinuous Galerkin code for GRAin Collisional Evolution, v1.0, Zenodo, doi: 10.5281/zenodo.21023229 Youdin, A. N., & Goodman, J. 2005, ApJ, 620, 459, doi: 10.1086/426895 Ziff, R. M., & McGrady, E. D. 1985, Journal of Physics A Mathematical General, 18, 3027, doi: 10.1088/0305-4470/18/15/026 Zsom, A., Ormel, C. W., Dullemond, C. P., & Henning, T. 2011, A&A, 534, A73, doi: 10.1051/0004-6361/201116515 Zsom, A., Ormel, C. W., Güttler, C., Blum, J., & Dullemond, C. P. 2010, A&A, 513, A57, doi: 10.1051/0004-6361/200912976 GRACE-DG : a dust grain collisional evolution DG solver 21 APPENDIX 
+
+A. CONSERVATIVE FORMULATION The general fragmentation of Equation 6 can be equivalently written as, 
+
+∂f (x, τ )
+
+∂τ = 12
+
+Z ∞
+
+> x
+
+dy
+
+Z y
+
+> 0
+
+dz Kfrag (y − z, z )b(x, y − z, z )f (y − z, τ )f (z, τ ) − f (x, τ )
+
+Z ∞
+
+> 0
+
+Kfrag (x, y )f (y, τ ) d y, (A1) We demonstrate its corresponding conservative form with respect to the mass density g(x, τ ) = xf (x, τ ) is, 
+
+∂g (x, τ )
+
+∂τ + ∂F frag [g]( x, τ )
+
+∂x = 0 , (A2) 
+
+Ffrag [g]( x, τ ) = 
+
+Z x
+
+> 0
+
+du
+
+Z ∞
+
+> x−u
+
+dv
+
+Z u+vx
+
+dw wv(u + v) b(w, u, v )Kfrag (u, v )g(u, τ )g(v, τ )
+
+−
+
+Z ∞
+
+> x
+
+du
+
+Z ∞
+
+> 0
+
+dv
+
+Z x
+
+> 0
+
+dw wv(u + v) b(w, u, v )Kfrag (u, v )g(u, τ )g(v, τ ).
+
+(A3) Let’s begin by applying the Leibniz integral rule to compute the partial derivative of Ffrag [g]( x, τ ) with respect to x,
+
+∂F frag [g]( x, τ )
+
+∂x =
+
+Z ∞
+
+> 0
+
+dv
+
+Z x+vx
+
+dw wv(x + v) b(w, x, v )Kfrag (x, v )g(x, τ )g(v, τ )
+
+−
+
+Z x
+
+> 0
+
+du
+
+Z ∞
+
+> x−u
+
+dv xv(u + v) b(x, u, v )Kfrag (u, v )g(u, τ )g(v, τ )+
+
+Z ∞
+
+> 0
+
+dv
+
+Z x
+
+> 0
+
+dw wv(x + v) b(w, x, v )Kfrag (x, v )g(x, τ )g(v, τ )
+
+−
+
+Z ∞
+
+> x
+
+du
+
+Z ∞
+
+> 0
+
+dv xv(u + v) b(x, u, v )Kfrag (u, v )g(u, τ )g(v, τ ).
+
+(A4) The local mass conservation gives R x+v 
+
+> 0
+
+wb (w, x, v ) d w = x + v. By proceeding with a variable transformation and rearranging Equation A4, we further obtain, 
+
+∂F frag [g]( x, τ )
+
+∂x = xf (x, τ )
+
+Z ∞
+
+> 0
+
+Kfrag (x, y )f (y, τ ) d y − x
+
+Z ∞
+
+> x
+
+dy
+
+Z y
+
+> 0
+
+dz y − zy Kfrag (y − z, z )b(x, y − z, z )f (y − z, τ )f (z, τ ).
+
+(A5) The symmetry with respect to the masses of the two colliding particles implies: 
+
+Z ∞
+
+> x
+
+dy
+
+Z y
+
+> 0
+
+dz y − zy Kfrag (y − z, z )b(x, y − z, z )f (y − z, τ )f (z, τ ) = 
+
+Z ∞
+
+> x
+
+dy
+
+Z y
+
+> 0
+
+dz zy Kfrag (y − z, z )b(x, y − z, z )f (y − z, τ )f (z, τ )= 12
+
+Z ∞
+
+> x
+
+dy
+
+Z y
+
+> 0
+
+dz y − z + zy Kfrag (y − z, z )b(x, y − z, z )f (y − z, τ )f (z, τ )= 12
+
+Z ∞
+
+> x
+
+dy
+
+Z y
+
+> 0
+
+dz Kfrag (y − z, z )b(x, y − z, z )f (y − z, τ )f (z, τ ).
+
+(A6) Therefore, we demonstrate that Equation A2 is equivalent to, 
+
+x ∂f (x, τ )
+
+∂τ + xf (x, τ )
+
+Z ∞
+
+> 0
+
+Kfrag (x, y )f (y, τ ) d y − x
+
+2
+
+Z ∞
+
+> x
+
+dy
+
+Z y
+
+> 0
+
+dz Kfrag (y − z, z )b(x, y − z, z )f (y − z, τ )f (z, τ ) = 0 , (A7) which can be readily shown to match Equation A1. 22 Yang, Chen & Bai 
+
+B. FRAGMENTATION FLUX EVALUATION Taking the breakage kernel in the form of Equation 46, the conservative fragmentation flux of Equation 25 becomes, 
+
+F tr frag [g]( x, τ ) = 
+
+Z xxmin 
+
+du
+
+Z xmax −u+xmin 
+
+> x−u+xmin
+
+dv
+
+Z u+vx
+
+dw w[Aw α + δ(w − mleft )] 
+
+v(u + v) Kfrag (u, v )g(u, τ )g(v, τ )
+
+−
+
+Z xmax 
+
+> x
+
+du
+
+Z xmax −u+xmin 
+
+> xmin
+
+dv
+
+Z xxmin 
+
+dw w[Aw α + δ(w − mleft )] 
+
+v(u + v) Kfrag (u, v )g(u, τ )g(v, τ ),
+
+(B8) where mleft = mleft (u, v ) is the mass of the remnant, the domain of Aw α is restricted to w < m frag (u, v ), which is given by Equation 48. Furthermore, we have mfrag + mleft = u + v, and A = (2 + α)mfrag /(m2+ α 
+
+> frag
+
+− x2+ α 
+
+> min
+
+) derived from the local mass conservation. The two outermost integrals over u and v are computed via Gaussian quadrature, following the flux evaluation approach presented in Section 3.3. Thus, the only remaining task is computing the innermost integral over w for fixed 
+
+u = xαl and v = xβm:
+
+Z u+vx
+
+w[Aw α + δ(w − mleft )] d w =
+
+ 
+
+> A
+> 2+ α
+
+· (mα+2 frag − xα+2 ) + mleft x < m frag , x < m left . 
+
+> A
+> 2+ α
+
+· (mα+2 frag − xα+2 ) x < m frag , x > m left .mleft x > m frag , x < m left .
+
+0 x > m frag , x > m left .
+
+(B9) 
+
+Z xxmin 
+
+w[Aw α + δ(w − mleft )] d w =
+
+ 
+
+> A
+> 2+ α
+
+· (xα+2 − xα+2 min ) x < m frag , x < m left . 
+
+> A
+> 2+ α
+
+· (xα+2 − xα+2 min ) + mleft x < m frag , x > m left . 
+
+> A
+> 2+ α
+
+· (mα+2 frag − xα+2 min ) x > m frag , x < m left . 
+
+> A
+> 2+ α
+
+· (mα+2 frag − xα+2 min ) + mleft x > m frag , x > m left .
+
+(B10) Then, the integral of mass flux over Ij ,
+
+Z
+
+> Ij
+
+F tr frag [g]( x, τ )∂xϕ dx =
+
+Z
+
+> Ij
+
+dx
+
+Z xxmin 
+
+du
+
+Z xmax −u+xmin 
+
+> x−u+xmin
+
+dv
+
+Z u+vx
+
+dw w[Aw α + δ(w − mleft )] 
+
+v(u + v) Kfrag (u, v )g(u, τ )g(v, τ )∂xϕ
+
+−
+
+Z
+
+> Ij
+
+dx
+
+Z xmax 
+
+> x
+
+du
+
+Z xmax −u+xmin 
+
+> xmin
+
+dv
+
+Z xxmin 
+
+dw w[Aw α + δ(w − mleft )] 
+
+v(u + v) Kfrag (u, v )g(u, τ )g(v, τ )∂xϕ
+
+(B11) By reordering the integration sequence, we get to, 
+
+Z
+
+> Ij
+
+F tr frag [g]( x, τ )∂xϕ dx =
+
+Z xmax 
+
+> xmin
+
+du
+
+Z xmax −u+xmin 
+
+> xmin
+
+dv
+
+Z  
+
+> Ij∩[u,m frag ]
+
+dx A(mα+2 frag − xα+2 )2 + α ∂xϕ · Kfrag (u, v )g(u, τ )g(v, τ )
+
+v(u + v)
+
+−
+
+Z xmax 
+
+> xmin
+
+du
+
+Z xmax 
+
+> xmin
+
+dv
+
+Z 
+
+> Ij∩[xmin ,u ]
+
+dx A(xα+2 − xα+2 min )2 + α ∂xϕ · Kfrag (u, v )g(u, τ )g(v, τ )
+
+v(u + v)+
+
+Z xmax 
+
+> xmin
+
+du
+
+Z xmax 
+
+> xmin
+
+dv
+
+Z  
+
+> Ij∩[mfrag ,u ]
+
+dx A(xα+2 − mα+2 frag )2 + α ∂xϕ · Kfrag (u, v )g(u, τ )g(v, τ )
+
+v(u + v)+
+
+Z xmax 
+
+> xmin
+
+du
+
+Z xmax −u+xmin 
+
+> xmin
+
+dv
+
+Z 
+
+> Ij∩[u,m left ]
+
+dx m left ∂xϕ · Kfrag (u, v )g(u, τ )g(v, τ )
+
+v(u + v)
+
+−
+
+Z xmax 
+
+> xmin
+
+du
+
+Z xmax 
+
+> xmin
+
+dv
+
+Z 
+
+> Ij∩[mleft ,u ]
+
+dx m left ∂xϕ · Kfrag (u, v )g(u, τ )g(v, τ )
+
+v(u + v) .
+
+(B12) With all conditional constraints on the integral bounds for x established, we can now similarly apply Gaussian quadrature for evaluating R 
+
+> Ij
+
+F tr frag [g]( x, τ )∂xϕ dx.
