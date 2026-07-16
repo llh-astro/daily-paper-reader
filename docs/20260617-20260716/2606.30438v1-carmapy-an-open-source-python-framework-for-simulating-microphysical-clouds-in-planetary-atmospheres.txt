@@ -1,0 +1,1945 @@
+Title: CARMApy: An Open-Source Python Framework for Simulating Microphysical Clouds in Planetary Atmospheres
+
+URL Source: https://arxiv.org/pdf/2606.30438v1
+
+Published Time: Tue, 30 Jun 2026 02:29:50 GMT
+
+Number of Pages: 33
+
+Markdown Content:
+> Draft version June 30, 2026
+> Typeset using L ATEX default style in AASTeX7.0.2
+
+CARMApy : An Open-Source Python Framework for Simulating Microphysical Clouds in Planetary Atmospheres 
+
+Wolf Cukier ,1 Diana Powell ,1 Xi Zhang ,2 Peter Gao ,3 Dominic Samra ,1 and Vighnesh Nagpal 1, ∗
+
+> 1Department of Astronomy & Astrophysics, the University of Chicago, Chicago, IL, 60637, USA
+> 2Department of Earth and Planetary Sciences, University of California Santa Cruz, Santa Cruz, CA, 95064, USA
+> 3Earth and Planets Laboratory, Carnegie Institution for Science, Washington, DC, USA
+
+ABSTRACT 
+
+CARMApy is a new open-source python code that performs bin-scheme microphysical modeling of clouds in exoplanet atmospheres. It models key cloud properties such as particle size distributions and microphysical rates from first principles. The code is a wrapper of ExoCARMA , a well tested 
+
+Fortran code with an almost half century long heritage. CARMApy includes the microphysical processes of homogeneous and heterogeneous nucleation, condensational growth, evaporation, coagulation, and vertical transport. CARMApy has 10 built-in default condensates and allows the user to specify additional condensates. In this work we describe CARMApy and the data products that it can generate, along with the history of its code heritage. We additionally compile a complete description of the theory and methods used in CARMA . Lastly we benchmark CARMApy and show that its results are consistent with previous versions of CARMA , while executing the code ∼1.9 times faster single threaded ∼3.8 times faster multithreaded. 
+
+Keywords: Atmospheric clouds (2180), Planetary science (1255), Exoplanet atmospheres (487), Open source software (1866), Astronomy software (1855) 
+
+1. INTRODUCTION Clouds impart first order impacts on planetary atmospheric properties and our interpretations thereof. Uncertainties in cloud formation processes can propagate to substantial uncertainties in inferences of atmospheric composition (eg. C/O (C. Helling et al. 2016), Mg/Si (E. Calamari et al. 2024)), atmospheric and interior P-T structure (e.g., P. Molli` ere et al. 2020), and atmospheric dynamics. For example, cloud formation is sensitive to atmospheric structure and mixing in the deep atmosphere which is otherwise unobservable (D. Powell et al. 2018) and the locations of clouds in atmospheres is one of our best probes of the atmospheric dynamics on these bodies (eg. L. Di Girolamo et al. 2025; M. K. Plummer et al. 2025). Clouds and radiative transfer are strongly coupled (V. Parmentier et al. 2021) and clouds are needed to understand planetary energy budgets (I. Malsky et al. 2024). The exact way which clouds shape these observations is determined by a number of key cloud properties such as the precise 3-D distribution of clouds on these bodies, the particle size distributions of clouds in each of these locations, the composition of the cloud particles, the shapes of the cloud particles, how all of these properties vary over time and how all these properties effect the optical properties of the cloud particles. The field has employed models of clouds across a variety of levels of complexity that capture different amounts of these key properties. On the simple end of this spectrum exist gray cloud (GC) models. GC models assume a cloud deck with constant transmittance across all wavelengths, making them incredibly efficient and thus widely used in retrieval studies of exoplanet atmospheres (eg. Q. Xue et al. 2024). GC models make an extreme tradeoff prioritizing efficiency over capturing the physical complexities of clouds. Equilibrium cloud condensation (ECC) models (A. S. Ackerman & M. S. Marley 2001) are a class of commonly used models for exoplanetary clouds that exist a step up the complexity ladder from GC models (eg. M. S. Marley et al. 2021; C. V. Morley et al. 2024). ECC models, as their name implies, assume equilibrium behavior in the atmosphere—they assume that supersaturated gasses will  
+
+> Email: wcukier@uchicago.edu
+> ∗NSF Graduate Research Fellow
+> arXiv:2606.30438v1 [astro-ph.EP] 29 Jun 2026
+
+2condense out of the atmosphere, forming clouds, until the gas reaches a saturation ratio of unity. ECC modeling frameworks are fast to run, making them well suited to tasks such as 1-D models that solve for the radiative state of an atmosphere. These models, however, require a prescribed shape for the cloud particle size distribution and involve a fitted parameter (known as fsed ) with unclear physical meaning, obscuring the physical processes that might be forming these clouds. Moment-method kinetic cloud (MMKC) formation models (P. Woitke & C. Helling 2003, 2004) are also used to model clouds on planetary objects which fold even in more physics—MMKC models are highly detailed and include built-in chemistry calculations. Similar to the ECC models, however, these models still require a prescribed functional form for the particle size distribution (E. K. H. Lee & K. Ohno 2025a). While all of these models have their individual strengths, inability of these models to resolve arbitrary cloud particle size distributions leads them to struggle to reproduce both certain observed spectral features and bulk properties in these bodies, especially now with the existence of high resolution JWST spectra (eg. S. Petrus et al. 2024). The Community Aerosol and Radiation Model for Atmospheres, CARMA (R. P. Turco et al. 1979; O. B. Toon et al. 1988), is a bin-scheme microphysics model, and thus is able to resolve this problem and calculate cloud particle size distributions from first principles. CARMA is able to naturally reproduce a number of cloud features that other cloud models struggle to accurately model such as the brown dwarf and Hot Jupiter 10 μm silicate feature (D. Powell et al. 2019a), the day/night temperature contrast in Hot Jupiter atmospheres (P. Gao & D. Powell 2021), and the Hot Jupiter aerosol sequence (P. Gao et al. 2020). Beyond just these cases, CARMA is a well-tested and validated model that has been successfully applied to interpret detailed observations of clouds and aerosols both in our solar system—including sulfuric acid clouds on Venus (P. Gao et al. 2014), numerous studies of Earth’s clouds and aerosols (eg. Z. Chen et al. 2018; S. Lian et al. 2022; D. Rusch et al. 2017), CO 2 and water clouds on Mars (D. V. Michelangeli et al. 1993; A. Colaprete et al. 1999), clouds and hazes on Titan (E. L. Barth & O. B. Toon 2003, 2004, 2006), and hazes on Pluto (P. Gao et al. 2017)—and on extra-solar bodies such as Hot Jupiters (D. Powell et al. 2018; D. Powell & X. Zhang 2024), sub-Neptunes (P. Gao et al. 2023) and Y-dwarfs (J. Mang et al. 2022, 2024). CARMA is a flexible model, capable of simulating practically any condensate assuming enough is known about their physical properties. Despite the strengths of CARMA as a model, it is only currently being used by a handful of researchers in the exoplanet community who have the required expertise to run the code. As a piece of legacy scientific software written in Fortran 
+
+and developed over almost half a century, CARMA requires a large time investment to understand how the software works and how to run it. In light of this problem, we are releasing CARMApy —an open source python wrapper for 
+
+CARMA which is designed to be user-friendly and well-documented in order to enable a wide range of researchers with minimal prior cloud modeling and/or Fortran expertise to effectively use it. CARMApy is based on the ExoCARMA (eg. D. Powell & X. Zhang 2024; P. Gao et al. 2020) version of CARMA 3.0 (C. G. Bardeen et al. 2008) and is well suited for modeling aerosol microphysics on exoplanets, as well as environments such as protoplanetary disks (D. Powell et al. 2019b). The upgrade to CARMApy , and the corresponding upgrade to the ExoCARMA base it runs on, has additionally provided greater flexibility on the types of condensates and atmospheres modelable while making the code significantly more efficient and implementing multithreading with OpenMP (L. Dagum & R. Menon 1998). This paper will describe both CARMApy and the underlying ExoCARMA 2.0 version of CARMA . In Section 2.1 we will describe the history of CARMA and document the various changes made to the software over its nearly 50 year history, in the remainder of Section 2 we will describe the microphysical processes, along with our modeling assumptions and numerical methods, that are used in both CARMA and CARMApy , and in Section 3 we will demonstrate that CARMApy is able to replicate the results of previous versions of CARMA for a benchmark brown-dwarf case.  
+
+> 2.
+
+MODEL DESCRIPTION 2.1. Code Heritage 
+
+As CARMA has been continuously used over almost the past 50 years, multiple versions of CARMA have been developed. The original version of CARMA was written in Fortran 77 by R. P. Turco et al. (1979) and O. B. Toon et al. (1988). That model was then updated to CARMA 3.0 by C. G. Bardeen et al. (2008) who modernized the code to Fortran90 .This main (Earth) CARMA branch is managed by the University Corporation for Atmospheric Research (UCAR) and is under active development today, being incorporated into the Community Earth System Model (CSEM, eg. S. Tilmes et al. 2023) and is actively being used to model cloud formation on Earth (eg. Z. Chen et al. 2018; S. Lian et al. 2022; D. Rusch et al. 2017). Additionally, branching in development history from the main CARMA branch are versions such as ExoCAM-CARMA (E. Wolf et al. 2022) which can model hazes in exoplanet atmospheres and PlanetCARMA (E. Barth 2020) which models clouds and hazes on solar system bodies. Our work, CARMApy , is built upon the ExoCARMA branch 3 
+
+> Figure 1. Diagram of the heritage of this work’s version of CARMA, along with selected other versions of CARMA
+
+of CARMA . ExoCARMA branched from the development history of the main CARMA branch sometime in 2012, shortly after the release of CARMA 3.0 . While the main Earth CARMA branch has been under active development since then, the majority of updates to that main branch since ExoCARMA branched from it have been to the sulfate chemistry so are unlikely to be relevant to the majority of exoplanets. We, however, intend to incorporate updates from the main Earth 
+
+CARMA branch in the future. This work presents two main codes— ExoCARMA 2.0 and CARMApy . ExoCARMA 2.0 is the most up to date version of 
+
+ExoCARMA and includes a more flexible implementation for new condensates. CARMApy is a python wrapper built on top of this latest version of ExoCARMA , along with a suite of convenience functions which are useful for cloud microphysical modeling. CARMApy is designed in such a way that updates to ExoCARMA will propagate to CARMApy . A diagram showing the relationship of CARMApy to other versions of CARMA is shown in Figure 1 2.2. Cloud Microphysics 
+
+CARMA is a time-stepping, bin-scheme microphysical model. This means that cloud particles can form along a size distribution independently at each pressure level with the bin resolution on this grid controlled by the user. Upon initialization, the user specifies which microphysical processes to use amoung homogeneous and heterogeneous nucleation (see Sections 2.2.1, 2.2.2), condensational growth / evaporation (Section 2.2.3), and coagulation (Section 2.2.6). These processes are then simulated at each timestep, allowing particles to move from one bin to another. Particles are also transported between altitude bins following the vertical transport and settling schema described in Section 2.2.4. 2.2.1. Homogeneous Nucleation 
+
+CARMA models homogeneous nucleation—the first stage of cloud formation where particles form directly from the gas phase— following classical nucleation theory (H. Pruppacher & J. Klett 2010). Conceptually this process can be conceived of as arising out of the random motions of particles within an atmospheric cell. The random motions of gas particles will cause the microscopic density in every given location to fluctuate as gas particles temporarily stick to each other and then fly apart. Where these fluctuations cause a large enough clump of stuck-together gas particles to form, these (no-longer-gas) particles become bound to each other and thus nucleation occurs. Quantitatively, the production rate via homogeneous nucleation of particles per unit volume per unit time, Jhom is given by (P. Gao 2017, Eqn. A1) 
+
+Jhom = 4 πa 2 
+
+> c
+
+ΦZn exp( −∆Fc/kT ) (1) 4where n is the number density of the vapor particles in the condensate’s gas reservoir, k is the Boltzmann constant, and T is the temperature. The critical radius, ac is defined as (H. Pruppacher & J. Klett 2010, Eqn. 7-27) 
+
+ac = 2M σ ρpRT ln S (2) where M , σ, ρp, and S are the molar mass, surface tension, density, and saturation ratio of the condensate and R is the ideal gas constant. The energy of formation, ∆ Fc, of the condensate with radius ac is given by (H. Pruppacher & J. Klett 2010, Eqns. 7-24, 7-26) ∆Fc = max 
+
+> a
+
+
+
+4πa 2σ − 4πa 3
+
+3M ρpRT ln S
+
+
+
+= 43 πσa 2 
+
+> c
+
+(3) Fundamentally, the free energy of formation is a balance between the energy due to surface tension, which grows rapidly with radius a, and the decrease in free energy due to the volume of the particle growing larger. The first location where it is energetically favorable to continue growing the particle is the radius where the balance of these terms reaches its maximum, which occurs at a = ac. Following a Boltzmann distribution, there should be n exp( −∆Fc/kT ) particles at this unstable equilibrium where just one more molecule diffusing onto them will allow them rapidly grow. The rate at which a single molecule will diffuse onto these critically sized particles is given by 4 πa 2 
+
+> c
+
+Φ where Φ is the diffusion flux of the reservoir of gas molecules and is given by: Φ = n
+
+r kT 
+
+2πm v
+
+(4) where mv is the mass of an individual gas particle. Lastly, Z is the Zeldovich factor which accounts for non-equilibrium effects, such as the fact that particles at the critical radius can have a molecule evaporate from them instead of condense as well as the deviations from equilibrium caused by the fact that nucleation inherently introduces a max flux towards larger particles, is given by (H. Pruppacher & J. Klett 2010, Eqn. 7-44; Y. B. Zeldovich et al. 1992, Eqn. 16) 
+
+Z =
+
+r ∆F ′′ 
+
+> c
+
+−2πkT =
+
+s
+
+∆Fc
+
+3πkT g 2
+
+> m
+
+(5) where ∆ F ′′  
+
+> c
+
+is the second derivative of the energy of formation, with respect to the number of molecule in the particle, at the critical radius, gm is the number of molecules contained in a particle of radius ac. Particles which nucleate homogeneously in CARMA are assigned to the particle bin closest to the critical radius, with the exact number of particles that nucleate being adjusted to conserve the total mass that nucleates. 2.2.2. Heterogeneous Nucleation 
+
+Heterogeneous nucleation occurs when a cloud particle condensates on top of an already existing particle of a different species, known as a cloud condensation nucleus (CCN) or more informally as a “seed particle.” Similarly to homogeneous nucleation, heterogeneous nucleation occurs when the amount of the newly formed condensate adsorbed onto the CCN exceeds a critical amount and it becomes increasingly energetically favorable to adsorb new vapor molecules onto the heterogeneous particle. The heterogeneous nucleation rate, in units of new particles per unit time per CCN particle is (P. Gao 2017, Eqn. A.6) 
+
+Jhet = 4 π2r2 
+
+> N
+
+a2 
+
+> c
+
+Φcsurf Zhet exp( −∆Fcf /kT ), (6) where rN is the radius of the CCN and ac is the critical radius of the cluster of newly condensed particles that form on the surface of the CCN. Note that ac is not the value of the radius of the heterogeneous particle after nucleation. The value of the critical radius, ac, remains the same as in the homogeneous case as the local curved surface of the cluster must be in equilibrium with the vapor (once can also recover the same value for ac by calculating out the volume of a spherical cap and maximizing the free energy as in Equation 3). The shape factor, f , accounts for the fact that the surface of the cluster of newly condensed particles is not exposed to air on all sides and is given by (H. Pruppacher & J. Klett 2010, Eqn. 9-27) 2f = 1 + 
+
+ 1 − μx ϕ
+
+4
+
++ x3  2 − 4f0 + f 30
+
+ + 3 μx 2(f0 − 1) (7) 5where μ is the cosine of the contact angle between the condensate and the surface (with μ = 1 being incredibly strongly interacting and μ = −1 being non-interacting) and 
+
+x = rN /a c (8) 
+
+ϕ = p1 − 2μx + x2 (9) 
+
+f0 = ( x − μ)/ϕ (10) We assume that the primary mechanism for particle growth is diffusion along the surface of the CCN so csurf is the number density of condensate molecules on the surface of the CCN and is given by (P. Gao 2017, Eqn. A.11) 
+
+csurf = Φ
+
+ν exp( Fdes /kT ) (11) Here, ν exp ( −Fdes /kT ) is the particle desorption rate, Fdes is the desorption energy, and the pre-exponential factor, 
+
+ν, can be interpreted as the attempt frequency for particle escape. We estimate ν using the energy of a harmonic oscillator ( E = 1 /2mω 2A2) following the methods of A. G. G. M. Tielens & L. J. Allamandola (1987, Eqn. 6) 4
+
+ν =
+
+r 2NsFdes 
+
+π2mv
+
+≈  1.6 × 10 11 s−1  Fdes /k 
+
+1K 
+
+1/2
+
+M −1/2 
+
+> v
+
+(12) where Mv is the molar mass of the vapor particle and Ns is the density of adsorption sites on the CCN and is identified with the reciprocal square amplitude of adsorbant oscillation. Ns is frequently approximated as Ns ≈ 1.5 × 10 15 cm −2,which corresponds to an average distance between sites of ∼ 3˚ A. CARMApy defaults to assuming that the desorption energy is equal to half the latent heat of evaporation of a single molecule Lastly, the heterogeneous Zeldovich factor is given by (H. Vehkam¨ aki et al. 2007, Eqn. 17): 
+
+Zhet = Z
+
+s
+
+4ϕ3
+
+2ϕ3 + (1 − μx ) (2 − 4μx − (μ2 − 3) x2) (13) Similar to homogeneous nucleation, the 4 πr 2 
+
+> N
+
+csurf exp( −∆Fcf /kT ) Boltzman factor in the definition of Jhet can be interpreted as the number of sites on each CCN which are at the critical radius, ac, and thus will continue to grow if they adsorb another particle. Likewise the πa 2 
+
+> c
+
+Φ factor is the rate at which particles will reach these critical sites (note that we use a surface area of πa 2 
+
+> c
+
+instead of 4 πa 2 
+
+> c
+
+like we did for homogeneous nucleation because in the case of heterogeneous nucleation, the cluster of particles is touching the CCN and thus not all of the surface area is available for the adsorption of additional particles). Note that the units of Jhet are in new particles per unit time per CCN, so to get the heterogeneous nucleation rate in the same units as Jhom we must multiply by the number density of the CCN. In CARMA , it is assumed that heterogeneous nucleation does not significantly alter the mass of the particle—as the bin sizes in CARMA grow exponentially larger with each successive bin, this assumption hold for most cases. 2.2.3. Condensational Growth/Evaporation 
+
+Condensation and evaporation (or more specifically, but equivalently mathematically, solid deposition and sublima-tion as most of our particles are solids) occur when a vapor molecule diffuses onto or away from the surface of a cloud particle. If we assume that particles are large compared to the mean free path of the vapor ( Kn ≫ 1, we will relax this assumption later), we can invoke Fick’s first law of diffusion and so the rate of change in mass, m, of a cloud particle can be described as (M. Z. Jacobson 2005, Eqn. 16.1) 
+
+dm dt = 4 πR 2
+
+> d
+
+Dv
+
+dρ v
+
+dR d
+
+(14) where Rd is the radial distance from the center of the particle, dρ v /dR d is the radial gradient of vapor density and Dv
+
+is the molecular diffusion coefficient of the vapor, which is given by (M. Z. Jacobson 2005, Eqn. 16.17) 
+
+Dv = 516 NAd2 
+
+> q
+
+ρa
+
+s
+
+RT M a
+
+2π
+
+ M + Ma
+
+M
+
+
+
+(15)  
+
+> 4We note that this method is often cited as T. I. Hasegawa et al. (1992) even though the authors of that work themselves cite A. G. G. M. Tielens & L. J. Allamandola (1987) for this equation
+
+6where Ma is the molar mass of the atmosphere, NA is Avogadro’s number, ρa is the local density of the atmosphere, and dq is the collision diameter of the gas molecule. We assume that near the surface of the drop the vapor density is set by the saturation vapor pressure (along with the ideal gas law) so ρv (Rd = r) = ρs. If we now integrate Equation 14 from Rd = r at the particles surface to Rd = ∞
+
+we find that the growth/evaporation rate is given by (M. Z. Jacobson 2005, Eqn. 16.2) 
+
+dm dt = 4 πrD v (ρv − ρs) (16) As we expect, when the atmosphere is supersaturated ( ρv > ρ s) the particles will grow and when the atmosphere is not saturated ( ρv < ρ s) the particle will evaporate. Due to the latent heat of evaporation, however, these processes will change the temperature of the particle, thus changing their saturation vapor pressure. To account for this, the heating due to to condensation and evaporation is given by (M. Z. Jacobson 2005, Eqn. 16.5) 
+
+mc p
+
+dT p
+
+dt = L dm dt − dQ dt (17) where cp is the specific heat capacity of the particle, L is the latent heat of evaporation of the condensate, and Tp is the temperature of the particle. This heat is conducted away from the particle following (M. Z. Jacobson 2005, Eqn. 16.3) 
+
+dQ dt = −4πR 2
+
+> d
+
+κa
+
+dT dR d
+
+(18) where κa is the heat capacity of the atmosphere. Combining Equations 14, 17, and 18, along with the ideal gas law and the Clausius-Clapeyron equation ( d ln ps/dT = L/RT 2), and assuming the temperature of the particle is in steady state and LM/RT − 1 ≈ LM/RT , our new equation for condensational growth / evaporation is (P. Gao 2017, A.15) 
+
+dm dt = 4πrD v ps(S − 1)  
+
+> RT M
+
++ Dv L2M p s 
+
+> κaT2
+
+(19) where ps is the saturation vapor pressure. We consider three further corrections to this equation. Firstly, this equation was derived assuming we can treat the vapor as a continuum—this breaks down at small particle sizes where the mean free path of the vapor becomes comparable in value to the size of the particles. To correct for this assumption we introduce a corrected diffusion coefficient and thermal conductivity (M. Z. Jacobson 2005, Eqns. 16.19, 16.27) 
+
+D′ 
+
+> v
+
+= Dv
+
+1 + λcKn c
+
+(20) 
+
+κ′ 
+
+> a
+
+= κa
+
+1 + λtKn t
+
+(21) where λc and λt are coefficients given by 
+
+λc = 1.33Kn c + 0 .71 Kn c + 1 (22) 
+
+λt = 1.33Kn t + 0 .71 Kn t + 1 (23) and Kn c and Kn t are the collisional and energy exchange Knudsen numbers of the condensing gas with respect to the particle and are defined as (M. Z. Jacobson 2005, Eqns. 16.28, 16.29) Kn c = ℓc
+
+r = 3Dv
+
+r
+
+r πM 
+
+8RT (24) Kn t = ℓt
+
+r = 3κa
+
+rρ a
+
+
+
+cp − R
+
+> 2Ma
+
+r πM 
+
+8RT (25) 7where the ℓis are the mean free paths. Low Knudsen numbers indicate that the particle frequently interacts with vapor molecules and thus the continuum assumption is valid, while large Knudsen numbers imply the continuum assumption fails. Secondly, the vapor pressure over a curved surface is different than that over a flat surface—an phenomenon known as the Kelvin effect. To correct for this effect we introduce the Kelvin factor (M. Z. Jacobson 2005, Eqns. 16.33) 
+
+Ak = ps, curved 
+
+ps, flat 
+
+= exp 
+
+ 2M σ ρpRT r 
+
+
+
+(26) Lastly, particles which are moving generate eddies which sweep additional energy and mass onto the particle. To account for this, we introduce two ventilation factors, Fv and Ft, which were determined empirically from water droplets (H. Pruppacher & J. Klett 2010, Eqns. 13-60, 13-61) 
+
+Fv =
+
+
+
+1 + 0 .108 x2 
+
+> v
+
+xv ≤ 1.40.78 + 0 .308 xv xv > 1.4
+
+xv = Re 1/2
+
+ ηa
+
+ρaD′
+
+> v
+
+1/3
+
+(27) 
+
+Ft =
+
+
+
+1 + 0 .108 x2 
+
+> t
+
+xt ≤ 1.40.78 + 0 .308 xt xt > 1.4
+
+xt = Re 1/2
+
+ ηacp
+
+κ′
+
+> a
+
+1/3
+
+(28) where ηa is the kinematic viscosity of the air and Re is the Reynolds number (see Section 2.2.4). After applying all of these corrections, the formula for condensational growth / evaporation used in CARMA is (P. Gao 2017, Eqn. A.16) 
+
+dm dt = 4πrD ′ 
+
+> v
+
+ps(S − Ak) 
+
+> RT M F v
+
++ D′  
+
+> vM L 2ps
+> κ′
+> aRT 2Ft
+
+(29) Just as with vertical transport below, CARMA uses the piecewise parabolic method (P. Colella & P. R. Woodward 1984) to “transport” particles between mass bins. 2.2.4. Particle Sedimentation 
+
+The problem of particle sedimentation can be split into three regimes—laminar ( Re < 1), transitional (1 < Re < 
+
+1000), and turbulent ( Re > 1000). Both the laminar and turbulent regimes have simple formulae for the sedimentation (terminal) velocities but there is no simple closed form equation for the transitional regime. Additionally, it is required to know the velocity of particles in order to determine which fall velocity regime to use, creating a circular problem. To resolve these issues, we begin by assuming that the particles are in the laminar regime (i.e. they are small and slow moving) and thus their sedimentation velocity, vt, can be described by Stokes’ fall velocity 
+
+vt = 29
+
+gr 2Cc (ρp − ρa)
+
+ηa
+
+− vwinds (30) where g is the gravitational acceleration, vwinds is a user defined upward wind speed, and Cc is the Cunningham slip factor which is given by (N. A. Fuchs 1964, Eqn. 8.5) 
+
+Cc = 1 + Kn 
+
+
+
+1.256 + 0 .42 e−0.87 /Kn 
+
+(31) where the numerical constants in this equation are empirically derived from falling oil drops and Kn is a Knudsen number given by: Kn = ℓr = 2ηa
+
+ρa
+
+r πM a
+
+8RT (32) The Reynolds number is defined as follows 
+
+Re = 2rρ a(vt + vwinds )
+
+ηa
+
+(33) If Re < 1 then our assumption that particles are small and slow moving is valid and we use Equations 30 and 33 for 
+
+vt and Re respectively. Otherwise, we must instead calculate the fall velocity in the transition (1 < Re < 1000) or 8                   
+
+> Coefficient Value
+> B0-3.18657
+> B1+0.992696
+> B2−1.53193 ×10 −3
+> B3−9.87059 ×10 −4
+> B4−5.78878 ×10 −4
+> B5+8 .55176 ×10 −5
+> B6−3.27815 ×10 −6
+> Table 1. Empirical coefficients for the fit given in Equation 36 (H. Pruppacher & J. Klett 2010).
+
+Newtonian ( Re > 1000) regimes. For these regimes we introduce the drag coefficient, CD , which is defined such that the terminal velocity is as (J. H. Seinfeld & S. N. Pandis 1998, Eqn. 8.44) 
+
+vt =
+
+ 8gr (ρp − ρa)3CD ρa
+
+1/2
+
+− vwinds (34) Combining this with equation 33 we can define a quantity, CD Re 2, sometimes known as the Best number, as follows (H. Pruppacher & J. Klett 2010, Eqn. 10-142) 
+
+CD Re 2 = 32 r3ρa(ρp − ρa)g
+
+3η2
+
+> a
+
+(35) We can now use this value to find the Reynolds number using the following empirical fit (H. Pruppacher & J. Klett 2010, Eqn. 10-145): ln Re = B0 + B1x + B2x2 + . . . + B6x6 (36) where x = ln  CD Re 2 and the Bi are given in Table 1. If Re < 1000 we then calculate the fall velocity from Equation 33 as follows 
+
+vt = ηaRe 
+
+2ρar − vwinds (37) If instead Re > 1000, we set CD = 0 .45 and calculate the fall velocity from Equation 34. 2.2.5. Eddy Diffusion 
+
+In addition to particle sedimentation, CARMA also tracks particle diffusion, allowing for the vertical lofting of cloud particles. We assume that eddy (turbulent) diffusion dominates molecular diffusion, as is expected to be true in all but the very upper atmosphere P. Woitke et al. (2020), and thus the diffusive velocities are given by 
+
+ved = −Kzz 
+
+d ln fr
+
+dz (38) where fr is the particle mixing ratio and where Kzz is the eddy diffusion coefficient. As in for particle advection in mass space, particles are transported between altitude bins using the piecewise parabolic method. 2.2.6. Coagulation/Coalescence 
+
+When two condensate molecules collide with each other, depending on their mass and momenta, there are largely three classes of outcomes—they can stick together, they can bounce off each other, or they can fragment into pieces (C. G¨ uttler et al. 2010). To model these collisional processes, we thus must model both the rate at which particles collide and then the outcomes of that collision. CARMA considers three sources for collisions—-Brownian motion, convective diffusion enhancement, and gravitational coalescence (also known as differential settling). Brownian motion and gravitational coalescence are common processes considered other microphysical cloud models (K. Ohno & S. Okuzumi 2017; E. K. H. Lee & K. Ohno 2025b), whereas convective diffusion enhancement serves as a correction term for the Brownian motion term. We note that while others have found that large scale atmospheric turbulence can be an important source of collisions near the cloud base (D. Samra et al. 2022), CARMA does not currently consider turbulence 9as a collision source. CARMA assumes that Brownian motion (and thus convective diffusion enhancement) causes particles which collide to stick together and form compact, spherical (ie non-fractal) particles with 100% probability while CARMA 
+
+allows particles that collide due to differential settling to either bounce or stick according to a formulism discussed below. CARMA does not consider fragmentation as an outcome of collisions. The Brownian coagulation kernel, for coagulation between two particles, 1 and 2, Kb
+
+> 12
+
+, which represents the collision probability of two particles undergoing thermal motion is given by (N. A. Fuchs 1964, Eqns. 49.26, M. Z. Jacobson 2005, Eqns. 15.33) 
+
+KB 
+
+> 12
+
+= KB 
+
+> 21
+
+= 4 π(D1 + D2)( r1 + r2)β (39) Where the Di and ri are the molecular diffusion coefficients and radii of the populations of particles and β is a interpolation factor that interpolates between the continuum and kinetic regimes. The molecular diffusion coefficients are given by (M. Z. Jacobson 2005, Eqn. 15.29) 
+
+Di = kT C c
+
+6πη ari
+
+(40) where Cc is the Cunningham slip factor (see Equation 31). The interpolation factor, β, is given by (N. A. Fuchs 1964, Eqn. 49.27) 1
+
+β = r1 + r2
+
+r1 + r2 + pδ21 + δ22
+
++ 4( D1 + D2)(r1 + r2)pv21 + v22
+
+(41) where the vi are the thermal velocities of the particles and are given by 
+
+vi =
+
+r 8kT πm i
+
+(42) where mi is the mass of the particles. The transition length scale, δi, is given by (M. Z. Jacobson 2005, Eqn 15.34) 
+
+δi = (2 ri + ℓi)3 − (4 r2 
+
+> i
+
++ ℓ2 
+
+> i
+
+)3/2
+
+6riℓi
+
+− 2ri (43) with ℓi being the mean free path of the particle given by 
+
+ℓi = 8Di
+
+πv i
+
+(44) In a similar mechanism to the ventilation coefficients discussed in Section 2.2.3, falling large particles generate eddies which can draw smaller particles onto them. This convective diffusion enhancement increases the coagulation rate of large particles and its kernel, KDE , is given by (M. Z. Jacobson 2005, Eqn. 15.35) 
+
+KDE  
+
+> 12
+
+=
+
+
+
+αlo KB
+
+> 12
+
+Re 1/3
+
+> j
+
+ ηρD i
+
+1/3
+
+Re j ≤ 1
+
+αhi KB
+
+> 12
+
+Re 1/2
+
+> j
+
+ ηρD i
+
+1/3
+
+Re j ≥ 1
+
+, (rj ≥ ri) (45) where we take αlo = αhi = 0 .45. 5
+
+Lastly, we consider the effects of gravitational coalescence. As particles fall with differing fall velocities they can collide and then coalesce together. The kernel for this process is given by 
+
+KG 
+
+> 12
+
+= Ecollide Ecoalesce π(r1 + r2)2 |vt, 1 − vt, 2| (46) where Ecollide and Ecoalesce are the collision and coalescence efficiencies respectively and vt, 1 and vt, 2 are the terminal fall velocities of the two particles. We set Ecollide = max( ELangmuir , E Fuchs ) where ELangmuir is given by (I. Langmuir 1948, Eqn. 23) 
+
+ELangmuir = EV + EARe j /60 1 + Re j /60 (rj ≥ ri) (47)  
+
+> 5See Chapter 17 of H. Pruppacher & J. Klett (2010) for discussion of this value.
+
+10 where EV and EA are the efficiencies in the viscous ( Re j ≪ 1) and aerodynamic ( Re j ≫ 1) cases respectively and are given by (I. Langmuir 1948, Eqns. 16, 23) 
+
+EV =
+
+
+
+1 + 0.75 ln 2 Sk 
+
+> Sk−1.214
+
+−2
+
+Sk > 1.214 0 Sk ≤ 1.214 (48) 
+
+EA =
+
+  
+
+> S2
+> k
+> (Sk+1 /2) 2
+
+Sk ≥ 1/12 0 Sk < 1/12 (49) where Sk is the Stokes number and is given by 
+
+Sk = vt,i |vt,j − vt,i |
+
+rj g , (rj ≥ ri) (50) The EFuchs term in our definition of Ecollide is the collision efficiency given by (N. Fuchs 1951; S. K. Friedlander 1957; H. Pruppacher & J. Klett 2010, Eqn. 11-86), designed to correct ELangmuir for the direct interception caused by non-point fine particles (see N. A. Fuchs 1964, §54) 
+
+EFuchs = (rj /r i)2
+
+2 (1 + ( rj /r i)) 2 , rj > r i (51) Finally, Ecoalesce , which captures the effect that particles may collide and then ‘bounce-off,’ is empirically determined for raindrops and is given by (K. V. Beard & H. T. Ochs III 1984, Eqn. 4): 
+
+E′ 
+
+> coalesce
+
+= ( a − b)1/3 − (a + b)1/3 + 0 .459 (52) where 
+
+a = pb2 + 0 .00441 (53) 
+
+b = 0 .946 β − 0.319 (54) 
+
+β = ln 
+
+ ri
+
+1 μm
+
+
+
++ 0 .44 ln 
+
+ rj
+
+200 μm
+
+
+
+, (rj > r i) (55) where we bound Ecoalesce to be between 0.5 and 1.0; that is 
+
+Ecoalesce = max(0 .5, min(1 .0, E ′
+
+> coalesce
+
+)) (56) The total coagulation kernel is now given by: 
+
+Ktot  
+
+> 12
+
+= KB 
+
+> 12
+
++ KDE  
+
+> 12
+
++ KG 
+
+> 12
+
+(57) 2.2.7. A Note on Supersaturation Ratios 
+
+The standard supersaturation ratio of a vapor, S, is defined as the ratio of the partial pressure of the vapor pv to the saturation vapor pressure, ps. That is: 
+
+S = pv
+
+ps
+
+(58) For Type III reactions (C. Helling & P. Woitke 2006, Appendix B), however, which involve more than one molecular product or more than one molecular reactant, grain chemistry models show that the effective supersaturation ratio for the reaction can instead be expressed as 
+
+Sr = S1/ν key  
+
+> r
+
+(59) where, νkey  
+
+> r
+
+, is the stoichiometric ration of the limiting reactant in the reaction. For the above microphysical equations, this effective supersaturation ratio, Sr , is used in place of the standard supersaturation ratio for type III reactions. 11 2.3. Numerical Methods 
+
+Given the number density vector of all gas and particle bins at timestep t, nt, the number density vector at the next time step can be determined by simultaneous application of operators, Lproc , representing the effects of the various modeled processes: 
+
+nt+1 = ( Ltransport + Lcoagulation + Lgrowth/evap + Lnuc + Lgas depletion )nt (60) 
+
+CARMA implements an operator splitting method where in each timestep vertical transport is first calculated; then coagulation; then nucleation, growth, and evaporation; and then finally gas depletion. Put formally in our operator notation that is 
+
+nt+1 = Lgas depletion (Lgrowth/evap + Lnuc )Lcoag Ltransport nt (61) The following subsections describe how CARMA implements these various operators. 2.3.1. Particle Transport 
+
+Cloud particles and gas are advected between bins (both altitude level bins, and for clouds, particle mass bins) using the piecewise parabolic method (PPM). A full description of this method is presented in Section 1 of P. Colella & P. R. Woodward (1984)—we only outline the broad steps of the method. The PPM is used to solve the linear advection equation 
+
+∂n ∂t + u ∂n ∂ξ = 0 (62) where n is the particle concentration, ξ is a generalized coordinate (eg. altitude or mass), and u is a generalized advection velocity, . If we let nk be the particle concentration in bin k and let ξk−1/2 and ξk+1 /2 be the boundaries of that bin, the relationship between the continuous particle distribution at timestep t, n(ξ, t ), and the binned particle concentration at the same timestep is simply the averaged concentration across the bin: 
+
+ntk = 1
+
+ξk+1 /2 − ξk−1/2
+
+Z ξk+1 /2
+
+> ξk−1/2
+
+n(ξ, t )dξ (63) Similarly, we can update this distribution by solving Equation 62 as follows: 
+
+nt+1  
+
+> k
+
+= 1
+
+ξk+1 /2 − ξk−1/2
+
+Z ξk+1 /2
+
+> ξk−1/2
+
+n(ξ − u∆t, t )dξ (64) The problem with this method, however, is we do not know the continuous distribution n(ξ, t ), we only know the discrete distribution ntk. The PPM scheme solves this problem by introducing parabolic interpolation functions in each bin. These parabolas are chosen such that existing local extrema are preserved and no local extrema are introduced. These conditions require that the parabolae are monotonic within each bin, and constant at the local minima and maxima of the discrete distribution. We seek a form for the advective flux across each boundary which splits into the upwards and downwards flux where each term only depends on the number density in one bin (dropping the t for clarity): 
+
+Fad, k+1 /2 = nkv↑  
+
+> ad, k+1 /2
+
+− nk+1 v↓  
+
+> ad, k+1 /2
+
+(65) If at the k + 1 /2 boundary u > 0, then v↓  
+
+> ad, k+1 /2
+
+= 0 and 
+
+nk+1 /2v↑  
+
+> ad, k−1/2
+
+= Fad, k+1 /2 = − 1∆ξ∆t
+
+Z ξk+1 /2
+
+> ξk+1 /2−uk+1 /2∆t
+
+n(ξ)dξ (66) where ∆ ξ = ξk+1 /2 − ξk−1/2 is the width of the bin. Similarly, if u < 0 then v↑  
+
+> ad, k+1 /2
+
+= 0 
+
+nk+1 /2v↓  
+
+> ad, k−1/2
+
+= Fad, k−1/2 = − 1∆ξ∆t
+
+Z ξk−1/2−uk−1/2∆tξk−1/2
+
+n(ξ)dξ (67) 12 2.3.2. Eddy Diffusion 
+
+The net flux due to diffusion, Fdif , can be described as 
+
+Fdif = nv ed = −nK zz 
+
+d ln fr
+
+dz = −ρaKzz 
+
+df r
+
+dz (68) We similarly seek an expression for the flux across the bin boundaries of the form 
+
+Fdif, k+1 /2 = nkv↑  
+
+> dif, k+1 /2
+
+− nk+1 v↓  
+
+> dif, k+1 /2
+
+(69) Assuming that between bins the atmospheric pressure profile follows an exponential profile, the effective velocity coefficients can be written as 
+
+v↑  
+
+> dif, k+1 /2
+
+= Kzz 
+
+∆z
+
+ln ( ρk/ρ k+1 )
+
+ρk/ρ k+1 − 1 (70) 
+
+v↓  
+
+> dif, k+1 /2
+
+= ρk
+
+ρk+1 
+
+v↑  
+
+> dif, k+1 /2
+
+(71) Now having the effective velocities for each of these processes at each boundary between bins, CARMA solves the following mass conservation equation 
+
+∂n ∂t + ∇ · (Fdif + Fad ) = 0 (72) For a given layer we can write this equation as 
+
+nt+1  
+
+> k
+
+− ntk = ∆t
+
+∆z
+
+
+
+v↑
+
+> k−1/2
+
+n∗ 
+
+> k−1
+
++ v↓
+
+> k+1 /2
+
+n∗ 
+
+> k+1
+
+−
+
+
+
+v↓ 
+
+> k−1/2
+
++ v↑
+
+> k+1 /2
+
+
+
+n∗
+
+> k
+
+
+
+(73) where v↑ 
+
+> k+1 /2
+
+= v↑  
+
+> ad, k+1 /2
+
++ v↑  
+
+> dif, k+1 /2
+
+and so on. We use the notation n∗ on the right hand side in this equation as 
+
+CARMA can either solve this equation explicitly, using nt in place of n∗, or implicitly, using nt+1 instead. For efficiency purposes, if the entire column is stable under the explicit scheme ( ∆zk 
+
+> ∆t
+
+> v ↓ 
+
+> k−1/2
+
++ v↑ 
+
+> k+1 /2
+
+for all k), the explicit scheme is used for the column. Otherwise CARMA switches to the implicit scheme and uses the Thomas tridiagonal Algorithm (D. R. Durran 1999, §A.2) as the transport equation describes a tridiagonal matrix which is diagonally dominant, so the algorithm is guaranteed to be stable. 2.3.3. Coagulation 
+
+Following M. Z. Jacobson et al. (1994), the changes in particle abundance due to coagulation is calculated using a semi-implicit method. The equation which we solve is 
+
+dn dt = S − Ln (74) where S is the source (production) term and L is the loss rate. Put in semi-implicit finite difference form, this is 
+
+nt+1  
+
+> k
+
+− ntk
+
+∆t = Sk − Lknt+1  
+
+> k
+
+(75) with S and L calculated at the start of the timestep. This means that the updated number density is thus 
+
+nt+1  
+
+> k
+
+= ntk + Sk∆t
+
+1 + Lk∆t (76) This implicit form guarantees that particle concentration never becomes negative. The loss term, assuming the resulting product completely leaves bin k, for example by colliding with a different species, is 
+
+Lk = X
+
+> j
+
+Kjk ntj (77) 13 Under the same assumption, the source term can be written as 6
+
+Sk = X
+
+> k<i +j<k +1
+
+Kij nt+1  
+
+> i
+
+ntj P ↓ 
+
+> ijk
+
++ X
+
+> k−1<i +j<k
+
+Kij nt+1  
+
+> i
+
+ntj P ↑ 
+
+> ijk −1
+
+(78) where P ↓ 
+
+> ijk
+
+and P ↑ 
+
+> ijk
+
+are partition factors to account for the fact that fact that the mass of created particle likely falls between bins. Since the sum treats the orderings ( i, j ) and ( j, i ) as separate terms, P ↓ 
+
+> ijk
+
+and P ↑ 
+
+> ijk
+
+can be straight-forwardly derived from the conservation of the source particle’s mass ( P ↓
+
+> ijk
+
+mk + P ↑
+
+> ijk
+
+mk+1 = mi) and normalization to the mass fraction ( P ↓ 
+
+> ijk
+
++ P ↑ 
+
+> ijk
+
+= mi/m i+j ): 
+
+P ↓ 
+
+> ijk
+
+= mi
+
+mi+j
+
+rmmk − mi+j
+
+(rm − 1) mk
+
+(79) 
+
+P ↑ 
+
+> ijk
+
+= mi
+
+mi+j
+
+mi+j − mk
+
+(rm − 1) mk
+
+(80) where rm = mk+1 /m k is the mass ratio between bins and mi+j = mi + mj (the Pijk are bounded between 0 and 1). Note that P ↑ 
+
+> ijk
+
++ P ↑ 
+
+> jik
+
++ P ↓ 
+
+> ijk
+
++ P ↓ 
+
+> jik
+
+= 1 which is the expected number conservation. Also note that in our calculation of Sk we consider the number density of the source ( nt+1  
+
+> i
+
+) and partner ( ntj ) species at different time steps. This is because if we were to make this term fully implicit with the partner species being evaluated also at t + 1 we would break mass conservation—the loss term is calculated semi-implicitly so the production term also needs to be calculated semi-implicitly. In cases of self collision where part of the resulting particle lies still within the source bin ( mi < m i+j < m i+1 ), which might happen if a particle collides with a particle in the same bin or with a smaller particle of the same species, we consider the part of the source particle that remains to contribute neither to the production nor the loss. This means that we set P ↓ 
+
+> ijk
+
+= 0 if i = k (note that the P ↑ 
+
+> ijk
+
+remains as is as it is used for the updating bin i + 1, not bin 
+
+i). We similarly adjust the loss term to account for the fact that we do not treat the P ↓ 
+
+> ijk
+
+as part of the production term when i = k:
+
+Lk = X
+
+> j+k≮k+1
+
+Kkj ntj + X
+
+> j+k<k +1
+
+Kkj ntj
+
+
+
+1 − P ↓
+
+> kjk
+
+
+
+(81) 2.3.4. Growth, Evaporation, and Nucleation 
+
+Similar to coagulation, growth, evaporation, and nucleation are simultaneously calculated using a semi-implicit method as follows 
+
+nt+1  
+
+> k
+
+= ntk + Sk∆t
+
+1 + Lk∆t (82) The source term for these processes can be written as 
+
+Sk = Jhom + X
+
+> i
+
+Jki nti + v↑ 
+
+> grow, k−1/2
+
+ntk−1 + v↓ 
+
+> evap, k+1 /2
+
+ntk+1 + Shet evap (83) where P 
+
+> i
+
+Jki nji describes all the heterogeneous nucleation events which produce particles in bin k where particles in bin i served as CCN, v↑  
+
+> grow, k−1/2
+
+and v↓  
+
+> evap, k+1 /2
+
+are analogous to v↑  
+
+> ad, k−1/2
+
+and v↓  
+
+> ad, k+1 /2
+
+and describe the growth rate from the bin below and evaporation rate from the bin above respectively, and Shet evap describes the cores left behind by evaporating heterogeneous species. The loss term can be written as 
+
+Lk = X
+
+> i
+
+Jik + v↑  
+
+> grow, k+1 /2
+
++ v↓  
+
+> evap, k−1/2
+
+(84) where P 
+
+> i
+
+Jik describes the nucleation events where the current bin, bin k, serves as the CCN.           
+
+> 6To clarify the notation: i < j if and only if mi< m jand iand jare of the same condensate species, even if different sizes
+
+14 2.3.5. Gas Depletion 
+
+After the rest of the processes are considered, CARMA depletes the gas phase in an explicit forward Euler scheme conserving mass from timestep to timestep. That is CARMA calculates the amount of new condensate created or destroyed in each layer by nucleation, growth, and evaporation and then adjusts the gas phase to balance those processes. Numerically this means that 
+
+nt+1 gas − nt 
+
+> gas
+
+= X
+
+> cloud
+
+ nt+1 cloud − nt
+
+> cloud
+
+ mcloud 
+
+mgas 
+
+νgas cloud Mgas 
+
+Mcloud 
+
+(85) where the sum is over every bin of every cloud species and νgas cloud is the stoichiometric ratio of the reaction that forms the condensate species for the gas in question. As the gas depletion scheme in CARMA is explicit it can cause the gas abundance to become negative. If this is the case, CARMA substeps at half the timestep, restarting the growth, evaporation, and nucleation calculations. 2.3.6. A Note on Heterogeneous Particles 
+
+If a particle is heterogeneous, meaning it formed by heterogeneous nucleation or coagulation between two particles of different compositions, CARMA treats this particle as a shell material which is exposed to the gas phase and a core material which is isolated from the gas phase. This means that when these particles grow or evaporate, they use only the shell material as the material properties for these processes. Additionally, as these particles grow, evaporate, coagulate, and move around in the atmosphere, CARMA tracks the total amount of mass that is trapped in the core in each size and altitude bin. If at any point, the average mass in the core exceeds the mass of the bin, the particles are considered to have evaporated their shell material. The core material is then deposited into the pure material’s bins into the two bins closest to the heterogeneous species mass bin, conserving both mass and number. This process uses partition functions analogous to those used in coagulation and determines the Shet evap term in Eqn. 83. 2.4. Atmospheric Characteristics 
+
+Some of the above microphysical processes depend on either the thermal conductivity of the atmosphere, the viscosity of the atmosphere, and/or the specific heat capacity of the atmosphere. CARMApy requires a constant heat capacity but allows for the thermal conductivity and viscosity to change as a function of temperature. The thermal conductivity of the atmosphere, κa is parameterized as follows: 
+
+κa = κ0 + κ1T + κ2T 2 (86) with the κi being user specified parameters. The dynamic viscosity of the atmosphere, μa = ρaηa, is parameterized as follows 
+
+μa = μ1 (T / 1 K) μ2
+
+1 + μ3/T + μ4T 2 (87) where the μi are parameters fit to empirical data. 
+
+CARMApy includes a default parameter set assuming a pure H 2 atmosphere, which is a reasonable assumption for bodies such as hot Jupiters and brown dwarfs, and allows users to set the atmospheric parameters to user defined values. The CARMApy default atmospheric parameters are presented in Table 2. We point the reader E. W. Lemmon (2025) for thermal conductivity values and to Table 2-138 of D. W. Green & M. Z. Southard (2019) for viscosity values of alternate background gases. We plan that future versions of CARMApy will include a greater selection of default values as well as schemes for interpolating between them. 2.5. CARMApy Condensates 
+
+CARMApy allows for the modeling of pretty much any condensate assuming its material properties are known. To specify a condensate, the density, molar mass, collisional diameter, saturation vapor pressure function, and surface tension function must be known. Each condensate is assumed to condense from a single limiting gas and the molar mass of that gas, the stoichiometry factor of the condensation reaction, and whether or not the condensation reaction is considered a type III reaction (see C. Helling & P. Woitke (2006)) must also be specified. Lastly, if the condensate is formed through heterogeneous nucleation then the cosine of the contact angle between the gas species and the seed particle for the nucleation reaction must be specified. 15                          
+
+> Symbol Value Reference
+> cp1.3×10 8erg/g/K T. Kataria et al. (2015)
+> κ07992.77 ergs/s/cm/K Fit to E. W. Lemmon (2025)
+> κ138 .08 ergs/s/cm/K 2
+> κ2−1.2585 ×10 −4ergs/s/cm/K 3
+> μ11.7970 ×10 −6poise D. W. Green & M. Z. Southard (2019), Table 2-138
+> μ20.685
+> μ3-0.59 K
+> μ4140 K 2
+> Table 2. CARMApy default parameters for a pure H 2atmosphere.
+
+It is assumed that the saturation vapor pressure function takes the following form: log 10 
+
+ps
+
+(10 6 barye) = α0 − α1
+
+T − α2[Fe /H] − α3 log 10 
+
+P
+
+(10 6 barye) (88) where T is the temperature, P is the atmospheric pressure, and the αi are coefficients unique to each condensate. Similarly it is assumed the surface tension of the air-condensate boundary, σ takes the following form: 
+
+σ = σ0 + σ1T (89) where as before, σ0 and σ1 are coefficients unique to each condensate. While still possible to specify, CARMApy defaults to calculating the latent heat of vaporization, L, using the saturation vapor pressures and the Clausius-Clapeyron equation: 
+
+d ln ps
+
+dT = LRT 2 (90) where R is the ideal gas constant. Lastly, for heterogeneously nucleating species, the contact angle, μ, can be determined through Young’s relation: 
+
+μ = σcond − σinterface 
+
+σcore 
+
+(91) where σcond is the surface tension of the condensate, σcore is the surface tension of the core, and σinterface is the surface tension of the core-condensate boundary. We most often assume σinterface = 0 due to a lack of laboratory measurements. The values for all the constants assumed for the CARMApy default condensates are given in Appendix B. These constants come from a combination of standard reference databases, density functional theory and molecular dynamics simulations, thermodynamical modeling, and lab experiments. While some of these values are well constrained, a number of them rely on simplifying modeling assumption and/or extrapolation to temperature and pressure regimes far beyond where they were originally contained. Further work constraining the material properties of cloud particles in regimes relevant to exoplanet and brown dwarfs contexts is needed to tamp down on uncertainties in our models. 2.6. Optional Model Initialization Routines 
+
+2.6.1. Cloud Base Chemical Equilibrium 
+
+CARMA does not include any chemistry calculations other than the cloud microphysics discussed above. This means that a gas will remain at a constant mixing ratio in CARMA in regions that do not contain any cloud particles. Thus, to ensure that the cloud base has an accurate mixing ratio of the gas phase, it is recommended to set the bottom boundary condition for the gas to be a fixed concentration equal to the concentration at the cloud base— CARMApy 
+
+contains convenience features 7 that allow the user to easily do precisely this. After calculating the saturation vapor pressure for the relevant gas species across the provided T -P profile, p′
+
+> i
+
+,
+
+CARMApy uses pyFastChem (J. W. Stock et al. 2022) to calculate the equilibrium partial pressures, pi of the gas across   
+
+> 7see carmapy.chemistry.populate abundances at cloud base()
+
+16 those same points. For this process, the cloud base is assumed to form at the location given by equilibrium cloud condensation theory, that is where p′ 
+
+> i
+
+= pi. The mixing ratio of the gas at this location (calculated by dividing the partial pressure by the atmospheric pressure) is then set as the boundary condition at the bottom of the atmosphere for the gas. 2.6.2. Adiabatic Atmospheric Extension 
+
+It is occasionally useful to extend the atmospheric profile given to higher pressures in order to capture the entirety of the cloud formation process for which we provide a convience function 8. To this end, we assume the deep atmosphere is a convective zone and thus follows an adiabatic temperature gradient. The adiabat given by V. Parmentier et al. (2015) which is a fit to D. Saumon et al. (1995) is 
+
+∇ad =
+
+ ∂ ln T∂ ln P
+
+
+
+> S
+
+= a − bT (92) with a = 0 .32 and b = 1 /30000 K −1. Assuming we can treat the partial derivatives as total and integrating by partial fractions we arrive at the following equation extrapolating the temperature to any pressure 
+
+T (P ) = aK (P )1 + bK (P ) (93) where 
+
+K = T0
+
+a − bT 0
+
+ PP0
+
+a
+
+(94) and where ( T0, P 0) is a known T-P point at the bottom of the un-extended atmosphere. The eddy diffusion coefficient can then be extended as Kzz ∝ H−1/3 where H = kT /μm pg is the scale height (P. Giersasch & B. J. Conrath 1985, Eqn. 16). 2.7. Post-processing 
+
+CARMApy includes built in methods for reading in results and then generating spectra from the simulation output. 
+
+CARMApy uses pyFastchem to calculate equilibrium gas phase abundances to serve as the gas phase input into PICASO 
+
+(N. E. Batalha et al. 2019) 9. For the cloud phase The extinction coefficient, βext , scattering coefficient, βsca , and the asymmetry parameter, g, for each layer at each wavelength is calculated as follows (Eqns. 12.26 - 12.29, G. W. Petty 2006) 
+
+βext (z, λ ) = X
+
+> all cloud species
+
+Z ∞
+
+> 0
+
+πr 2n(z)Qext (r, λ )dr (95) 
+
+βsca (z, λ ) = X
+
+> all cloud species
+
+Z ∞
+
+> 0
+
+πr 2n(z)Qsca (r, λ )dr (96) 
+
+g(z, λ ) = 1
+
+βsca 
+
+X
+
+> all cloud species
+
+Z ∞
+
+> 0
+
+πr 2n(z)Qsca (r, λ )g(r, λ )dr (97) where Qext and Qsca are the extinction and scattering efficiencies which, along with g(r, λ ), are calculated using 
+
+PyMieScatt (B. J. Sumlin et al. 2018). From these values we can easily calculate the single scattering albedo, ω =
+
+βsca /β ext , and the optical depth of each layer, ∆ τ = βext ∆z, and generate the required cloud phase inputs into 
+
+PICASO 10 . While we do not package PICASO directly into CARMApy as we want to avoid unneeded dependencies, we include in our tutorial sample scripts for generating spectra with CARMApy and PICASO .2.8. Example Outputs 
+
+To demonstrate the use of CARMApy , we first present a minimal example script to run the CARMApy simulation in Figure 2. We additionally present a few example data products producible using the code in Figure 3. Some of      
+
+> 8see carmapy.Carma.extend atmosphere()
+> 9see carmapy.Results.gen picaso atm file()
+> 10 see carmapy.Results.gen picaso cloud file()
+
+17  
+
+> 1
+
+import numpy as np  
+
+> 2
+
+import carmapy  
+
+> 34
+
+# Sample 2000K Sonora Diamondback Brown Dwarf (Morley+ 2024)  
+
+> 5
+
+P_levels, T_levels, kzz_levels, mu_levels = example_levels()  
+
+> 67
+
+carma = Carma("example")  
+
+> 8
+
+carma.set_physical_params(surface_grav=31600, wt_mol=np.mean(mu))  
+
+> 9
+
+carma.set_atmospheric_parameters_from_defaults("Pure H2")  
+
+> 10
+
+carma.set_stepping(dt=100, n_tstep=24000, output_gap=10)  
+
+> 11 12
+
+carma.add_hom_group("TiO2", r_min=1e-8) # Homogeneous TiO2  
+
+> 13
+
+carma.add_het_group("Mg2SiO4", "TiO2", r_min=1e-8 * 2**(1/3)) # Mg2SiO4 on TiO2  
+
+> 14 15
+
+carma.add_P(P_levels)  
+
+> 16
+
+carma.add_T(T_levels)  
+
+> 17
+
+carma.add_kzz(kzz_levels)  
+
+> 18 19
+
+carma.calculate_z(mu_levels)  
+
+> 20
+
+carmapy.chemistry.populate_abundances_at_cloud_base(carma) # invoke fastchem  
+
+> 21 22
+
+carma.run()      
+
+> Figure 2. A minimal CARMApy script which models a 2000 K brown dwarf using the Sonora Diamondback (C. V. Morley et al. 2024) models as input and only TiO 2and Mg 2SiO 4condensates
+
+example outputs from CARMApy include a cloud particle size distribution profile derived a priori from our microphysical equations (Figure 3, Top Left), the gain and loss rates in each grid cell due to the various microphysical processes (Figure 3, Top Right), spectra generated using PyMieScatt (B. J. Sumlin et al. 2018) and PICASO (N. E. Batalha et al. 2019) (Figure 3, Bottom Left), and the depleted gas abundance profiles caused by cloud formation (Figure 3, Bottom Right). All the 1D examples presented here are based on a 1800 K Brown Dwarf pressure, temperature, and eddy-diffusion structure taken from C. V. Morley et al. (2024) Sample code to generate all these types of figures are available in the tutorials at carmapy.readthedocs.io. 2.9. 2D CARMApy 
+
+The functionality to allow for 2D ExoCARMA simulations, which we wrap in CARMApy , was implemented by D. Powell & X. Zhang (2024). In this mode, the longitudinally varying cloud profile is calculated at the equator by advecting the cloud column uniformly around the equator, holding the pressure coordinate of each bin constant while allowing the temperature at each pressure level to vary longitudinally. This process is done in log-pressure coordinates and introduces a vertical metric factor of ds/dz = T /T 0 where T0 is the temperature at the base of the atmosphere (O. B. Toon et al. 1988). The speed of advection is user specified, but typically has been chosen to be the average wind speed at the base of the cloud corresponding to the most relevant homogeneously nucleating condensate. These 2D models are particularly suited to modeling planets which have strong longitudinal asymmetry and stable equatorial jets which dominate the observable region of the planetary atmosphere, such as hot Jupiters (eg. A. P. Showman et al. 2009). Recent observations of the limb asymmetries between the morning and evening terminators exoplanets show that differing cloud properties play a critical role in explaining the differences in spectra measured at each of these limbs (S. Mukherjee et al. 2026). 2D CARMApy , and the underlying CARMA model, in modeling the cloud column at each longitude, are able to resolve differences in clouds and thus predict limb-asymmetric spectra (see Samra et al. in prep, Kennedy et al. in prep). Additionally this longitude resolution allows us to extract observables such as thermal emission phase curves from our models. Example 2D CARMApy outputs and derived observables, including these limb asymmetric spectra and phase curves, are presented in Figure 4. These outputs were generated using GCM data an 18 Particle Radius 
+
+> Pressure
+
+## Particle Size 
+
+## Distribution      
+
+> 10 510 210 110 4
+
+Number Density 
+
+Particle Radius 
+
+> Pressure
+
+## Microphysical 
+
+## Rates        
+
+> 10 10 10 710 410 1
+
+Nucleation Rate 
+
+Wavelength 
+
+> Brightness Temp.
+
+## Thermal Emission 
+
+## Spectrum 
+
+Gas Mixing Ratio 
+
+> Pressure
+
+## Depleted 
+
+## Gas Profiles 
+
+Figure 3. A selection of the data products that can be generated using CARMApy . Axes ticks and color bars are omitted for legibility. Example code to generate all of these type of plots are available in the CARMApy tutorials at carmapy.readthedocs.io 
+
+Top Left: A cloud particle size distribution across the pressure and particle size grid generated by a 1D CARMApy run. Top Right: The heterogeneous nucleation rate for the same 1D run. CARMApy is also able to output the homogeneous nucleation rate, the condensational growth rate, and evaporation rate. Bottom Left: A thermal emission spectrum generated by a 1D 
+
+CARMApy run post processed with PICASO . Bottom Right: The depleted gas abundance profiles generated by a CARMApy run. 
+
+1800 K Hot Jupiter from A. Roth et al. (2024). Tutorials showing how these data products are created are available at carmapy.readthedocs.io/en/latest/notebooks/5 2d carmapy.html. 
+
+3. BENCHMARKS To ensure correctness, we benchmark the results of CARMApy against that of ExoCARMA 1.0 . For the benchmark, we use a 1-D P-T and eddy-diffusion structure of a 2000 K brown dwarf with log g = 4 .5 and fsed = 4 from C. V. Morley et al. (2024). The atmospheric viscosity, thermal conductivity, and specific heat were set to that of a pure H2 atmosphere 11 . For this benchmark we initialize a simple nucleation network, allowing TiO 2 to homogeneously condense and allowing Mg 2SiO 4 to heterogeneously condense upon the TiO 2 CCN. The model was run at a timestep of 100 s for 24000 timesteps with minimal I/O to isolate the timing to that of the microphysics calculations. This process took CARMApy ∼50 seconds on 4 cores or ∼100 seconds single-threaded on a M4 Macbook Pro. The same process took ExoCARMA 1.0 ∼190 seconds on the same test 12 .   
+
+> 11 note that the viscosity and thermal conductivity used was not the up-to-date values used as defaults but was instead set to be consistent with (P. Gao & B. Benneke 2018)
+> 12 Single threaded as OpenMP was not implemented in ExoCARMA 1.0
+
+19 Longitude 
+
+> Pressure
+
+## 2D Particle 
+
+## Distribution     
+
+> 10 310 010 310 6
+
+Number Density 
+
+Longitude 
+
+> Pressure
+
+## 2D Gas 
+
+## Depletion        
+
+> 10 11 10 810 510 2
+
+TiO2 Mixing Ratio 
+
+Wavelength 
+
+> Transit  Depth
+
+## Limb-Asymmetric 
+
+## Spectra 
+
+Evening 
+
+Terminator 
+
+Morning 
+
+Terminator 
+
+Orbital Phase 
+
+> Relative Flux
+
+## Thermal 
+
+## Phase Curve 
+
+Figure 4. A selection of the data products that can be generated using 2D-CARMApy . Axes ticks and color bars are omitted for legibility. Example code to generate all of these type of plots are available in the CARMApy tutorials at carmapy.readthedocs.io 
+
+Top Left: The 2D cloud particle distribution profile generated by a 2D CARMApy run. The plot is centered on the substellar point and the pink dashed lines are the morning and evening terminators. Top Right: The TiO 2 gas abundance profile from a 2D CARMApy run showing the disequilibrium gas depletion caused by cloud formation. The plot is centered on the substellar point and the pink dashed lines are the morning and evening terminators. Bottom Left: NIR transmission spectra calculated at the morning (blue) and evening (red) terminators as derived from a 2D CARMApy run. Bottom Right: NIR thermal emission phase curve as derived from as 2D CARMApy run. 
+
+We then resumed those same simulations with outputting data every 10 timesteps for another 10000 timesteps. We then averaged over these 1000 outputs as CARMA can fluctuate around equilibria but long term averages tend to be stable. The combined TiO 2 and Mg 2SiO 4 particle size distribution profiles are presented Figure 5. These size distributions are, as expected, practically visually indistinguishable. The total cloud and gas mass for each species agrees up to a relative difference ∼3 × 10 −4 and ∼3 × 10 −5 respectively. To get a sense of how these changes impact the observable features of these bodies, we present our analysis of our emission spectra benchmarking in Figure 6. This figure shows the relative difference in the brightness temperature emission spectra between ExoCARMA 1.0 and 
+
+CARMApy . The maximum absolute error is on the order of 0 .3 K which corresponds to a relative error of ∼10 −4.At longer wavelengths the maximum absolute error drops to ∼0.01 K. corresponding to a relative error of ∼10 −5.These deviations are of a magnitude which is consistent with floating point error propagated over tens of thousands of timesteps and are small enough to be considered negligible as other assumptions, such as the choice of the eddy-diffusion structure of the atmosphere, will far dominate the uncertainty presented here. 20            
+
+> Figure 5. Comparison of the total condensate number density for a sample 2-species 2000 K brown dwarf run, averaged over 1000 samples. The output from CARMApy on the left is benchmarked against the ExoCARMA code without our edits on the right.
+> Figure 6. The relative difference in the brightness temperature emission spectra between ExoCARMA 1.0 and CARMApy for a sample 2-species 2000 K brown dwarf run, with number densities averaged over 1000 samples. 4.
+
+FUTURE DEVELOPMENT While CARMApy is already an incredibly powerful code, there remains improvements to be made for future releases. Future releases of CARMApy likely will include some of the following features: 1. A more complete solution for including hazes, including fractal aggregates and cloud-haze interactions (see Nagpal et al. in prep )2. The ability to have more than one condensate species formed from a single limiting gas (ie. both SiO and SiO 2
+
+forming from SiO gas) 3. Radiatively active clouds 4. Coupling with gas phase chemistry 5. Expanding the number of default atmospheric parameters and condensates available with CARMApy 21 As we continue to use and refine CARMApy the solutions we develop will be released to the same channels as described herein.  
+
+> 5.
+
+CONCLUSIONS Here we have presented the new python-based bin-scheme microphysical cloud model CARMApy , as well as an update to the underlying Fortran code, ExoCARMA 2.0 . CARMApy is pip installable, is available on GitHub ,13 and has tutorials and documentation hosted at carmapy.readthedocs.io. The code and related documentation are also archived with Zenodo. 14 
+
+In addition to detailed microphysical modeling of exoplanets in both 1D and 2D, CARMApy includes a number of fea-tures to help with the initialization and analysis of the model. Interfaces with pyFastchem provide for straightforward setting of chemical equilibrium abundances. Similarly, we provide post-processing code that exposes the simulation results in an intuitive interface, allows for quick plotting of size distributions, microphysical rates, and depleted gas profiles, and allows for fast and simple post-processing the output of the simulations into spectra with PICASO . CARMApy 
+
+also exposes interfaces such that the user is able to easily change the condensates included in the model as well as change the background atmospheric parameters. We have benchmarked our code against the old version of the Fortran code ExoCARMA 1.0 and find the our updated code is able to reproduce the results of the old code to within some negligible deviations, while running ∼1.9 times faster single threaded and ∼3.8 times faster multithreaded. ACKNOWLEDGMENTS The authors would like to thank Thomas Kennedy for helping beta test this code. LLM tools (Sonnet 4.6, Opus 4.7-4.8) were used to format tables, to help implement and guide reasoning about code, and to suggest phrasing of sentences during preparation of this manuscript. This work benefited from the 2025 Exoplanet Summer Program in the Other Worlds Laboratory (OWL) at the University of California, Santa Cruz, a program funded by the Heising-Simons Foun-dation and NASA. X.Z. acknowledges support from the NSF grant (AST2307463), NASA Exoplanet Research grant (80NSSC22K0236), and the NASA Interdisciplinary Consortia for Astrobiology Research grant (80NSSC21K0597). VN acknowledges support from the National Science Foundation Graduate Research Fellowship under Grant No. DGE 2140001. D.S. acknowledges funding as part of JWST GO program 3969 (PIs: Espinoza, Powell). AUTHOR CONTRIBUTIONS WC led the writing of this paper, contributed to the development of ExoCARMA , and conceived of and led the development of the CARMApy wrapper. DP co-lead the development of ExoCARMA and supervised the writing of this paper and the development of the CARMApy wrapper. XZ supervised and contributed to the development of ExoCARMA ,supervised the development of the CARMApy wrapper, and helped edit this paper. PG co-lead the development of 
+
+ExoCARMA and helped edit this paper. DS and VN both contributed to the development of the CARMApy wrapper and helped edit this paper. 
+
+# Software: numpy (C. R. Harris et al. 2020), matplotlib (J. D. Hunter 2007), scipy (P. Virtanen et al. 2020), 
+
+pyfastchem (J. W. Stock et al. 2022), PyMieScatt (B. J. Sumlin et al. 2018), PICASO (N. E. Batalha et al. 2019) REFERENCES   
+
+> Ackerman, A. S., & Marley, M. S. 2001, The Astrophysical Journal, 556, 872, doi: 10.1086/321540 Bardeen, C. G., Toon, O. B., Jensen, E. J., Marsh, D. R., & Harvey, V. L. 2008, Journal of Geophysical Research: Atmospheres, 113, doi: 10.1029/2007JD009515
+> 13 https://github.com/wcukier/carmapy
+> 14 https://doi.org/10.5281/zenodo.20433610
+> Barth, E. 2020, Atmosphere, 11, 1064, doi: 10.3390/atmos11101064 Barth, E. L., & Toon, O. B. 2003, Icarus, 162, 94, doi: 10.1016/S0019-1035(02)00067-2 Barth, E. L., & Toon, O. B. 2004, Geophysical Research Letters, 31, L17S07, doi: 10.1029/2004GL019825 Barth, E. L., & Toon, O. B. 2006, Icarus, 182, 230, doi: 10.1016/j.icarus.2005.12.017
+
+22 
+
+Batalha, N. E., Marley, M. S., Lewis, N. K., & Fortney, J. J. 2019, The Astrophysical Journal, 878, 70, doi: 10.3847/1538-4357/ab1b51 Beard, K. V., & Ochs III, H. T. 1984, Journal of Geophysical Research: Atmospheres, 89, 7165, doi: 10.1029/JD089iD05p07165 Begemann, B., Dorschner, J., Henning, T., et al. 1997, The Astrophysical Journal, 476, 199, doi: 10.1086/303597 Burningham, B., Faherty, J. K., Gonzales, E. C., et al. 2021, Cloud busting: enstatite and quartz clouds in the atmosphere of 2M2224-0158, doi: 10.48550/arXiv.2105.04268 Calamari, E., Faherty, J. K., Visscher, C., et al. 2024, The Astrophysical Journal, 963, 67, doi: 10.3847/1538-4357/ad1f6d Chen, Z., Bhartia, P. K., Loughman, R., Colarco, P., & DeLand, M. 2018, Atmospheric Measurement Techniques, 11, 6495, doi: 10.5194/amt-11-6495-2018 Colaprete, A., Toon, O. B., & Magalh˜ aes, J. A. 1999, Journal of Geophysical Research, 104, 9043, doi: 10.1029/1998JE900018 Colella, P., & Woodward, P. R. 1984, Journal of Computational Physics, 54, 174, doi: 10.1016/0021-9991(84)90143-8 Dagum, L., & Menon, R. 1998, IEEE Computational Science and Engineering, 5, 46, doi: 10.1109/99.660313 Di Girolamo, L., Zhao, G., Zhang, G., et al. 2025, Nature, 643, 983, doi: 10.1038/s41586-025-09242-1 Dobrovinskaya, E. R., Lytvynov, L. A., & Pishchik, V. 2009, in Sapphire: Material, Manufacturing, Applications, ed. V. Pishchik, L. A. Lytvynov, & E. R. Dobrovinskaya (Boston, MA: Springer US), 55–176, doi: 10.1007/978-0-387-85695-7 2 Durran, D. R. 1999, Numerical methods for wave equations in geophysical fluid dynamics, Texts in applied mathematics No. 32 (New York: Springer) Friedlander, S. K. 1957, AIChE Journal, 3, 43, doi: 10.1002/aic.690030109 Fuchs, N. 1951, Dokl. Akad. Nauk SSSR, 81, 1043 Fuchs, N. A. 1964, The mechanics of aerosols, rev. and enl. ed edn. (New York: Macmillan). https://catalog.lib. uchicago.edu/vufind/Record/2243096?sid=75262889 Gail, H.-P., Wetzel, S., Pucci, A., & Tamanai, A. 2013, Astronomy & Astrophysics, 555, A119, doi: 10.1051/0004-6361/201321807 Gao, P. 2017, Ph.D., California Institute of Technology, United States – California, doi: 10.7907/Z99W0CGS Gao, P., & Benneke, B. 2018, The Astrophysical Journal, 863, 165, doi: 10.3847/1538-4357/aad461 Gao, P., & Powell, D. 2021, The Astrophysical Journal Letters, 918, L7, doi: 10.3847/2041-8213/ac139f Gao, P., Zhang, X., Crisp, D., Bardeen, C. G., & Yung, Y. L. 2014, Icarus, 231, 83, doi: 10.1016/j.icarus.2013.10.013 Gao, P., Fan, S., Wong, M. L., et al. 2017, Icarus, 287, 116, doi: 10.1016/j.icarus.2016.09.030 Gao, P., Thorngren, D. P., Lee, E. K. H., et al. 2020, Nature Astronomy, 4, 951, doi: 10.1038/s41550-020-1114-3 Gao, P., Piette, A. A. A., Steinrueck, M. E., et al. 2023, The Astrophysical Journal, 951, 96, doi: 10.3847/1538-4357/acd16f Giersasch, P., & Conrath, B. J. 1985, in Recent advances in planetary meteorology: the Seymour Hess memorial symposium – IUGG general assembly Hamburg, 18-19 August 1983, ed. G. E. Hunt (Cambridge London New York [etc.]: Cambridge university press) Glasser, L., & Jenkins, H. D. B. 2000, Journal of the American Chemical Society, 122, 632, doi: 10.1021/ja992375u Green, D. W., & Southard, M. Z. 2019, Perry’s Chemical Engineers’ Handbook, 9th Edition, 9th edn. (New York, N.Y: McGraw-Hill Education) G¨ uttler, C., Blum, J., Zsom, A., Ormel, C. W., & Dullemond, C. P. 2010, Astronomy and Astrophysics, 513, A56, doi: 10.1051/0004-6361/200912852 Harris, C. R., Millman, K. J., van der Walt, S. J., et al. 2020, Nature, 585, 357, doi: 10.1038/s41586-020-2649-2 Hasegawa, T. I., Herbst, E., & Leung, C. M. 1992, The Astrophysical Journal Supplement Series, 82, 167, doi: 10.1086/191713 Helling, C., Oevermann, M., L¨ uttke, M. J. H., Klein, R., & Sedlmayr, E. 2001, Astronomy & Astrophysics, 376, 194, doi: 10.1051/0004-6361:20010937 Helling, C., & Woitke, P. 2006, Astronomy and Astrophysics, Volume 455, Issue 1, August III 2006, pp.325-338, 455, 325, doi: 10.1051/0004-6361:20054598 Helling, C., Lee, G., Dobbs-Dixon, I., et al. 2016, Monthly Notices of the Royal Astronomical Society, 460, 855, doi: 10.1093/mnras/stw662 Honsberg, C. B., & Bowden, S. G. 2007, MnS, https://www.pveducation.org/pvcdrom/materials/MnS Huffman, D. R., & Wild, R. L. 1967, Physical Review, 156, 989, doi: 10.1103/PhysRev.156.989 Hunter, J. D. 2007, Computing in Science & Engineering, 9, 90, doi: 10.1109/MCSE.2007.55 Jacobson, M. Z. 2005, Fundamentals of atmospheric modeling, 2nd edn. (Cambridge (GB): Cambridge University Press) 23 
+
+Jacobson, M. Z., Turco, R. P., Jensen, E. J., & Toon, O. B. 1994, Atmospheric Environment, 28, 1327, doi: 10.1016/1352-2310(94)90280-1 J¨ ager, C., Dorschner, J., Mutschke, H., Posch, T., & Henning, T. 2003, Astronomy & Astrophysics, 408, 193, doi: 10.1051/0004-6361:20030916 Kataria, T., Showman, A. P., Fortney, J. J., et al. 2015, The Astrophysical Journal, 801, 86, doi: 10.1088/0004-637X/801/2/86 Kaye, G. W. C., & Laby, T. H. 2005, in Tables of Physical and Chemical Constants and Some Mathematical Functions (Kaye & Laby Online. Version 1.0). https://web.archive.org/web/20190506031327/http: //www.kayelaby.npl.co.uk/ Khachai, H., Khenata, R., Bouhemadou, A., et al. 2009, Journal of Physics Condensed Matter, 21, 095404, doi: 10.1088/0953-8984/21/9/095404 Kitzmann, D., & Heng, K. 2018, Monthly Notices of the Royal Astronomical Society, 475, 94, doi: 10.1093/mnras/stx3141 Koike, C., Kaito, C., Yamamoto, T., et al. 1995, Icarus, 114, 203, doi: 10.1006/icar.1995.1055 Kozasa, T., Hasegawa, H., & Nomoto, K. 1989, The Astrophysical Journal, 344, 325, doi: 10.1086/167801 Langmuir, I. 1948, Journal of the Atmospheric Sciences, 5, 175, doi: 10.1175/1520-0469(1948)005 ⟨0175: TPORBA ⟩2.0.CO;2 Lee, E., Helling, C., Giles, H., & Bromley, S. T. 2015, Astronomy & Astrophysics, 575, A11, doi: 10.1051/0004-6361/201424621 Lee, E. K. H., & Ohno, K. 2025a, Three-dimensional dynamical evolution of cloud particle microphysics in sub-stellar atmospheres I. Description and exploring Y-dwarf atmospheric variability, arXiv, doi: 10.48550/arXiv.2411.10305 Lee, E. K. H., & Ohno, K. 2025b, Astronomy and Astrophysics, 704, A319, doi: 10.1051/0004-6361/202556451 Lee, E. K. H., Wardenier, J. P., Prinoth, B., et al. 2022, The Astrophysical Journal, 929, 180, doi: 10.3847/1538-4357/ac61d6 Lemmon, E. W. 2025, in CRC Handbook of chemistry and physics, 106th edn., ed. J. R. Rumble, T. J. Bruno, D. R. Burgess, & L. R. McEwen, CRC handbook of chemistry and physics / Chemical Rubber Company No. 106th edition (2025) (Boca Raton London New York: CRC Press, Taylor & Francis Group) Lian, S., Zhou, L., Murphy, D. M., et al. 2022, Atmospheric Chemistry & Physics, 22, 13659, doi: 10.5194/acp-22-13659-2022 Lynch, D., & Hunter, W. R. 1997, in Handbook of Optical Constants of Solids (Academic Press), 341–419, doi: 10.1016/B978-012544415-6.50057-1 MacDonald, R. J. 2023, The Journal of Open Source Software, 8, 4873, doi: 10.21105/joss.04873 MacDonald, R. J., & Madhusudhan, N. 2017, Monthly Notices of the Royal Astronomical Society, 469, 1979, doi: 10.1093/mnras/stx804 Malsky, I., Rauscher, E., Roman, M. T., et al. 2024, The Astrophysical Journal, 961, 66, doi: 10.3847/1538-4357/ad0b70 Mang, J., Gao, P., Hood, C. E., et al. 2022, The Astrophysical Journal, 927, 184, doi: 10.3847/1538-4357/ac51d3 Mang, J., Morley, C. V., Robinson, T. D., & Gao, P. 2024, The Astrophysical Journal, 974, 190, doi: 10.3847/1538-4357/ad6c4c Marley, M. S., Saumon, D., Visscher, C., et al. 2021, The Astrophysical Journal, 920, 85, doi: 10.3847/1538-4357/ac141d Michelangeli, D. V., Toon, O. B., Haberle, R. M., & Pollack, J. B. 1993, Icarus, 102, 261, doi: 10.1006/icar.1993.1048 Molli` ere, P., Stolker, T., Lacour, S., et al. 2020, Astronomy & Astrophysics, 640, A131, doi: 10.1051/0004-6361/202038325 Montaner, A., Galtier, M., Benoit, C., & Bill, H. 1979, Physica Status Solidi Applied Research, 52, 597, doi: 10.1002/pssa.2210520228 Morley, C. V., Fortney, J. J., Marley, M. S., et al. 2012, The Astrophysical Journal, 756, 172, doi: 10.1088/0004-637X/756/2/172 Morley, C. V., Mukherjee, S., Marley, M. S., et al. 2024, The Sonora Substellar Atmosphere Models. III. Diamondback: Atmospheric Properties, Spectra, and Evolution for Warm Cloudy Substellar Objects, arXiv, doi: 10.48550/arXiv.2402.00758 Mukherjee, S., Sing, D. K., Fu, G., et al. 2026, Science, 392, 858, doi: 10.1126/science.adx5903 Ohno, K., & Okuzumi, S. 2017, The Astrophysical Journal, 835, 261, doi: 10.3847/1538-4357/835/2/261 Palik, E. D. 1985, Academic Press Handbook Series. https://ui.adsabs.harvard.edu/abs/1985hocs.book.....P/ abstract Parmentier, V., Guillot, T., Fortney, J. J., & Marley, M. S. 2015, Astronomy & Astrophysics, 574, A35, doi: 10.1051/0004-6361/201323127 Parmentier, V., Showman, A. P., & Fortney, J. J. 2021, Monthly Notices of the Royal Astronomical Society, 501, 78, doi: 10.1093/mnras/staa3418 24 
+
+Petrus, S., Whiteford, N., Patapis, P., et al. 2024, The JWST Early Release Science Program for Direct Observations of Exoplanetary Systems V: Do Self-Consistent Atmospheric Models Represent JWST Spectra? A Showcase With VHS 1256 b, arXiv, doi: 10.48550/arXiv.2312.03852 Petty, G. W. 2006, A first course in atmospheric radiation, 2nd edn. (Madison, Wis: Sundog Pub) Phillip, H. R. 1997, in Handbook of Optical Constants of Solids (Academic Press), 765–769, doi: 10.1016/B978-012544415-6.50039-X Plummer, M. K., Cocchini, F. P., Kearns, P. A., et al. 2025, Mapping the Cloud-Driven Atmospheric Dynamics & Chemistry of an Isolated Exoplanet Analog with Harmonic Signatures, arXiv, doi: 10.48550/arXiv.2510.02260 Powell, D., Louden, T., Kreidberg, L., et al. 2019a, The Astrophysical Journal, 887, 170, doi: 10.3847/1538-4357/ab55d9 Powell, D., Murray-Clay, R., P´ erez, L. M., Schlichting, H. E., & Rosenthal, M. 2019b, The Astrophysical Journal, 878, 116, doi: 10.3847/1538-4357/ab20ce Powell, D., & Zhang, X. 2024, The Astrophysical Journal, 969, 5, doi: 10.3847/1538-4357/ad3de4 Powell, D., Zhang, X., Gao, P., & Parmentier, V. 2018, The Astrophysical Journal, 860, 18, doi: 10.3847/1538-4357/aac215 Pruppacher, H., & Klett, J. 2010, Atmospheric and Oceanographic Sciences Library, Vol. 18, Microphysics of Clouds and Precipitation, ed. L. A. Mysak & K. Hamilton (Dordrecht: Springer Netherlands), doi: 10.1007/978-0-306-48100-0 Querry, M. R. 1987, Optical constants of minerals and other materials from the millimeter to the ultraviolet (Aberdeen Proving Ground, Md: Chemical Research, Development & Engineering Center, U.S. Army Armament Munitions Chemical Command) Rakic, A. D., Djurisic, A. B., Elazar, J. M., & Majewski, M. L. 1998, Applied Optics, 37, 5271, doi: 10.1364/AO.37.005271 Ribarsky, M. W. 1997, in Handbook of Optical Constants of Solids (Academic Press), 795–804, doi: 10.1016/B978-012544415-6.50042-X Roth, A., Parmentier, V., & Hammond, M. 2024, Large Grid of Non-Grey Global Circulation Models Run With SPARC/MiTgcm, Zenodo, doi: 10.5281/zenodo.10960010 Rusch, D., Thomas, G., Merkel, A., et al. 2017, Journal of Atmospheric and Solar-Terrestrial Physics, 162, 97, doi: 10.1016/j.jastp.2016.04.018 Samra, D., Helling, C., & Birnstiel, T. 2022, Astronomy and Astrophysics, 663, A47, doi: 10.1051/0004-6361/202142651 Sanderson, R. T. 1976, Chemical bonds and bond energy, 2nd edn., Physical chemistry, a series of monographs No. v. 21 (New York: Academic Press) Saumon, D., Chabrier, G., & Van Horn, H. M. 1995, The Astrophysical Journal Supplement Series, 99, 713, doi: 10.1086/192204 Sedlmayr, E., & Gail, H.-P. 2014, Physics and chemistry of circumstellar dust shells, Cambridge astrophysics series No. 52 (New York: Cambridge university press) Seinfeld, J. H., & Pandis, S. N. 1998, Atmospheric chemistry and physics: from air pollution to climate change (New York: Wiley) Showman, A. P., Cho, J. Y.-K., & Menou, K. 2009, Atmospheric Circulation of Exoplanets, arXiv, doi: 10.48550/arXiv.0911.3170 Stock, J. W., Kitzmann, D., & Patzer, A. B. C. 2022, Monthly Notices of the Royal Astronomical Society, 517, 4070, doi: 10.1093/mnras/stac2623 Sumlin, B. J., Heinson, W. R., & Chakrabarty, R. K. 2018, Journal of Quantitative Spectroscopy and Radiative Transfer, 205, 127, doi: 10.1016/j.jqsrt.2017.10.012 Tielens, A. G. G. M., & Allamandola, L. J. 1987, in Interstellar Processes, Vol. 134, 397, doi: 10.1007/978-94-009-3861-8 16 Tilmes, S., Mills, M. J., Zhu, Y., et al. 2023, Description and performance of the CARMA sectional aerosol microphysical model in CESM2, Atmospheric sciences, doi: 10.5194/gmd-2023-79 Toon, O. B., Turco, R. P., Westphal, D., Malone, R., & Liu, M. 1988, https://journals.ametsoc.org/view/journals/atsc/45/15/ 1520-0469 1988 045 2123 ammfad 2 0 co 2.xml Turco, R. P., Hamill, P., Toon, O. B., Whitten, R. C., & Kiang, C. S. 1979, Journal of the Atmospheric Sciences, 36, 699, doi: 10.1175/1520-0469(1979)036 ⟨0699: AODMDA ⟩2.0.CO;2 Vehkam¨ aki, H., M¨ a¨ att¨ anen, A., Lauri, A., Napari, I., & Kulmala, M. 2007, Atmospheric Chemistry and Physics, 7, 309, doi: 10.5194/acp-7-309-2007 Virtanen, P., Gommers, R., Oliphant, T. E., et al. 2020, Nature Methods, 17, 261, doi: 10.1038/s41592-019-0686-2 Visscher, C., Lodders, K., & Bruce Fegley, J. 2006, The Astrophysical Journal, 648, 1181, doi: 10.1086/506245 Wakeford, H. R., & Sing, D. K. 2015, Astronomy and Astrophysics, 573, A122, doi: 10.1051/0004-6361/201424207 25 
+
+Wakeford, H. R., Visscher, C., Lewis, N. K., et al. 2017, Monthly Notices of the Royal Astronomical Society, 464, 4247, doi: 10.1093/mnras/stw2639 Wetzel, S., Klevenz, M., Gail, H.-P., Pucci, A., & Trieloff, M. 2013, Astronomy and Astrophysics, 553, A92, doi: 10.1051/0004-6361/201220803 Woitke, P., & Helling, C. 2003, Astronomy and Astrophysics, 399, 297, doi: 10.1051/0004-6361:20021734 Woitke, P., & Helling, C. 2004, Astronomy & Astrophysics, 414, 335, doi: 10.1051/0004-6361:20031605 Woitke, P., Helling, C., & Gunn, O. 2020, Astronomy and Astrophysics, 634, A23, doi: 10.1051/0004-6361/201936281 Wolf, E., Kopparapu, R., Haqq-Misra, J., & Fauchez, T. J. 2022, ExoCAM: A 3D Climate Model for Exoplanet Atmospheres, arXiv, doi: 10.48550/arXiv.2201.09797 Xue, Q., Bean, J. L., Zhang, M., et al. 2024, The Astrophysical Journal Letters, 963, L5, doi: 10.3847/2041-8213/ad2682 Zack, L. N., & Ziurys, L. M. 2009, Journal of Molecular Spectroscopy, 257, 213, doi: 10.1016/j.jms.2009.08.009 Zeidler, S., Posch, T., Mutschke, H., Richter, H., & Wehrhan, O. 2011, Astronomy & Astrophysics, 526, A68, doi: 10.1051/0004-6361/201015219 Zeldovich, Y. B., Granik, A., Jackson, E., et al. 1992, in Selected works of Yakov Borisovich Zeldovich (Princeton (N.J.): Princeton university press) Zhang, H., Huang, F., Gilbert, B., & Banfield, J. F. 2003, The Journal of Physical Chemistry B, 107, 13051, doi: 10.1021/jp036108t 26 APPENDIX 
+
+A. TABLE OF VARIABLES 
+
+Table 3 . Summary of variables used in this work. Symbol Description 
+
+ac Critical radius for nucleation 
+
+Ak Kelvin factor 
+
+α0, α 1, α 2, α 3 Coefficients of the saturation vapor pressure fit 
+
+β Interpolation factor between continuum and kinetic coagulation regimes 
+
+B0, . . . , B 6 Empirical coefficients for the polynomial fit of Re as a function of the Best number (Table 1) 
+
+cp Specific heat capacity of the atmosphere 
+
+csurf Surface number density of condensate molecules on the CCN 
+
+Cc Cunningham slip factor 
+
+CD Drag coefficient 
+
+dq Collision diameter of the limiting gas molecule 
+
+Di Brownian diffusion coefficient of particle species iDv Molecular diffusion coefficient of the condensate vapor 
+
+D′ 
+
+> v
+
+Corrected molecular diffusion coefficient 
+
+δi Transitional length scale for particle i in the coagulation regime interpolation ∆Fc Free energy of formation of a critical nucleus ∆F ′′  
+
+> c
+
+Second derivative of ∆ Fc w.r.t. molecule number, evaluated at ac
+
+EA Collision efficiency in the aerodynamic limit ( Re ≫ 1) 
+
+Ecoalesce Coalescence (sticking) efficiency 
+
+Ecollide Collision efficiency for gravitational coalescence 
+
+EFuchs Fuchs collision efficiency, correcting ELangmuir for direct interception by finite-size particles 
+
+ELangmuir Langmuir collision efficiency 
+
+EV Collision efficiency in the viscous limit ( Re ≪ 1) 
+
+ηa Kinematic viscosity of the atmosphere 
+
+f Shape factor relating heterogeneous to homogeneous free energy of formation 
+
+fr Particle mixing ratio 
+
+fsed Sedimentation efficiency parameter (equilibrium cloud condensation models) [Fe /H] Atmospheric metallicity 
+
+Fad Advective flux across a bin boundary 
+
+Fdes Desorption energy of the condensate molecule from the CCN 
+
+Fdif Diffusive flux across a bin boundary 
+
+Ft Thermal ventilation factor 
+
+Fv Mass ventilation factor 
+
+g Gravitational acceleration 
+
+gm Number of molecules in a particle of radius ac
+
+Table 3 continued on next page 27 
+
+Table 3 (continued) 
+
+Symbol Description 
+
+H Atmospheric pressure scale height, H = kT /μm pgJhet Heterogeneous nucleation rate 
+
+Jhom Homogeneous nucleation rate 
+
+Jki Heterogeneous nucleation rate producing bin-k particles on bin-i CCN 
+
+k Boltzmann constant 
+
+KB 
+
+> 12
+
+Brownian coagulation kernel 
+
+KDE  
+
+> 12
+
+Convective diffusion enhancement coagulation kernel 
+
+KG 
+
+> 12
+
+Gravitational collection coagulation kernel 
+
+Ktot 12 Total coagulation kernel 
+
+Kzz Eddy (turbulent) diffusion coefficient 
+
+κa Thermal conductivity of the atmosphere 
+
+κ′ 
+
+> a
+
+Corrected atmospheric thermal conductivity 
+
+κ0, κ 1, κ 2 Coefficients for the thermal conductivity parameterization Kn Knudsen number for transport Kn c Collisional Knudsen number of the condensing gas Kn t Thermal Knudsen number of the condensing gas 
+
+L Latent heat of vaporization; also the loss rate in the semi-implicit coagula-tion/growth update 
+
+ℓ, ℓ c, ℓ t Mean free paths associated with Kn, Kn c, and Kn t, respectively 
+
+ℓi Mean free path of particle iλc, λ t Correction coefficients for D′ 
+
+> v
+
+and κ′
+
+> a
+
+m Mass of a cloud particle 
+
+mi Mass of particles in bin imi+j Combined mass of two coagulating particles, mi+j = mi + mj
+
+mp Proton mass 
+
+mv Mass of a condensate gas particle 
+
+M Molar mass of the condensate 
+
+Ma Mean molar mass of the background atmosphere 
+
+Mv Molar mass of the limiting (key) gas species 
+
+μ Cosine of the contact angle between condensate and CCN surface 
+
+μa Dynamic viscosity of the atmosphere 
+
+μ1, μ 2, μ 3, μ 4 Coefficients for the dynamic viscosity parameterization 
+
+n Number density of condensate vapor molecules 
+
+nk Number density of particles in size bin k
+
+nt State vector of all gas and particle bin number densities at timestep tNA Avogadro’s number 
+
+Ns Surface density of adsorption sites on the CCN 
+
+∇ad Adiabatic temperature gradient, ( ∂ ln T /∂ ln P )S
+
+ν Attempt frequency for molecular desorption from the CCN 
+
+νgas cloud Stoichiometric ratio of the gas in the condensation reaction 
+
+νkey  
+
+> r
+
+Stoichiometric ratio of the limiting reactant in a Type III reaction 
+
+Table 3 continued on next page 28 
+
+Table 3 (continued) 
+
+Symbol Description 
+
+P Atmospheric pressure 
+
+P ↓ 
+
+> ijk
+
+, P ↑ 
+
+> ijk
+
+Partition factors distributing a coagulation product between adjacent mass bins 
+
+pi Equilibrium partial pressure of gas species ip′ 
+
+> i
+
+Saturation vapor pressure of gas species ips Saturation vapor pressure of condensate 
+
+pv Partial pressure of condensate vapor Φ Diffusion flux of vapor molecules 
+
+r Radius of a cloud particle 
+
+rm Mass ratio between adjacent mass bins, rm = mk+1 /m k
+
+rN Radius of the cloud condensation nucleus (CCN) 
+
+R Ideal gas constant 
+
+Rd Radial distance from the center of a cloud particle 
+
+Re Reynolds number of a falling particle 
+
+ρa Atmospheric mass density 
+
+ρp Bulk density of condensed particles 
+
+ρs Saturation vapor density at the particle surface 
+
+ρv Condensate vapor density 
+
+S Saturation ratio, S = pv /p s; also the source (production) term in the semi-implicit coagulation/growth update 
+
+Shet evap Source term from cores left behind by evaporating heterogeneous particles 
+
+Sk Stokes number; also the production rate into bin k in the semi-implicit update 
+
+Sr Effective supersaturation ratio for Type III reactions, Sr = S1/ν key 
+
+> r
+
+σ Surface tension of the condensate–vapor interface 
+
+σ0, σ 1 Coefficients of the linear surface-tension fit, σ = σ0 + σ1TT Atmospheric temperature 
+
+Tp Temperature of the cloud particle 
+
+u Advection velocity in the generalized coordinate ξved Eddy-diffusion vertical velocity 
+
+vi Mean thermal speed of particles in bin ivt Terminal (sedimentation) velocity of a particle 
+
+vwinds User-specified upward wind speed 
+
+v↑, v ↓ Upward / downward effective velocities across a bin boundary 
+
+ξ Generalized advection coordinate (altitude or particle mass) 
+
+Z Zeldovich factor (non-equilibrium correction to nucleation rate) 
+
+Zhet Zeldovich factor for heterogeneous nucleation B. DEFAULT CARMAPY CONDENSATES We present here the parameters used for the default CARMApy condensates in Tables 4 - 13. The indices of refraction for these condensates were taken from the sources in the POSEIDON (R. J. MacDonald & N. Madhusudhan 2017; R. J. MacDonald 2023) opacity database. The individual sources used for each condensate are cited in the respective tables. 29 
+
+Table 4. Physical and Thermodynamic Parameters for KCl Condensate Symbol Description Value Reference 
+
+ρp Condensed Density (g cm −3) 1.988 –
+
+M Molecular Weight 74.5 –
+
+σ0 Surface Energy (erg cm −2) 179.52 G. W. C. Kaye & T. H. Laby (2005) 
+
+σ1 Surface Energy Slope (erg cm −2 K−1) 0.07 
+
+α0 Saturation Vapor Pressure Offset 7.6106 C. V. Morley et al. (2012) 
+
+α1 SVP Temperature Coefficient (K) 11382 
+
+α2 SVP Metallicity Coefficient 0
+
+α3 SVP Pressure Coefficient 0Condensation Reaction KCl = KCl [s] C. V. Morley et al. (2012) Key (Limiting) Species KCl –
+
+dq Collision Diameter (cm) 3.08 × 10 −8 Estimated from R. T. Sanderson (1976) 
+
+Mv Molecular Weight of Limiting Species 74.5 –Indices of Refraction –H. R. Wakeford & D. K. Sing (2015) E. D. Palik (1985) 
+
+Table 5. Physical and Thermodynamic Parameters for ZnS Condensate Symbol Description Value Reference 
+
+ρp Condensed Density (g cm −3) 4.04 –
+
+M Molecular Weight 97.474 –
+
+σ0 Surface Energy (erg cm −2) 860 H. Zhang et al. (2003) 
+
+σ1 Surface Energy Slope (erg cm −2 K−1) 0
+
+α0 Saturation Vapor Pressure Offset 12.812 C. V. Morley et al. (2012) 
+
+α1 SVP Temperature Coefficient (K) 15873 
+
+α2 SVP Metallicity Coefficient 1
+
+α3 SVP Pressure Coefficient 0Condensation Reaction H2S + Zn = ZnS[s] C. V. Morley et al. (2012) Key (Limiting) Species Zn –
+
+dq Collision Diameter (cm) 3.67 × 10 −8 Estimated from L. N. Zack & L. M. Ziurys (2009) 
+
+Mv Molecular Weight of Limiting Species 65.38 –Indices of Refraction –H. R. Wakeford & D. K. Sing (2015) M. R. Querry (1987) 30 
+
+Table 6. Physical and Thermodynamic Parameters for Na 2S Condensate Symbol Description Value Reference 
+
+ρp Condensed Density (g cm −3) 1.856 –
+
+M Molecular Weight 78.0452 –
+
+σ0 Surface Energy (erg cm −2) 1033 E. Lee (priv. comm.) 
+
+σ1 Surface Energy Slope (erg cm −2 K−1) 0
+
+α0 Saturation Vapor Pressure Offset 8.55 C. V. Morley et al. (2012) 
+
+α1 SVP Temperature Coefficient (K) 13889 
+
+α2 SVP Metallicity Coefficient 0.5 
+
+α3 SVP Pressure Coefficient 0Condensation Reaction H2S + 2Na = Na 2S[s] + H 2 C. V. Morley et al. (2012) Key (Limiting) Species Na –
+
+dq Collision Diameter (cm) 4.2 × 10 −8 Estimated from L. Glasser & H. D. B. Jenkins (2000) 
+
+Mv Molecular Weight of Limiting Species 22.9898 –Indices of Refraction –H. R. Wakeford & D. K. Sing (2015), C. V. Morley et al. (2012), A. Montaner et al. (1979), H. Khachai et al. (2009) 
+
+Table 7. Physical and Thermodynamic Parameters for MnS Condensate Symbol Description Value Reference 
+
+ρp Condensed Density (g cm −3) 4.0 –
+
+M Molecular Weight 87.003 –
+
+σ0 Surface Energy (erg cm −2) 2326 E. Lee (priv. comm.) 
+
+σ1 Surface Energy Slope (erg cm −2 K−1) 0
+
+α0 Saturation Vapor Pressure Offset 11.532 C. V. Morley et al. (2012) 
+
+α1 SVP Temperature Coefficient (K) 23810 
+
+α2 SVP Metallicity Coefficient 1
+
+α3 SVP Pressure Coefficient 0Condensation Reaction H2S + 2Mn = Mn 2S[s] + H 2 C. V. Morley et al. (2012) Key (Limiting) Species Mn –
+
+dq Collision Diameter (cm) 3.68 × 10 −8 Estimated from C. B. Honsberg & S. G. Bowden (2007) 
+
+Mv Molecular Weight of Limiting Species 54.938 –Indices of Refraction –D. Kitzmann & K. Heng (2018), A. Montaner et al. (1979), D. R. Huffman & R. L. Wild (1967) 31 
+
+Table 8. Physical and Thermodynamic Parameters for Cr Condensate Symbol Description Value Reference 
+
+ρp Condensed Density (g cm −3) 7.15 –
+
+M Molecular Weight 51.9961 –
+
+σ0 Surface Energy (erg cm −2) 2068.63 G. W. C. Kaye & T. H. Laby (2005) 
+
+σ1 Surface Energy Slope (erg cm −2 K−1) 0.2 
+
+α0 Saturation Vapor Pressure Offset 7.49 C. V. Morley et al. (2012) 
+
+α1 SVP Temperature Coefficient (K) 20592 
+
+α2 SVP Metallicity Coefficient 0
+
+α3 SVP Pressure Coefficient 0Condensation Reaction Cr = Cr[s] C. V. Morley et al. (2012) Key (Limiting) Species Cr –
+
+dq Collision Diameter (cm) 3.66 × 10 −8 Atomic Radius 
+
+Mv Molecular Weight of Limiting Species 51.9961 –Indices of Refraction –D. Kitzmann & K. Heng (2018), D. Lynch & W. R. Hunter (1997), A. D. Rakic et al. (1998) 
+
+Table 9. Physical and Thermodynamic Parameters for Mg 2SiO 4 Condensate Symbol Description Value Reference 
+
+ρp Condensed Density (g cm −3) 3.21 –
+
+M Molecular Weight 140.69 –
+
+σ0 Surface Energy (erg cm −2) 436 T. Kozasa et al. (1989) 
+
+σ1 Surface Energy Slope (erg cm −2 K−1) 0
+
+α0 Saturation Vapor Pressure Offset 14.88 C. Visscher (priv. comm.) 
+
+α1 SVP Temperature Coefficient (K) 32488 
+
+α2 SVP Metallicity Coefficient 1.4 
+
+α3 SVP Pressure Coefficient 0.2 Condensation Reaction 2Mg + SiO + 3H 2O= Mg 2SiO 4[s] + 3H 2 C. Helling & P. Woitke (2006) Key (Limiting) Species Mg –
+
+dq Collision Diameter (cm) 3.85 × 10 −8 Estimated from L. Glasser & H. D. B. Jenkins (2000) 
+
+Mv Molecular Weight of Limiting Species 24.305 –Indices of Refraction –B. Burningham et al. (2021), C. J¨ ager et al. (2003) 32 
+
+Table 10. Physical and Thermodynamic Parameters for Fe Condensate Symbol Description Value Reference 
+
+ρp Condensed Density (g cm −3) 7.87 –
+
+M Molecular Weight 55.845 –
+
+σ0 Surface Energy (erg cm −2) 2565.2285 G. W. C. Kaye & T. H. Laby (2005) 
+
+σ1 Surface Energy Slope (erg cm −2 K−1) 0.39 
+
+α0 Saturation Vapor Pressure Offset 7.23 C. Visscher et al. (2006) 
+
+α1 SVP Temperature Coefficient (K) 20995 
+
+α2 SVP Metallicity Coefficient 0
+
+α3 SVP Pressure Coefficient 0Condensation Reaction Fe = Fe[s] C. Helling & P. Woitke (2006) Key (Limiting) Species Fe –
+
+dq Collision Diameter (cm) 3.7 × 10 −8 Atomic Radius 
+
+Mv Molecular Weight of Limiting Species 55.845 –Indices of Refraction –D. Kitzmann & K. Heng (2018), D. Lynch & W. R. Hunter (1997) 
+
+Table 11. Physical and Thermodynamic Parameters for TiO 2 Condensate Symbol Description Value Reference 
+
+ρp Condensed Density (g cm −3) 4.25 –
+
+M Molecular Weight 79.866 –
+
+σ0 Surface Energy (erg cm −2) 535.124 E. Lee et al. (2015) 
+
+σ1 Surface Energy Slope (erg cm −2 K−1) 0.04396 
+
+α0 Saturation Vapor Pressure Offset 9.5489 C. Helling et al. (2001) 
+
+α1 SVP Temperature Coefficient (K) 32456.8678 
+
+α2 SVP Metallicity Coefficient 0
+
+α3 SVP Pressure Coefficient 0Condensation Reaction TiO 2 = TiO 2[s] C. Helling & P. Woitke (2006) Key (Limiting) Species TiO 2 –
+
+dq Collision Diameter (cm) 3.39 × 10 −8 Estimated from C. Helling et al. (2001) 
+
+Mv Molecular Weight of Limiting Species 79.866 –Indices of Refraction –E. K. H. Lee et al. (2022), M. W. Ribarsky (1997), S. Zeidler et al. (2011) 33 
+
+Table 12. Physical and Thermodynamic Parameters for Al 2O3 Condensate Symbol Description Value Reference 
+
+ρp Condensed Density (g cm −3) 3.99 –
+
+M Molecular Weight 101.96 –
+
+σ0 Surface Energy (erg cm −2) 690 T. Kozasa et al. (1989) 
+
+σ1 Surface Energy Slope (erg cm −2 K−1) 0
+
+α0 Saturation Vapor Pressure Offset 17.7 H. R. Wakeford et al. (2017) 
+
+α1 SVP Temperature Coefficient (K) 45892.6 
+
+α2 SVP Metallicity Coefficient 1.66 
+
+α3 SVP Pressure Coefficient 0Condensation Reaction 2Al + 3H 2O = Al 2O3 + 3H 2 E. Sedlmayr & H.-P. Gail (2014). Key (Limiting) Species Al –
+
+dq Collision Diameter (cm) 3.83 × 10 −8 Estimated From E. R. Dobrovinskaya et al. (2009) 
+
+Mv Molecular Weight of Limiting Species 26.98 –Indices of Refraction –D. Kitzmann & K. Heng (2018), B. Begemann et al. (1997), C. Koike et al. (1995) 
+
+Table 13. Physical and Thermodynamic Parameters for SiO Condensate Symbol Description Value Reference 
+
+ρp Condensed Density (g cm −3) 2.13 –
+
+M Molecular Weight 44.0849 –
+
+σ0 Surface Energy (erg cm −2) 500 E. Sedlmayr & H.-P. Gail (2014) 
+
+σ1 Surface Energy Slope (erg cm −2 K−1) 0
+
+α0 Saturation Vapor Pressure Offset 14.12 H.-P. Gail et al. (2013) 
+
+α1 SVP Temperature Coefficient (K) 21506.3 
+
+α2 SVP Metallically Coefficient 0
+
+α3 SVP Pressure Coefficient 0Condensation Reaction SiO = SiO[s] E. Sedlmayr & H.-P. Gail (2014) Key (Limiting) Species SiO –
+
+dq Collision Diameter (cm) 4.4 × 10 −8 Estimated from E. Sedlmayr & H.-P. Gail (2014) 
+
+Mv Molecular Weight of Limiting Species 44.0849 –Indices of Refraction –D. Kitzmann & K. Heng (2018), H. R. Phillip (1997), S. Wetzel et al. (2013)
