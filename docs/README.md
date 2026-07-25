@@ -6,85 +6,65 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-22
-- 运行时间：2026-07-22 20:45:33 UTC
+- 最新运行日期：2026-07-25
+- 运行时间：2026-07-25 21:38:03 UTC
 - 运行状态：成功
-- 本次总论文数：21
-- 精读区：9
-- 速读区：12
+- 本次总论文数：15
+- 精读区：7
+- 速读区：8
 
 ### 今日简报（AI）
-1) 今日精读9篇论文，速读12篇，核心聚焦系外行星大气精确测量与恒星形成X射线成像突破。  
-2) 最值得看：JWST相位分辨交叉相关反演技术精确测定WASP-39b金属丰度和C/O比（10/10），以及高分辨X射线成像揭示恒星形成、演化与行星关联（9/10）。  
-3) 建议关注SKAO射电观测如何连接恒星形成与宜居世界，以及紧密恒星相遇中行星-卫星抛射的动力学模拟（均8/10）。
-- 详情：[/202607/22/README](/202607/22/README)
+今日精读7篇、速读8篇，核心聚焦系外行星WASP-39b的水同位素HDO探测与原行星盘中化学处理尘埃分布模型。最值得关注的是大气反演首次直接证据显示系外行星存在HDO，以及粘性演化盘中结晶硅酸盐在彗星中的分布机制。建议普通读者重点追踪系外行星大气成分研究进展，以及原行星盘尘埃演化对太阳系彗星起源的启示。
+- 详情：[/202607/25/README](/202607/25/README)
 
 ### 精读区论文标签
-1. [Precise Determination of the Metallicity and C/O of WASP-39~b From a Single JWST Instrument Mode with Phase-Resolved Cross-Correlation Retrievals](/202607/22/2607.18409v1-precise-determination-of-the-metallicity-and-co-of-wasp-39b-from-a-single-jwst-instrument-mode-with-phase-resolved-cross-correlation-retrievals)  
+1. [Atmospheric retrieval evidence for water isotopologue HDO on exoplanet WASP-39b](/202607/25/2607.19579v1-atmospheric-retrieval-evidence-for-water-isotopologue-hdo-on-exoplanet-wasp-39b)  
    标签：评分：10.0/10、query:exoplanets
-   evidence：系外行星大气成分测量
-2. [Star formation, stellar evolution, and planets in high-resolution X-ray imaging](/202607/22/2607.15474v1-star-formation-stellar-evolution-and-planets-in-high-resolution-x-ray-imaging)  
+   evidence：在系外行星WASP-39b上反演水同位素HDO
+2. [Distribution of Chemically-Processed Dust in a Viscously Evolving Protoplanetary Disk: Application to Crystalline Silicates in Comets](/202607/25/2607.16691v1-distribution-of-chemically-processed-dust-in-a-viscously-evolving-protoplanetary-disk-application-to-crystalline-silicates-in-comets)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：行星形成与演化研究
-3. [Case Study of a Super-eccentric Warm Jupiter Migrating via Equilibrium and Dynamical Tides](/202607/22/2607.16406v1-case-study-of-a-super-eccentric-warm-jupiter-migrating-via-equilibrium-and-dynamical-tides)  
+   evidence：研究原行星盘中尘埃的化学处理
+3. [Resolving core-envelope degeneracies in giant planets and sub-Neptunes: constraining the equivalence in the presence of dilute gradients](/202607/25/2607.16713v1-resolving-core-envelope-degeneracies-in-giant-planets-and-sub-neptunes-constraining-the-equivalence-in-the-presence-of-dilute-gradients)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：通过高偏心率潮汐演化研究热木星迁移
-4. [Distribution of Chemically-Processed Dust in a Viscously Evolving Protoplanetary Disk: Application to Crystalline Silicates in Comets](/202607/22/2607.16691v1-distribution-of-chemically-processed-dust-in-a-viscously-evolving-protoplanetary-disk-application-to-crystalline-silicates-in-comets)  
+   evidence：系外行星内部建模，解决巨行星和亚海王星的简并问题
+4. [Dynamically Selected Mass-Radius Relationship for Low Mass Exoplanets](/202607/25/2607.19632v1-dynamically-selected-mass-radius-relationship-for-low-mass-exoplanets)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：研究原行星盘中尘埃化学反应，与盘演化和行星形成相关
-5. [Probing disk dynamics and dust evolution through shadows in protoplanetary disks: A case study of the HD 142527 disk](/202607/22/2607.17648v1-probing-disk-dynamics-and-dust-evolution-through-shadows-in-protoplanetary-disks-a-case-study-of-the-hd-142527-disk)  
+   evidence：研究低质量系外行星质量-半径关系与动力学架构及形成历史的关联
+5. [Achieving efficient broadband spatial filtering for LIFE: status and plan](/202607/25/2607.20154v1-achieving-efficient-broadband-spatial-filtering-for-life-status-and-plan)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：原行星盘结构与尘埃演化
-6. [A Self-Consistent 3D Hydrodynamic Model for Helium Transit Signatures in Evaporating Hot Jupiters](/202607/22/2607.18193v1-a-self-consistent-3d-hydrodynamic-model-for-helium-transit-signatures-in-evaporating-hot-jupiters)  
+   evidence：通过零差干涉测量表征系外行星大气
+6. [Dust and Gas Transport in Substructured Nonideal MHD Wind-Launching Disks with Embedded Planets](/202607/25/2607.20158v1-dust-and-gas-transport-in-substructured-nonideal-mhd-wind-launching-disks-with-embedded-planets)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：针对蒸发热木星的氦透射特征的三维流体动力学模型，直接相关于系外行星大气表征
-7. [Azimuthal molecular variations in the AB Aur planet-forming disk](/202607/22/2607.18683v1-azimuthal-molecular-variations-in-the-ab-aur-planet-forming-disk)  
+   evidence：原行星盘尘埃气体传输与嵌入行星
+7. [Planetesimal Formation Across the Stellar Mass Spectrum and its Influence on Exoplanet-Inherited Volatile Budgets](/202607/25/2607.20271v1-planetesimal-formation-across-the-stellar-mass-spectrum-and-its-influence-on-exoplanet-inherited-volatile-budgets)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：AB Aur行星形成盘中的方位分子变化直接关联原行星盘结构和行星形成
-8. [Dynamical formation of long-period exoplanets systems in evolving binary stars](/202607/22/2607.19118v1-dynamical-formation-of-long-period-exoplanets-systems-in-evolving-binary-stars)  
-   标签：评分：9.0/10、query:exoplanets
-   evidence：双星系统中长周期系外行星的动力形成和演化
-9. [Refined parameters, formation, and dynamical stability of the wild exoplanet system K2-312=HD 80653](/202607/22/2607.19325v1-refined-parameters-formation-and-dynamical-stability-of-the-wild-exoplanet-system-k2-312hd-80653)  
-   标签：评分：9.0/10、query:exoplanets
-   evidence：行星系统的轨道动力学与稳定性
+   evidence：模拟不同恒星质量下的星子形成及其对系外行星挥发物预算的影响
 
 ### 速读区论文标签
-1. [Cradle of Life: From the Formation of Stars to Habitable Worlds with the SKAO](/202607/22/2607.13867v1-cradle-of-life-from-the-formation-of-stars-to-habitable-worlds-with-the-skao)  
+1. [CAFE follow-up of TESS hot Jupiter candidates left behind: I. Five newly confirmed planets and a false positive](/202607/25/2607.19756v1-cafe-follow-up-of-tess-hot-jupiter-candidates-left-behind-i-five-newly-confirmed-planets-and-a-false-positive)  
    标签：评分：8.0/10、query:exoplanets
-   evidence：SKAO在追踪恒星和行星形成、系外行星磁场及宜居世界方面的能力
-2. [Planet-moon ejections in close stellar encounters](/202607/22/2607.16402v1-planet-moon-ejections-in-close-stellar-encounters)  
+   evidence：确认热木星，对形成和迁移研究至关重要
+2. [A Search for Exoplanets around Northern Circumpolar Stars X. The origin of radial velocity variations in the evolved star HD 216595](/202607/25/2607.19775v1-a-search-for-exoplanets-around-northern-circumpolar-stars-x-the-origin-of-radial-velocity-variations-in-the-evolved-star-hd-216595)  
    标签：评分：8.0/10、query:exoplanets
-   evidence：通过数值散射实验研究恒星密近交会中的行星-卫星抛射，关注轨道动力学和稳定性
-3. [Late-infall-induced formation of giant planets, multi-generational planetesimals, and disk substructures](/202607/22/2607.18370v1-late-infall-induced-formation-of-giant-planets-multi-generational-planetesimals-and-disk-substructures)  
+   evidence：研究演化恒星径向速度变化以辨别系外行星信号
+3. [Magnetohydrodynamical opening of dust traps in protoplanetary disks](/202607/25/2607.21350v1-magnetohydrodynamical-opening-of-dust-traps-in-protoplanetary-disks)  
    标签：评分：8.0/10、query:exoplanets
-   evidence：晚期内落触发原行星盘中巨行星形成、多代星子和盘亚结构
-4. [Characterizing Microlensing Planetary System OGLE-2014-BLG-0676L with High-Resolution Image Constrained Light Curve Modeling](/202607/22/2607.18408v1-characterizing-microlensing-planetary-system-ogle-2014-blg-0676l-with-high-resolution-image-constrained-light-curve-modeling)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：通过微引力透镜刻画行星系统，测量主星和行星质量
-5. [Chondrite Parent Bodies as Escaped Satellites of Proto-Planetary Embryos](/202607/22/2607.18523v1-chondrite-parent-bodies-as-escaped-satellites-of-proto-planetary-embryos)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：行星系统形成与演化
-6. [On the Detectability of Volcanic Exo-Ios That May Fuel Auroras on Super-Jupiters](/202607/22/2607.13030v1-on-the-detectability-of-volcanic-exo-ios-that-may-fuel-auroras-on-super-jupiters)  
+   evidence：原行星盘中尘埃陷阱的磁流体动力学打开
+4. [A JWST, ALMA and VLA survey of the Ophiuchus-A star-forming region: Unveiling hidden dust mass and connecting infrared outflows to their radio origins](/202607/25/2607.15468v1-a-jwst-alma-and-vla-survey-of-the-ophiuchus-a-star-forming-region-unveiling-hidden-dust-mass-and-connecting-infrared-outflows-to-their-radio-origins)  
    标签：评分：7.0/10、query:exoplanets
-   evidence：探测可能为超级木星极光提供燃料的系外卫星，涉及系外行星大气特征
-7. [Coherence differential imaging using gradient-boosted decision trees for the direct detection of exoplanets](/202607/22/2607.15973v1-coherence-differential-imaging-using-gradient-boosted-decision-trees-for-the-direct-detection-of-exoplanets)  
+   evidence：对年轻恒星的天体多波段巡测揭示隐藏的盘尘埃质量
+5. [Coherence differential imaging using gradient-boosted decision trees for the direct detection of exoplanets](/202607/25/2607.15973v1-coherence-differential-imaging-using-gradient-boosted-decision-trees-for-the-direct-detection-of-exoplanets)  
    标签：评分：7.0/10、query:exoplanets
-   evidence：利用机器学习直接探测系外行星的方法
-8. [The Polana-Eulalia Complex with JWST NIRSpec: Connections to Bennu, Ryugu, and Outer Solar System Bodies](/202607/22/2607.16518v1-the-polana-eulalia-complex-with-jwst-nirspec-connections-to-bennu-ryugu-and-outer-solar-system-bodies)  
+   evidence：使用梯度提升树增强相干差分成像直接探测系外行星
+6. [The Polana-Eulalia Complex with JWST NIRSpec: Connections to Bennu, Ryugu, and Outer Solar System Bodies](/202607/25/2607.16518v1-the-polana-eulalia-complex-with-jwst-nirspec-connections-to-bennu-ryugu-and-outer-solar-system-bodies)  
    标签：评分：7.0/10、query:exoplanets
-   evidence：小行星成分与原行星盘物质及早期太阳系相关
-9. [Counterfactual Shapley Credit Assignment](/202607/22/2607.16999v1-counterfactual-shapley-credit-assignment)  
-   标签：评分：7.0/10、query:xrl-symbolic
-   evidence：使用反事实沙普利值的可解释强化学习信用分配方法
-10. [Optimal mode-sorting coronagraphy: limits of single-moded measurements for the Habitable Worlds Observatory](/202607/22/2607.17637v1-optimal-mode-sorting-coronagraphy-limits-of-single-moded-measurements-for-the-habitable-worlds-observatory)  
+   evidence：JWST近红外光谱观测碳质小行星，与原行星盘成分相关
+7. [The Effects of Magnetic Accretion on the Spatial Extent of White Dwarf Pollution](/202607/25/2607.20747v1-the-effects-of-magnetic-accretion-on-the-spatial-extent-of-white-dwarf-pollution)  
    标签：评分：7.0/10、query:exoplanets
-   evidence：宜居世界天文台日冕仪技术
-11. [Information-Based Exploration via Random Features for Reinforcement Learning](/202607/22/2607.17981v1-information-based-exploration-via-random-features-for-reinforcement-learning)  
-   标签：评分：7.0/10、query:xrl-symbolic
-   evidence：使用随机傅里叶特征计算信息增益的强化学习探索方法
-12. [Dynamical friction in stratified stellar envelopes](/202607/22/2607.16422v1-dynamical-friction-in-stratified-stellar-envelopes)  
+   evidence：模拟磁吸积对白矮星行星遗迹污染空间范围的影响
+8. [Distant TNO Inclinations as a Constraint on Primordial Cluster Perturbations in the Presence of Planet Nine](/202607/25/2607.15646v1-distant-tno-inclinations-as-a-constraint-on-primordial-cluster-perturbations-in-the-presence-of-planet-nine)  
    标签：评分：6.0/10、query:exoplanets
-   evidence：恒星包层中的动力学摩擦与行星螺旋轨道动力学相关
+   evidence：外海王星天体倾角约束行星九与原始星团扰动，涉及轨道动力学
 
 
 <div class="dpr-home-promo-card">
