@@ -6,55 +6,56 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-27
-- 运行时间：2026-07-27 21:40:10 UTC
+- 最新运行日期：2026-07-28
+- 运行时间：2026-07-28 21:53:59 UTC
 - 运行状态：成功
-- 本次总论文数：11
+- 本次总论文数：12
 - 精读区：7
-- 速读区：4
+- 速读区：5
 
 ### 今日简报（AI）
-1) 今日11篇论文中聚焦两大前沿：利用LIFE干涉仪探测宜居系外行星大气，以及JWST/MIRI首次揭示分子盘风向原子盘风的演化过程。  
-2) 最值得关注《Detecting habitable exoplanet atmospheres with LIFE》和《JWST/MIRI Reveals the Evolution from Molecular to Atomic Disk Winds》，前者为未来宜居性直接探测铺路，后者颠覆传统盘风模型。  
-3) 普通读者可跟进这些观测如何改变我们对行星形成与宜居环境的认知，尤其关注LIFE任务和JWST后续数据。
-- 详情：[/202607/27/README](/202607/27/README)
+今日精读7篇，速读5篇，重点聚焦岩石系外行星表面成分建模与ELT高分辨率光谱仪的高对比度成像性能。最值得关注SCoRE模型对系外行星表面成分的研究，以及ANDES光谱仪在高对比度系外行星观测中的模拟表现。若想跟进前沿，建议优先阅读这两篇高分文章，了解未来系外行星大气与表面探测的关键技术突破。
+- 详情：[/202607/28/README](/202607/28/README)
 
 ### 精读区论文标签
-1. [Detecting habitable exoplanet atmospheres with LIFE, the Large Interferometer for Exoplanets](/202607/27/2607.21683v1-detecting-habitable-exoplanet-atmospheres-with-life-the-large-interferometer-for-exoplanets)  
+1. [SCoRE: the Surface Composition of Rocky Exoplanets](/202607/28/2607.22820v1-score-the-surface-composition-of-rocky-exoplanets)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：系外行星大气探测与表征
-2. [JWST/MIRI Reveals the Evolution from Molecular to Atomic Disk Winds](/202607/27/2607.21733v1-jwstmiri-reveals-the-evolution-from-molecular-to-atomic-disk-winds)  
+   evidence：通过热稳定性模型连接系外行星大气观测与地壳成分
+2. [ANDES, the high-resolution spectrograph of the ELT: simulated performance of the CORO module and overview of the high-contrast capabilities for exoplanet observations](/202607/28/2607.23555v1-andes-the-high-resolution-spectrograph-of-the-elt-simulated-performance-of-the-coro-module-and-overview-of-the-high-contrast-capabilities-for-exoplanet-observations)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：JWST/MIRI观测原行星盘风和喷流，揭示从分子到原子的演化
-3. [Dust characterization of the HD 163296 disk with high-resolution multi-wavelength ALMA observations](/202607/27/2607.22169v1-dust-characterization-of-the-hd-163296-disk-with-high-resolution-multi-wavelength-alma-observations)  
+   evidence：模拟ANDES日冕仪用于系外行星大气表征的性能
+3. [Disc Candidates in IC 2395: A WISE Survey of the Kinematically Confirmed Membership](/202607/28/2607.23612v1-disc-candidates-in-ic-2395-a-wise-survey-of-the-kinematically-confirmed-membership)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：利用ALMA多波段高分辨率观测表征HD 163296原行星盘尘埃特性
-4. [CATKit2-HCI: a collaborative framework for advancing high-contrast coronagraph testbeds](/202607/27/2607.19921v1-catkit2-hci-a-collaborative-framework-for-advancing-high-contrast-coronagraph-testbeds)  
+   evidence：星周盘消散时标约束行星形成窗口
+4. [JWST/NIRCam Imaging of Young Stellar Objects. IV. Detailed Imaging of the Protoplanetary Disk around TW Hya](/202607/28/2607.23992v1-jwstnircam-imaging-of-young-stellar-objects-iv-detailed-imaging-of-the-protoplanetary-disk-around-tw-hya)  
+   标签：评分：9.0/10、query:exoplanets
+   evidence：JWST对原行星盘TW Hya的高对比度成像
+5. [Atmospheric Escape Rates of Planets in Stellar Tidal Fields from 3-D Hydrodynamic Simulations1](/202607/28/2607.24733v1-atmospheric-escape-rates-of-planets-in-stellar-tidal-fields-from-3-d-hydrodynamic-simulations1)  
+   标签：评分：9.0/10、query:exoplanets
+   evidence：系外行星大气逃逸的三维流体动力学模拟
+6. [The JDISC Survey: Inner Disk Chemistry of Class I/FS Disks and Tentative Evidence for Early Pebble Drift](/202607/28/2607.22839v1-the-jdisc-survey-inner-disk-chemistry-of-class-ifs-disks-and-tentative-evidence-for-early-pebble-drift)  
    标签：评分：8.0/10、query:exoplanets
-   evidence：高对比度星冕仪测试平台框架
-5. [A Stable Mineral Fingerprint in the Fading Warm Debris Disk around HD 15407A](/202607/27/2607.21948v1-a-stable-mineral-fingerprint-in-the-fading-warm-debris-disk-around-hd-15407a)  
+   evidence：JWST对Class I/FS盘的内盘化学巡天
+7. [Tracing outer planetary systems through white dwarf pollution in wide binaries](/202607/28/2607.22911v1-tracing-outer-planetary-systems-through-white-dwarf-pollution-in-wide-binaries)  
    标签：评分：8.0/10、query:exoplanets
-   evidence：碎片盘中的矿物指纹，巨撞击后岩石行星组装
-6. [First results of a continuous monitoring campaign of the PLATO Southern field](/202607/27/2607.22181v1-first-results-of-a-continuous-monitoring-campaign-of-the-plato-southern-field)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：监测PLATO南天场，探测冷木星并研究系外行星轨道对齐
-7. [HRMOS: a very high-resolution, multi-object spectrograph for the ESO VLT](/202607/27/2607.22411v1-hrmos-a-very-high-resolution-multi-object-spectrograph-for-the-eso-vlt)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：提出一种高分辨率多目标光谱仪，用于系外行星大气表征等天体物理研究
+   evidence：白矮星污染追溯宽双星中的外行星系统
 
 ### 速读区论文标签
-1. [JWST NIRCam Reveals the Largest Known M-dwarf Debris Disk Around TWA 10 and New Scattered-Light Observations of the TWA 25 Debris Disk](/202607/27/2607.22426v1-jwst-nircam-reveals-the-largest-known-m-dwarf-debris-disk-around-twa-10-and-new-scattered-light-observations-of-the-twa-25-debris-disk)  
+1. [Searching the Space of Feed-Forward Neural-Network Weight-Update Rules with Fixed Depth Symbolic Regression](/202607/28/2607.21855v1-searching-the-space-of-feed-forward-neural-network-weight-update-rules-with-fixed-depth-symbolic-regression)  
+   标签：评分：8.0/10、query:xrl-symbolic
+   evidence：使用符号回归发现可解释的权重更新规则
+2. [Angular Momentum of Planet-Forming Disks: Implications for Infall Driven Misalignments](/202607/28/2607.23741v1-angular-momentum-of-planet-forming-disks-implications-for-infall-driven-misalignments)  
    标签：评分：8.0/10、query:exoplanets
-   evidence：JWST发现M矮星TWA 10的巨大碎片盘，并研究TWA 25盘结构
-2. [Optical design of VIPER: a high-resolution multimode fiber-fed VIPA spectrograph for characterizing exoplanet atmospheric escape](/202607/27/2607.22454v1-optical-design-of-viper-a-high-resolution-multimode-fiber-fed-vipa-spectrograph-for-characterizing-exoplanet-atmospheric-escape)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：用于通过氦1083纳米线表征系外行星大气逃逸的光谱仪光学设计
-3. [Onset of dynamo action in planetesimals](/202607/27/2607.21744v1-onset-of-dynamo-action-in-planetesimals)  
+   evidence：行星形成盘的角动量及吸积导致的不对齐
+3. [A uniform transit survey of 461 ExoFOP M-dwarf TOI hosts: Follow-up prioritization and new transit candidates](/202607/28/2607.23781v1-a-uniform-transit-survey-of-461-exofop-m-dwarf-toi-hosts-follow-up-prioritization-and-new-transit-candidates)  
    标签：评分：7.0/10、query:exoplanets
-   evidence：星子中的发电机作用
-4. [Information content on Venusian aerosols in VIRTIS-M infrared data](/202607/27/2607.22187v1-information-content-on-venusian-aerosols-in-virtis-m-infrared-data)  
-   标签：评分：7.0/10、query:exoplanets
-   evidence：使用辐射传输和贝叶斯反演分析金星气溶胶垂直分布，方法可直接用于系外行星大气表征。
+   evidence：M矮星系外行星巡天与优先排序
+4. [Benchmarking Zero-Shot LLM-Generated Parent Selection in Genetic Programming for Symbolic Regression](/202607/28/2607.23505v1-benchmarking-zero-shot-llm-generated-parent-selection-in-genetic-programming-for-symbolic-regression)  
+   标签：评分：6.0/10、query:xrl-symbolic
+   evidence：利用LLM生成父选择算子的遗传编程符号回归，本身具有可解释性
+5. [A survey for variable young stars with small telescopes - XI. Spot Lifetimes and Coverage Distributions](/202607/28/2607.24460v1-a-survey-for-variable-young-stars-with-small-telescopes---xi-spot-lifetimes-and-coverage-distributions)  
+   标签：评分：6.0/10、query:exoplanets
+   evidence：年轻恒星自转变化和盘性质巡天，与原行星盘结构相关
 
 
 <div class="dpr-home-promo-card">
