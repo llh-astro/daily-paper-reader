@@ -1,0 +1,1436 @@
+Title: Relative Value Learning
+
+URL Source: https://arxiv.org/pdf/2607.21120v1
+
+Published Time: Fri, 24 Jul 2026 00:45:24 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+Published as a conference paper at ICLR 2026 
+
+# RELATIVE VALUE LEARNING 
+
+Marc Höftmann, Jan Robine & Stefan Harmeling 
+
+Department of Computer Science, Technical University of Dortmund, Germany Lamarr Institute for Machine Learning and Artificial Intelligence 
+
+{marc.hoeftmann,jan.robine,stefan.harmeling}@tu-dortmund.de 
+
+ABSTRACT 
+
+In reinforcement learning, critics typically estimate absolute state values V (s),estimating how good a particular situation is in isolation. However, it turns out that only differences in value are relevant for control. Motivated by this, we propose 
+
+Relative Value Learning (RV), a framework that learns value differences directly via an antisymmetric function ∆( si, sj ) = V (si) − V (sj ). We introduce a pairwise Bellman operator and prove it is a γ-contraction with a unique fixed point equal to the true value differences, derive well-posed 1-step, n-step and λ-return targets and reconstruct generalized advantage estimation from pairwise differences to obtain an unbiased policy-gradient estimator (R-GAE). Beyond theoretical results, we integrate RV with PPO and achieve competitive performance on the Atari benchmark (49 ALE games) compared to standard PPO, indicating that relative value estimation is an effective alternative to absolute critics. Our code is available at https://github.com/Hauf3n/relative-value-learning .
+
+1 MOTIVATION 
+
+Figure 1: Relative Value vs. Absolute Value Learning. . RV (left) learns value differences be-tween states for decision making while AV (right) learns the value for each state in isolation and then decides for the best decision (e.g. by taking maximum in Q-learning). In control, actions are chosen by comparisons ,not by absolute magnitudes. What matters is how good one state (or action) is relative to another. Formally, for γ < 1, V π is uniquely determined by the Bellman equation, but shifting it by any constant leaves advantages and greedy choices unchanged. This gauge freedom makes the abso-lute scale behaviorally meaningless: only differ-ences matter. Advantages Aπ (s, a) or greedy action selection max a Qπ (s, a) imply that ab-solute scales are not behaviorally meaningful. 
+
+Optimal control depends not on absolute mag-nitudes but exclusively on relative differences. 
+
+Despite this, standard value-based RL trains a critic to approximate V π (or Qπ ) and treats dif-ferences as a derived quantity. This introduces unnecessary degrees of freedom (the unpinned offset), invites drift under reward shaping or base-line changes, and can be ill-posed in settings where only comparisons or implicit feedback are given (e.g., preference-based or human-in-the-loop RL), precisely where the absolute scale is ambiguous while pairwise relations remain well-defined. A formulation that places relative infor-mation at the center would match the invariances of the decision making problem itself. We therefore adopt the following viewpoint: make value differences the primary learning objective. Concretely, we learn an antisymmetric function ∆θ : S ×S → R with ∆θ (si, sj ) = −∆θ (sj , si) that approximates V π (si) − V π (sj ). Working directly with ∆θ eliminates the gauge degree of freedom by construction and aligns the critic with the invariants already exploited by policy-gradient methods 1arXiv:2607.21120v1 [cs.LG] 23 Jul 2026 Published as a conference paper at ICLR 2026 through baselines. In addition, advantages can be reconstructed from pairwise differences without knowing the absolute value of any state, providing an unbiased policy-gradient estimator (R-GAE). This perspective is not just aesthetic. It enables a clean analytic foundation. 
+
+Our Contributions: 
+
+1. Pairwise Value Operator. We formalize a Bellman operator on antisymmetric functions and prove γ-contraction with a fixed point equal to true value differences. 2. Value Targets. We derive 1-step / n-step / λ-return targets using only observable rewards and non terminal pairwise terms, ensuring well-posed bootstrapping targets. 3. Relative GAE (R-GAE). We show that GAE can be reconstructed from pairwise differ-ences that also results in an unbiased policy gradient estimator. In addition we derive the relationship between GAE and R-GAE and show that RV achieves competitive performance on Atari. 
+
+2 RELATED WORK 
+
+Classical value-based RL trains absolute state or action values using Bellman operators, e.g. TD( λ), DQN, Double DQN, Rainbow, and other actor critic variants (Sutton & Barto, 2018; Mnih et al., 2013; Van Hasselt et al., 2016; Wang et al., 2016a; Hessel et al., 2018) Distributional critics (Bellemare et al., 2017; Dabney et al., 2018) restructure the target but continue to operate in an absolute space. Although adding a constant to V π or Qπ leaves action preferences unchanged (Sutton & Barto, 2018), absolute critics still predict a scalar on an arbitrary scale. By contrast, RV removes the offset degree of freedom at the model level by learning antisymmetric value differences over state pairs, aligning the function class with the invariances of decision making. This invariance is a special case of policy-invariant reward transformations (potential-based shaping) (Ng et al., 1999). Several methods estimate or emphasize advantages rather than values. Direct Advantage Estimation (DAE) Pan et al. (2022) directly learns advantages Aπ (s, a) to bypass value learning. Dueling networks decompose learning 
+
+Qπ (s, a) = V π (s) + Aπ (s, a) to improve sample efficiency and robustness Wang et al. (2016b). Actor-critic variants such as A2C/A3C Mnih et al. (2016), TRPO Schulman et al. (2015a) and clipped PPO Schulman et al. (2017) then use baselines and advantage estimates within trust-region-style updates. In contrast, RV directly learns value differences ∆( si, sj ) with an explicit pairwise Bellman operator to provide the actor relative advantages . RV’s critic uses a siamese difference head that enforces antisymmetry and zero self-difference by design. Earlier work in stochastic control has also advocated learning value differences rather than absolute values. Bertsekas (1997) introduces differential training of rollout policies, approximating cost-to-go differences with TD-style methods. In RL, pairwise objectives have appeared mainly in preference-based and human-in-the-loop RL (Christiano et al., 2017; Leike et al., 2018) or in inverse RL, but not as a Bellman-consistent value critic. Our work fills this gap. 
+
+3 RELATIVE VALUE LEARNING 
+
+We now present Relative Value Learning (RV), which learns an antisymmetric function over all state pairs with a neural network 
+
+∆θ : S × S → R, ∆θ (si, sj ) = −∆θ (sj , si), (1) that tries to approximate the value difference ∆π (si, sj ) := V π (si) − V π (sj ), under a fixed policy 
+
+π. As a result, RV avoids exact value estimates during training and integrates naturally with on-policy actor-critic methods (e.g., PPO) by supplying relative advantages (R-GAE). 3.1 PRELIMINARIES 
+
+We consider a discounted Markov decision process (MDP) (S, A, P , r, γ) with state space S, action space A, transition function P (s′ | s, a), bounded reward function r : S × A → [rmin , rmax ], and discount factor γ ∈ [0, 1) . Considering a stochastic policy π(a | s), the value function under π is 
+
+V π (s) := Eπ,P
+
+h ∞X
+
+> t=0
+
+γt r(st, at) s0 = s
+
+i
+
+, (2) 2Published as a conference paper at ICLR 2026 which satisfies the Bellman equation 
+
+V π (s) = rπ (s) + γ Es′∼P π (·| s)
+
+V π (s′), rπ (s) := Ea∼π(·| s)[r(s, a)]. (3) 
+
+Gauge Freedom and Relative Values. Shifted value functions do also satisfy a Bellman equation like Equation 3 (Lemma B.1 explains how to shape the reward). These shifts are irrelevant for control, since the advantages or greedy action selection are invariant. Hence the absolute scale of V π is not meaningful, and only differences of values are invariant. We therefore define the pairwise value difference 
+
+∆π (si, sj ) = V π (si) − V π (sj ), (si, sj ) ∈ S × S. (4) Note that it is antisymmetric ∆π (si, sj ) = −∆π (sj , si), and satisfies ∆π (s, s) = 0 for all s.
+
+Pairwise Bellman Identity. Fix (si, sj ) ∈ S × S. Draw s′ 
+
+> i
+
+∼ P π (· | si) and s′ 
+
+> j
+
+∼ P π (· | sj )
+
+independently (only conditional on si or sj respectively). Subtracting the Bellman equations of (3) for si and sj gives the recursive identity 
+
+∆π (si, sj ) = rπ (si) − rπ (sj ) + γ Es′      
+
+> i∼Pπ(·| si)
+> s′
+> j∼Pπ(·| sj)
+
+∆π (s′
+
+> i
+
+, s′ 
+
+> j
+
+). (5) Equation 5 depends only on observable one-step rewards via rπ and on pairwise differences at successors. It is invariant to any additive shift of V π as we have shown in Lemma B.1. 3.2 PAIRWISE BELLMAN OPERATOR 
+
+Fix a policy π. We work on the Banach space of bounded antisymmetric pairwise functions 
+
+F := 
+
+n
+
+∆ : S × S → R ∆( si, sj ) = −∆( sj , si), ∥∆∥∞ < ∞
+
+o
+
+, (6) 
+
+∥∆∥∞ = sup  
+
+> (si,sj)
+
+|∆( si, sj )|.
+
+In addition, let ∆rπ (si, sj ) := rπ (si) − rπ (sj ) be the immediate reward difference. 
+
+Operator form. Let bPπ act on F by 
+
+( bPπ ∆)( si, sj ) = Es′       
+
+> i∼Pπ(·| si), s′
+> j∼Pπ(·| sj)
+
+∆( s′
+
+> i
+
+, s′ 
+
+> j
+
+). (7) Define the pairwise Bellman operator Tπ : F → F by 
+
+(Tπ ∆)( si, sj ) := ∆ rπ (si, sj ) + γ ( bPπ ∆)( si, sj ). (8) This coincides with the definition from Equation (5) used in our method when s′ 
+
+> i
+
+and s′ 
+
+> j
+
+are drawn independently from P π (·| si) and P π (·| sj ), respectively. 
+
+Theorem 3.1 (Contraction and uniqueness) . For any ∆1, ∆ 2 ∈ F ,
+
+∥Tπ ∆1 − Tπ ∆2∥∞ ≤ γ ∥∆1 − ∆2∥∞.
+
+Consequently, by the Banach fixed-point theorem, Tπ has a unique fixed point ∆π ∈ F . Moreover, this fixed point equals the true value differences, i.e., ∆π (si, sj ) = V π (si)−V π (sj ) for all (si, sj ) ∈S × S .Proof. The immediate difference ∆rπ cancels in Tπ ∆1 − Tπ ∆2, hence for each (si, sj ),
+
+(Tπ ∆1 − Tπ ∆2)( si, sj ) = γ E(∆ 1 − ∆2)( s′
+
+> i
+
+, s′ 
+
+> j
+
+) ≤ γ E|(∆ 1 − ∆2)( s′
+
+> i
+
+, s′ 
+
+> j
+
+)|
+
+≤ γ ∥∆1 − ∆2∥∞.
+
+Since this bound holds for all pairs (si, sj ) thus taking the supremum over (si, sj ) concludes with 
+
+∥T ∆1 − T ∆2∥∞ ≤ γ∥∆1 − ∆2∥∞.
+
+Related ‘relative’ value functions arise in average-reward MDPs, where values are defined only up to an additive constant and algorithms fix the gauge via relative value iteration (Abounadi et al., 2001; Puterman, 2014; Bertsekas, 2025). 3Published as a conference paper at ICLR 2026 3.3 RELATIVE GENERALIZED ADVANTAGE ESTIMATION (R-GAE) In this section, we define the R-GAE estimator which is in essence analogous to GAE (Schulman et al., 2015b). Furthermore, we derive the relationship between GAE and R-GAE and show that both estimators learn the same (optimal) policy. Then, R-GAE is combined with PPO (Schulman et al., 2017) to provide relative advantages . Hereby, one of our key theoretical contributions is the fact that GAE can be reconstructed without knowing the exact value of a state. 
+
+Relative GAE. First, we construct relative values ˜Vθ for each state of an arbitrary environment rollout (s0, s1, . . . , sT ), where T denotes the rollout length. Note in our notation that s0 is not the environment’s start state, but it can be any state. This notation simplifies the following descriptions. We define the relative value sequence by telescoping the differences: 
+
+˜Vθ (s0) := 0, ˜Vθ (st) := 
+
+> t−1
+
+X
+
+> k=0
+
+∆θ (sk+1 , sk) (t ≥ 1). (9) Note, that it is also possible to use a larger step size for calculating relative values, e.g. one can directly compute ˜Vθ (st) = ∆ θ (st, s0). If ∆θ = ∆ π , then the relationship becomes ˜Vθ (st) = 
+
+V π (st) − V π (s0). Analogous to GAE, define relative TD residuals 
+
+˜δt := rt + γ ˜Vθ (st+1 ) − ˜Vθ (st), (10) and finally construct the relative GAE similarly 
+
+˜At :=  
+
+> T−t
+
+X
+
+> l=0
+
+(γλ )l ˜δt+l. (11) Essentially, RV acts as the critic and replaces GAE with R-GAE in the PPO clipping objective. Furthermore, we give additional theoretical insight about R-GAE in the following. In short, these insights conclude that: 1. There exists a relationship between GAE and R-GAE that is given as ˜At = At + Bt. For more details, see Lemma 3.2. 2. The optimal policy for both estimators is identical. See Corollary 3.3. 
+
+Lemma 3.2 (Relationship between GAE and R-GAE) . We call C := V π (s0) the trajectory constant. If ∆θ = ∆ π , then the following equality holds 
+
+˜At = At + Bt, (12) 
+
+where At is the standard GAE computed from V π , and Bt = (1 − γ)C PT −tl=0 (γλ )l.
+
+Proof. By construction of the relative values, we have that ˜V (st) = V π (st) − C for all t. Hence inserting this form in Equation 10 gives 
+
+˜δt = rt + γ V π (st+1 ) − C −  V π (st) − C = rt + γV π (st+1 ) − V π (st)
+
+| {z }
+
+> δt
+
++ (1 − γ) C, (13) where δt is the TD residual. Therefore, for each timestep the relative advantage is 
+
+˜At = 
+
+> T−t
+
+X
+
+> l=0
+
+(γλ )l ˜δt+l = 
+
+> T−t
+
+X
+
+> l=0
+
+(γλ )l δt+l + (1 − γ) C 
+
+> T−t
+
+X
+
+> l=0
+
+(γλ )l = At + Bt,
+
+Gauge Invariance vs. Trajectory-constant Baseline. To get a better understanding of the trajectory constant Bt, we discuss its role and properties in Appendix C. Lemma B.1 states that adding any scalar c ∈ R to V π (together with the corresponding reward shaping) leaves action preferences, advantages and pairwise value differences invariant; hence the absolute gauge of V π is behaviorally irrelevant. Lemma 3.2, however, shows when we reconstruct advantages from pairwise differences by 4Published as a conference paper at ICLR 2026 anchoring to zero on each rollout, there exists indeed a difference quantified by Bt. These statements are compatible and are not contradicting each other. Anchoring ˜V (s0) = 0 is a gauge fixing analogous to the differential (relative) value normalization used in average-reward MDPs (Abounadi et al., 2001; Puterman, 2014; Bertsekas, 2025). The only difference is scope: Ours is per-trajectory and theirs is global, so unbiasedness (see Corollary 3.3) is preserved while a trajectory-constant Bt may appear. As a remark, we can achieve pointwise equality with GAE, if we learned the non-antisymmetric 
+
+two-argument function 
+
+∆γ (s′, s) := γV (s′) − V (s), (14) so that the temporal-difference residual δt = rt + ∆ γ (st+1 , st) is modeled precisely. The correspond-ing Bellman operator is indeed a contractive self-map on the pairwise space, which can be derived analogous to Theorem 3.1. However, we tried to apply ∆γ (s′, s) in practice, but the results are worse compared to R-GAE. Therefore, we continue to work with R-GAE and show in Section 4 how to reduce the variance of Bt.
+
+Corollary 3.3 (Unbiasedness for policy gradient) . Let ∇ϕJ(ϕ) := Et[∇ϕ log πϕ(at | st) At] denote the standard policy gradient (PG) under πϕ. If the advantages in the score-function estimator are replaced by the relative advantages from Lemma 3.2, i.e., 
+
+∇ϕ ˜J(ϕ) := Et
+
+h
+
+∇ϕ log πϕ(at | st) ˜At
+
+i
+
+,
+
+then 
+
+∇ϕ ˜J(ϕ) = ∇ϕJ(ϕ). (15) 
+
+Proof. By Lemma 3.2, ˜At = At + Bt with Bt = C (1−(γλ )T −t+1 ) 
+
+> 1−γλ
+
+as trajectory constant, hence 
+
+Et
+
+h
+
+∇ϕ log πϕ(at | st) ˜At
+
+i
+
+= Et[∇ϕ log πϕ(at | st) At] + Et[∇ϕ log πϕ(at | st) Bt] . (16) Condition on st by the trajectory prefix up to time t (so that Bt does not depend on at) and then using the score-function identity gives 
+
+E[∇ϕ log πϕ(at | st) Bt | st] = Bt Eat∼πϕ(·| st)[∇ϕ log πϕ(at | st)] = 0. (17) Taking expectations over t yields 
+
+Et
+
+h
+
+∇ϕ log πϕ(at | st) ˜At
+
+i
+
+= Et[∇ϕ log πϕ(at | st) At] , (18) which is precisely Equation 15. 3.4 RELATIVE VALUE TARGETS 
+
+When approximating the pairwise Bellman operator (Eq. 8) from two sampled 1-step transitions 
+
+τi = ( si, ai, ri, di, si+1 ), τj = ( sj , aj , rj , dj , sj+1 ), terminal successor states make the naive bootstrap ∆( si+1 , sj+1 ) ill-posed because absolute values are not available in our formulation. For example, if si+1 is a terminal state ( di = 1 ), then we need to calculate 
+
+∆( si+1 , sj+1 ) = 0 − V (sj+1 ) = −V (sj+1 ), 
+
+which is simply not accessible in that way. Therefore, we need to rearrange all bootstrapping targets in terms of observable rewards and non terminal pairwise differences ∆θ (·, ·). In this way the targets get well-posed and are compatible with the operator Tπ on antisymmetric functions. Due to limited space, the complete formal derivation is given in Appendix A. 
+
+1-step Target. Given the prediction ∆θ (si, sj ), the corresponding 1-step target takes the form 
+
+y(1)  
+
+> ij
+
+:= ( ri − rj ) + γ δ ij , (19) where the bootstrap term δij depends on the successor terminal flags di, dj ∈ { 0, 1 }:
+
+δij =
+
+
+
+∆θ (si+1 , sj+1 ), if di = 0, dj = 0, ∆θ (si+1 , sj ) + rj , if di = 0, dj = 1, ∆θ (si, sj+1 ) − ri, if di = 1, dj = 0, ∆θ (si, sj ) + rj − ri, if di = 1, dj = 1. 
+
+(20) 5Published as a conference paper at ICLR 2026 When di=dj =1 , one may replace the last line of Equation 20 by δij =0 (both successors are absorbing with zero value) to reduce variance at ends of the two episodes. We use δij =0 by default, so the derived fourth case in Appendix A is optional. 
+
+N-step Target. To extend beyond 1-step temporal difference targets, we define the pairwise n-step case by considering two trajectories 
+
+τi = {(si+k, ri+k, di+k, si+k+1 )}k≥0, τj = {(sj+k, rj+k, dj+k, sj+k+1 )}k≥0.
+
+Then, the target becomes 
+
+y(n) 
+
+> ij
+
+:= 
+
+> n−1
+
+X
+
+> k=0
+
+γk(ri+k − rj+k) + γn∆θ (si+n, sj+n), (21) with the assumption that neither trajectory terminates within the n-step window (i.e., di+k = dj+k =0 for k < n ). If the trajectories have different length, then we take the minimum length. Note, that the final estimated difference ∆θ (si+n, sj+n) needs to consider the case distinction from Eq. 20. 
+
+λ-Return. Interpolating between high-bias/low-variance ( n=1 ) and Monte-Carlo limits gives the pairwise λ-return 
+
+y(λ) 
+
+> ij
+
+:= (1 − λ)
+
+> ∞
+
+X
+
+> n=1
+
+λ n−1 y(n) 
+
+> ij
+
+, λ ∈ [0, 1], (22) with the convention that y(n) 
+
+> ij
+
+is truncated at the first encountered terminal using the case distinction from Equation 20. 
+
+4 RELATIVE VALUE INITIALIZATION 
+
+As demonstrated in Lemma 3.2, the zero-anchor ˜V (s0) = 0 (see Equation 9) induces a trajectory-constant offset Bt for R-GAE. If the unknown |C| is large (recall C = V π (s0)), then Bt inflates the magnitude of ˜At. It thereby can increase the variance of our policy-gradient estimate (see Appendix C). The increased variance makes the credit assignment problem harder and we therefore seek a data-dependent initialization that drives Et[Bt] ≈ 0 over a collected batch. Intuitively speaking, our solution is to rank trajectories relative to each other which can be understood as anchoring. For a visual example, see Figure 2. 4.1 TRAJECTORY RANKING 
+
+Given M training rollouts {τ (m)}Mm=1 with states τ (m) = (s(m)0 , . . . , s(m) 
+
+> T
+
+) and done flags 
+
+{d(m) 
+
+> t
+
+}T −1 
+
+> t=0
+
+indicating whether s(m) 
+
+> t+1
+
+begins a new episode. Define 
+
+K(m) := {0} ∪ { t ∈ { 1, . . . , T } : d(m) 
+
+> t−1
+
+= 1 }, (23) as the index set where either a sub-episode or new episode starts. In the following, we refer to these selected states as start states . Enumerate all N = P 
+
+> m
+
+|K (m)| start states as {s(n)
+
+> start
+
+}Nn=1 , where each 
+
+s(n) 
+
+> start
+
+= s(m) 
+
+> k
+
+for some k ∈ K (m). Let ∆θ : S × S → R be the learned (noisy) difference model and define the N × N matrix of pairwise differences 
+
+∆ij := ∆ θ
+
+
+
+s(i)
+
+> start
+
+, s(j)
+
+> start
+
+
+
+, 1 ≤ i, j ≤ N . (24) To obtain an offset estimation that is robust to prediction noise and is identifiable up to a batchwise constant (which is sufficient for ranking), we estimate all start state offsets O via row-wise averaging and then subtract the batch minimum to get non-negative values with ranking 
+
+O(s(n)
+
+> start
+
+) := 1
+
+N
+
+> N
+
+X
+
+> j=1
+
+∆nj , bVθ (s(n)
+
+> start
+
+) := O(s(n)
+
+> start
+
+) − min  
+
+> 1≤ℓ≤N
+
+O(s(ℓ)
+
+> start
+
+) . (25) Finally and to avoid overly complex notation, for any state s in a rollout, use the most recent start state in that same rollout, call it sstart . Set the relative value for s as 
+
+¯Vθ (s) = bVθ (sstart ) + ∆ θ (s, sstart ), (26) and use these values for R-GAE. In that way, each state gets its episode-specific offset. 6Published as a conference paper at ICLR 2026 
+
+0
+
+τ1
+
+τ2
+
+τ3
+
+t 
+
+> RELATIVE VALUES
+
+0
+
+τ1
+
+τ2
+
+τ3
+
+t    
+
+> RELATIVE VALUES WITH OFFSET
+> ˜Vθ(st)
+> ¯Vθ(st)
+
+0 ∆00 ∆00 
+
+∆00 0 ∆00 
+
+∆00 ∆00 0
+
+s0
+
+s0
+
+s0
+
+s0 s0 s0
+
+> RV D IFFERENCES 1
+> row mean
+
+O(s0)
+
+O(s0)
+
+O(s0)  
+
+> 2ESTIMATE OFFSET
+
+bVθ (s0)
+
+bVθ (s0)
+
+bVθ (s0)
+
+Refinement: 
+
+bVθ (s0) := O(s0) − min  O(s0), O(s0), O(s0)                   
+
+> 3REFINE OFFSET
+> use
+> ¯Vθ(st) := bVθ(s0) + ∆ θ(st,s0)
+> ¯Vθ(st) := bVθ(s0) + ∆ θ(st,s0)
+> ¯Vθ(st) := bVθ(s0) + ∆ θ(st,s0)
+> 4ADD OFFSET
+
+Figure 2: Trajectory Ranking. When training batches contain samples from more than one episode, the initialization ˜V (s0) = 0 for each trajectory τi is not correct. The trajectories need to be ranked relative to each other by adding an offset that is calculated with ∆( si, sj ). Note that s0, s0, s0 are start states of τ1, τ2, τ3 indicated by color. For simplicity, assume in this figure that start states are only present at t = 0 for each rollout, so we can think about each τ as one episode. 
+
+5 TRAINING OBJECTIVE 
+
+The PPO objective uses relative advantages ˜At and the usual clipped surrogate: 
+
+Lpolicy (θ) = Et
+
+ min( rt(θ) ˜At, clip( rt(θ), 1 − ϵ, 1 + ϵ) ˜At), rt(θ) = πθ (at | st)
+
+πold (at | st) . (27) The critic loss and entropy bonus are 
+
+Lcritic (θ) = E(i,j)∼μ
+
+  ∆θ (si, sj ) − y(n)
+
+> ij
+
+2, Lent (θ) = −Et[H(πθ (· | st))], (28) where we use the n-step value target (see Eq. 21) and finally optimize the combined loss 
+
+L(θ) = −L policy (θ) + cv Lcritic (θ) + ceLent (θ). (29) 5.1 NETWORK ARCHITECTURE 
+
+For all Atari experiments we use the exact same architecture as PPO Schulman et al. (2017). The pol-icy and relative value function share the CNN encoder fenc (s) ∈ Rd and then split their computation by using a single linear layer for their respective outputs. 
+
+Relative Critic. Relative values are obtained by applying the same encoder fenc (s) to both states and projecting the difference of their embeddings. We do not use an additional target encoder or stop-gradients. Formally, the value difference for a state pair (si, sj ) is given by 
+
+∆θ (si, sj ) = Φ   fenc (si) − fenc (sj ), (30) where Φ is the projection head. For fair comparisons, our experiments use a single learned vector 
+
+w ∈ Rd without bias term to ensure antisymmetry ∆θ (si, sj ) = −∆θ (sj , si) and ∆θ (si, si) = 0 by design. It is also feasible to build Φ as an non-linear MLP that is antisymmetric in nature (e.g. by using tanh activations and no bias term in linear layers). But so far, we have not observed additional improvements by using such non-linear heads. 
+
+6 EXPERIMENTS 
+
+We evaluate Relative Value Learning (RV) as a drop-in critic for on-policy policy-gradient methods on the Arcade Learning Environment (ALE) for Atari. Observations follow the standard PPO 7Published as a conference paper at ICLR 2026 preprocessing: random no-op resets, frame skip with max-over-two, grayscale resizing to 84 ×84 ,stacking m=4 frames, and input scaling to [0, 1] . Networks use orthogonal initialization with a small policy logit scale ( 0.01 ) and unit scale for the value head, matching widely used PPO implementations. We run with EnvPool Weng et al. (2022) for high-throughput environment simulation and train for 
+
+40 M frames ( 10 M environment steps). For each game we use 10 independent seeds and report performance as the average score over the last 100 training episodes. All hyperparameters stay identical over 49 games and are reported in Appendix D. Table 1: PPO+RV (ours) is competitive with PPO and DAE. Mean final scores (last 100 episodes) with standard deviation of PPO, DAE and our method (PPO+RV) after 40 M game frames. 
+
+Game PPO (Schulman et al., 2017) DAE (Pan et al., 2022) PPO + RV (ours) Alien 1850.3 ±376.8 1372.7 ±349.3 1748.8 ±408.7 Amidar 674.6 ±108.5 394.6 ±121.9 504.7 ±108.8 Assault 4971.9 ±642.4 2205.1 ±362.3 3901.7 ±219.2 Asterix 4532.5 ±1570.7 3750.1 ±522.9 3862.2 ±678.2 Asteroids 2097.5 ±88.8 1392.3 ±62.3 1489.5 ±91.5 Atlantis 2 311 815.0 ±420555.5 2 888 011.1 ±225889.1 3 101 686.1 ±451117.9 BankHeist 1280.6 ±2.7 257.8 ±193.2 1209.0 ±77.5 BattleZone 17 366.7 ±1045.0 16 302.0 ±2042.5 21 780.0 ±1516.1 BeamRider 1590.0 ±276.3 1729.9 ±172.7 2044.0 ±396.3 Bowling 40.1 ±13.8 36.1 ±9.1 46.3 ±7.9 Boxing 94.6 ±0.9 25.9 ±9.5 94.8 ±0.8 Breakout 274.8 ±20.2 234.9 ±28.2 263.0 ±27.7 Centipede 4386.4 ±165.6 3915.8 ±694.4 1226.1 ±104.5 ChopperCommand 3516.3 ±991.6 1587.3 ±423.6 4435.2 ±965.5 CrazyClimber 110 202.0 ±3547.7 112 319.5 ±6125.4 111 622.2 ±5645.4 DemonAttack 11 378.4 ±2800.5 2477.2 ±344.3 8944.7 ±534.3 DoubleDunk −14.9 ±1.3 −12.5 ±3.0 −23.3 ±5.3 Enduro 758.3 ±31.2 0.0 ±0.0 1080.2 ±121.1 FishingDerby 17.8 ±2.8 −60.4 ±7.2 19.8 ±5.2 Freeway 32.5 ±0.3 19.5 ±13.7 31.9 ±0.2 Frostbite 314.2 ±4.9 367.9 ±278.2 522.6 ±399.0 Gopher 2932.9 ±1870.6 1137.2 ±156.8 3719.1 ±249.5 Gravitar 737.2 ±150.9 443.5 ±50.3 1441.0 ±561.4 IceHockey −4.2 ±0.3 −5.1 ±0.5 −3.9 ±0.4 Jamesbond 560.7 ±94.9 507.8 ±21.7 568.9 ±43.7 Kangaroo 9928.7 ±7089.9 1331.0 ±1060.8 5649.0 ±2940.0 Krull 7942.3 ±555.1 9034.0 ±774.6 8870.9 ±473.1 KungFuMaster 23 310.3 ±2251.9 20 535.3 ±2810.7 24 483.6 ±6794.6 MontezumaRevenge 42.0 ±57.4 0.1 ±0.3 1.4 ±3.4 MsPacman 2096.5 ±157.1 2501.0 ±600.9 1721.2 ±230.1 NameThisGame 6254.9 ±160.9 6016.3 ±283.3 6685.3 ±938.3 Pitfall −32.9 ±19.0 −12.0 ±23.1 −27.3 ±26.3 Pong 20.7 ±0.2 20.7 ±0.3 16.8 ±3.1 PrivateEye 69.5 ±55.2 86.0 ±14.9 93.3 ±17.6 Qbert 14 293.3 ±293.1 11 119.6 ±3465.8 15 261.6 ±502.1 Riverraid 8393.6 ±385.4 3150.8 ±549.9 9465.8 ±1062.5 RoadRunner 25 076.0 ±10851.2 16 146.3 ±3074.0 43 346.3 ±6741.1 Robotank 5.5 ±0.7 6.9 ±2.7 19.5 ±3.1 Seaquest 1204.5 ±481.1 2049.8 ±430.3 1659.7 ±209.4 SpaceInvaders 942.5 ±266.1 914.9 ±219.4 712.3 ±134.5 StarGunner 32 689.0 ±949.8 5849.2 ±740.4 24 830.8 ±10990.8 Tennis −14.8 ±3.8 −17.6 ±0.9 −31.7 ±3.4 TimePilot 4342.0 ±331.1 7252.7 ±1173.6 10 212.7 ±492.0 Tutankham 254.4 ±42.5 196.0 ±26.2 224.2 ±23.1 UpNDown 95 445.0 ±21584.1 85 438.4 ±19664.6 113 991.7 ±21370.6 Venture 0.0 ±0.0 0.0 ±0.0 5.5 ±15.6 VideoPinball 37 389.0 ±15876.6 23 958.6 ±3936.0 138 564.8 ±77425.7 WizardOfWor 4185.3 ±1029.4 4161.3 ±696.0 5084.1 ±522.6 Zaxxon 5008.7 ±1261.3 5612.2 ±1712.5 845.8 ±1567.9 
+
+Compute Resources. Each 40 M-frame run completes in approximately 65 minutes on a single A100 GPU with 12 CPU cores. Across all 49 games and 10 seeds ( 490 runs total), this corresponds to 530 GPU-hours or 22.10 A100-days. 0.6 0.8 1.0 
+
+DAE 
+
+PPO 
+
+PPO+RV 
+
+Median 
+
+0.60 0.75 0.90 
+
+IQM 
+
+4.8 5.2 5.6 6.0 
+
+Mean 
+
+0.36 0.40 0.44 0.48 
+
+> (ours)
+
+Optimality Gap 
+
+Human Normalized Score 
+
+Figure 3: Comparison between Methods. Aggregate metrics with 95% stratified bootstrap con-fidence intervals (Agarwal et al., 2021). Higher median, interquartile mean (IQM), and mean, but lower optimality gap indicate better performance. 8Published as a conference paper at ICLR 2026 0M 10M 20M 30M 40M 
+
+500 
+
+1000 
+
+1500 
+
+2000 
+
+> Score
+
+Alien 
+
+0M 10M 20M 30M 40M 
+
+0
+
+200 
+
+400 
+
+Amidar 
+
+0M 10M 20M 30M 40M 
+
+1000 
+
+2000 
+
+3000 
+
+4000 
+
+Assault 
+
+0M 10M 20M 30M 40M 
+
+1000 
+
+2000 
+
+3000 
+
+4000 
+
+Asterix 
+
+0M 10M 20M 30M 40M 
+
+750 
+
+1000 
+
+1250 
+
+1500 
+
+Asteroids 
+
+0M 10M 20M 30M 40M 
+
+0
+
+1
+
+2
+
+3
+
+1e6 Atlantis 
+
+0M 10M 20M 30M 40M 
+
+0
+
+500 
+
+1000 
+
+BankHeist 
+
+0M 10M 20M 30M 40M 
+
+10000 
+
+20000 
+
+> Score
+
+BattleZone 
+
+0M 10M 20M 30M 40M 
+
+500 
+
+1000 
+
+1500 
+
+2000 
+
+2500 
+
+BeamRider 
+
+0M 10M 20M 30M 40M 
+
+20 
+
+30 
+
+40 
+
+50 
+
+60 
+
+Bowling 
+
+0M 10M 20M 30M 40M 
+
+0
+
+25 
+
+50 
+
+75 
+
+100 
+
+Boxing 
+
+0M 10M 20M 30M 40M 
+
+0
+
+100 
+
+200 
+
+Breakout 
+
+0M 10M 20M 30M 40M 
+
+1000 
+
+2000 
+
+3000 
+
+Centipede 
+
+0M 10M 20M 30M 40M 
+
+2000 
+
+4000 
+
+ChopperCommand 
+
+0M 10M 20M 30M 40M 
+
+25000 
+
+50000 
+
+75000 
+
+100000 
+
+> Score
+
+CrazyClimber 
+
+0M 10M 20M 30M 40M 
+
+1000 
+
+2000 
+
+3000 
+
+4000 
+
+Gopher 
+
+0M 10M 20M 30M 40M 
+
+500 
+
+1000 
+
+1500 
+
+Seaquest 
+
+0M 10M 20M 30M 40M 
+
+500 
+
+1000 
+
+1500 
+
+2000 
+
+MsPacman 
+
+0M 10M 20M 30M 40M 
+
+0
+
+2500 
+
+5000 
+
+7500 
+
+DemonAttack 
+
+0M 10M 20M 30M 40M 
+
+30 
+
+20 
+
+DoubleDunk 
+
+0M 10M 20M 30M 40M 
+
+0
+
+500 
+
+1000 
+
+Enduro 
+
+0M 10M 20M 30M 40M 
+
+100 
+
+50 
+
+0
+
+> Score
+
+FishingDerby 
+
+0M 10M 20M 30M 40M 
+
+0
+
+10 
+
+20 
+
+30 
+
+Freeway 
+
+0M 10M 20M 30M 40M 
+
+200 
+
+400 
+
+600 
+
+800 
+
+Frostbite 
+
+0M 10M 20M 30M 40M 
+
+500 
+
+1000 
+
+1500 
+
+Gravitar 
+
+0M 10M 20M 30M 40M 
+
+10 
+
+8
+
+6
+
+4
+
+IceHockey 
+
+0M 10M 20M 30M 40M 
+
+0
+
+200 
+
+400 
+
+600 
+
+Jamesbond 
+
+0M 10M 20M 30M 40M 
+
+0
+
+2000 
+
+4000 
+
+6000 
+
+8000 
+
+Kangaroo 
+
+0M 10M 20M 30M 40M 
+
+2000 
+
+4000 
+
+6000 
+
+8000 
+
+> Score
+
+Krull 
+
+0M 10M 20M 30M 40M 
+
+0
+
+10000 
+
+20000 
+
+30000 
+
+KungFuMaster 
+
+0M 10M 20M 30M 40M 
+
+0
+
+5
+
+10 
+
+MontezumaRevenge 
+
+0M 10M 20M 30M 40M 
+
+2000 
+
+4000 
+
+6000 
+
+NameThisGame 
+
+0M 10M 20M 30M 40M 
+
+150 
+
+100 
+
+50 
+
+0
+
+50 
+
+Pitfall 
+
+0M 10M 20M 30M 40M 
+
+20 
+
+0
+
+20 
+
+Pong 
+
+0M 10M 20M 30M 40M 
+
+400 
+
+200 
+
+0
+
+200 
+
+PrivateEye 
+
+0M 10M 20M 30M 40M 
+
+0
+
+5000 
+
+10000 
+
+15000 
+
+> Score
+
+Qbert 
+
+0M 10M 20M 30M 40M 
+
+2000 
+
+4000 
+
+6000 
+
+8000 
+
+Riverraid 
+
+0M 10M 20M 30M 40M 
+
+0
+
+20000 
+
+40000 
+
+RoadRunner 
+
+0M 10M 20M 30M 40M 
+
+5
+
+10 
+
+15 
+
+20 
+
+Robotank 
+
+0M 10M 20M 30M 40M 
+
+200 
+
+400 
+
+600 
+
+800 
+
+SpaceInvaders 
+
+0M 10M 20M 30M 40M 
+
+0
+
+10000 
+
+20000 
+
+30000 
+
+StarGunner 
+
+0M 10M 20M 30M 40M 
+
+40 
+
+35 
+
+30 
+
+25 
+
+Tennis 
+
+0M 10M 20M 30M 40M 
+
+4000 
+
+6000 
+
+8000 
+
+10000 
+
+> Score
+
+TimePilot 
+
+0M 10M 20M 30M 40M 
+
+0
+
+100 
+
+200 
+
+Tutankham 
+
+0M 10M 20M 30M 40M 
+
+0
+
+50000 
+
+100000 
+
+UpNDown 
+
+0M 10M 20M 30M 40M 
+
+0
+
+100 
+
+200 
+
+Venture 
+
+0M 10M 20M 30M 40M 
+
+0
+
+50000 
+
+100000 
+
+150000 
+
+200000 
+
+VideoPinball 
+
+0M 10M 20M 30M 40M 
+
+0
+
+2000 
+
+4000 
+
+6000 
+
+WizardOfWor 
+
+0M 10M 20M 30M 40M 
+
+0
+
+2000 
+
+4000 
+
+6000 
+
+Zaxxon 
+
+Zero Offset 
+
+Figure 4: Ablation for Value Initialization. This figure compares the performance difference between zero (see Equation 9) and offset initialization (see Equation 26) for relative values. Usually the proposed offset initialization is needed to improve credit assignment, but for some games the algorithm can handle zero initialization as well. 6.1 ARCADE LEARNING ENVIRONMENT (ALE) Table 1 presents the per-game scores of PPO (Schulman et al., 2017) and Direct Advantage Estimation (DAE) (Pan et al., 2022) and extends the table with an additional column, PPO+RV. This column represents our algorithm where the absolute value critic is replaced by the RV critic. Across the benchmark, PPO+RV attains competitive performance: it exceeds PPO on 30 out of 49 games (or 61%) and DAE on 37 out of 49 games (or 75%). In addition we report aggregated metrics in Figure 3 for further analysis. 6.2 ABLATION STUDY 
+
+Furthermore, we present the influence of relative value initialization in Figure 4. In general, we see that relative ranking is needed, but sometimes actors are not bothered by the influence of Bt which we speculate is due to the PPO clipping objective. 9Published as a conference paper at ICLR 2026 
+
+7 LIMITATIONS 
+
+Gauge fixing induces a trajectory-constant baseline Bt in R-GAE that inflates variance for long horizons or when γλ → 1, but it is only partially reduced by relative value initialization. The enforced antisymmetry improves stability but restricts critic expressivity (our near-linear difference head may underfit complex value differences). Pairwise training is O(B2), where B is the batch size, in the naive form and relies on subsampling that trades compute for estimator variance. Trajectory ranking used for initialization assumes post-baseline values are on a comparable scale across trajectories. Ranking signal may become uninformative. Empirically, experiments are limited to PPO on discrete-action Atari. Generality to continuous control, off-policy regimes, and preference-based settings remains to be demonstrated. 
+
+8 CONCLUSION 
+
+In this paper we established that reinforcement learning can operate on value differences rather than absolute values. We proposed Relative Value Learning (RV), a gauge-invariant alternative to absolute critics that learns antisymmetric value differences ∆π (si, sj ) = V π (si) − V π (sj ) as a primitive representation. On the theoretical side, we defined a pairwise Bellman operator that is a γ-contraction on bounded antisymmetric functions with a unique fixed point equal to the true value differences, and we derived well-posed bootstrapping targets (1-step/ n-step/ λ) that operate entirely on observable reward differences and non terminal pairwise terms. We further introduced trajectory ranking and reconstructed generalized advantage estimation from pairwise differences (R-GAE), showing that it ensures an unbiased policy-gradient estimator and clarifying its relationship to standard GAE. Empirically, replacing the PPO critic with our relative critic gives competitive performance across Atari while simplifying the value learning objective to the quantities that matter for control: differences rather than absolutes. We hope RV serves as a building block for algorithms that reason natively in the relative domain where decisions are actually made. 
+
+9 ACKNOWLEDGMENTS 
+
+This research has been funded and supported by the Federal Ministry of Research, Technology and Space of Germany and the state of North Rhine-Westphalia as part of the Lamarr Institute for Machine Learning and Artificial Intelligence. 
+
+REFERENCES 
+
+Jinane Abounadi, Dimitrib Bertsekas, and Vivek S Borkar. Learning algorithms for markov decision processes with average cost. SIAM Journal on Control and Optimization , 40(3):681–698, 2001. Rishabh Agarwal, Max Schwarzer, Pablo Samuel Castro, Aaron C Courville, and Marc Bellemare. Deep reinforcement learning at the edge of the statistical precipice. Advances in neural information processing systems , 34:29304–29320, 2021. Marc G Bellemare, Will Dabney, and Rémi Munos. A distributional perspective on reinforcement learning. In International conference on machine learning , pp. 449–458. PMLR, 2017. Dimitri P Bertsekas. Differential training of rollout policies. In Proceedings of the Annual Allerton Conference on Communication Control and Computing , volume 35, pp. 913–922. UNIVERSITY OF ILLINOIS, 1997. Dimitri P Bertsekas. Neuro-dynamic programming. In Encyclopedia of optimization , pp. 1–6. Springer, 2025. Paul F Christiano, Jan Leike, Tom Brown, Miljan Martic, Shane Legg, and Dario Amodei. Deep reinforcement learning from human preferences. Advances in neural information processing systems , 30, 2017. Will Dabney, Georg Ostrovski, David Silver, and Rémi Munos. Implicit quantile networks for distributional reinforcement learning. In International conference on machine learning , pp. 1096– 1105. PMLR, 2018. 10 Published as a conference paper at ICLR 2026 Matteo Hessel, Joseph Modayil, Hado Van Hasselt, Tom Schaul, Georg Ostrovski, Will Dabney, Dan Horgan, Bilal Piot, Mohammad Azar, and David Silver. Rainbow: Combining improvements in deep reinforcement learning. In Proceedings of the AAAI conference on artificial intelligence ,volume 32, 2018. Jan Leike, David Krueger, Tom Everitt, Miljan Martic, Vishal Maini, and Shane Legg. Scalable agent alignment via reward modeling: A research direction. arxiv 2018. arXiv preprint arXiv:1811.07871 ,2018. Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Alex Graves, Ioannis Antonoglou, Daan Wierstra, and Martin Riedmiller. Playing atari with deep reinforcement learning. arXiv preprint arXiv:1312.5602 , 2013. Volodymyr Mnih, Adria Puigdomenech Badia, Mehdi Mirza, Alex Graves, Timothy Lillicrap, Tim Harley, David Silver, and Koray Kavukcuoglu. Asynchronous methods for deep reinforcement learning. In International conference on machine learning , pp. 1928–1937. PmLR, 2016. Andrew Y Ng, Daishi Harada, and Stuart Russell. Policy invariance under reward transformations: Theory and application to reward shaping. In Icml , volume 99, pp. 278–287. Citeseer, 1999. Hsiao-Ru Pan, Nico Gürtler, Alexander Neitz, and Bernhard Schölkopf. Direct advantage estimation. 
+
+Advances in Neural Information Processing Systems , 35:11869–11880, 2022. Martin L Puterman. Markov decision processes: discrete stochastic dynamic programming . John Wiley & Sons, 2014. John Schulman, Sergey Levine, Pieter Abbeel, Michael Jordan, and Philipp Moritz. Trust region policy optimization. In International conference on machine learning , pp. 1889–1897. PMLR, 2015a. John Schulman, Philipp Moritz, Sergey Levine, Michael Jordan, and Pieter Abbeel. High-dimensional continuous control using generalized advantage estimation. arXiv preprint arXiv:1506.02438 ,2015b. John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 , 2017. Richard S Sutton and Andrew G Barto. Reinforcement learning: An introduction . MIT press, 2018. Hado Van Hasselt, Arthur Guez, and David Silver. Deep reinforcement learning with double q-learning. In Proceedings of the AAAI conference on artificial intelligence , volume 30, 2016. Ziyu Wang, Victor Bapst, Nicolas Heess, Volodymyr Mnih, Remi Munos, Koray Kavukcuoglu, and Nando De Freitas. Sample efficient actor-critic with experience replay. arXiv preprint arXiv:1611.01224 , 2016a. Ziyu Wang, Tom Schaul, Matteo Hessel, Hado Hasselt, Marc Lanctot, and Nando Freitas. Dueling network architectures for deep reinforcement learning. In International conference on machine learning , pp. 1995–2003. PMLR, 2016b. Jiayi Weng, Min Lin, Shengyi Huang, Bo Liu, Denys Makoviichuk, Viktor Makoviychuk, Zichen Liu, Yufan Song, Ting Luo, Yukun Jiang, Zhongwen Xu, and Shuicheng Yan. En-vPool: A highly parallel reinforcement learning environment execution engine. In S. Koyejo, S. Mohamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh (eds.), Advances in Neural Information Processing Systems , volume 35, pp. 22409–22421. Curran Associates, Inc., 2022. URL https://proceedings.neurips.cc/paper_files/paper/2022/file/ 8caaf08e49ddbad6694fae067442ee21-Paper-Datasets_and_Benchmarks. pdf .11 Published as a conference paper at ICLR 2026 
+
+A TARGET DERIVATION FOR 1-S TEP BOOTSTRAPPING 
+
+When approximating the pairwise Bellman operator from Equation 8 by using two randomly sampled transitions 
+
+τi = ( si, ai, ri, di, si+1 ), τj = ( sj , aj , rj , dj , sj+1 ), 
+
+we can encounter terminal successor states that result in ill-defined targets for ∆( si+1 , sj+1 ). We present four exhaustive cases that arise from the possible combinations of terminal and non-terminal successor states where di, dj ∈ { 0, 1 } are terminal state indicators for si+1 and sj+1 . In each case, we derive an equivalent expression for ∆( si+1 , sj+1 ) by only using (1) observable rewards ri, rj
+
+and (2) non-terminal, well-defined value differences ∆θ (·, ·). The rearrangement is then used for the bootstrapping target in Equation (20) to work for sampling. 
+
+Case 1: Both successor states are non-terminal ( di = 0, dj = 0 ). Then, the relative value 
+
+∆( si+1 , sj+1 ) = V (si+1 ) − V (sj+1 ), (31) is well-posed and directly expressible with ∆θ (si+1 , sj+1 ).
+
+Case 2: Assume the successor si+1 is terminal, and sj+1 is non-terminal ( di = 1, dj = 0 ). To address this, we derive a modified target: 
+
+∆( si+1 , sj+1 ) = V (si+1 ) − V (sj+1 )= V (si+1 ) − V (sj+1 ) + V (si) − V (si)= ∆( si, sj+1 ) − V (si) + V (si+1 )
+
+| {z }
+
+> =0
+
+= ∆( si, sj+1 ) − Esi [Rt + γR t+1 + . . . ] 
+
+> using τi
+
+≈ ∆( si, sj+1 ) − ri
+
+(32) 
+
+Case 3: Assume the successor si+1 is non-terminal, and is sj+1 terminal ( di = 0, dj = 1 ). To address this, we derive a modified target: 
+
+∆( si+1 , sj+1 ) = V (si+1 ) − V (sj+1 )= V (si+1 ) − V (sj+1 ) + V (sj ) − V (sj )= ∆( si+1 , sj ) + V (sj ) − V (sj+1 )= ∆( si+1 , sj ) + Esj [Rt + γR t+1 + . . . ] 
+
+> using τj
+
+≈ ∆( si+1 , sj ) + rj
+
+(33) 
+
+Case 4: Assume that both successors are terminal ( di = 1, dj = 1 ). We derive a modified target: 
+
+∆( si+1 , sj+1 ) = V (si+1 ) − V (sj+1 )= V (si+1 ) − V (sj+1 ) + V (si) − V (si) + V (sj ) − V (sj )= ∆( si, sj ) − Esi [Rt + γR t+1 + . . . ] + Esj [Rt + γR t+1 + . . . ] 
+
+> using τi,τj
+
+≈ ∆( si, sj ) − ri + rj
+
+(34) For better training stability, we simply say that 
+
+∆( si+1 , sj+1 ) = V (si+1 ) − V (sj+1 )= 0 (35) since the value of both terminal states, by using MDP definition, is equal to zero. 12 Published as a conference paper at ICLR 2026 
+
+B GAUGE FREEDOM 
+
+Lemma B.1 (Constant-offset gauge invariance) . Suppose V π satisfies the Bellman equation 
+
+V π = rπ + γP π V π . For any c ∈ R, define the shaped reward and shifted value 
+
+r′ 
+
+> π
+
+(s) := rπ (s) + (1 − γ)c, V π′(s) := V π (s) + c. (36) 
+
+Then V π′ satisfies the transformed Bellman equation 
+
+V π′ = r′ 
+
+> π
+
++ γP π V π′. (37) 
+
+Moreover, if one equivalently defines the reward shaping r′(s, a) = r(s, a) + (1 − γ)c so that 
+
+r′ 
+
+> π
+
+(s) = Ea∼π(·| s)[r′(s, a)] , then action preferences and pairwise differences are invariant: 
+
+Aπ′(s, a) = Aπ (s, a) and ∆π′(si, sj ) = ∆ π (si, sj ) for all (si, sj ) ∈ S × S. (38) 
+
+Proof. By direct calculation, 
+
+r′ 
+
+> π
+
++ γP π V π′ =  rπ + (1 − γ)c + γP π (V π + c)=  rπ + γP π V π  +  (1 − γ)c + γc 
+
+= V π + c
+
+= V π′,
+
+so V π′ satisfies the transformed Bellman equation. For invariance: with r′(s, a) = r(s, a) + (1 − γ)c,
+
+Qπ′(s, a) = r′(s, a) + γ Es′ [V π′(s′)] =  r(s, a) + γ Es′ [V π (s′)]  + c = Qπ (s, a) + c. (39) Thus Aπ′(s, a) = Qπ′(s, a)−V π′(s) = Aπ (s, a), and ∆π′(si, sj ) = ( V π (si)+ c)−(V π (sj )+ c) = ∆π (si, sj ).Constant offsets are a special case of potential-based shaping (Ng et al., 1999). 13 Published as a conference paper at ICLR 2026 
+
+C VARIANCE ANALYSIS OF THE RELATIVE POLICY GRADIENT 
+
+In Section 4, we argue that the unknown trajectory constant |C| can increase the variance of the policy gradient estimator. Here, we provide the formal derivation supporting this claim and reference Figure 4 for empirical validation. First, recall from Lemma 3.2 that the relative advantage is given by 
+
+˜At = At + Bt, where Bt is a trajectory constant determined by the initialization offset C. While Corollary 3.3 proves that the estimator remains unbiased (i.e., the first moment is unchanged), the second moment differs. 
+
+Lemma C.1 (Variance Inflation) . Let gstd = ∇ϕ log πϕ(at|st)At be the standard gradient estimator and grel = ∇ϕ log πϕ(at|st) ˜At be the relative gradient estimator. The variance of the relative estimator is given by: Var (grel ) = Var (gstd ) + E ∥∇ ϕ log πϕ(at|st)∥2B2
+
+> t
+
+ + 2 E AtBt∥∇ ϕ log πϕ(at|st)∥2 (40) 
+
+Crucially, the strictly positive term E[∥∇ ϕ log πϕ∥2B2 
+
+> t
+
+] scales quadratically with the trajectory offset 
+
+C2.Proof. The variance of any estimator g is defined as Var (g) = E[∥g∥2]−∥ E[g]∥2. From Corollary 3.3, we know that E[grel ] = E[gstd ] = ∇ϕJ(ϕ). Since the expected values are identical, the difference in variance is determined entirely by the second moment E[∥g∥2].Let ut = ∇ϕ log πϕ(at|st) denote the score function. Expanding it for the second moment gives: 
+
+∥grel ∥2 = ∥ut ˜At∥2 (41) 
+
+= ∥ut(At + Bt)∥2 (42) 
+
+= ∥utAt∥2 + ∥utBt∥2 + 2( utAt)⊤(utBt) (43) Note that At and Bt are scalars, so we can factor them out: 
+
+∥grel ∥2 = ∥ut∥2A2
+
+> t
+
+| {z }
+
+> ∥gstd ∥2
+
++∥ut∥2B2 
+
+> t
+
++ 2 ∥ut∥2AtBt (44) Recall from Lemma 3.2 that Bt = (1 − γ)C P(γλ )l. Thus, Bt is directly proportional to the initialization offset C.1. Noise Term: The term E[∥ut∥2B2 
+
+> t
+
+] is strictly non-negative. Since Bt ∝ C, this noise term scales with C2.2. Correlation Term: The term 2E[∥ut∥2AtBt] represents the correlation between the true advantage and the offset. While this term can be negative, it scales linearly with C.Consequently, for a sufficiently large uncorrected offset |C|, the quadratic noise term ( C2) will dominate the linear correlation term, resulting in an increase in estimator variance. This necessitates the Trajectory Ranking strategy (from Section 4) to minimize |C| and drive Bt ≈ 0. Empirically, our ablation in Figure 4 validates the importance of decreasing estimator variance. In addition to validate Bt empirically, Table 2 presents a small example for a seven step trajectory. Given are rewards and true values to compute the true GAE for comparison to relative GAE: 
+
+[r0, . . . , r5] := [1, 1, 1, 1, 1, 1] [V (s0), . . . , V (s6)] := [2, 3, 4, 5, 6, 7] 
+
+In this example V (s0) = 2 , so one can compute all predicted differences Bt using C = 2 . Over all time steps, the observed advantage differences match exactly the prediction Bt, confirming the algebraic derivation from Lemma 3.2. In this example, we rounded to two decimal digits for clean visualization. Figure 5 generalizes the intuition of Table 2 by visualizing the prediction and decay of Bt over a 
+
+T = 128 timestep rollout, which has the same length as in our experiments. In the figure, we also 14 Published as a conference paper at ICLR 2026 Table 2: Empirical Evidence for the Trajectory-constant. This tables shows a small environment trajectory and validates the trajectory-constant baseline empirically. To compute true and relative GAE, we set γ = 0.9, λ = 0.8 and use C = 2 .
+
+t = 0 t = 1 t = 2 t = 3 t = 4 t = 5 t = 6 
+
+Values 
+
+rt 1 1 1 1 1 1 –
+
+V (st) 2 3 4 5 6 7 8
+
+∆( st, s0) – 1 2 3 4 5 6
+
+˜V (st) 0 1 2 3 4 5 6
+
+True & Relative GAE (γ = 0.9, λ = 0.8 )
+
+δt 1.70 1.60 1.50 1.40 1.30 1.20 –
+
+˜δt 1.90 1.80 1.70 1.60 1.50 1.40 –
+
+At 4.73 4.21 3.63 2.96 2.16 1.20 –
+
+˜At 5.35 4.79 4.15 3.41 2.51 1.40 –
+
+GAE Differences (C = 2 )
+
+˜At − At 0.61 0.58 0.52 0.45 0.34 0.20 –Predicted via Bt 0.61 0.58 0.52 0.45 0.34 0.20 –0 20 40 60 80 100 120  
+
+> Time step t
+> 0.75
+> 0.50
+> 0.25
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> Baseline  Bt
+> Expected Difference to True GAE
+> C=-5
+> C=-2
+> C=-1
+> C=1
+> C=2
+> C=5
+
+Figure 5: Variance Visualization. This figure shows the expected difference Bt to the true GAE At
+
+using different baseline values C. Note, that the difference is higher for larger |C|, because γ applies a stronger absolute discount. consider the same hyperparameter setting ( γ = 0.99, λ = 0.95 ) which influences the magnitude of 
+
+Bt. At the start t = 0 of a rollout, one can see the absolute value of B0 is large but almost constant, and inflates the GAE value. Then after some time, Bt falls off and finally ( t →128) almost vanishes, so R-GAE ≈ GAE for the last few timesteps. This can be demonstrated for arbitrary C.15 Published as a conference paper at ICLR 2026 
+
+D HYPERPARAMETERS 
+
+We present the hyperparameter configuration for the Atari benchmark (ALE) which is used for all 49 games. Table 3: Hyperparameters for PPO+RV used in our experiments. 
+
+Hyperparameter Value 
+
+Discount factor γ 0.99 
+
+GAE parameter λ 0.95 
+
+N-step return target 5
+
+Clip parameter ϵ 0.1 
+
+Number of epochs per update 5
+
+Minibatch size 128 
+
+Number of parallel environments 8
+
+Rollout length T 128 
+
+Learning rate 2.5 × 10 −4
+
+Optimizer Adam Adam epsilon 1 × 10 −5
+
+Entropy coefficient ce 0.01 
+
+RV loss coefficient cv 1.25 
+
+RV value clipping 0.15 
+
+Gradient clipping (max-norm) 0.5 
+
+Additional Hyperparameters Details. For training the relative critic we do not use purely random state pairing. With probability 33%, the second state is chosen from the same episode as the reference state si, encouraging temporally coherent comparisons. Otherwise, the partner is sampled randomly in the batch. See Appendix E for an ablation study. 16 Published as a conference paper at ICLR 2026 
+
+E ABLATION ON PAIR SAMPLING 
+
+In this section, we present Table 4 as an ablation study for different pair sampling strategies μ that can be applied for Equation 28. In our case, “Biased” means that with probability p ∈ [0, 1] the second state sj is randomly sampled from the same episode. In general, we can see that the sampling strategy has a rather small influence except when p gets too large. Then there is a small decrease in performance. Table 4: Ablation of Pair Sampling. Mean final scores (last 100 episodes) with standard deviation of our method PPO+RV with different pair sampling strategies after 40 M game frames. The results average over five seeds. 
+
+Game Random Biased ( p = 0.33 ) Biased ( p = 0.66 )Alien 2123.4 ±346.0 1746.5 ±491.7 1802.0 ±600.5 Assault 4214.3 ±338.3 4018.8 ±174.1 3615.2 ±290.2 Asterix 4303.2 ±1024.8 4495.2 ±1111.0 3821.2 ±461.1 Atlantis 2 683 819.6 ±515071.2 2 991 307.2 ±542845.7 3 711 740.4 ±431880.2 BattleZone 22 512.0 ±1038.6 22 576.0 ±921.1 24 616.0 ±1228.4 BeamRider 2199.2 ±573.9 1966.5 ±130.1 1814.8 ±247.2 Breakout 237.0 ±18.5 258.5 ±31.6 241.7 ±7.6 DemonAttack 9364.3 ±1069.8 8669.9 ±734.8 7181.1 ±858.8 Gopher 3224.7 ±1097.3 3585.7 ±183.1 3626.2 ±338.1 Gravitar 1414.2 ±759.3 1379.0 ±488.9 1232.0 ±406.9 IceHockey −3.7 ±0.6 −3.7 ±0.6 −3.9 ±0.4 Krull 9048.9 ±729.2 8527.1 ±393.7 8540.5 ±504.5 MsPacman 1640.0 ±147.4 1783.4 ±125.8 1680.9 ±447.8 NameThisGame 7000.3 ±1446.8 6880.2 ±937.0 5890.7 ±296.8 Qbert 16 630.4 ±938.0 15 472.7 ±417.3 15 631.9 ±789.1 Riverraid 9941.6 ±1440.7 9271.0 ±1276.2 8717.8 ±478.7 Robotank 22.5 ±1.0 21.3 ±2.0 19.7 ±1.5 Seaquest 1592.6 ±307.4 1612.4 ±109.6 1236.1 ±321.7 TimePilot 9701.6 ±435.3 9825.6 ±819.3 9692.8 ±584.0 UpNDown 66 393.6 ±27590.7 101 955.1 ±25061.7 100 891.3 ±33878.0 VideoPinball 144 597.1 ±89747.6 110 187.1 ±57998.8 82 002.4 ±16130.5 WizardOfWor 5501.2 ±787.0 4890.0 ±494.9 5128.0 ±374.3 
+
+17 Published as a conference paper at ICLR 2026 
+
+F THE USE OF LARGE LANGUAGE MODELS (LLM S)
+
+Finally, we report on the use of LLMs in this section. The image in Figure 1 is generated with Gemini 2.5 Flash Image (Nano Banana). Furthermore, we used large language models (LLMs) as writing assistants in the preparation of this manuscript. LLMs were employed to draft and refine text as well as to generate preliminary versions of some proof derivations. All mathematical results, derivations, and theoretical claims were independently verified and validated by the authors. 18
