@@ -1,0 +1,748 @@
+Title: Physics-Informed Neural Networks for Discovering Periodic Orbits in the Gravitational Three-Body Problem
+
+URL Source: https://arxiv.org/pdf/2607.23501v1
+
+Published Time: Tue, 28 Jul 2026 00:56:44 GMT
+
+Number of Pages: 39
+
+Markdown Content:
+# Physics-Informed Neural Networks for Discovering Periodic Orbits in the Gravitational Three-Body Problem 
+
+# Nikolaos Kollias ∗ Nikolaos Matzakos †
+
+Abstract 
+
+Locating periodic solutions of chaotic dynamical systems normally requires an initial guess close enough to the target orbit for numerical continuation or gradient-based search to converge. We show that Physics-Informed Neural Networks (PINNs) trained on sparse, noisy observations without initial conditions recover periodic or-bits of the gravitational three-body problem, including orbit families absent from the training data. The method rests on a second-order ODE formulation, fixed-frequency Fourier features, percentile-based adaptive refinement, and a trainable scaling parameter, each validated on forward problems. Across two 100-seed en-sembles, 23 –25% of runs converge to families not present in the training data. We then ask what determines which family emerges. Two χ2 tests give a consistent answer: changing the training data source significantly shifts the distribution of recovered families ( p < 0.001 , Cramér’s V = 0 .339 ), whereas switching between the two initialization distributions tested does not ( p = 0 .620 , V = 0 .094 ). The random seed selects which family a given run recovers; the distribution the weights are drawn from does not shift the aggregate frequencies, but the training data does. The evidence is empirical: we do not characterize the loss landscape analytically, and PINNs remain slower than conventional integrators on well-posed initial-value problems. What the experiments establish is that the recovered orbits are verifiable rather than merely plausible: the identified ones refine to genuine periodic solutions, a network trained on Lagrange data recovers the figure-eight choreography (Li–Liao class I.A.1, matched to seven significant digits in T ∗), and one trained on figure-eight data recovers a Broucke–Hadjidemetriou–Hénon orbit closing to δT < 10 −9.
+
+Keywords: Physics-informed neural networks; Inverse problems; Unknown initial con-ditions; Celestial mechanics; Periodic orbit families; Multi-modal loss landscape 
+
+> ∗
+
+School of Science and Technology, Hellenic Open University, Athens, Greece. E-mail: 
+
+n.kollias.v@gmail.com .
+
+> †
+
+School of Science and Technology, Hellenic Open University, Athens, Greece. E-mail: 
+
+matzakos.nikolaos@ac.eap.gr . Also at School of Pedagogical and Technological Education (ASPETE), Athens, Greece. E-mail: nikmatz@aspete.gr .
+
+1arXiv:2607.23501v1 [cs.LG] 26 Jul 2026 1 Introduction 
+
+Finding periodic orbits of the gravitational three-body problem is a search problem. Nu-merical continuation and gradient-based methods locate them efficiently, but they require an initial guess close enough to the target orbit for the iteration to converge—which is precisely what one does not have when exploring an uncharted region of the solution space. This paper asks whether a neural network can locate such orbits without that guess: from sparse, noisy observations alone, with no initial conditions supplied. Physics-Informed Neural Networks (PINNs) (Raissi et al., 2019) make the question well-posed. A PINN minimizes a composite loss combining a data-fitting term with the residual of the governing equations; removing the initial-condition constraint leaves an under-determined problem in which the network must infer both which orbit to follow and how to follow it. We find that this problem is solvable, and that its solutions are not unique: trained on the same noisy data with the same hyperparameters, PINNs con-verge to physically distinct periodic orbit families—Euler collinear, Lagrange equilateral, or Broucke–Hadjidemetriou–Hénon (BHH)—depending on the random seed, and a sub-stantial fraction of runs recover families absent from the training data .This raises the natural follow-up question: what determines which family a given run recovers? Two controlled χ2 tests separate the seed from the sampling distribution and the training data (Sections 5.2 and 5.3). 
+
+The three-body problem as a testbed. The gravitational three-body problem is generically non-integrable (Poincaré, 1892) and admits a rich landscape of periodic so-lutions: from the classical Euler (Euler, 1767) and Lagrange (Lagrange, 1772) families (often grouped as the Euler–Lagrange family in modern classifications), to the figure-eight orbit—a choreography (Moore, 1993; Chenciner and Montgomery, 2000)—to the thousands of families now cataloged (Li and Liao, 2017; Liao et al., 2022). This extraor-dinary multiplicity makes it an ideal testbed: there are many orbits to be found, catalogs against which a claimed discovery can be checked, and scale-invariant quantities ( T ∗, L∗)that constrain the identification of a recovered orbit. 
+
+Related work. Early neural-network approaches for solving differential equations were proposed by Lagaris et al. (1998). The modern PINN framework, introduced by Raissi et al. (2019), faces well-documented challenges including loss balancing (Wang et al., 2021a), spectral bias (Rahaman et al., 2019; Wang et al., 2021b), and adaptive collocation (Wu et al., 2023; Karniadakis et al., 2021; Cuomo et al., 2022). Most relevant to our work, Zou et al. (2025) showed that PINNs can discover multiple solutions to the same PDE through random initialization, though only for reaction-diffusion and fluid flow with prescribed boundary conditions. Matzakos and Sfyrakis (2026) compare PINNs with 2Neural ODEs on the Morris–Lecar neuron, finding PINNs more accurate in stiff regimes. Machine learning has been applied to the N -body problem via surrogate models (Breen et al., 2020) and hybrid integrators (Saz Ulibarrena et al., 2024). Pereira et al. (2025) recently applied a physics-regularized surrogate model to the three-body problem as a forward solver, training on large trajectory datasets with known initial conditions. Our work differs fundamentally: we formulate the problem as an inverse problem—training on sparse, noisy observations without initial conditions—and focus on the multi-basin structure of the resulting loss landscape. To our knowledge, no prior work has recovered distinct three-body periodic orbit families with PINNs given no initial conditions, verified the recovered orbits against published catalogs, or identified experimentally which factor governs which family is recovered. 
+
+Contributions. Our central finding is that PINNs trained without initial conditions recover periodic orbits of the three-body problem, including families absent from the training data, and that the training data—not the weight initialization—governs which families emerge. Specifically: 1. Orbit discovery without initial conditions (central result). Given only sparse noisy observations and no initial conditions, PINNs recover periodic orbits across 200 seeds, with 23 –25% converging to families absent from the training data, and the inferred states refine to genuine periodic solutions—one matching the figure-eight choreography recovered from Lagrange data (Section 5.5) and a BHH orbit from figure-eight data (Section 5.4). 2. What controls basin selection. Two controlled χ2 tests over three 100-seed ensembles show that the training data source significantly shifts the distribution of recovered families ( p < 0.001 , Cramér’s V = 0 .339 ; Section 5.3), whereas the initialization distribution does not ( p = 0 .620 , V = 0 .094 ; Section 5.2), identifying the data rather than the initialization scheme as the operative factor. 3. Methodological enablers (forward problem validation). A second-order ODE formulation, fixed-frequency Fourier features, percentile-based RAR, and a trainable loss-balancing parameter enable accurate forward solutions that underpin the orbit discovery experiments (Table 2). 
+
+Scope. This is a computational paper: the evidence is empirical and statistical through-out. We do not prove that the loss landscape contains multiple basins, nor characterize them analytically, and the method is not a competitor to conventional integrators on well-posed initial-value problems (Section 6). The claim is narrower: PINNs can locate periodic orbits when no accurate initial guess is available to seed a conventional search. 3The paper is organized as follows. Section 2 presents the mathematical formulation. Section 3 describes the PINN methodology and technical innovations. Section 4 summa-rizes forward problem validation (detailed in Appendix A). Section 5 presents the central results: orbit discovery without initial conditions, the two χ2 tests isolating the training data as the operative factor, and the cross-family discoveries verified against published catalogs. Section 6 places these in the context of loss landscape theory, and Section 7 concludes. 
+
+# 2 Mathematical formulation 
+
+# 2.1 Equations of motion 
+
+Consider three point masses mi, i = 1 , 2, 3, interacting solely through Newtonian gravity. Let ri = ( xi, y i) denote the position of the i-th body in the plane. The equations of motion are given by Newton’s second law: 
+
+¨ri = −G 
+
+> 3∑
+> j=1
+> j̸=i
+
+mj
+
+ri − rj
+
+|ri − rj |3 , i = 1 , 2, 3, (1) where G is the gravitational constant. The restriction to planar motion is justified when the initial positions and velocities are coplanar: the gravitational forces then lie in the span of the position differences, so the plane is invariant under the dynamics. In component form, we obtain six second-order ODEs: 
+
+¨xi = −G 
+
+> 3∑
+> j=1
+> j̸=i
+
+mj
+
+xi − xj
+
+r3
+
+> ij
+
+, ¨yi = −G 
+
+> 3∑
+> j=1
+> j̸=i
+
+mj
+
+yi − yj
+
+r3
+
+> ij
+
+, (2) where rij = √
+
+(xi − xj )2 + ( yi − yj )2.
+
+2.1.1 Numerical regularization of close encounters 
+
+During PINN training, the network outputs ri(t) are not constrained to remain well-separated, and transient configurations with rij → 0 can arise before convergence. To prevent numerical overflow in the gravitational force evaluation, we regularize the pairwise distances by replacing rij with ˜rij = √
+
+r2 
+
+> ij
+
++ ε, where ε is a small softening parameter (effective softening length √ε). We set ε = 10 −9 (√ε ≈ 3.2 × 10 −5) throughout all experiments. This ensures that the loss function and its gradients remain finite throughout training without affecting the converged solution, since at convergence rij ≫ √ε for all time steps. 42.1.2 First-order formulation 
+
+The standard numerical approach introduces velocity variables vxi = ˙ xi, vyi = ˙ yi, yielding 12 first-order ODEs: 
+
+˙xi = vxi , ˙vxi = −G 
+
+> 3∑
+> j=1
+> j̸=i
+
+mj
+
+xi − xj
+
+r3
+
+> ij
+
+, (and similarly for yi). (3) 
+
+2.1.3 Non-dimensionalization 
+
+Setting G = 1 and choosing the largest mass M as the mass scale and an appropriate length scale L (e.g., the largest initial separation), we obtain a dimensionless system with time scale Tchar =
+
+> √
+
+L3/(GM ). For equal-mass problems ( m1 = m2 = m3 = 1 ), we additionally rescale time so that the orbital period maps to a value within the effective range [−2, 2] of the tanh activation function (the importance of this step is demonstrated in Appendix A.3). The Newtonian three-body equations are invariant under the scaling transformation 
+
+r → α r, t → α3/2 t, v → α−1/2 v, (4) where α > 0 is an arbitrary scaling factor (Li and Liao, 2017). Only the numerical values of the initial conditions and period change; the equations of motion retain their form. 
+
+# 2.2 Physics-Informed Neural Networks 
+
+A PINN approximates the solution u(t) of a differential equation by a neural network 
+
+N (t; θ) with parameters θ. Training minimizes a composite loss function: 
+
+L(θ) = wrLr(θ) + wic Lic (θ) + wdLd(θ), (5) where Lr is the PDE/ODE residual loss evaluated at collocation points, Lic enforces initial conditions, Ld is the data-fitting loss (when observational data are available), and 
+
+wr, w ic , w d are weighting coefficients. For the second-order system (2), the residual loss takes the form: 
+
+Lr = 1
+
+NrNr∑
+
+> k=1 3∑
+> i=1
+> [(
+
+¨xN 
+
+> i
+
+(tk) − fxi (tk))2
+
++ (
+
+¨yN 
+
+> i
+
+(tk) − fyi (tk))2]
+
+, (6) where fxi , f yi denote the gravitational acceleration components computed from the net-work outputs, and the second derivatives ¨xN 
+
+> i
+
+, ¨yN 
+
+> i
+
+are obtained via automatic differentia-tion. 52.3 Hard enforcement of initial conditions 
+
+Soft enforcement of initial conditions via penalty terms in the loss function often fails for gravitational problems, where the 1/r 2 force law produces large accelerations when bodies approach each other. We instead enforce initial conditions exactly through an output transformation: 
+
+yϕ(t; θ) = y0 + t u0 + t2 N (t; θ), (7) where y0 and u0 are the initial positions and velocities, respectively. This guarantees 
+
+yϕ(0) = y0 and ˙yϕ(0) = u0 identically, eliminating the need for initial condition loss terms. 
+
+# 3 Methodology 
+
+# 3.1 Network architecture and training 
+
+All experiments use fully connected feedforward networks with sin activation for data-driven orbit discovery experiments (Section 5) and tanh for forward problems (Section 4), implemented in the DeepXDE library (Lu et al., 2021) with TensorFlow backend. Ar-chitectures range from 3 × 64 to 5 × 64 (hidden layers × neurons per layer), with 
+
+3 × 128 for the Euler forward experiments. Forward problems use a two-phase train-ing strategy: Adam (Kingma and Ba, 2015) ( η = 10 −4, 2–3 × 10 5 epochs) followed by L-BFGS ( 1.5 × 10 4 epochs). Data-driven experiments use AdamW (Loshchilov and Hutter, 2019) with problem-specific settings. Reference solutions are computed with 
+
+scipy.integrate.solve_ivp (rtol = 10 −10 , atol = 10 −12 ). Table 1 summarizes all hyperparameters. Table 1: Common hyperparameters across all experiments. Experiment-specific devia-tions are noted in the relevant subsections. 
+
+Hyperparameter Value Notes 
+
+Activation function tanh / sin tanh forward; sin orbit discovery Hidden layers 3–5 Problem-dependent Neurons per layer 64 –128 Problem-dependent Adam learning rate 10 −4 Forward problems; see Sec. 5 for data-driven Adam epochs 2 × 10 5–3 × 10 5
+
+L-BFGS epochs 1.5 × 10 4
+
+Precision 64-bit (float64) Collocation points 64 Before RAR additions Softening ε 10 −9 All experiments Initialization Glorot Uniform Unless stated otherwise 63.2 First-order vs. second-order ODE formulations 
+
+A key methodological question for PINNs applied to second-order systems is whether to reduce to first order. The first-order system (3) for three bodies produces 12 residual loss terms (6 acceleration equations + 6 velocity definitions), while the second-order system (2) produces only 6 terms. Moreover, the velocity-definition residuals ( ˙xi − vxi = 0 ) and acceleration residuals typically have very different magnitudes, creating an imbalanced multi-objective optimization problem. In contrast, the 6 second-order residuals are all acceleration terms of comparable magnitude. This motivates our preference for the second-order formulation, validated experimen-tally in Appendix A.2 with all other hyperparameters held identical. 
+
+# 3.3 Fourier feature input transformation 
+
+For the figure-eight orbit (Chenciner and Montgomery, 2000), where three equal-mass bodies trace the same lemniscate curve with a temporal phase offset of T / 3 (2π/ 3 for the fundamental, 4π/ 3 for the second harmonic), standard PINNs struggle to resolve the symmetric structure. We introduce a Fourier feature transformation of the input: 
+
+Φ( t) = 
+
+> [
+
+t, sin( ωt ), cos( ωt ), sin (
+
+ωt + 2π
+
+> 3
+> )
+
+, cos (
+
+ωt + 2π
+
+> 3
+> )
+
+,
+
+sin (
+
+2ωt + 2π
+
+> 3
+> )
+
+, cos (
+
+2ωt + 2π
+
+> 3
+> ) ]
+
+,
+
+(8) where ω = 2 π/T is the fundamental angular frequency. The network then operates as 
+
+N (Φ( t); θ), receiving 7 features instead of 1. Two points about this map deserve statement, since the motivation is easily overstated. First, the phase offsets are not independent information: sin( ωt +2 π/ 3) and cos( ωt +2 π/ 3) 
+
+are linear combinations of sin ωt and cos ωt , so under an affine first layer the shifted pair spans the same subspace as the unshifted one. The map (8) has rank 5, not 7: it supplies 
+
+t together with the fundamental and the second harmonic. Second, it is therefore the presence of the harmonics—not the encoding of the T / 3 phase symmetry—that accounts for the improvement over a plain time input. This is consistent with the measured results, where adding the phase shifts to a plain Fourier encoding changes RMSE by a factor of 2.7
+
+(Table 11) while removing the Fourier features altogether costs three orders of magnitude. 
+
+# 3.4 Modified Residual-based Adaptive Refinement (RAR) 
+
+Standard RAR (Lu et al., 2021) iteratively adds the collocation points with the largest residuals to the training set. We observe that this greedy strategy can lead to overfitting at extreme outlier points without improving global accuracy. We propose a modified RAR that at each iteration: 71. Evaluates residuals on a large random candidate set ( N = 10 ,000 points). 2. Selects the subset with residuals between the 60th and 95th percentiles. 3. Randomly samples nadd = 64 points from this subset. 4. Adds the selected points to the training set and continues training. The 60th percentile lower bound excludes regions where the residual is already well-resolved; the 95th percentile upper bound excludes extreme outliers near gravitational singularities, which standard RAR over-represents. This promotes better generalization than greedy top-k selection (see Algorithm 1 and Table 10). The candidate set is drawn once and reused across all RAR iterations, which is what the released code implements; resampling it at every iteration produced no appreciable difference in our tests. 
+
+Algorithm 1 : Modified RAR for PINNs Require: Trained model N , domain Ω, candidate size N , points to add nadd ,percentile range [plow , p high ], RAR iterations K, training epochs per iteration E
+
+Sample a fixed candidate set {tj }Nj=1 uniformly from Ω
+
+for k = 1 to K do 
+
+1. Compute mean absolute residual ¯R(tj ) for each tj
+
+2. τlow ← Percentile ({ ¯R}, p low )
+
+3. τhigh ← Percentile ({ ¯R}, p high )
+
+4. S ← { tj : τlow ≤ ¯R(tj ) ≤ τhigh }
+
+5. Randomly select nadd points from S; add to training set 6. Train N for E additional epochs 
+
+end for 
+
+# 3.5 Trainable residual scaling parameter 
+
+When training PINNs with observational data and without initial conditions, the PDE residual gradients typically dominate the data-fitting gradients, especially early in training when network outputs are far from the true solution. To address this imbalance, we introduce a trainable parameter C that scales each PDE residual by 1/C 2 before squaring. Since the loss is a sum of squared residuals, this yields: 
+
+˜Lr = 1
+
+C4 Lr, (9) where C is initialized to C0 = 3 and optimized jointly with the network parameters. This sits between two existing lines of work. Adaptive loss-weighting schemes such as Wang et al. (2021a) adjust the weights externally during training, while Theodosiou and 8Rekatsinas (2026) avoid loss balancing altogether by scaling each term of the governing equations before the loss is assembled. Our scaling is likewise applied to the residual rather than to the assembled loss, but the factor is not fixed in advance: C is an ordinary trainable parameter optimized jointly with the network, so the schedule emerges from training. The practical consequence is that no modification to the training loop is required, and the method works within standard PINN frameworks that expose only static loss weights. Since ∂ ˜Lr/∂C = −4C−5Lr < 0, the parameter C increases monotonically during training, progressively reducing the weight of the PDE residuals and allowing the data-fitting loss to exert more influence as training progresses. 
+
+# 4 Forward problem experiments 
+
+We validate our PINN methodology on forward problems—using PINNs as solvers without external data, with hard-constrained initial conditions—before turning to orbit discovery (Section 5). Full experimental details, tables, and figures are provided in Appendix A; here we summarize the key findings. 
+
+Two-body validation. A 3 × 64 PINN achieves position RMSE of 2.12 × 10 −7 on the Kepler two-body problem, confirming the accuracy of our framework. 
+
+Euler orbits: second-order formulation. For Euler collinear orbits ( m1 = m2 =
+
+m3 = 1 ), the second-order ODE formulation (6 equations) reduces the maximum posi-tion error by approximately two orders of magnitude compared to the first-order system (12 equations), from 1.28 ×10 −1 to 7.99 ×10 −4 (Table 9). The imbalanced residual magni-tudes in the first-order system cause the “stationary” body 3 to drift from its equilibrium, while the second-order system maintains stability. 
+
+Lagrange orbits: time rescaling and modified RAR. Time rescaling to match the 
+
+tanh activation’s effective range improves RMSE by a factor of ∼ 45 . Fixed collocation with L-BFGS drives the training loss to 4.33 × 10 −4 while the test loss reaches 1.31 —a gap of three to four orders of magnitude. Our modified RAR strategy (60th–95th percentile sampling) closes it, converging with train and test losses within 10% of one another (Table 10). 
+
+Figure-eight orbits: Fourier features. Standard PINNs fail on the figure-eight orbit: test loss diverges despite decreasing training loss. The Fourier feature transformation (8), which supplies the fundamental and second harmonic of the known orbital period, achieves RMSE of 1.53 × 10 −4 (Table 11). 9Conservation law diagnostics. The PINN solutions conserve energy to within ∼ 0.02 –
+
+3% over one orbital period (Table 12), which provides an error measure independent of the training loss, since conservation is never enforced explicitly. 
+
+Ablation summary. Table 2 summarizes the contribution of each methodological com-ponent. Each row isolates one component against the comparable configuration without it, on the orbit where its effect is most pronounced. Table 2: Ablation summary: contribution of each methodological component. Metric is position RMSE unless noted. Detailed results in the referenced tables. 
+
+Component Orbit Without With Gain Ref. 
+
+2nd-order ODE † Euler 1.28 × 10 −1 7.99 × 10 −4 ∼ 160 × Tab. 9 Fourier features Fig.-eight 2.50 × 10 −1 1.53 × 10 −4 ∼ 1600 × Tab. 11 Percentile RAR Lagrange 3.26 × 10 −2 1.05 × 10 −2 ∼ 3× Tab. 10 Trainable C Lagrange ∗ 1.85 × 10 −1 7.98 × 10 −3 ∼ 23 × Tab. 13 
+
+> ∗Data-driven setting (no hard-constrained initial conditions); all other rows are forward problems.
+> †Metric for this row is maximum position error, not RMSE. Percentile RAR is compared against standard RAR; it improves generalization rather than best-case RMSE (Table 10).
+
+# 5 Orbit discovery from sparse, noisy data 
+
+The forward experiments in Section 4 established that PINNs can accurately approx-imate known periodic orbits when initial conditions are provided. We now turn to our central question: what happens when initial conditions are removed and the network must discover a dynamical regime from sparse, noisy data alone? 
+
+The under-determined regime. Removing the initial conditions changes the charac-ter of the problem. With hard-constrained initial conditions (7), the solution is unique and the network need only approximate it; the optimization has a single target. With-out them, 90 noisy samples at 20% noise do not determine a trajectory—infinitely many smooth curves pass within the noise band—so the network must select one, and the se-lection is made by the ODE residual rather than by the data. Two consequences follow. First, the residual is doing work that the data cannot: a purely data-driven network has no mechanism for selecting a physical trajectory at all. Appendix B illustrates this in the easier hard-constrained setting, where an unconstrained network already violates en-ergy conservation by two orders of magnitude more than a PINN on the same samples; without initial conditions the unconstrained problem is worse still. Second, the residual admits many valid selections, because the three-body problem itself has many periodic so-lutions consistent with sparse observations—so the optimizer’s choice among them carries 10 physical meaning. A separate difficulty is one of scale. The residual gradients dominate the data gradients early in training, when the network output is far from any trajectory, which is why the trainable scaling parameter of Section 3.5 is needed for the data term to have any effect. Throughout this section we say an orbit is discovered when the PINN-inferred state, used as an initial guess, refines to a periodic solution with closure error δT < 10 −8 and the refined state is identifiable as a member of a known family via its scale-invariant period. Here δT = ∥z(T ) − z(0) ∥2 is the closure error, the distance between the initial and final states after one period, and the refinement distance is the relative ℓ2 distance between the PINN-inferred and refined initial conditions—a measure of how much of the work the refinement had to do. Runs falling in the “other” category of the tables below close to 
+
+δT < 10 −8 but are not identifiable against any catalogued family, and we do not count them as discoveries; this is a statement about identification, not about periodicity. 
+
+# 5.1 Orbit discovery without initial conditions 
+
+When we remove the initial condition constraints and train a PINN with only the gravita-tional ODE residual and the same noisy data—using a 3×64 network, AdamW ( η = 10 −3,weight decay = 0 .004 ), loss weights wr = 0 .1, wd = 40 , ε = 10 −9, and output biases 
+
+bout = ( −0.2, 0.2, 0, 0, 0.2, −0.2) —a consistent pattern emerges. The network must now simultaneously discover which orbit to follow and how to follow it. We observe that this under-determined problem is resolved differently depending on the random initialization seed, as illustrated here with one representative run per distribution: 
+
+• Glorot Uniform initialization (single run): The PINN places the three bodies on a line ( d12 + d23 ≈ d13 to two decimal places) and produces Euler-type collinear orbits with body 3 approximately stationary at the center. 
+
+• Glorot Normal initialization (single run): The PINN places the three bodies at the vertices of an approximate equilateral triangle ( d12 ≈ d13 ≈ d23 to one decimal place) and produces Lagrange-type orbits. Table 3 reports the quantitative metrics for these two runs and Figure 1 shows the resulting trajectories. The data, network architecture, optimizer, learning rate, and all other hyperparameters are identical between the two experiments—only the distribution from which the initial weights are drawn differs. These are single runs, and we do not read a systematic distribution-to-family mapping into them; the seed ensembles of Section 5.2 address that question directly, under a different loss weighting and learning rate. That two runs differing only in their random seed land on different orbit families is what one would expect if the objective were multi-modal. The composite loss L(θ) = 
+
+wrLr(θ) + wdLd(θ) admits many near-optimal configurations, because many periodic 11 solutions of the three-body problem are compatible with 90 noisy samples; the seed selects among them. In standard supervised learning, different seeds converge to functionally equivalent minima—the network computes essentially the same function either way. Here the minima correspond to qualitatively different physical solutions, so the choice is visible in the output as a change of orbit family rather than as a change in accuracy. We do not claim a causal mechanism. Table 3: Orbit discovery metrics: quantitative comparison of PINN solutions obtained with different weight initialization distributions. Data: 90 noisy observations (20% noise) from Lagrange orbits. No initial conditions provided. Distances dij are inter-body sepa-rations at t = 0 (inferred by the PINN). The collinearity measure is |dmin + dmid − dmax |,where dmin ≤ dmid ≤ dmax are the sorted inter-body distances; values near zero indicate collinear configurations. The equilateral measure is max |dij − ¯d|/ ¯d; values near zero in-dicate equilateral configurations. 
+
+Metric Glorot Uniform Glorot Normal 
+
+Discovered orbit family Euler (collinear) Lagrange (equilateral) Final total loss 2.19 × 10 −1 1.25 × 10 −1
+
+Data loss Ld 2.14 × 10 −1 1.22 × 10 −1
+
+ODE residual loss Lr 4.50 × 10 −3 3.54 × 10 −3
+
+Collinearity measure 1.16 × 10 −4 ∼ 10 0 (0.5) Equilateral measure ∼ 10 0 (0.5) 1.03 × 10 −2
+
+d12 at t = 0 0.345 0.498 
+
+d13 at t = 0 0.678 0.491 
+
+d23 at t = 0 0.334 0.500 
+
+12 (a) A Glorot Uniform run: Euler orbits (b) A Glorot Normal run: Lagrange orbits 
+
+Figure 1: Autonomous orbit discovery without initial conditions. Trained on the same noisy data (dots) from Lagrange orbits with identical hyperparameters but different weight initialization: (a) one Glorot Uniform run yielding Euler collinear orbits with d12 + d23 ≈
+
+d13 ; (b) one Glorot Normal run yielding Lagrange equilateral orbits with d12 ≈ d13 ≈ d23 .These are single runs and do not indicate a systematic init–family mapping: the 200-seed study (Section 5.2) finds no significant association ( p = 0 .620 ). Dashed lines: PINN predictions; solid lines: numerical reference. One caveat applies to all the experiments that follow. The cross-family BHH discovery (Section 5.4) uses different loss weights and still produces valid periodic orbits, which indicates the phenomenon is not confined to a single configuration; but we varied only loss weights, activation and initialization, so we cannot separate the geometry of the objective from the optimizer’s trajectory through it. 
+
+# 5.2 Seed ensembles under two initialization distributions 
+
+To validate the multi-basin structure observed in the single-run experiments of Section 5.1, we repeat the orbit discovery experiment over N = 100 independent random seeds under two initialization distributions—Glorot Uniform (GU) and Glorot Normal (GN)—both using noisy Lagrange training data, with the following setup: 3 × 64 network with sin 
+
+activation, AdamW optimizer ( η = 10 −4, weight decay = 0 .004 ), equal loss weights wr =
+
+wd = 1 , softening ε = 10 −9, and 4 × 10 4 epochs (with an additional 2 × 10 4 epochs at 
+
+η = 10 −5 for seeds that required further convergence). Note that this setup differs from the single-run experiments of Section 5.1, which used wr = 0 .1, wd = 40 and η = 10 −3;the equal-weight, lower-learning-rate configuration was adopted for the large-scale seed study. Each discovered orbit is classified according to two geometric criteria, evaluated at 5000 points along the least-squares refined trajectory rather than on the raw network output. This distinction matters for reading the thresholds below: the refined trajectory is a numerically integrated periodic solution, so its geometric residuals reach machine precision, whereas the corresponding measures on the PINN output are of order 10 −3
+
+13 (cf. Table 3). The criteria are: (i) Euler-type (collinear), if the collinearity measure 
+
+|dmin + dmid − dmax | is O(10 −16 ) (i.e., machine precision); (ii) Lagrange-type (equilateral), if the equilateral deviation max |dij − ¯d|/ ¯d is O(10 −11 ). Orbits satisfying neither criterion are further identified via the scale-invariant period T ∗ = T |E|3/2 and angular momentum 
+
+L∗ = Lz |E|1/2 on the periodic orbit invariant map (Figure 3; see also Appendix D). Orbits whose T ∗ values match known Broucke–Hadjidemetriou–Hénon family members are classified as BHH-like; those matching the Li–Liao catalog (Li and Liao, 2017)— class I.A.1 being the figure-eight choreography—are identified accordingly; the remainder as “other.” We retain the “-like” qualifier for the BHH classifications: T ∗ is a single scalar and does not by itself determine an orbit, so while the geometric and T ∗-based evidence is strong, independent confirmation by continuation has not been performed. The figure-eight identification is on firmer ground—its T ∗ and L∗ follow in closed form and are reproduced to seven significant digits (Section 5.5)—as are the Euler and Lagrange classifications, whose T ∗ values are likewise exact (Eq. 10). 
+
+5.2.1 Glorot Uniform initialization (100 seeds) 
+
+Table 4 summarizes the GU results. The majority of seeds ( 71% ) converge to Lagrange-type orbits, consistent with the training data. However, 11% of seeds produce Euler collinear orbits despite the Lagrange training data, and 12% discover BHH-like orbits—a topologically distinct family not present in the training data—indicating that cross-family convergence recurs across seeds rather than occurring in isolation. Table 4: Orbit family distribution over N = 100 independent seeds with Glorot Uniform initialization and noisy Lagrange training data. Mean training loss, distinct scale-invariant periods T ∗, and mean refinement distance (relative ℓ2 norm between PINN-inferred and least-squares refined initial conditions) are reported per family. All refined orbits achieve closure errors δT < 10 −8.                                 
+
+> Family Count %Mean loss Distinct T∗values Refine. (%)
+> Lagrange 71 71 0.274 6.664 7.30 Euler 11 11 0.483 7.854 2.70 BHH-like 12 12 0.395 7.327, 9.651, 11.817, 19.302 22.67 Other 660.474 4.960, 7.218, 9.352, 9.686, 9.918 57.93
+
+The Euler and Lagrange orbits admit an exact reduction that makes these invariants easy to interpret. Both arise from central configurations , and the corresponding motions are homographic : the configuration retains its shape while its overall scale and orientation follow a two-dimensional Kepler orbit (Meyer et al., 2009; Moeckel, 2014). For three equal unit masses the reduction gives an effective Kepler parameter μ = 3 −1/2 in the Lagrange 14 case and μ = 5 /4 in the Euler case, from which 
+
+T ∗ 
+
+> Lag
+
+= 6π
+
+23/2 = 6 .664324 , T ∗ 
+
+> Eul
+
+= 5π
+
+2 = 7 .853982 . (10) Because T and E both depend only on the semi-major axis of the underlying Kepler orbit, 
+
+T ∗ is independent of the eccentricity as well as of the physical scale. Recovering the values in (10) therefore identifies the family but carries no information about which member was found; the reported values agree with (10) to eight significant digits. Convergence quality is instead measured by the refinement distance ( 7.30% for Lagrange, 2.70% for Euler, the latter reflecting the simplicity of collinear configurations). The member within a family is resolved by L∗. Since Lz ∝
+
+> √
+
+μ a (1 − e2) and |E|1/2 ∝
+
+a−1/2, the same reduction gives L∗ = (3 /√2) √1 − e2 for Lagrange and L∗ = (5 /2) √1 − e2
+
+for Euler, where e is the eccentricity of the underlying Kepler orbit—a quantity that is well defined for homographic motions, though not for the three-body problem in general. This makes the vertical axis of Figure 3 an eccentricity axis, and the spread along it is informative: the 71 Lagrange seeds occupy |L∗| = 1 .41 –2.12 , i.e. e = 0 .03 –0.75 , whereas the training orbit itself has e = 0 .76 (|L∗| = 1 .379 ). The PINN does not merely reproduce the observed member; it recovers a broad section of the one-parameter Lagrange family, biased toward orbits less eccentric than the data. The Euler seeds, by contrast, cluster tightly at |L∗| = 2 .485 –2.499 , within e ≤ 0.11 of the circular configuration. The 12 BHH-like seeds span four distinct invariant periods ( T ∗ ≈ 7.327 , 9.651 , 11 .817 , 19 .302 ), indicating that the PINN accesses multiple BHH-like sub-families from identical training data. The “other” category (6 seeds) exhibits a high mean training loss ( 0.474 , second only to Euler’s 0.483 ) and the largest refinement distance ( 57 .93% ). These orbits do close ( δT < 10 −8 after refinement), so they are genuine periodic solutions; but the PINN-inferred state is so far from the refined one that the network cannot be said to have located them—the refinement did most of the work. We therefore do not count them as discoveries. 15 Figure 2: Glorot Uniform: orbit family distribution across 100 random seeds (top: color-coded bar), with per-seed training loss (middle) and refinement distance (bottom). Non-Lagrange seeds exhibit systematically higher training loss. 
+
+Figure 3: Glorot Uniform: periodic orbit invariant map for all 100 seeds, plotted with signed L∗ (the companion BHH-data map, Figure 5, uses |L∗|). Lagrange orbits (green) share T ∗ = 6 .664324 but spread vertically over |L∗| = 1 .41 –2.12 : since L∗ =(3 /√2) √1 − e2, this axis resolves the eccentricity of the recovered member ( e = 0 .03 –
+
+0.75 ), which T ∗ cannot. One seed appears at L∗ ≈ − 2.1, a retrograde solution. Euler (orange) sits at (7 .85 , 2.49) ; BHH-like (blue) occupy four distinct T ∗ values at |L∗| ≈ 0.8–
+
+1.1; “other” (red) are isolated. 16 5.2.2 Glorot Normal initialization (100 seeds) 
+
+Repeating the experiment with Glorot Normal initialization yields a similar distribution: Lagrange 65% , BHH-like 13% , Euler 11% , other 10% , plus a single figure-eight orbit (seed 66; Section 5.5). Full GN results—orbit family table (Table 14), seed heatmap (Figure 15), and invariant map (Figure 16)—are provided in Appendix D. 
+
+5.2.3 Chi-squared test: initialization distribution does not affect orbit family selection 
+
+The similarity between the GU and GN distributions invites a formal statistical compar-ison. We construct a 4 × 2 contingency table by merging the figure-eight orbit into the “other” category (to satisfy the minimum expected frequency requirement) and perform a Pearson χ2 test of independence (Table 5). Table 5: Chi-squared test of independence between initialization distribution and orbit family. The figure-eight orbit (1 seed, GN) is merged into the “other” category. The null hypothesis H0 is that the initialization distribution and orbit family are independent. 
+
+BHH-like Euler Lagrange Other 
+
+Observed counts 
+
+Glorot Uniform 12 11 71 6Glorot Normal 13 11 65 11 
+
+Expected counts 
+
+(under H0) 12.5 11.0 68.0 8.5 
+
+χ2(3) = 1 .775 , p = 0 .620 , Cramér’s V = 0 .094 
+
+Minimum expected frequency = 8 .5 (> 5; assumptions satisfied) The test yields χ2(3) = 1 .775 with p = 0 .620 , well above the conventional α = 0 .05 
+
+threshold. Cramér’s V = 0 .094 indicates negligible effect size. All standardized residuals are small (maximum |r| = 0 .857 for the “other” category). We therefore fail to reject H0:the choice of Glorot Uniform versus Glorot Normal initialization does not significantly affect the distribution of orbit families recovered by the PINN. The observed differences between the two experiments are consistent with random sampling variability. This null result narrows the field of candidate explanations: whatever governs the aggregate family frequencies, it is not the choice between these two initialization distribu-tions. It does not by itself identify what does; Section 5.3 supplies that evidence directly. While the single-run experiments of Section 5.1 showed that different seeds can lead to 
+
+different orbit families (confirming multi-basin structure), the 200-seed validation finds no significant difference in aggregate basin selection frequencies between Glorot Uniform 17 and Glorot Normal. The training data exerts the dominant influence, steering 65 –71% 
+
+of seeds toward the Lagrange family, while 23 –25% of seeds discover orbits from families 
+
+not present in the training data (Euler, BHH-like, and figure-eight; excluding the “other” category, which reflects incomplete convergence). Section 5.3 tests this hypothesis directly by changing the training data source. 
+
+# 5.3 Training data significantly affects basin selection 
+
+To determine whether the training data—rather than the initialization—shapes the basin structure, we repeat the 100-seed GU experiment with noisy BHH training data (instead of Lagrange). Table 6 summarizes the results. Table 6: Orbit family distribution over N = 100 independent seeds with Glorot Uniform initialization and noisy BHH training data. Compare with Table 4 (Lagrange training data). As in Table 5, the single figure-eight seed ( T ∗ = 9 .238 ) is merged into the “other” category.                                        
+
+> Family Count %Mean loss Distinct T∗values Refine. (%)
+> Lagrange 38 38 0.290 6.664 8.03 Euler 17 17 0.372 7.854 1.79 BHH-like 28 28 0.495 7.327, 9.651, 11.817, 14.652, 15.888, 17.847, 19.769 14.30 Other 17 17 0.429 4.960, 7.218, 7.312, 9.238, 9.267, 9.352, 9.878, 11.781, 12.069, 12.097, 14.652 56.83
+
+Switching from Lagrange to BHH training data shifts the distribution: Lagrange orbits drop from 71% to 38% , while BHH-like orbits more than double from 12% to 28% . Euler orbits increase from 11% to 17% and “other” from 6% to 17% . A χ2 test of independence (Table 7) confirms that this shift is statistically significant. 18 Table 7: Chi-squared test of independence between training data source and orbit family (both experiments use Glorot Uniform, N = 100 seeds each). figure-eight seeds are merged into the “other” category in both rows. H0: the training data source and orbit family are independent. 
+
+BHH-like Euler Lagrange Other 
+
+Observed counts 
+
+Lagrange data 12 11 71 6BHH data 28 17 38 17 
+
+Expected counts 
+
+(under H0) 20.0 14.0 54.5 11.5 
+
+χ2(3) = 22 .94 , p < 0.001 , Cramér’s V = 0 .339 
+
+Minimum expected frequency = 11 .5 (> 5; assumptions satisfied) The test yields χ2(3) = 22 .94 with p < 0.001 and Cramér’s V = 0 .339 (moderate effect size). The largest standardized residuals are for Lagrange orbits ( |r| = 2 .24 ) and BHH-like orbits ( |r| = 1 .79 ): Lagrange training data produces significantly more Lagrange orbits, while BHH training data produces significantly more BHH-like orbits. Under BHH training data, 55% of seeds converge to a family other than the one supplying the data, against 23% under Lagrange data. Combined with the null result of the initialization test ( p = 0 .620 ), these findings indicate that the training data source is associated with a significant shift in the distribution of recovered families, whereas the choice between the two initialization distributions tested is not .The BHH-data experiment also reveals a richer orbit taxonomy: 28 BHH-like seeds span seven distinct invariant periods (vs. four with Lagrange data; Table 4), and the “other” category contributes 11 distinct T ∗ values (vs. five). The shift in orbit family distribution is visually apparent in the seed heatmap (Figure 4), which contrasts sharply with the Lagrange-data heatmap (Figure 2), and in the invariant map (Figure 5). Figure 6 shows representative BHH orbits recovered from this experiment, spanning a wide range of morphologies and invariant periods. 19 Figure 4: Glorot Uniform with BHH training data: orbit family distribution across 100 random seeds (top: color-coded bar), with per-seed training loss (middle) and refinement distance (bottom). Compare with Figure 2 (Lagrange data): Broucke/BHH orbits (or-ange) are substantially more frequent. 
+
+Figure 5: Glorot Uniform with BHH training data: periodic orbit invariant map ( T ∗ vs. 
+
+|L∗|) for all 100 seeds. BHH-like orbits (B, blue) split into a low-|L∗| group ( |L∗| ≈ 0.8–1.1,
+
+T ∗ ≈ 7.3–11 .8) and a high-|L∗| group ( |L∗| ≈ 2.5–2.6, T ∗ ≈ 15 .9–19 .8); the T ∗ = 14 .652 
+
+seeds listed in Table 6 plot with the “other” points. Lagrange orbits (L, green) cluster tightly at (T ∗, |L∗|) ≈ (6 .66 , 2.1) and Euler (E, orange) at (7 .85 , 2.49) ; a single figure-eight orbit (purple) appears at (9 .24 , 0) . Compare with the Lagrange-data invariant map (Figure 3). 20 Figure 6: Representative BHH periodic orbits recovered by PINNs trained on noisy BHH data (Glorot Uniform). Each panel shows the least-squares refined trajectory with period 
+
+T , scale-invariant period T ∗, scale-invariant angular momentum |L∗|, and relative initial-condition refinement distance ∆IC . Panels (a)–(c) and (f) have ∆IC < 13% , indicating close agreement between PINN-inferred and refined initial conditions; panels (d) and (e) (∆IC > 38% ) represent orbits where substantial refinement was needed. 
+
+# 5.4 Cross-family orbit discovery: figure-eight to BHH 
+
+The seed studies above quantify how often cross-family convergence occurs; we now ex-amine one such case in detail, to establish that the recovered orbit is a genuine periodic solution rather than a classification artifact. We train a 3×64 network with sin activation, Glorot Normal initialization, and 90 noisy figure-eight observations (20% noise; wr = 1 ,
+
+wd = 10 , no hard constraints or Fourier features). The PINN converges to a solution resembling the Broucke–Hadjidemetriou–Hénon (BHH) family (Broucke, 1975; Li et al., 2021)—a topologically more complex orbit in which one body traces a large outer loop while the other two execute smaller inner loops. Least-squares refinement of the PINN-inferred initial conditions (Appendix E, Ta-ble 15) yields a periodic orbit with T ≈ 1.4946 and closure error δT ≈ 9.4 × 10 −10 ,confirming that the PINN-discovered solution lies in the basin of attraction of a true BHH periodic orbit. Forward integration with these initial conditions (Figure 7) confirms the BHH topology. The PINN discovers this orbit in the inertial frame; in a rotating frame ( ω = −0.35 ) the trajectory matches the canonical BHH topology. 21 (a) PINN solution vs. noisy figure-eight data     
+
+> (b) Numerical integration with PINN-discovered ICs
+
+Figure 7: Cross-family orbit discovery. (a) PINN trained on 90 noisy observations (dots) from the figure-eight orbit discovers a BHH-type orbit (dashed lines). (b) Forward in-tegration with the least-squares refined initial conditions confirms BHH family topology (Table 15). The behaviour is not limited to a single configuration: repeating with Glorot Uniform initialization on BHH data produces a more complex four-lobed BHH variant, indicating that BHH-family convergence is not an artifact of one particular run. The 200-seed experiment (Section 5.2) classifies 12 (GU) and 13 (GN) seeds as BHH-like. Figure 6 illustrates the morphological variety of this family using the BHH-data ensemble (Section 5.3), where the morphologies range from simple near-symmetric con-figurations to complex multi-lobed trajectories. This suggests that the “BHH-like” basin encompasses a continuum of related periodic orbits rather than a single solution. 
+
+# 5.5 Discovery of the figure-eight choreography from Lagrange data 
+
+During the seed ensembles of Section 5.2, a PINN trained on noisy Lagrange data with Glorot Normal initialization (seed 66) converged to an orbit topologically distinct from anything in its training data: a two-lobed curve traced by all three bodies (Figure 8). The scale-invariant period T ∗ = T |E|3/2 (Li and Liao, 2017) identifies it. Least-squares refinement gives T ∗ = 9 .2376827 with L∗ = 0 , and the standard figure-eight choreography of Moore (1993) and Chenciner and Montgomery (2000)—initial conditions 
+
+r1 = (0 .97000436 , −0.24308753) , ˙r3 = ( −0.93240737 , −0.86473146) , T = 6 .3259140 —has 
+
+T ∗ = 9 .2376812 and L∗ = 0 exactly. The two agree to seven significant digits, and the recovered period T = 1 .518234 is reproduced to six decimals by rescaling the reference orbit through Eq. (4). The discovered orbit is therefore the figure-eight, which appears as class I.A.1—the first entry—of the Li–Liao catalog (Li and Liao, 2017; Liao et al., 2022). Its closure error is δT = 1 .07 × 10 −10 (refined initial conditions in Appendix E, Table 16). 22 This closes a loop in the paper. The figure-eight is the orbit whose forward solution required the Fourier feature encoding of Section 3.3; here it is recovered in the inverse direction, from noisy Lagrange observations, by a network given no initial conditions and no knowledge of its period. Together with the converse case of Section 5.4—figure-eight data yielding a BHH orbit—it shows that cross-family convergence is not confined to one direction between two particular families. 
+
+Figure 8: Least-squares refined orbit discovered by a PINN trained on noisy Lagrange data with Glorot Normal initialization (seed 66 out of 100). The two-lobed topology matches the first orbit in the Li–Liao catalog (Li and Liao, 2017): T ∗ = 9 .237683 , T = 1 .518234 ,
+
+E = −3.332853 , δT = 1 .07 × 10 −10 .Unlike the single-run BHH cross-family discovery (Section 5.4), this orbit was found within the 100-seed GN experiment (Section 5.2) using the standard seed-study setup ( sin 
+
+activation, Glorot Normal, Lagrange data), demonstrating that cross-family convergence occurs even without specialized hyperparameter choices. 
+
+# 6 Discussion 
+
+# 6.1 Methodological insights 
+
+Our finding that the second-order ODE formulation outperforms the first-order reduc-tion contrasts with Gladstone et al. (2025), who report first-order advantages on PDE boundary-value problems (e.g., Helmholtz, Navier–Stokes). We hypothesize that the difference is loss balance: the first-order system introduces velocity-definition residuals ( ˙xi −vxi = 0 ) that are simple identity constraints, whereas the gravitational 1/r 2 
+
+> ij
+
+accelera-tions produce residuals orders of magnitude larger, creating a severely imbalanced 12-term loss. The second-order formulation, with only 6 acceleration-type residuals of comparable magnitude, avoids this imbalance—yielding a ∼ 13 -fold improvement in training loss and a ∼ 160 -fold reduction in maximum position error for the Euler orbit (Table 9). This 23 suggests that the optimal ODE order is problem-dependent, but a controlled ablation isolating the loss-balance effect from other factors (e.g., AD depth) is needed to confirm this explanation. Our Fourier feature encoding differs from standard spectral bias mitigation (Rahaman et al., 2019; Wang et al., 2021b) in that the frequencies are fixed by the known orbital period rather than sampled or learned. Supplying the fundamental and second harmonic turns a problem where a plain-input PINN fails to generalize into one with stable conver-gence (Table 11). We note that the T / 3 phase offsets we included add no representational content (Section 3.3); the benefit comes from the harmonics. Similarly, our percentile-based RAR (60th–95th) is simpler than the RAD and RAR-D methods of Wu et al. (2023) and proved effective for Lagrange orbits (Table 10), where standard RAR concentrated points at singularity-adjacent outliers. 
+
+# 6.2 Orbit discovery and what governs it 
+
+Our orbit discovery result (Section 5) extends the multi-solution PINN framework of Zou et al. (2025) from reaction-diffusion and fluid-flow bifurcation branches to a fundamen-tally different setting: an inverse problem with unknown initial conditions and physically distinct orbit families rather than branches of a single solution. A further difference con-cerns the role of initialization. Zou et al. (2025) attribute solution multiplicity to random initialization; in our setting the seed likewise selects the solution, but the sampling distri-bution it is drawn from does not measurably shift the frequencies with which the families appear. We attribute this to the presence of a data term in the loss, absent from their purely residual-driven formulation. This suggests a methodology for orbit exploration: training ensembles of PINNs on sparse observations and cataloging the orbit families that emerge—without requiring the accurate initial-condition guesses on which gradient-based search methods depend (Šu-vakov and Dmitrašinović, 2013). The cross-family discovery of Section 5.4 strengthens this further: a PINN trained on figure-eight data converges to BHH-type orbits (Broucke, 1975), suggesting that PINNs may serve as complementary tools for generating candidate initial conditions alongside the large-scale numerical catalogs of Liao et al. (2022) and Li et al. (2021). The 20% noise level may play a regularizing role, though this hypothesis has not been tested via a controlled ablation; experiments with noise exceeding 50% did not produce meaningful orbits. 
+
+# 6.3 PINNs as complementary tools 
+
+PINNs are not replacements for established numerical integrators, which remain supe-rior for well-posed initial-value problems. Their niche is inverse problems with sparse, 24 noisy data and unknown initial conditions, where they can discover qualitatively differ-ent solutions from the same observations. Compared to the hybrid surrogate approach of Saz Ulibarrena et al. (2024), our method embeds the physics directly and trades efficiency for exploratory capability. Concretely, the cost is a training run per candidate orbit; the return is a set of initial conditions that numerical refinement converges on without a prior guess. 
+
+# 6.4 Limitations and future work 
+
+All experiments used modest resources (Intel i7, 8GB RAM; Google Colab TPU v6e-1 for accelerated runs), limiting network sizes and ensemble scales. Conservation laws were not exploited as auxiliary loss terms. Only two initialization distributions (Glorot Uni-form/Normal) and two training data sources (Lagrange, BHH) were tested, on equal-mass planar configurations; whether initialization can be designed to bias basin selection (e.g. He, orthogonal) and whether the training-data effect generalizes to other orbit families both remain open. Incorporating Hamiltonian or Lagrangian structure into the architec-ture is a natural extension we have not attempted. 
+
+# 7 Conclusions 
+
+PINNs trained on sparse, noisy observations without initial conditions recover periodic orbits of the gravitational three-body problem, including orbit families absent from the training data. Over 200 seeds, 23 –25% of runs converge to such families, and the inferred states refine to genuine periodic solutions—the figure-eight choreography recovered from Lagrange data, another a BHH orbit closing to δT ≈ 9.4 × 10 −10 . The utility of the approach lies in supplying candidate initial conditions in regions of the solution space where no accurate guess is available to seed conventional continuation or gradient search. 
+
+What is responsible. Two factors must be distinguished. Within a single experimental configuration, the random seed alone produces three distinct orbit families from a single dataset (Table 4): the seed selects the solution. What the χ2 tests then address is the aggregate distribution over seeds. Changing the training data source shifts that distribution significantly ( p < 0.001 , Cramér’s V = 0 .339 ); switching between Glorot Uniform and Glorot Normal does not ( p = 0 .620 , V = 0 .094 ). An ensemble seeking orbit diversity should therefore be diversified over training data, since substituting one Glorot variant for the other leaves the family frequencies unchanged within the resolution of our sample. 25 What this paper does not establish. The evidence is statistical, not analytical. We do not prove that the loss landscape contains multiple basins; we observe convergence frequencies over finite ensembles and verify the resulting orbits numerically. The null result on initialization is a failure to reject, not a demonstration of absence: with 100 seeds per group, small effects would go undetected. The scope limitations of Section 6 apply throughout. This extends Zou et al. (2025)’s multi-solution framework from reaction-diffusion and fluid flow to celestial mechanics, where the discovered solutions are fundamentally differ-ent orbit families rather than bifurcation branches. Table 8 summarizes the key results across all orbit families; the ablation summary (Table 2) quantifies each methodological component’s contribution. Table 8: Summary of experiments and key results across all orbit families studied in this work. “Cross-family” is the percentage of seeds converging to a family other than the one supplying the training data, excluding the “other” category.                                                                                 
+
+> Orbit Key technique Net Loss RMSE
+> Two-body Validation 3×64 1.79 ×10 −82.12 ×10 −7
+> Euler 2nd-order form. 3×128 2.72 ×10 −52.22 ×10 −4
+> Lagrange Modified RAR 3×64 4.57 ×10 −21.05 ×10 −2
+> Figure-eight Fourier + phase 5×64 1.27 ×10 −51.53 ×10 −4
+> Data-driven single runs (no ICs, 20% noise)
+> Euler (disc.) No ICs, wr=0 .1,wd=40 3×64 2.19 ×10 −1—Lagrange (disc.) No ICs, wr=0 .1,wd=40 3×64 1.25 ×10 −1—BHH (cross-fam.) No ICs, wr=1 ,wd=10 3×64 2.97 ×10 −1—
+> Seed ensembles (no ICs, 20% noise, wr=wd= 1 )
+> Experiment Init. Cross-family Result
+> 100 seeds, Lagrange data GU 23% baseline 100 seeds, Lagrange data GN 25% vs. GU: p= 0 .620
+> 100 seeds, BHH data GU 55% vs. Lagrange data: p < 0.001
+
+Open problems. Three questions follow directly. (i) Why does the training data shape basin selection frequencies while the initialization distribution does not—is there a char-acterization of the data-plus-residual loss that predicts the basin weights? (ii) Can the basin structure be probed directly with loss landscape tools (mode connectivity, Hessian spectra) rather than inferred from convergence statistics? (iii) Does the effect survive in settings where the underlying multi-stability is better understood—the Duffing oscillator would be a natural first test—and does it extend to unequal masses and three dimensions? 26 Code and data availability 
+
+The source code, trained models, and Jupyter notebooks to reproduce all experiments in this paper are publicly available on GitHub at: 
+
+https://github.com/nkollias/Pinns-three-body-problem 
+
+The repository includes Python scripts and Jupyter notebooks (DeepXDE/TensorFlow (Lu et al., 2021)), configuration files, numerical reference solutions, and plotting scripts to reproduce all figures. 
+
+# Acknowledgments 
+
+This work was conducted as part of a Master’s thesis at the Hellenic Open University. Computational experiments were performed on a personal computer (Intel i7, 8GB RAM) and a Google Colab TPU v6e-1. 
+
+# CRediT authorship contribution statement 
+
+Nikolaos Kollias: Software, Investigation, Validation, Formal analysis, Visualization, Writing – original draft. Nikolaos Matzakos: Conceptualization, Methodology, Formal analysis, Supervision, Writing – review & editing. 
+
+# Declaration of competing interest 
+
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper. 
+
+# References 
+
+Philip G. Breen, Christopher N. Foley, Tjarda Boekholt, and Simon Portegies Zwart. Newton versus the machine: solving the chaotic three-body problem using deep neural networks. Monthly Notices of the Royal Astronomical Society , 494:2465–2470, 2020. Roger Broucke. On relative periodic solutions of the planar general three-body problem. 
+
+Celestial Mechanics , 12:439–462, 1975. Alain Chenciner and Richard Montgomery. A remarkable periodic solution of the three-body problem in the case of equal masses. Annals of Mathematics , 152:881–901, 2000. 27 Salvatore Cuomo, Vincenzo Schiano Di Cola, Fabio Giampaolo, Gianluigi Rozza, Maziar Raissi, and Francesco Piccialli. Scientific machine learning through physics-informed neural networks: Where we are and what’s next. Journal of Scientific Computing , 92: 88, 2022. Leonhard Euler. De motu rectilineo trium corporum se mutuo attrahentium. Novi Com-mentarii Academiae Scientiarum Petropolitanae , 11:144–151, 1767. Rini Jasmine Gladstone, Mohammad Amin Nabian, N. Sukumar, Ankit Srivastava, and Hadi Meidani. FO-PINNs: A first-order formulation for physics-informed neu-ral networks. Engineering Analysis with Boundary Elements , 174:106161, 2025. arXiv:2210.14320. George Em Karniadakis, Ioannis G. Kevrekidis, Lu Lu, Paris Perdikaris, Sifan Wang, and Liu Yang. Physics-informed machine learning. Nature Reviews Physics , 3:422–440, 2021. Diederik P. Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In 
+
+Proceedings of the 3rd International Conference on Learning Representations (ICLR) ,2015. Isaac E. Lagaris, Aristidis Likas, and Dimitrios I. Fotiadis. Artificial neural networks for solving ordinary and partial differential equations. IEEE Transactions on Neural Networks , 9:987–1000, 1998. Joseph-Louis Lagrange. Essai sur le problème des trois corps. Prix de l’Académie Royale des Sciences de Paris , 9, 1772. Xiaoming Li and Shijun Liao. More than six hundred new families of Newtonian periodic planar collisionless three-body orbits. Science China Physics, Mechanics & Astronomy ,60:129511, 2017. doi: 10.1007/s11433-017-9078-5. XiaoMing Li, XiaoChen Li, and ShiJun Liao. One family of 13315 stable periodic orbits of non-hierarchical unequal-mass triple systems. Science China Physics, Mechanics & Astronomy , 64:219511, 2021. doi: 10.1007/s11433-020-1624-7. Shijun Liao, Xiaoming Li, and Yu Yang. Three-body problem—from Newton to super-computer plus machine learning. New Astronomy , 96:101850, 2022. Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In Proceedings of the 7th International Conference on Learning Representations (ICLR) , 2019. Lu Lu, Xuhui Meng, Zhiping Mao, and George Em Karniadakis. DeepXDE: A deep learning library for solving differential equations. SIAM Review , 63:208–228, 2021. 28 Nikolaos M. Matzakos and Christos A. Sfyrakis. Comparing physics-informed and neural ODE approaches for modeling nonlinear biological systems: A case study based on the Morris–Lecar model. arXiv preprint arXiv:2603.26921 , 2026. URL https://arxiv. org/abs/2603.26921 .Kenneth R. Meyer, Glen R. Hall, and Dan Offin. Introduction to Hamiltonian Dynam-ical Systems and the N -Body Problem , volume 90 of Applied Mathematical Sciences .Springer, New York, 2 edition, 2009. doi: 10.1007/978-0-387-09724-4. Richard Moeckel. Central configurations. Scholarpedia , 9(4):10667, 2014. doi: 10.4249/ scholarpedia.10667. Cristopher Moore. Braids in classical dynamics. Physical Review Letters , 70:3675–3679, 1993. Manuel Santos Pereira, Luís Tripa, Nélson Lima, Francisco Caldas, and Cláudia Soares. Advancing solutions for the three-body problem through physics-informed neural net-works. arXiv preprint arXiv:2503.04585 , 2025. URL https://arxiv.org/abs/2503. 04585 .Henri Poincaré. Les Méthodes nouvelles de la mécanique céleste , volume 1. Gauthier-Villars, Paris, 1892. Nasim Rahaman, Aristide Baratin, Devansh Arpit, Felix Draxler, Min Lin, Fred Ham-precht, Yoshua Bengio, and Aaron Courville. On the spectral bias of neural networks. In Proceedings of the 36th International Conference on Machine Learning , volume 97 of PMLR , pages 5301–5310, 2019. Maziar Raissi, Paris Perdikaris, and George Em Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics , 378:686–707, 2019. Veronica Saz Ulibarrena, Philipp Horn, Simon Portegies Zwart, Elena Sellentin, Barry Koren, and Maxwell X. Cai. A hybrid approach for solving the gravitational N -body problem with artificial neural networks. Journal of Computational Physics , 496:112596, 2024. Theodosios Theodosiou and Christoforos Rekatsinas. Physics-informed neural networks without loss balancing: A direct term scaling approach for nonlinear 1D problems. 
+
+F1000Research , 14:1252, 2026. doi: 10.12688/f1000research.169129.2. Version 2. Milovan Šuvakov and V. Dmitrašinović. Three classes of Newtonian three-body planar periodic orbits. Physical Review Letters , 110:114301, 2013. 29 Sifan Wang, Yujun Teng, and Paris Perdikaris. Understanding and mitigating gradi-ent flow pathologies in physics-informed neural networks. SIAM Journal on Scientific Computing , 43:A3055–A3081, 2021a. Sifan Wang, Hanwen Wang, and Paris Perdikaris. On the eigenvector bias of Fourier feature networks: From regression to solving multi-scale PDEs with physics-informed neural networks. Computer Methods in Applied Mechanics and Engineering , 384:113938, 2021b. Chenxi Wu, Min Zhu, Qinyang Tan, Yadhu Kartha, and Lu Lu. A comprehensive study of non-adaptive and residual-based adaptive sampling for physics-informed neural net-works. Computer Methods in Applied Mechanics and Engineering , 403:115671, 2023. Zongren Zou, Zhicheng Wang, and George Em Karniadakis. Learning and discovering multiple solutions using physics-informed neural networks with random initialization and deep ensemble. Proceedings of the Royal Society A , 481:20250205, 2025. doi: 10.1098/rspa.2025.0205. 
+
+# Appendices 
+
+The appendices contain material supporting, but not required for, the main argument. Appendix A gives the full forward-problem experiments summarized in Section 4. Ap-pendix B compares a PINN with an unconstrained network on the same noisy data. Appendix C reports the trainable scaling parameter results. Appendix D gives the Glorot Normal seed study in full, mirroring the Glorot Uniform results in the main text. Ap-pendix E lists the initial conditions of the discovered orbits, so that the reported orbits can be reproduced independently. 
+
+# A Forward problem experimental details 
+
+This appendix provides full tables, figures, and experimental details for the forward prob-lem experiments summarized in Section 4. 
+
+# A.1 Two-body problem: validation 
+
+As a validation benchmark, we consider the Kepler two-body problem ( m1 = 0 .99 , m2 =0.01 ) using a 3 × 64 network with hard constraints, second-order formulation, and the standard two-phase training protocol (Table 1). The PINN achieves position RMSE of 
+
+2.12 × 10 −7 against the numerical reference, with final training loss 1.79 × 10 −8.30 A.2 Three-body Euler orbits: first-order vs. second-order 
+
+We consider the simplest Euler collinear configuration with three equal masses ( m1 =
+
+m2 = m3 = 1 ). Bodies 1 and 2 orbit symmetrically around the stationary body 3 at the origin. Initial conditions are: 
+
+(x1, y 1, v x1, v y1) = ( −0.5, 0, 0, 0.9) ,
+
+(x2, y 2, v x2, v y2) = (0 .5, 0, 0, −0.9) , (11) 
+
+(x3, y 3, v x3, v y3) = (0 , 0, 0, 0) .
+
+A.2.1 First-order system (12 equations) 
+
+A 3 × 128 network with hard constraints, trained using the standard two-phase protocol (Table 1), achieves good agreement during the first half-period but degrades thereafter. The “stationary” body 3 gradually drifts from the origin, indicating convergence failure (see Table 9). 
+
+A.2.2 Second-order system (6 equations) 
+
+With identical hyperparameters but the second-order formulation, the maximum position error drops by approximately two orders of magnitude (from 1.28 × 10 −1 to 7.99 × 10 −4). The trajectories show excellent agreement with the numerical solution, and the drift of body 3 is reduced. Table 9: Comparison of first-order and second-order formulations for Euler orbits. The second-order formulation achieves approximately two orders of magnitude lower maximum position error and reduced drift of the “stationary” body 3. All experiments use a 3 × 128 
+
+network with hard constraints, Adam ( η = 10 −4, 2 × 10 5 epochs) followed by L-BFGS (1.5 × 10 4 epochs).                         
+
+> Formulation Eqs. Train loss Max pos. error Body 3 drift
+> First-order 12 3.55 ×10 −41.28 ×10 −17.06 ×10 −4
+> Second-order 62.72 ×10 −57.99 ×10 −43.30 ×10 −4
+
+The L-BFGS phase reduces the loss substantially further in the second-order case than in the first-order one, which is consistent with the second-order system presenting a loss surface more amenable to quasi-Newton optimization. 31 (a) First-order (12 eqs.): body 3 drifts (b) Second-order (6 eqs.): stable 
+
+Figure 9: Euler collinear orbits: PINN trajectories (dashed) vs. numerical reference (solid). The second-order formulation reduces maximum position error by ∼ 160 × (Ta-ble 9). 
+
+# A.3 Three-body Lagrange orbits with RAR 
+
+For Lagrange equilateral triangle orbits, we use three equal masses at the vertices of an equilateral triangle with side length 2, with angular velocity ω = 0 .3 about the center of mass. The period is approximately T ≈ 4.4 in the original time scale. 
+
+A.3.1 Importance of time rescaling 
+
+Training in the original time scale ( T ≈ 4.4) fails: inputs exceed the effective range of tanh 
+
+(Theodosiou and Rekatsinas, 2026) and the PINN stagnates at RMSE ∼ 1. Rescaling to T ≈ 0.5 yields RMSE ∼ 2 × 10 −2—an improvement of a factor of ∼ 45 with identical network parameters. This confirms that time-domain compression to match the activation function’s range is a practical prerequisite for PINNs on periodic orbits. 
+
+A.3.2 Standard vs. modified RAR 
+
+With 64 initial collocation points, L-BFGS achieves low training loss but fails to generalize: test loss is three to four orders of magnitude higher. Standard RAR removes the gap but at a worse absolute accuracy (RMSE 3.26 × 10 −2). Our modified RAR (60th–95th percentile sampling) produces steady convergence in both training and test losses, with trajectories that closely match the numerical solution and even provide reasonable short-term extrapolation beyond the training interval. 32 Table 10: Lagrange orbit accuracy: comparison of sampling strategies. All experiments use a 3 × 64 network, second-order formulation with hard constraints. “No RAR” uses 64 fixed collocation points; standard RAR adds nadd = 64 points with maximum residual; modified RAR samples from the 60th–95th percentile range. 
+
+Strategy Train loss Test loss RMSE (pos.) 
+
+No RAR (no scaling) 2.65 × 10 −2 3.13 × 10 −2 8.61 × 10 −1
+
+No RAR (64 pts) 1.28 × 10 −1 3.10 × 10 −1 1.93 × 10 −2
+
+No RAR (64 pts) + L-BFGS 4.33 × 10 −4 1.31 × 10 0 1.69 × 10 −3
+
+Standard RAR 2.43 × 10 −1 3.01 × 10 −1 3.26 × 10 −2
+
+Modified RAR (60–95th pct.) 4.57 × 10 −2 4.92 × 10 −2 1.05 × 10 −2
+
+Figure 10: Evolution of residual distributions during modified RAR iterations for La-grange orbits. The 60th–95th percentile sampling strategy produces a steady reduction in residual magnitudes across iterations, in contrast to standard RAR which concentrates points at extreme outliers. 
+
+(a) Training and test loss convergence (b) PINN vs. numerical trajectories 
+
+Figure 11: Lagrange orbits with modified RAR: (a) Loss convergence showing train and test losses decreasing together. (b) Resulting trajectories (dashed) closely matching the numerical solution (solid). 33 A.4 Figure-eight orbits with Fourier features 
+
+For the figure-eight orbit (Chenciner and Montgomery, 2000), initial conditions after time rescaling to T = 1 are used with equal masses. Without the Fourier feature transformation (8), both 3 × 64 and 5 × 64 networks fail: training loss decreases while test loss diverges after ∼ 35 ,000 epochs, and the predicted trajectories bear little resemblance to the true solution. With the Fourier feature transformation, the 5×64 network achieves stable convergence with training and test losses decreasing together. Phase portraits for both half-period and full-period intervals confirm good agreement with the numerical solution, with body 1 showing the best accuracy. The phase-shifted terms give a 2.7× lower RMSE than a Fourier encoding without them. As shown in Section 3.3, the shifts add no representational content, so this difference reflects optimization rather than expressivity. Table 11: Figure-eight orbit: effect of Fourier feature transformation on PINN accuracy. Both experiments use Adam ( η = 10 −4, 3 × 10 5 epochs) followed by L-BFGS ( 1.5 × 10 4
+
+epochs), second-order formulation with hard constraints.                                                  
+
+> Configuration Net Train loss Test loss RMSE (pos.)
+> No Fourier 3×64 7.89 ×10 −61.66 ×10 12.58 ×10 −1
+> No Fourier 5×64 1.12 ×10 −67.82 ×10 02.50 ×10 −1
+> Fourier (no phase) 5×64 2.13 ×10 −53.78 ×10 −54.14 ×10 −4
+> Fourier + phase 5×64 1.27 ×10 −51.59 ×10 −51.53 ×10 −4
+> (a) Without Fourier features ( 3×64 )(b) With Fourier features ( 5×64 )
+
+Figure 12: Figure-eight orbit trajectories: (a) Standard PINN fails to capture the sym-metric structure—predicted trajectories diverge from the true solution (test loss ∼ 10 1). (b) With the Fourier feature input transformation encoding the periodicity and 120 ◦ phase offsets, the PINN closely reproduces the figure-eight orbit (RMSE ∼ 10 −4; see Table 11). 34 A.5 Conservation law diagnostics 
+
+As an independent validation of solution quality, we compute the total energy and lin-ear momentum of the PINN solutions and compare their conservation properties to the numerical reference. For the three-body problem, the total energy is: 
+
+Etot =
+
+> 3∑
+> i=1
+
+12mi| ˙ri|2 − G ∑
+
+> i<j
+
+mimj
+
+|ri − rj |, (12) and the total linear momentum is P = ∑3 
+
+> i=1
+
+mi ˙ri. Since the PINN does not explicitly enforce conservation laws, any departure from constant Etot or P provides a physics-based error measure that is independent of the training loss. Table 12: Conservation law diagnostics for forward-problem PINN solutions. ∆Erel =max t |E(t) − E(0) |/|E(0) | measures relative energy drift; ∆P = max t |P (t) − P (0) | mea-sures absolute momentum drift. The numerical reference values ( solve_ivp ) are shown for comparison. 
+
+Orbit PINN Numerical ref. 
+
+∆Erel ∆P ∆Erel ∆P
+
+Euler 7.74 × 10 −4 2.65 × 10 −4 9.99 × 10 −10 0.00 
+
+Lagrange 3.23 × 10 −2 5.29 × 10 −3 9.48 × 10 −10 5.41 × 10 −15 
+
+Figure-eight 1.64 × 10 −4 7.22 × 10 −5 2.91 × 10 −10 2.67 × 10 −15 
+
+The PINN solutions conserve energy to within ∼ 0.02 –3% over one orbital period, which is consistent with the position-level accuracy reported in Tables 9–11. While this is far from the machine-precision conservation achieved by symplectic integrators, it provides an independent confirmation that the learned trajectories are physically meaningful. 
+
+# B PINN vs. standard neural network comparison 
+
+This appendix establishes the value of the physics constraint for noisy data. We compare a standard feedforward network with a PINN (with hard-constrained initial conditions) trained on 90 noisy data points (20% noise level) from Lagrange orbits. The standard network produces distorted trajectories that attempt to interpolate through all noisy points (Figure 13a). The PINN, leveraging the gravitational ODE residual as an induc-tive bias, recovers smooth, physically consistent trajectories (Figure 13b). Additional training epochs further improve the PINN results while degrading the standard network’s performance—consistent with the ODE residual acting as a regularizer that restricts the hypothesis space to physically plausible solutions. 35 (a) Standard neural network (b) Physics-Informed Neural Network 
+
+Figure 13: Comparison of a standard feedforward network (a) and a PINN with hard constraints (b) trained on 90 noisy data points (20% noise, shown as dots) from Lagrange orbits. Both networks achieve comparable RMSE (standard network: 2.20 × 10 −2; PINN: 
+
+4.27 × 10 −2), but the standard network produces distorted trajectories, while the PINN recovers smooth, physically consistent orbits. The critical difference is in conservation: the PINN maintains ∆Erel = 5 .65 ×10 −2 and ∆P = 7 .42 ×10 −3, compared to ∆Erel = 5 .42 
+
+and ∆P = 4 .40 for the standard network—demonstrating that the ODE residual loss acts as a physics-informed regularizer. 
+
+# C Trainable scaling parameter: detailed results 
+
+This appendix reports the trainable scaling parameter results. We employ the trainable parameter C (Section 3.5) with C0 = 3 and static weights wr = 0 .1, wd = 10 . Over 
+
+1.5 × 10 5 epochs, C increases approximately linearly ( ∼ 0.1 per 1000 epochs after an initial transient), acting as an implicit annealing schedule (Eq. 9): because ∂ ˜Lr/∂C < 0
+
+always, C grows monotonically and its final value depends on training duration. Caveat: the fixed-weight baseline uses wd = 40 versus wd = 10 for the trainable-C
+
+configuration; a fully controlled comparison would hold wd fixed. The result demon-strates that trainable C enables orbit discovery, but the improvement magnitude should be interpreted with this confound in mind. Table 13: Effect of the trainable scaling parameter C: comparison of data-driven PINN configurations for Lagrange orbits. Data: 90 noisy observations (20% noise), no initial conditions enforced. 
+
+Configuration Final loss RMSE (position) Final C value 
+
+Fixed wr = 0 .1, wd = 40 (no C) 9.47 × 10 −1 1.85 × 10 −1 —Trainable C (C0 = 3 , 1/C 4) 4.47 × 10 −3 7.98 × 10 −3 ≈ 17 
+
+Hard constraints (reference) 3.52 × 10 −2 1.18 × 10 −2 —36 (a) PINN trajectories vs. numerical solution (b) Evolution of C over training 
+
+Figure 14: Data-driven PINN with trainable C: (a) Trajectories (dashed) vs. numerical solution (solid) and noisy data (dots). (b) C increases approximately linearly, acting as an implicit annealing schedule. 
+
+# D Glorot Normal initialization: detailed results 
+
+This appendix presents the full Glorot Normal (GN) 100-seed experiment, mirroring the Glorot Uniform results in Section 5.2. Table 14: Orbit family distribution over N = 100 independent seeds with Glorot Normal initialization and noisy Lagrange training data. The distribution closely mirrors the Glorot Uniform results (Table 4), with comparable percentages across all families.                                       
+
+> Family Count %Mean loss Distinct T∗values Refine. (%)
+> Lagrange 65 65 0.261 6.664 5.76 Euler 11 11 0.475 7.854 2.69 BHH-like 13 13 0.381 7.327, 9.658, 19.302 26.51 Other 10 10 0.378 4.960, 7.218, 9.686, 9.918, 9.920, 12.097 69.45 Figure-eight 110.378 9.238 54.67
+
+37 Figure 15: Glorot Normal: orbit family distribution across 100 random seeds, with the same layout as Figure 2. The overall pattern closely resembles the Glorot Uniform experi-ment, with Lagrange orbits dominating and BHH-like, Euler, and “other” orbits appearing at comparable frequencies. A single figure-eight orbit (red, seed 66) is present. 
+
+Figure 16: Glorot Normal: periodic orbit invariant map. The structure mirrors the GU map (Figure 3), with the addition of an figure-eight orbit (purple) at (T ∗, L ∗) ≈ (9 .24 , 0) .The two initialization distributions produce distributions of families that the χ2 test cannot distinguish (Table 5). 38 E Discovered orbit initial conditions 
+
+This appendix lists the initial conditions for the two cross-family orbit discoveries reported in Sections 5.4 and 5.5. Table 15: PINN-discovered initial conditions for the BHH-type orbit, obtained from a net-work trained on 90 noisy figure-eight observations (20% noise) without initial conditions. The refined values are obtained via scipy.optimize.least_squares starting from the PINN estimates. 
+
+xi(0) yi(0) ˙xi(0) ˙yi(0) 
+
+PINN-inferred (raw) 
+
+Body 1 −0.0206 0.2063 0.1713 −1.6498 
+
+Body 2 0.2684 0.0918 0.9394 0.6423 
+
+Body 3 −0.2236 −0.3013 −1.1534 1.0108 
+
+Refined (least-squares, δT ≈ 9.4 × 10 −10 , T ≈ 1.4946 )
+
+Body 1 −0.0070 0.2174 0.1896 −1.6361 
+
+Body 2 0.2767 0.1006 0.9989 0.6273 
+
+Body 3 −0.2339 −0.2639 −1.1885 1.0088 
+
+Table 16: Least-squares refined initial conditions for the figure-eight orbit discovered by seed 66 (Glorot Normal, Lagrange training data). Period T = 1 .518234 , invariant period 
+
+T ∗ = 9 .237683 , total energy E = −3.332852793 , closure error δT = 1 .07 × 10 −10 .
+
+xi(0) yi(0) ˙xi(0) ˙yi(0) 
+
+Body 1 −0.1428 0.3893 −0.7716 −0.1352 
+
+Body 2 0.1514 −0.0753 1.5879 −1.1400 
+
+Body 3 −0.0080 −0.3142 −0.8163 1.2752 
+
+39

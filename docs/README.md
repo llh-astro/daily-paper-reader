@@ -6,68 +6,47 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-30
-- 运行时间：2026-07-30 21:09:14 UTC
+- 最新运行日期：2026-08-02
+- 运行时间：2026-08-02 21:39:38 UTC
 - 运行状态：成功
-- 本次总论文数：16
+- 本次总论文数：9
 - 精读区：7
-- 速读区：9
+- 速读区：2
 
 ### 今日简报（AI）
-今日精选16篇论文，重点精读行星光谱生成与SPHEREx探测水冰两篇高分研究。最值得关注：行星/卫星碟平均光谱模拟方法，以及利用散射近红外光绘制原恒星核水冰分布。建议普通读者关注这些技术如何提升我们对系外行星和恒星形成区域物质组成的认知。
-- 详情：[/202607/30/README](/202607/30/README)
+今日聚焦系外行星大气与宜居性研究，精读9篇中的满分项为超热木星WASP-178b的高分辨率光谱分析。最值得关注：GHOST/Gemini South观测揭示了该行星日面大气细节；恒星活动对系外行星宜居性的影响亦有高评分综述。下一步可速读AI在天体力学中的应用，如物理信息神经网络求解三体周期轨道。
+- 详情：[/202608/02/README](/202608/02/README)
 
 ### 精读区论文标签
-1. [Disk-averaged spectrum generation for spherically symmetric planets and moons](/202607/30/2607.24894v1-disk-averaged-spectrum-generation-for-spherically-symmetric-planets-and-moons)  
+1. [High-Resolution Dayside Spectroscopy of the Ultra-Hot Jupiter WASP-178b with GHOST/Gemini South](/202608/02/2607.27363v1-high-resolution-dayside-spectroscopy-of-the-ultra-hot-jupiter-wasp-178b-with-ghostgemini-south)  
+   标签：评分：10.0/10、query:exoplanets
+   evidence：对超热木星WASP-178b的高分辨率昼侧发射光谱证认热反转和Fe、Si、Ca发射线
+2. [Stellar Activity, Exoplanet, Habitability, Planetary Atmospheres](/202608/02/2607.27531v1-stellar-activity-exoplanet-habitability-planetary-atmospheres)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：生成盘平均行星光谱的方法，直接用于大气表征
-2. [Using Scattered Near-Infrared Light to Map Water Ice in Prestellar Cores with SPHEREx](/202607/30/2607.24934v1-using-scattered-near-infrared-light-to-map-water-ice-in-prestellar-cores-with-spherex)  
+   evidence：恒星活动、系外行星宜居性与行星大气之间的综述，直接对应宜居带和大气表征需求。
+3. [Setting the Stage: The Early History of the Solar System](/202608/02/2607.27543v1-setting-the-stage-the-early-history-of-the-solar-system)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：绘制前恒星核中水冰分布，对行星形成化学至关重要
-3. [KMT-2025-BLG-0975Lb and KMT-2025-BLG-1160Lb: Two Uranus-Mass Planets Beyond the Snow Line Discovered by Microlensing](/202607/30/2607.25259v1-kmt-2025-blg-0975lb-and-kmt-2025-blg-1160lb-two-uranus-mass-planets-beyond-the-snow-line-discovered-by-microlensing)  
+   evidence：回顾太阳系从原行星盘到行星形成的早期历史
+4. [Accretion Burst Crystallizes Silicates in a Planet-Forming Disk](/202608/02/2607.27765v1-accretion-burst-crystallizes-silicates-in-a-planet-forming-disk)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：发现两颗雪线外的天王星质量行星，直接关联行星形成机制
-4. [Constraining the lives and times of exoplanets through evolutionary Bayesian retrievals](/202607/30/2607.25845v1-constraining-the-lives-and-times-of-exoplanets-through-evolutionary-bayesian-retrievals)  
+   evidence：JWST光谱显示吸积爆发使行星形成盘中硅酸盐结晶
+5. [Characterizing the oxidation state of rocky exoplanets with the Large Interferometer for Exoplanets (LIFE)](/202608/02/2607.28121v1-characterizing-the-oxidation-state-of-rocky-exoplanets-with-the-large-interferometer-for-exoplanets-life)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：通过演化反演约束系外行星大气表征
-5. [The JWST weather report: Unravelling the atmospheric variability of isolated worlds using principal component analysis](/202607/30/2607.26182v1-the-jwst-weather-report-unravelling-the-atmospheric-variability-of-isolated-worlds-using-principal-component-analysis)  
-   标签：评分：9.0/10、query:exoplanets
-   evidence：褐矮星大气变异性作为系外行星类比
-6. [An Inclined, Eccentric Planet and an Inner Debris Disk Could Reproduce AU Mic Structure](/202607/30/2607.27186v1-an-inclined-eccentric-planet-and-an-inner-debris-disk-could-reproduce-au-mic-structure)  
-   标签：评分：9.0/10、query:exoplanets
-   evidence：倾斜偏心行星和碎片盘重现AU Mic结构
-7. [A uniform transit survey of 461 ExoFOP M-dwarf TOI hosts: Follow-up prioritization and new transit candidates](/202607/30/2607.23781v1-a-uniform-transit-survey-of-461-exofop-m-dwarf-toi-hosts-follow-up-prioritization-and-new-transit-candidates)  
+   evidence：利用LIFE干涉仪直接表征岩石系外行星氧化态与大气成分
+6. [Segment-level thermal sensitivity analysis for exo-Earth coronagraphy with segmented space telescopes](/202608/02/2607.28393v1-segment-level-thermal-sensitivity-analysis-for-exo-earth-coronagraphy-with-segmented-space-telescopes)  
    标签：评分：8.0/10、query:exoplanets
-   evidence：对M矮星TOI宿主进行统一凌星调查，优先后续观测并发现新凌星候选体以寻找类地行星
+   evidence：面向类地系外行星直接成像的热稳定性分析
+7. [Laboratory demonstration of low order wavefront control using light reflected off the vortex coronagraph](/202608/02/2607.28603v1-laboratory-demonstration-of-low-order-wavefront-control-using-light-reflected-off-the-vortex-coronagraph)  
+   标签：评分：8.0/10、query:exoplanets
+   evidence：利用涡旋日冕仪反射光实现低阶波前控制的实验室演示，服务于类地系外行星成像与表征。
 
 ### 速读区论文标签
-1. [Syntriod: A Robust Initial Parameter Estimator for Radial Velocity Curve Solutions Beyond Conventional Sampling Limits](/202607/30/2607.24926v1-syntriod-a-robust-initial-parameter-estimator-for-radial-velocity-curve-solutions-beyond-conventional-sampling-limits)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：径向速度曲线的轨道参数估计，与轨道动力学相关。
-2. [GRaTer-JAX: An Accelerated Package for Debris Disk Modeling](/202607/30/2607.25342v1-grater-jax-an-accelerated-package-for-debris-disk-modeling)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：碎片盘建模为行星系统形成和演化提供线索。
-3. [The Influence of Dust Composition on Accretion Outbursts](/202607/30/2607.25550v1-the-influence-of-dust-composition-on-accretion-outbursts)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：原行星盘爆发、尘埃成分、吸积
-4. [JWST/MIRI Detection of Molecular H$_2$ Winds from an Edge-on Class II Source HV Tau C](/202607/30/2607.25770v1-jwstmiri-detection-of-molecular-h2-winds-from-an-edge-on-class-ii-source-hv-tau-c)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：原行星盘分子风探测，与盘结构和行星形成相关。
-5. [Cloud and ammonia vertical profiles in the equatorial atmosphere of Jupiter determined from visible to near-IR observations made by VLT/MUSE, Cassini/VIMS, IRTF/SpeX and Juno/JIRAM](/202607/30/2607.25542v1-cloud-and-ammonia-vertical-profiles-in-the-equatorial-atmosphere-of-jupiter-determined-from-visible-to-near-ir-observations-made-by-vltmuse-cassinivims-irtfspex-and-junojiram)  
+1. [Physics-Informed Neural Networks for Discovering Periodic Orbits in the Gravitational Three-Body Problem](/202608/02/2607.23501v1-physics-informed-neural-networks-for-discovering-periodic-orbits-in-the-gravitational-three-body-problem)  
    标签：评分：7.0/10、query:exoplanets
-   evidence：木星大气云和氨模型，方法可迁移至系外行星大气表征
-6. [Tricouplers for nulling interferometry with photonic integrated circuits](/202607/30/2607.26168v1-tricouplers-for-nulling-interferometry-with-photonic-integrated-circuits)  
-   标签：评分：7.0/10、query:exoplanets
-   evidence：零干涉测量用于探测宜居带行星
-7. [Shared Symbolic Backbones for Physically Consistent Multi-Output Symbolic Regression](/202607/30/2607.26528v1-shared-symbolic-backbones-for-physically-consistent-multi-output-symbolic-regression)  
-   标签：评分：7.0/10、query:xrl-symbolic
-   evidence：共享符号主干用于多输出符号回归
-8. [Relative Value Learning](/202607/30/2607.21120v1-relative-value-learning)  
+   evidence：用物理信息神经网络发现引力三体问题周期轨道，直接关联行星系统的轨道动力学与稳定性研究。
+2. [On the post-hoc Evaluation of PDE Discovery: A Multifaceted Challenge of Scientific Advancement](/202608/02/2607.23753v1-on-the-post-hoc-evaluation-of-pde-discovery-a-multifaceted-challenge-of-scientific-advancement)  
    标签：评分：6.0/10、query:xrl-symbolic
-   evidence：强化学习价值函数改进方法
-9. [Sparse Gaussian-Mixture-Model Q-Functions via Hadamard Overparametrization for Online Reinforcement Learning](/202607/30/2607.23474v1-sparse-gaussian-mixture-model-q-functions-via-hadamard-overparametrization-for-online-reinforcement-learning)  
-   标签：评分：6.0/10、query:xrl-symbolic
-   evidence：通过过参数化实现稀疏可解释Q函数，适用于可解释强化学习在符号回归中的应用
+   evidence：PDE发现的事后评估，涉及方程发现的可解释性与物理一致性，可用于符号回归结果评估
 
 
 <div class="dpr-home-promo-card">
