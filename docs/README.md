@@ -6,47 +6,44 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-02
-- 运行时间：2026-08-02 21:39:38 UTC
+- 最新运行日期：2026-08-03
+- 运行时间：2026-08-03 21:09:05 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：7
-- 速读区：2
+- 本次总论文数：8
+- 精读区：4
+- 速读区：4
 
 ### 今日简报（AI）
-今日聚焦系外行星大气与宜居性研究，精读9篇中的满分项为超热木星WASP-178b的高分辨率光谱分析。最值得关注：GHOST/Gemini South观测揭示了该行星日面大气细节；恒星活动对系外行星宜居性的影响亦有高评分综述。下一步可速读AI在天体力学中的应用，如物理信息神经网络求解三体周期轨道。
-- 详情：[/202608/02/README](/202608/02/README)
+今日8篇论文中精读4篇、速读4篇，重点锁定系外行星大气与自转轨道对齐两大发现。最值得关注：JWST对WASP-121b的三维大气参数化模型获9分高分，揭示热相位曲线物理机制；单星周围的温暖次土星均呈自转轨道对齐，挑战迁移理论。若想入门，可从更易读的Rossiter-McLaughlin速度预测与太阳谱线比值分析入手，逐步建立观测与模型联系。
+- 详情：[/202608/03/README](/202608/03/README)
 
 ### 精读区论文标签
-1. [High-Resolution Dayside Spectroscopy of the Ultra-Hot Jupiter WASP-178b with GHOST/Gemini South](/202608/02/2607.27363v1-high-resolution-dayside-spectroscopy-of-the-ultra-hot-jupiter-wasp-178b-with-ghostgemini-south)  
-   标签：评分：10.0/10、query:exoplanets
-   evidence：对超热木星WASP-178b的高分辨率昼侧发射光谱证认热反转和Fe、Si、Ca发射线
-2. [Stellar Activity, Exoplanet, Habitability, Planetary Atmospheres](/202608/02/2607.27531v1-stellar-activity-exoplanet-habitability-planetary-atmospheres)  
+1. [A Physically Driven Parameterisation of Multidimensional Atmospheres: Application to the JWST Phase Curve of WASP-121b](/202608/03/2607.29057v1-a-physically-driven-parameterisation-of-multidimensional-atmospheres-application-to-the-jwst-phase-curve-of-wasp-121b)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：恒星活动、系外行星宜居性与行星大气之间的综述，直接对应宜居带和大气表征需求。
-3. [Setting the Stage: The Early History of the Solar System](/202608/02/2607.27543v1-setting-the-stage-the-early-history-of-the-solar-system)  
+   evidence：面向系外行星WASP-121b的JWST相位曲线大气反演参数化
+2. [Warm Sub-Saturns Orbiting Single Stars Are Spin-Orbit Aligned](/202608/03/2607.29558v1-warm-sub-saturns-orbiting-single-stars-are-spin-orbit-aligned)  
    标签：评分：9.0/10、query:exoplanets
-   evidence：回顾太阳系从原行星盘到行星形成的早期历史
-4. [Accretion Burst Crystallizes Silicates in a Planet-Forming Disk](/202608/02/2607.27765v1-accretion-burst-crystallizes-silicates-in-a-planet-forming-disk)  
-   标签：评分：9.0/10、query:exoplanets
-   evidence：JWST光谱显示吸积爆发使行星形成盘中硅酸盐结晶
-5. [Characterizing the oxidation state of rocky exoplanets with the Large Interferometer for Exoplanets (LIFE)](/202608/02/2607.28121v1-characterizing-the-oxidation-state-of-rocky-exoplanets-with-the-large-interferometer-for-exoplanets-life)  
-   标签：评分：9.0/10、query:exoplanets
-   evidence：利用LIFE干涉仪直接表征岩石系外行星氧化态与大气成分
-6. [Segment-level thermal sensitivity analysis for exo-Earth coronagraphy with segmented space telescopes](/202608/02/2607.28393v1-segment-level-thermal-sensitivity-analysis-for-exo-earth-coronagraphy-with-segmented-space-telescopes)  
+   evidence：研究单星系统中暖次土星的自转轨道对齐与迁移
+3. [Atmospheric Signatures of Common Envelope Evolution in White Dwarf Planets](/202608/03/2607.28717v1-atmospheric-signatures-of-common-envelope-evolution-in-white-dwarf-planets)  
    标签：评分：8.0/10、query:exoplanets
-   evidence：面向类地系外行星直接成像的热稳定性分析
-7. [Laboratory demonstration of low order wavefront control using light reflected off the vortex coronagraph](/202608/02/2607.28603v1-laboratory-demonstration-of-low-order-wavefront-control-using-light-reflected-off-the-vortex-coronagraph)  
+   evidence：通过建模大气特征来区分白矮星行星的形成路径
+4. [Gas Phase Ion Species Released During Grain Collisions: Implications For Protoplanetary Disks](/202608/03/2607.29376v1-gas-phase-ion-species-released-during-grain-collisions-implications-for-protoplanetary-disks)  
    标签：评分：8.0/10、query:exoplanets
-   evidence：利用涡旋日冕仪反射光实现低阶波前控制的实验室演示，服务于类地系外行星成像与表征。
+   evidence：研究颗粒碰撞产气电离，原行星盘中的关键过程
 
 ### 速读区论文标签
-1. [Physics-Informed Neural Networks for Discovering Periodic Orbits in the Gravitational Three-Body Problem](/202608/02/2607.23501v1-physics-informed-neural-networks-for-discovering-periodic-orbits-in-the-gravitational-three-body-problem)  
+1. [Predicting Radial Velocities from Rossiter-McLaughlin Time Series Observations](/202608/03/2607.29232v1-predicting-radial-velocities-from-rossiter-mclaughlin-time-series-observations)  
    标签：评分：7.0/10、query:exoplanets
-   evidence：用物理信息神经网络发现引力三体问题周期轨道，直接关联行星系统的轨道动力学与稳定性研究。
-2. [On the post-hoc Evaluation of PDE Discovery: A Multifaceted Challenge of Scientific Advancement](/202608/02/2607.23753v1-on-the-post-hoc-evaluation-of-pde-discovery-a-multifaceted-challenge-of-scientific-advancement)  
+   evidence：RM效应应用于轨道动力学表征
+2. [The Fe I 4377 Å Line as a Solar Faculae Indicator: Insights from Spectral Ratio Analysis](/202608/03/2607.29455v1-the-fe-i-4377--line-as-a-solar-faculae-indicator-insights-from-spectral-ratio-analysis)  
+   标签：评分：6.0/10、query:exoplanets
+   evidence：用光谱比值分析刻画光斑，以抑制搜寻类地系外行星时的恒星活动噪声
+3. [MOT-SR: Multi-Objective Tool-Augmented Scientific Equation Discovery with Large Language Models](/202608/03/2607.29561v1-mot-sr-multi-objective-tool-augmented-scientific-equation-discovery-with-large-language-models)  
    标签：评分：6.0/10、query:xrl-symbolic
-   evidence：PDE发现的事后评估，涉及方程发现的可解释性与物理一致性，可用于符号回归结果评估
+   evidence：基于大语言模型的多目标符号回归方程发现，其方法可迁移到强化学习符号回归
+4. [The Tartu Observatory Fiber-fed Echelle Spectrograph (TOFES) Data Reduction Pipeline](/202608/03/2607.29570v1-the-tartu-observatory-fiber-fed-echelle-spectrograph-tofes-data-reduction-pipeline)  
+   标签：评分：6.0/10、query:exoplanets
+   evidence：支持系外行星大气研究的光谱仪数据缩减流水线
 
 
 <div class="dpr-home-promo-card">
