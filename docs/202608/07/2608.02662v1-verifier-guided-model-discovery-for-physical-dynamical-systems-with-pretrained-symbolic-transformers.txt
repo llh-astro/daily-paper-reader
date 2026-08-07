@@ -1,0 +1,1054 @@
+Title: Verifier-Guided Model Discovery for Physical Dynamical Systems with Pretrained Symbolic Transformers
+
+URL Source: https://arxiv.org/pdf/2608.02662v1
+
+Published Time: Wed, 05 Aug 2026 00:05:38 GMT
+
+Number of Pages: 33
+
+Markdown Content:
+# Verifier-Guided Model Discovery for Physical Dynamical Systems with Pretrained Symbolic Transformers 
+
+Farbod Faraji Francesco Belardinelli 
+
+Department of Computing, Huxley Building, Imperial College London 180 Queen’s Gate, South Kensington, London SW7 2RH, United Kingdom 
+
+# Abstract 
+
+Reliable forecasting of nonlinear physical systems un-derpins scientific discovery and engineering decision-making. Yet high-fidelity simulations are prohibitively costly, and machine-learning surrogates can be opaque and encode assumptions about system dynamics, limiting generalizability. Pretrained transformers mapping syn-thetic ODE trajectories to equations offer interpretable alternatives, promising transfer without system-specific equation knowledge. Transferring them reliably to high-dimensional physical data, however, remains an open challenge. We develop a verifier-guided (VG) workflow around ODEFormer as a symbolic backbone, using dy-namical and physical-admissibility criteria to select from a multi-trajectory candidate equation pool, enabling transfer. On canonical Van der Pol oscillators, VG outperforms the original ODEFormer workflow across held-out initial con-ditions. We then address vortex shedding—a phenomenon occurring in atmospheric and plasma systems of societal relevance—through coordinate reduction and symbolic discovery at fixed and varying Reynolds numbers. VG discovers fixed-parameter reduced-order equations that recover the fundamental shedding oscillator and higher harmonics without a wake-specific candidate library or pre-scribed Navier–Stokes structure, while the cross-parameter model generalizes to withheld regimes. Reconstruction fidelity alone did not determine symbolic discoverability, highlighting the importance of compatibility between la-tent dynamics and the backbone’s pretraining distribution. This work establishes a verifier-guided neural-to-symbolic methodology for interpretable and physically auditable forecasting in the natural sciences. 
+
+# 1 Introduction 
+
+In order to predict the evolution of nonlinear physical systems, computational efficiency alone is insufficient when the predictions of a model cannot be interpreted or audited. For AI in the natural sciences, forecasts should be accompanied by evidence that the inferred dynamics are physically credible and by clearly identified limits. Symbolic reduced-order models support such scrutiny: their explicit equations can be examined against dynamical and physical requirements (Faraji and Reza 2025), while remaining efficient enough for parameter exploration, design optimization, and control. Pretrained symbolic transformers map trajectories to such explicit models without case-specific candidate libraries. Their reliable transfer from synthetic pretraining to phys-ical systems, however, requires more than generating equations reproducing individual trajectories. Pretraining uses synthetic equation–trajectory pairs drawn from a prescribed symbolic vocabulary, while reduced physical coordinates may omit unresolved dynamics needed for a closed autonomous description. Generated equations may still be unstable, fail across initial conditions or parameters, or violate physical requirements. We address this challenge with a verifier-guided (VG) workflow that uses executable tests of dynamical behavior and physical admissibility to select equations across multiple trajectories. Testing this approach beyond directly observed ODEs requires a high-dimensional physical problem. Vortex shedding provides such a setting with broad scientific and societal relevance: atmospheric von Kármán vortex streets occur in island wakes (Japan Meteorological Agency 2019; Etling 1990); related instabilities drive vortex-induced loading (Williamson and Govardhan 2004) and arise in plasma flows past obstacles (Gruszecki et al. 2010; Bailung et al. 2020). The controlled cylinder-flow case examined in this work thus connects auditable reduced-order discovery to atmospheric observation, aerospace and transportation, infrastructure safety, and space-plasma environments. The principal contributions of this work are: 
+
+• Verifier-guided symbolic discovery. We place ex-ecutable tests of dynamical behavior and physical admissibility at the center of multi-trajectory model selection using a pretrained symbolic transformer. 
+
+• Generalization across initial conditions. On fixed Van der Pol oscillators, VG outperforms the baseline single-trajectory transformer pipeline for every held-out initial condition while closely recovering the governing structure. 
+
+• Transfer to high-dimensional physical data. At fixed and varying Reynolds numbers, VG recovers shedding dynamics and yields stable predictions at withheld interpolation and extrapolation values; representation fidelity alone does not determine sym-bolic discoverability. 1arXiv:2608.02662v1 [cs.LG] 1 Aug 2026 2 Related Work 
+
+Predictive and physics-informed dynamics learning. 
+
+Data-driven modeling of dynamical systems offers several routes to efficient forecasting. Optimized dynamic mode decomposition (OPT-DMD) identifies coherent spatiotem-poral modes and their best-fit linear evolution, reducing noise-induced bias and, when constrained, enabling stable forecasting (Askham and Kutz 2018; Faraji et al. 2024). Neural ODEs parameterize continuous-time vector fields, while neural operators, including the Fourier Neural Oper-ator, learn mappings between function spaces for families of PDE solutions (Chen et al. 2018; Li et al. 2021). These approaches do not generally recover explicit non-linear governing laws: OPT-DMD uses linear evolution in its coordinates, while neural ODEs and neural opera-tors retain opaque parameterizations. Physics-informed neural networks incorporate known governing-equation residuals and boundary or initial conditions, whereas structure-preserving architectures encode properties such as Hamiltonian conservation (Raissi et al. 2019; Grey-danus et al. 2019). Such methods require the relevant physical structure to be known and supplied in advance. Residual penalties promote but do not guarantee con-straint satisfaction; hard constraints can enforce known, expressible requirements (Lu et al. 2021). 
+
+Sparse-regression approaches to symbolic discovery. 
+
+Symbolic dynamics discovery instead seeks explicit gov-erning equations. Sparse Identification of Nonlinear Dy-namics (SINDy) identifies parsimonious systems through sparse regression over a prescribed candidate library (Brunton et al. 2016). Weak-form, ensemble, and Bayesian variants reduce sensitivity to numerical differentiation, improve robustness to limited or noisy data, and quan-tify model uncertainty (Messenger and Bortz 2021; Fasel et al. 2022; Fung et al. 2025). Physical structure can also enter regression: constrained sparse Galerkin regres-sion combines POD reduction with energy-preserving constraints in fluid reduced-order models (Loiseau and Brunton 2018). Phi Method identifies discretized evolu-tion operators from a candidate library, avoiding explicit derivatives and continuous-time integration (Faraji et al. 2025). AutoSINDy (Basiri and Nicholson 2026) combines PySR candidate generation (Cranmer 2023), library cura-tion, and sparse identification to mitigate the difficulty of prescribing an expressive library. 
+
+Search-based and generative symbolic dynamics dis-covery. Many general-purpose search-based and neural generative symbolic regression methods were initially developed for static relations, y = f (x), with later exten-sions to dynamics. DynAIFeynman applies AI Feynman’s separability, symmetry, and dimensional-consistency tests to states paired with finite-difference derivatives, while ProGED samples grammar-defined structures and fits their parameters against estimated derivatives or by simulating candidate ODEs (Udrescu and Tegmark 2020; Weilbach et al. 2021; Brence et al. 2021; Omejc et al. 2024). Neu-ral generators learn distributions over expressions: Deep Symbolic Regression uses a recurrent generator with risk-seeking policy gradients, while pretrained transformer approaches include NeSymReS, SymbolicGPT, and end-to-end symbolic regression; TPSR further adds Monte Carlo tree search with accuracy and complexity feed-back (Petersen et al. 2021; Biggio et al. 2021; Valipour et al. 2021; Kamienny et al. 2022; Shojaee et al. 2023). ODEFormer specializes this formulation to dynamics discovery by mapping multivariate trajectories directly to coupled ODE systems (d’Ascoli et al. 2024). MIO trains a trajectory-to-equation transformer to infer shared dynamics from multiple trajectories of the same system (Şahin et al. 2025). Diffusion-based symbolic regres-sion provides a non-autoregressive alternative through masked iterative denoising and dataset-specific reinforce-ment learning (Bastiani et al. 2025). These approaches expand or accelerate symbolic search but retain represen-tational choices through observed variables, primitives, grammar, objectives, or pretraining. 
+
+Toward knowledge-guided and verified discovery. Re-cent work increasingly makes scientific knowledge opera-tional during equation discovery. LLM-assisted physics-informed symbolic regression adds language-model as-sessments to the search objective; prior-guided methods use executable constraint programs to steer evolutionary search; and Latent Grammar Flow embeds stability con-straints in grammar rules or conditions generation on them (Taskin et al. 2026; Xiao et al. 2026; Yu et al. 2026). These approaches place scientific consistency within search or generation. Our complementary objective is to transfer an existing pretrained symbolic transformer without mod-ifying or retraining its generator. We leave our chosen pretrained backbone, ODEFormer (d’Ascoli et al. 2024), unchanged and use executable dynamical and physical-admissibility tests on pooled candidates generated inde-pendently across trajectories to select a common equation system. This enables transfer from synthetic pretraining to reduced physical coordinates while retaining symbolic transparency and avoiding a case-specific candidate library or prescribed governing structure. 
+
+# 3 Background and Problem Formulation 
+
+Consider M observed trajectories x(m)(t), where m in-dexes different initial conditions, time windows, or pa-rameter values. Symbolic dynamics discovery seeks an explicit model 
+
+˙x = f (x), f : X ⊆ Rd → Rd, (1) 2whose initial-value problems yield finite trajectories over the state domain and time horizons of interest. Equation (1) treats the supplied coordinates as a sufficient state for a deterministic, autonomous, first-order description. We do not prescribe a case-specific parametric form or candidate library for f in this work; the representable candidates are nevertheless shaped by the learned distribution of the symbolic backbone. We use ODEFormer as this backbone because it maps mul-tivariate trajectories directly to coupled symbolic ODEs without numerical derivative targets, case-specific retrain-ing, or a manually constructed function library (d’Ascoli et al. 2024). Its encoder processes tokenized time–state observations, and its autoregressive decoder constructs the right-hand sides of the ODE system as symbolic sequences in prefix notation. ODEFormer thus induces an implicit structural prior through its synthetic pretraining distribu-tion, including the symbolic vocabulary, expression-tree complexity, coefficient and trajectory distributions, and training-time filtering of unstable or uninformative tra-jectories. At inference, beam sampling produces multiple candidate equation systems (d’Ascoli et al. 2024). The beam size controls how many candidate sequences are explored, while the temperature controls the concentration of the token distribution and thus candidate diversity. We use a beam size of 20 and temperature of 0.1; their sensi-tivity is examined on the canonical Van der Pol problem in Technical Appendix S1. Whereas the original ODE-Former workflow selects candidates by reconstruction of a single input trajectory, we reconsider how the generated candidates are evaluated and selected (Section 4). For a spatially distributed physical state ω(t) ∈ RN , our objective is a symbolic ODE describing the temporal evolution of its dominant coordinates, rather than direct discovery of the underlying PDE. Let an encoder E and reconstruction map R define 
+
+z(t) = E(ω(t)) , ω(t) ≈ R (z(t)) , ˙z = g(z),
+
+(2) where z(t) ∈ Rd and d ≪ N . Eq. (2) provides a low-dimensional phase-space model whose equilibria, limit cycles, stability, frequencies, and modal couplings can be examined using established dynamical-systems tools. The primary role of coordinate reduction here is to define an interpretable state for the dominant temporal dynamics. The retained coordinates may omit higher-order dynamics important for closure; in that case, g represents an effective autonomous approximation within the chosen coordinates and the backbone’s symbolic hypothesis class. For trajectories observed at several values of a governing parameter p, we append the parameter to the state and constrain it to remain constant: 
+
+˙z = g(z, p ), ˙p = 0 . (3) The augmentation in Eq. (3) preserves the autonomous 
+
+Figure 1: Verifier-guided symbolic model discovery. Inde-pendently decoded candidates are pooled, ranked, verified, and coefficient-refined before an admissible symbolic ODE is returned. form expected by the backbone while allowing a single symbolic system to represent parameter-dependent dy-namics. The resulting problem is to select an equation system that remains dynamically and physically admissi-ble across multiple trajectories and at parameter values excluded from symbolic discovery. 
+
+# 4 Methodology: Verifier-Guided Symbolic Model Discovery 
+
+Figure 1 illustrates the VG workflow. Directly observed ODE states enter unchanged, whereas high-dimensional fields are first reduced by POD or an autoencoder. The frozen backbone processes each trajectory or window separately; generated equations are then pooled, ranked, verified, and coefficient-refined. 
+
+Candidate generation, pooling, and ranking. Let ξ(m)
+
+denote the trajectory or window supplied to the backbone: 
+
+ξ(m) = x(m) for observed ODE states, ξ(m) = z(m)
+
+for reduced fields, and ξ(m) = [ z(m)⊤, p (m)]⊤ for cross-parameter discovery. For input m, the backbone retains 
+
+Bm decoded candidate systems indexed by b:
+
+Cm = {hm,b }Bm
+
+> b=1
+
+, C =
+
+> M
+
+[
+
+> m=1
+
+Cm. (4) 3In Eq. (4) , symbolic canonicalization removes duplicates before the union, which constitutes pooling. Each h ∈ C is ranked across discovery trajectories by Eq. (5): 
+
+Lroll (h) = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+1
+
+d
+
+> d
+
+X
+
+> j=1
+
+MSE i
+
+bξ(m) 
+
+> ij
+
+, ξ (m)
+
+> ij
+
+
+
+Var i
+
+
+
+ξ(m)
+
+> ij
+
+
+
++ ϵ, (5) where d is the number of modeled dynamical coordinates, 
+
+i indexes time samples, and bξ(m)
+
+is the candidate rollout initialized from the first observed state of trajectory m. The appended parameter is excluded from the d coordinates in cross-parameter discovery. Nonfinite rollouts receive infinite loss, and the lowest-loss candidates form the shortlist CK ; for cross-parameter discovery, the shortlist also retains the best candidates with explicit parameter dependence. 
+
+Executable verification and selection. The central com-ponent of VG is a suite of executable verifiers applied to CK . Each candidate defines the vector field ˙ξ = h(ξ).Equation (6) measures its local agreement with observed dynamics: 
+
+Vloc (h) = 1
+
+d
+
+> d
+
+X
+
+> j=1
+
+MSE m,i 
+
+
+
+hj (ξ(m) 
+
+> i
+
+), ˙ξ(m)
+
+> ij
+
+
+
+Var m,i 
+
+ ˙ξ(m)
+
+> ij
+
+
+
++ ϵ
+
+(6) where ˙ξ(m) 
+
+> ij
+
+is the numerically estimated rate of coordinate 
+
+j at observed sample i, and the error and variance are evaluated across discovery trajectories and times. A low score therefore indicates that the candidate vector field reproduces the locally observed directions and rates of state evolution. Complementing this local test, rollout-based verifiers evaluate each candidate from prescribed starting states: observed states selected as independent initial conditions. They require finite and bounded evolution, agreement with observed oscillation amplitude and frequency or period, and consistency of these features across starting states. For cross-parameter systems, they additionally require a zero parameter equation, negligible integrated parameter drift, and explicit parameter dependence in at least one state equation. Equation (7) defines the admissible set and selects within it: 
+
+A = {h ∈ C K : pass ℓ(h) = 1 for every verifier ℓ} ,
+
+h⋆ = arg min 
+
+> h∈A
+
+Lroll (h).
+
+(7) Verification thus acts as an executable model-selection constraint rather than a post-hoc diagnostic. These tests establish empirical admissibility over prescribed domains and horizons. Technical Appendix S2 reports their de-tailed definitions, thresholds, case-specific settings, and tolerance-sensitivity evaluation. 
+
+Identifiability and coefficient refinement. Viewed as an augmented observation map, the verifiers contract the set of trajectory-consistent candidates whenever they re-ject an otherwise indistinguishable model while retaining an admissible one. They can therefore improve identifi-ability within the generated candidate class; Technical Appendix S2 formalizes this perspective and its local sensitivity-rank interpretation. With the selected symbolic structure fixed, its decoded constants are jointly refined by Nelder–Mead minimization of Lroll across the discovery trajectories. The refined equation is reverified; if it becomes inadmissible, VG returns the admissible unoptimized equation h⋆.
+
+# 5 Empirical Evaluation 
+
+Evaluation considers the canonical Van der Pol (VdP) oscillator and high-dimensional flow past a stationary cylinder. VdP tests whether VG generalizes across un-seen initial conditions, while the cylinder-flow problem tests transfer from synthetic ODE pretraining to reduced vortex-shedding dynamics at fixed and withheld values of Reynolds number. 
+
+5.1 Canonical Dynamical System Case: Van der Pol Oscillator 
+
+The Van der Pol oscillator is a canonical self-excited system whose dynamics range from nearly harmonic motion to increasingly pronounced relaxation oscillations (van der Pol 1926). Its first-order form is given in Eq. (8) :
+
+˙x0 = x1,
+
+˙x1 = μ(1 − x20)x1 − x0
+
+= μx 1 − x0 − μx 20x1.
+
+(8) In Eq. (8) , ˙x0 = x1 makes x1 velocity-like; in ˙x1, −x0
+
+restores while μx 1 injects energy near the origin and 
+
+−μx 20x1 dissipates it at larger amplitudes. Their balance produces a stable limit cycle. We consider μ = 0 .5 and 
+
+1.5 as separate fixed systems, representing weak and more pronounced nonlinear relaxation, respectively. This provides a controlled test of whether a discovered equation represents the surrounding vector field and transfers across initial conditions, rather than merely reproducing one observed orbit. 
+
+Experimental setup. At each value of μ, the original ODEFormer protocol (d’Ascoli et al. 2024) generated, ranked, and coefficient-optimized candidates from a sin-gle trajectory. We repeated this protocol for three preset initial conditions and report, for each test initial condition, the median across successful rollouts. VG instead decoded 4Figure 2: Held-out rollout errors across eight test initial conditions. Circles denote the original ODEFormer proto-col and squares the VG workflow; open and filled markers indicate pre- and post-optimization results. Gray lines pair identical initial conditions, and black bars show medians. eight preset windows, ranked the pooled candidates over 24 windows from 12 preset initial conditions, verified the ten highest-ranked candidates, and applied the same coef-ficient optimization. Both protocols were evaluated on the same eight unseen initial conditions. Candidate-pool and test initial conditions were sampled independently from 
+
+[−1, 1] 2 using fixed seeds and were disjoint; Technical Appendix S3 reports the exact assignments. 
+
+Results. Figure 2 shows that the VG model outperforms the single-trajectory protocol for all eight held-out initial conditions at both values of μ. For μ = 0 .5, the median post-optimization error decreases from 1.21 to 6.99 ×
+
+10 −4; for μ = 1 .5, it decreases from 4.5 × 10 −2 to 
+
+3.27 ×10 −3. The larger separation at μ = 0 .5 is consistent with its longer transient: a single observed orbit constrains less of the surrounding vector field, whereas the VG workflow evaluates a common equation across multiple approaches to the limit cycle. One repeat of the original ODEFormer protocol failed on the test set, and coefficient optimization degraded another. At each μ, the candidate with the lowest multi-trajectory rollout error was also the only member of the ten-candidate shortlist to satisfy all verifier checks. Verification therefore in this canonical case distinguished a generalizable closed dynamical model from alternatives that reproduced only individual features, such as the oscillation period or limit-cycle geometry. After coefficient optimization, Eqs. (9) –(10) were selected: 
+
+μ = 0 .5 : ˙x0 = 0 .997 x1 − 0.012 x0,
+
+˙x1 = 0 .542 x1 − 0.997 x0
+
+− 0.543 x20x1 − 0.0039 x0x1,
+
+(9) and 
+
+μ = 1 .5 : ˙x0 = 0 .996 x1
+
++ 0 .000676(0 .998 + 1 .273 x0)2,
+
+˙x1 = 1 .440 x1 − 1.002 x0
+
+− 1.461 x20x1 − 0.0080 x0x1.
+
+(10) Both systems recover the defining Van der Pol structure: the kinematic relation ˙x0 ≈ x1, linear restoring dynamics through −x0, and the opposing linear and cubic damping terms in ˙x1. Their principal coefficients closely approx-imate the corresponding ground-truth values, while the additional x0, x0x1, and weak quadratic contributions provide small corrections. The discovered equations are therefore dynamically close approximations rather than exact symbolic replicas of the ground-truth system, sup-porting evaluation through behavior across initial condi-tions and physical admissibility rather than expression matching alone. 
+
+5.2 High-Dimensional Physical System Case: Flow Past a Stationary Cylinder at a Fixed Reynolds Number 
+
+The flow-past-a-cylinder case provides the first test of whether the VG workflow can recover compact dynamics from high-dimensional physical fields rather than directly observed ODE states. From a physics standpoint, above the onset of wake instability in this test case configura-tion, vortices detach alternately from the separated shear layers and form a periodic von Kármán street. For two-dimensional incompressible flow, the nondimensional spanwise vorticity ω satisfies 
+
+∂ω ∂t + ( u · ∇ )ω = 1
+
+Re ∇2ω, 
+
+∇ · u = 0 , Re = U∞Dν .
+
+(11) In Eq. (11) , (u · ∇ )ω represents advection of vorticity by the local flow, whereas Re −1∇2ω represents viscous diffusion of vorticity gradients. Increasing Re reduces the relative contribution of this diffusion and permits the 5wake instability to develop. At Re = 300 , the fixed value considered here, the two-dimensional simulation exhibits established periodic shedding. As the physical state is a spatial field containing 60,000 vorticity values at each time, dimensionality reduction is required before applying the VG workflow for symbolic model discovery. This is performed using proper orthogonal decomposition (POD) (Sirovich 1987). 
+
+Experimental setup. Vorticity snapshots were gener-ated with the open-source ViscousFlow.jl solver (Eldredge 2021), which implements the immersed-layer method (Eldredge 2022). A unit-diameter cylinder was centered in x/D ∈ [−1, 5] and y/D ∈ [−2, 2] , with 
+
+U∞ = 1 , a 2◦ free-stream incidence, and a no-slip sur-face. The outputs were interpolated onto a 300 × 200 grid and sampled at ∆t∗ = ∆ tU ∞/D = 0 .1, yielding 1,000 snapshots. Further numerical and preprocessing details are reported by Faraji et al. (2025). The first 500 snapshots were discarded to isolate estab-lished shedding. The remainder was divided chronolog-ically into 250 development, 100 validation, and 150 final-test snapshots. The development interval defined the reduced coordinates and supported candidate generation, ranking, verification, and coefficient optimization; the val-idation set was used to select the POD representation and decoding configuration before testing on the remaining 150 snapshots. After subtracting the development-interval mean, snapshot POD produced near-equal mode pairs representing quadra-ture components of the periodic wake. The first three pairs yielded six standardized coordinates and retained 94.52% of the fluctuation energy. Validation selected this rank-6 representation and eight decoding windows from the tested ranks 4 and 6 and window counts 8 and 24 . Can-didates decoded from eight five-time-unit windows were pooled and ranked over 24 development windows; the ten highest-ranked were verified, and the selected structure was optimized over the same 24 windows. Technical Ap-pendix S4 reports the selection matrix and POD spectrum. 
+
+Results. The selected VG model integrated successfully from all eight predeclared starting points in the final-test interval. The window and full-interval coordinate errors in Table 1 show that the discovered symbolic system retains the recurrent shedding dynamics across different phases of the cycle. At the field level, the six-mode representation in-curs 12.53% error before symbolic forecasting; the 15.56% end-to-end result therefore reflects the combined effects of coordinate reduction and dynamics prediction. Figure 3 shows that the wake-averaged vorticity preserves the dom-inant phase and amplitude relative to both the simulation and POD reconstruction. Representative vorticity-field snapshot comparisons separating POD truncation from symbolic model forecasting are provided in Technical Quantity Error (%) Median five-time-unit (single-window) co-ordinate rollout 3.49 Full-interval coordinate rollout 6.89 POD field reconstruction 12.53 VG field relative to POD reconstruction 8.77 End-to-end field prediction 15.56 Table 1: Fixed-Re final-test performance of the selected VG model. Coordinate rollout errors are mean-square er-rors normalized by the variance of each standardized POD coordinate. Field errors are temporal means of snapshot-wise relative L2 errors. Appendix S4. Equation (12) gives the coefficient-optimized VG model in standardized rank-6 POD coordinates z1, . . . , z 6:
+
+˙z1 = 1 .001 z2
+
+− 0.0679(11 .746 − 0.8668 z2)−1.052 ,
+
+˙z2 = −1.123 z1,
+
+˙z3 = −2.099 z4,
+
+˙z4 = 2 .120 z3,
+
+˙z5 = 3 .121 z6
+
+− 0.1164 sin(0 .1144 + 11 .036 z2),
+
+˙z6 = −0.1458 − 3.233 z5.
+
+(12) The dominant linear parts of the (z1, z 2), (z3, z 4), and 
+
+(z5, z 6) subsystems define oscillators with angular fre-quencies 1.060, 2.109, and 3.177, respectively. Their ratio of 1 : 1 .99 : 3 .00 identifies the fundamental shedding cycle and its second and third harmonics. The recipro-cal contribution to ˙z1 deforms the fundamental oscillator from exact linear motion, while the sinusoidal dependence 
+
+Figure 3: Wake-averaged nondimensional vorticity over the final-test interval at Re = 300 , evaluated over 0.5 ≤
+
+x/D ≤ 5 and |y/D | ≤ 1.5.6of ˙z5 on z2 couples the fundamental and third-harmonic coordinate pairs. The constant term in ˙z6 produces a small shift in the equilibrium of the third oscillator. Because the POD coordinates are global projections of the vorticity field, these terms describe coupling within the reduced representation and cannot be assigned independently to localized flow mechanisms. Notably, the VG workflow obtained this system without a wake-specific candidate library or prescribed Navier– Stokes structure: the pretrained backbone searched its learned vocabulary, and verification selected an admissible model reproducing the shedding dynamics. 
+
+5.3 Cross-Parameter Extension: Flow Past a Cylinder across Reynolds Numbers 
+
+The fixed-Re result presented in the previous subsection motivates a more demanding test: whether the VG work-flow can derive a single symbolic reduced-order model capable of representing vortex-shedding dynamics as the governing flow parameter, the Reynolds number, varies. 
+
+Experimental setup. Model discovery used Re ∈{150 , 200 , 250 , 300 , 350 , 400 , 450 }. The withheld test values were Re ∈ { 175 , 275 , 425 } for interpolation and 
+
+Re = 500 for extrapolation. The simulations and field preprocessing followed the fixed-Re case. After mean subtraction, a common shal-low autoencoder (AE) with one 256-neuron hidden layer compressed each 60,000-component snapshot into three latent coordinates. A Reynolds-number coordinate, cen-tered and scaled over the discovery range, was appended and constrained to remain constant during rollout. Candi-dates generated independently from the seven full-length discovery trajectories were pooled and ranked across all seven; the shortlist was verified, and the selected structure was coefficient-optimized over the same trajectories. 
+
+Results. The selected shallow three-coordinate autoen-coder had a mean field-reconstruction error of 5.83%, the lowest latent roughness (0.0224), and the highest spectral concentration (0.926) among several tested encodings. Roughness measures temporal curvature relative to first-order variation, while spectral concentration measures the fraction of nonzero-frequency power in the three dom-inant Fourier components. Although several deeper or four-coordinate encodings reconstructed more accurately, among the controlled encodings advanced to VG, only a deeper three-coordinate case yielded a raw admissible equation, with rollout loss 2.17 compared with 1.04 for the selected shallow encoding; coefficient refinement re-duced the latter to 0.200 while preserving admissibility. Reconstruction fidelity therefore did not determine sym-bolic discoverability. Technical Appendix S5 reports more details on the outcomes of architecture and initialization-seed sensitivity, latent diagnostics, and corresponding                  
+
+> Re Latent NMSE AE field (%) VG-to-AE field (%) End-to-end (%) 175 (I) 0.142 7.0 19.8 20.9 275 (I) 0.247 5.9 32.1 33.0 425 (I) 0.043 6.0 18.9 20.7 500 (E) 0.036 6.4 11.9 13.8
+
+Table 2: Performance at Reynolds numbers withheld from symbolic discovery. Latent NMSE is the coordinate-wise mean rollout error normalized by the variance of each reference latent coordinate. Field quantities are temporal means of snapshot-wise relative spatial L2 errors. I and E denote interpolation and extrapolation, respectively. symbolic-model discovery. In standardized latent coordinates z1, z 2, z 3, with r the normalized Reynolds-number coordinate, Eq. (13) gives the coefficient-optimized system that satisfied all verifier checks: 
+
+˙z1 = 1 .143 z3 + 0 .0422 r + 0 .201 z2z3,
+
+˙z2 = 0 .798 z1,
+
+˙z3 = −0.995 z1,
+
+˙r = 0 .
+
+(13) The 1.143 z3 and −0.995 z1 terms define the leading linear oscillator in the (z1, z 3) coordinates, whose linearized angular frequency is √1.143 × 0.995 = 1 .066 . The evolu-tion of z2 is coupled to the same cycle, while the quadratic contribution 0.201 z2z3 feeds this coordinate back into 
+
+˙z1, introducing a nonlinear deformation of the underlying oscillator. The additive 0.0422 r term shifts the latent vec-tor field with Reynolds number, and ˙r = 0 preserves the selected parameter value throughout each rollout. Because ˙z3 = −(0 .995 /0.798) ˙ z2, the combination 
+
+z3 + 1 .247 z2 is conserved to the precision of the re-ported coefficients. Consequently, for each fixed value of r, trajectories of the discovered model remain on a two-dimensional invariant surface within the three-dimensional latent space. The Reynolds-number coor-dinate therefore conditions a shared nonlinear oscillator rather than acting as an independently evolving input. The selected VG model produced finite full-length roll-outs at all four withheld Reynolds numbers. Referring to Table 2, generalization did not deteriorate monotonically from interpolation to extrapolation: the Re = 500 extrap-olation case produced the lowest latent NMSE (0.036) and end-to-end field error (13.8%), whereas the Re = 275 in-terpolation case was the most difficult, with corresponding errors of 0.247 and 33.0%. Figure 4 provides important physical context for the latter value. Although displace-ment of the predicted vortices increases the spatial L2 error, the VG field retains the alternating wake structure and 7Figure 4: Simulation, autoencoder (AE) reconstruction, and VG-predicted vorticity at t∗ = 75 for withheld Re =275 (interpolation, I) and Re = 500 (extrapolation, E). All panels share a symmetric color scale. principal vortex locations. The error is therefore strongly influenced by phase and spatial displacement accumulated during rollout rather than by a loss of the vortex-shedding regime. At Re = 500 , the close agreement between the autoencoder reconstruction and VG prediction is consis-tent with its comparatively low VG-to-AE field error of 11.9%. Complete latent-coordinate rollouts, wake-averaged vor-ticity histories, additional field comparisons, and extended error metrics for all four test Reynolds numbers are pro-vided in Technical Appendix S6. 
+
+# 6 Conclusions 
+
+The principal takeaway is that a frozen symbolic trans-former pretrained on synthetic ODEs can support phys-ical model discovery beyond its pretraining distribution when paired with multi-trajectory executable verification. Across both the Van der Pol and cylinder-flow cases, trans-fer depended not only on generating plausible equations but on selecting a common model that satisfied the pre-scribed dynamical and physical-admissibility tests. Model interpretation is, however, coordinate-dependent: the re-covered Van der Pol equations closely approximate the governing structure in directly observed states, whereas the equations discovered in POD and autoencoder coordi-nates are effective reduced-order laws rather than unique reductions of the Navier–Stokes equations. The representation results also clarify a central limitation. Symbolic discovery requires the supplied coordinates to admit an approximately closed autonomous description compatible with the backbone’s learned vocabulary and pretraining distribution; unresolved modes, memory, forc-ing, or parameter dependence can prevent this. Pooling and verification enable transfer with a frozen pretrained backbone but cannot supply dynamics or structures absent from its candidate class. These limits motivate tighter neuro-symbolic integration of learned representations and symbolic model discovery (Marra et al. 2024; Cranmer et al. 2020), specifically through joint verified coordinate– dynamics learning that directly integrates executable con-straints encoding fundamental physical principles (e.g., conservation, invariance, and symmetry) into search or generation. These directions are particularly important for higher-dimensional, multiscale systems whose reduced co-ordinates are only approximately closed, including many plasma systems, and would strengthen the basis for inter-pretable and auditable AI across the natural sciences. 
+
+# Code and Data Availability 
+
+The code and data bundle supporting the results reported in this work will be made publicly available upon acceptance for publication. 
+
+# References 
+
+Travis Askham and J. Nathan Kutz. Variable projection methods for an optimized dynamic mode decomposition. 
+
+SIAM Journal on Applied Dynamical Systems , 17(1): 380–416, 2018. doi: 10.1137/M1124176. Y. Bailung, B. Chutia, T. Deka, A. Boruah, S. K. Sharma, S. Kumar, J. Chutia, Y. Nakamura, and H. Bailung. Vortex formation in a strongly coupled dusty plasma flow past an obstacle. Physics of Plasmas , 27(12): 123702, 2020. doi: 10.1063/5.0022356. Mohammad Amin Basiri and Charles Nicholson. Dis-covery of nonlinear dynamics with automated basis function generation. arXiv preprint arXiv:2605.09696 ,2026. doi: 10.48550/arXiv.2605.09696. Zachary Bastiani, Robert M. Kirby, Jacob Hochhalter, and Shandian Zhe. Diffusion-based symbolic regression. 
+
+arXiv preprint arXiv:2505.24776 , 2025. URL https: //arxiv.org/abs/2505.24776. Luca Biggio, Tommaso Bendinelli, Alexander Neitz, Au-relien Lucchi, and Giambattista Parascandolo. Neural symbolic regression that scales. In Proceedings of the 38th International Conference on Machine Learn-ing , volume 139 of Proceedings of Machine Learning Research , pages 936–945. PMLR, 2021. 8Jure Brence, Ljupčo Todorovski, and Sašo Džeroski. Prob-abilistic grammars for equation discovery. Knowledge-Based Systems , 224:107077, 2021. doi: 10.1016/j. knosys.2021.107077. Steven L. Brunton, Joshua L. Proctor, and J. Nathan Kutz. Discovering governing equations from data by sparse identification of nonlinear dynamical systems. 
+
+Proceedings of the National Academy of Sciences , 113 (15):3932–3937, 2016. doi: 10.1073/pnas.1517384113. Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David K. Duvenaud. Neural ordinary differential equa-tions. In Advances in Neural Information Processing Systems , volume 31, pages 6571–6583, 2018. Miles Cranmer. Interpretable machine learning for science with PySR and SymbolicRegression.jl. arXiv preprint arXiv:2305.01582 , 2023. Miles Cranmer, Alvaro Sanchez-Gonzalez, Peter Battaglia, Rui Xu, Kyle Cranmer, David Spergel, and Shirley Ho. Discovering symbolic models from deep learning with inductive biases. In Advances in Neural Information Processing Systems , volume 33, pages 17429–17442, 2020. Stéphane d’Ascoli, Sören Becker, Alexander Mathis, Philippe Schwaller, and Niki Kilbertus. ODEFormer: Symbolic regression of dynamical systems with trans-formers. In The Twelfth International Conference on Learning Representations , 2024. URL https: //openreview.net/forum?id=TzoHLiGVMo. Jeff D. Eldredge. ViscousFlow.jl: A framework for sim-ulating viscous incompressible flows. Zenodo, 2021. URL https://doi.org/10.5281/zenodo.4776967. Jeff D. Eldredge. A method of immersed layers on carte-sian grids, with application to incompressible flows. 
+
+Journal of Computational Physics , 448:110716, 2022. doi: 10.1016/j.jcp.2021.110716. Dieter Etling. Mesoscale vortex shedding from large islands: A comparison with laboratory experiments of rotating stratified flows. Meteorology and Atmospheric Physics , 43:145–151, 1990. doi: 10.1007/BF01028117. Farbod Faraji and Maryam Reza. Machine learning appli-cations to computational plasma physics and reduced-order plasma modeling: A perspective. Journal of Physics D: Applied Physics , 58(10):102002, 2025. doi: 10.1088/1361-6463/ada167. Farbod Faraji, Maryam Reza, Aaron Knoll, and J. Nathan Kutz. Dynamic mode decomposition for data-driven analysis and reduced-order modelling of E×B plasmas: Ii. dynamics forecasting. Journal of Physics D: Applied Physics , 57(6):065202, 2024. doi: 10.1088/1361-6463/ ad0911. Farbod Faraji, Maryam Reza, and Aaron Knoll. Dis-covery of discretized differential equations from data: Benchmarking and application to a plasma system. 
+
+Journal of Applied Physics , 137(12):123301, 2025. doi: 10.1063/5.0254956. Urban Fasel, J. Nathan Kutz, Bingni W. Brunton, and Steven L. Brunton. Ensemble-SINDy: Robust sparse model discovery in the low-data, high-noise limit, with active learning and control. Proceedings of the Royal Society A: Mathematical, Physical and Engineering Sciences , 478(2260):20210904, 2022. doi: 10.1098/ rspa.2021.0904. Lloyd Fung, Urban Fasel, and Matthew P. Juniper. Rapid bayesian identification of sparse nonlinear dynamics from scarce and noisy data. Proceedings of the Royal Society A: Mathematical, Physical and Engineering Sciences , 481(2307):20240200, 2025. doi: 10.1098/ rspa.2024.0200. Samuel Greydanus, Misko Dzamba, and Jason Yosinski. Hamiltonian neural networks. In Advances in Neural Information Processing Systems , volume 32, pages 15379–15389, 2019. M. Gruszecki, V. M. Nakariakov, T. Van Doorsselaere, and T. D. Arber. Phenomenon of alfvénic vortex shedding. 
+
+Physical Review Letters , 105(5):055004, 2010. doi: 10.1103/PhysRevLett.105.055004. Japan Meteorological Agency. Collection of im-ages captured by himawari-8/9: Karman vor-tex. https://www.jma.go.jp/jma/jma-eng/satellite/ introduction/image.html, 2019. Accessed: 2026-07-22. Pierre-Alexandre Kamienny, Stéphane d’Ascoli, Guil-laume Lample, and François Charton. End-to-end symbolic regression with transformers. In Advances in Neural Information Processing Systems , volume 35, pages 10269–10281, 2022. Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stu-art, and Anima Anandkumar. Fourier neural opera-tor for parametric partial differential equations. In 
+
+International Conference on Learning Representa-tions , 2021. URL https://openreview.net/forum?id= c8P9NQVtmnO. Jean-Christophe Loiseau and Steven L. Brunton. Con-strained sparse galerkin regression. Journal of Fluid Me-chanics , 838:42–67, 2018. doi: 10.1017/jfm.2017.823. 9Lu Lu, Raphaël Pestourie, Wenjie Yao, Zhicheng Wang, Francesc Verdugo, and Steven G. Johnson. Physics-informed neural networks with hard constraints for inverse design. SIAM Journal on Scientific Computing ,43(6):B1105–B1132, 2021. doi: 10.1137/21M1397908. Giuseppe Marra, Sebastijan Dumančić, Robin Man-haeve, and Luc De Raedt. From statistical rela-tional to neurosymbolic artificial intelligence: A sur-vey. Artificial Intelligence , 328:104062, 2024. doi: 10.1016/j.artint.2023.104062. Daniel A. Messenger and David M. Bortz. Weak SINDy for partial differential equations. Journal of Computational Physics , 443:110525, 2021. doi: 10.1016/j.jcp.2021.110525. Nina Omejc, Boštjan Gec, Jure Brence, Ljupčo Todor-ovski, and Sašo Džeroski. Probabilistic grammars for modeling dynamical systems from coarse, noisy, and partial data. Machine Learning , 113:7689–7721, 2024. doi: 10.1007/s10994-024-06522-1. Brenden K. Petersen, Mikel Landajuela, T. Nathan Mund-henk, Claudio P. Santiago, Soo K. Kim, and Joanne T. Kim. Deep symbolic regression: Recovering mathe-matical expressions from data via risk-seeking policy gradients. In International Conference on Learning Representations , 2021. URL https://openreview.net/ forum?id=m5Qsh0kBQG. Maziar Raissi, Paris Perdikaris, and George Em Karni-adakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equa-tions. Journal of Computational Physics , 378:686–707, 2019. doi: 10.1016/j.jcp.2018.10.045. Yakup Emre Şahin, Niki Kilbertus, and Sören Becker. Predicting symbolic ODEs from multiple trajectories. In NeurIPS 2025 Workshop on Machine Learning and the Physical Sciences , 2025. doi: 10.48550/arXiv.2510. 23295. URL https://arxiv.org/abs/2510.23295. Parshin Shojaee, Kazem Meidani, Amir Barati Fari-mani, and Chandan K. Reddy. Transformer-based planning for symbolic regression. In Advances in Neural Information Processing Systems , vol-ume 36, pages 45907–45919, 2023. URL https://proceedings.neurips.cc/paper_files/paper/ 2023/hash/8ffb4e3118280a66b192b6f06e0e2596-Abstract-Conference.html. Lawrence Sirovich. Turbulence and the dynamics of co-herent structures. part i: Coherent structures. Quarterly of Applied Mathematics , 45(3):561–571, 1987. doi: 10.1090/qam/910462. Bilge Taskin, Wenxiong Xie, and Teddy Lazebnik. Knowl-edge integration for physics-informed symbolic regres-sion using pre-trained large language models. Scientific Reports , 16(1):1614, 2026. doi: 10.1038/s41598-026-35327-6. URL https://doi.org/10.1038/s41598-026-35327-6. Silviu-Marian Udrescu and Max Tegmark. AI Feynman: A physics-inspired method for symbolic regression. 
+
+Science Advances , 6(16):eaay2631, 2020. doi: 10.1126/ sciadv.aay2631. Mojtaba Valipour, Bowen You, Maysum Panju, and Ali Gh-odsi. SymbolicGPT: A generative transformer model for symbolic regression. arXiv preprint arXiv:2106.14131 ,2021. URL https://arxiv.org/abs/2106.14131. Balth. van der Pol. On “relaxation-oscillations”. The London, Edinburgh, and Dublin Philosophical Maga-zine and Journal of Science , 2(11):978–992, 1926. doi: 10.1080/14786442608564127. Juliane Weilbach, Sebastian Gerwinn, Christian Weilbach, and Melih Kandemir. Inferring the structure of ordinary differential equations. arXiv preprint arXiv:2107.07345 ,2021. URL https://arxiv.org/abs/2107.07345. C. H. K. Williamson and R. Govardhan. Vortex-induced vibrations. Annual Review of Fluid Mechanics , 36: 413–455, 2004. doi: 10.1146/annurev.fluid.36.050802. 122128. Jing Xiao, Xinhai Chen, Jiaming Peng, Qinglin Wang, Menghan Jia, Zhiquan Lai, Guangping Yu, Dongsheng Li, Tiejun Li, and Jie Liu. Prior-guided symbolic regression: Towards scientific consistency in equation discovery. arXiv preprint arXiv:2602.13021 , 2026. doi: 10.48550/arXiv.2602.13021. URL https://arxiv.org/abs/ 2602.13021. Karin Yu, Eleni Chatzi, and Georgios Kissas. Neuro-symbolic ODE discovery with latent grammar flow. 
+
+arXiv preprint arXiv:2604.16232 , 2026. doi: 10.48550/ arXiv.2604.16232. URL https://arxiv.org/abs/2604. 16232. 10 Technical Appendices 
+
+These technical appendices provide the supplementary results and analyses referenced in the paper. They report beam-size–sampling-temperature candidate-generation sensitivity (Section S1), detailed verifier definitions and their identifiability interpretation (Section S2), Van der Pol test-case details (Section S3), the fixed-Reynolds-number representation study (Section S4), the autoencoder sensitivity analysis (Section S5), and extended results from the multi-Reynolds-number test case (Section S6). 
+
+# S1 Sensitivity to Beam Size and Sampling Temperature 
+
+The beam size and sampling temperature are candidate-symbolic-equation generation (decoding) settings inherited from the symbolic backbone. The beam size determines how many candidate sequences are retained from each input window, while the temperature controls the concentration of the sampled token distribution and hence the diversity of the resulting equations. Because both settings affect the composition and size of the candidate pool available to VG, their sensitivity was assessed before the final experiments. The Van der Pol oscillator provides a suitable diagnostic because its states are observed directly and its governing structure is known, avoiding the additional influence of coordinate reduction. This section concerns selection of the decoding settings only; Section S3 reports the complete Van der Pol trajectory sets, selected equations, and final-test behavior. 
+
+S1.1 Comparison protocol 
+
+Beam sizes 20 and 50 were crossed with temperatures 0.1 and 0.2, giving four pre-specified decoding configurations. For each of the two oscillator parameters, μ = 0 .5 and 1.5, the same 12 model-construction trajectories were sampled over 0 ≤ t ≤ 20 . Each trajectory contributed an early window over 0 ≤ t ≤ 10 and a late window over 10 ≤ t ≤ 20 ,giving the 24-window model-construction bank. Eight preset members of this bank, termed candidate-generation windows below, were processed individually by VG to generate equation candidates. These candidates were pooled and deduplicated before rollout ranking across all 24 model-construction windows and evaluation by the verifier suite. The same 24-window bank was used for coefficient optimization of the selected system. Performance was measured on eight additional validation trajectories that were disjoint from both the model-construction trajectories and the final-test trajectories. Their exact initial conditions are reported in Section S3. For each candidate-generation window, VG retained a number of sequences equal to the beam size. The eight candidate-generation windows therefore produced at most 160 candidates for beam size 20 and 400 for beam size 50 before canonical deduplication; the resulting pools contained 160 and 398–400 distinct systems, respectively. Each pool was ranked by its mean rollout error across the 24 model-construction windows. Section S2 defines the verifier metrics and acceptance decisions, and Table S2 summarizes their numerical settings for the Van der Pol and cylinder-flow cases. The ten highest-ranked systems were evaluated using these verifiers. The admissible system with the lowest rollout error was coefficient-optimized over the same 24-window bank and then verified again. Random seeds, trajectories, window selections, verifier settings, and optimization procedure were identical across the four configurations. When no member of a shortlist passed the pre-optimization verifiers, that outcome was retained; the rollout-ranked candidate was optimized only to complete the diagnostic comparison. 
+
+S1.2 Validation performance and admissibility 
+
+Table S1 reports the validation error of the lowest-ranked pre-optimization candidate satisfying the verifier suite and the corresponding post-optimization result. The error is the coordinate-wise mean rollout error normalized by the variance of each reference state. The configuration with beam size 20 and temperature 0.1 produced an admissible system before and after coefficient optimization at both values of μ, with the lowest post-optimization validation median in each case. Increasing the temperature at beam size 20 increased the remaining error, particularly for μ = 1 .5. The larger beam did not provide a consistent benefit: at temperature 0.1 no pre-optimization candidate was admissible for μ = 0 .5, while the post-optimization system for μ = 1 .5 no longer satisfied the local vector-field verifier. Beam size 50 also expanded the candidate pool by approximately a factor of 2.5 and correspondingly increased the rollout ranking burden. 11 Table S1: Sensitivity of validation rollout error and verifier admissibility to beam size and sampling temperature. “Pre-opt. candidate” indicates whether at least one member of the ten-system shortlist passed every applicable verifier. Bold rows identify the configuration carried forward.                                                               
+
+> Beam Temperature μPre-opt. candidate Pre-opt. NMSE Post-opt. NMSE Post-opt. admissible
+> 20 0.1 0.5 Yes 0.288 7.97 ×10 −4Yes 20 0.1 1.5 Yes 0.0145 2.74 ×10 −3Yes
+> 20 0.2 0.5 Yes 0.224 1.60 ×10 −3Yes 20 0.2 1.5 Yes 0.756 0.0255 Yes 50 0.1 0.5 No ∗0.155 ∗0.0320 ∗Yes ∗
+> 50 0.1 1.5 Yes 0.331 0.0249 No 50 0.2 0.5 Yes 0.136 8.81 ×10 −4Yes 50 0.2 1.5 Yes 0.366 0.0205 Yes
+> ∗No shortlist member passed all pre-optimization verifiers. The reported errors and post-optimization decision describe the rollout-ranked candidate retained for diagnostic purposes; this candidate was not treated as a verifier-guided pre-optimization selection.
+
+These results support beam size 20 and temperature 0.1 as a reasonable operating point rather than indicating that the decoding settings are immaterial. This configuration provided the most accurate admissible post-optimization system for both oscillator parameters while using the smaller candidate pool. It was consequently fixed before the final-test comparison reported in Section 5.1 and was carried forward to the cylinder-flow experiments. 
+
+S1.3 Early- and late-window diagnostic 
+
+The selected decoding configuration was also examined separately on the 12 early and 12 late model-construction windows to determine whether its aggregate rollout score concealed a marked difference between transient-rich and established-cycle behavior. This comparison did not introduce an additional selection rule. For μ = 0 .5, the median pre-optimization NMSE was 0.114 on the early windows and 0.0982 on the late windows; coefficient optimization reduced these values to 7.39 × 10 −4 and 3.19 × 10 −4, respectively. For μ = 1 .5, the corresponding medians were 0.00537 and 0.00266 before optimization and 1.26 × 10 −3 and 8.07 × 10 −4 afterwards. The higher errors on the early windows are consistent with their inclusion of trajectories approaching the limit cycle, which sample a broader portion of the surrounding vector field. The low post-optimization errors in both regimes show that the selected configuration was supported by accurate rollouts across both the transient-rich early windows and the more regularly oscillatory late windows. 
+
+# S2 Verifier Definitions, Identifiability, and Sensitivity Considerations 
+
+S2.1 Constrained model selection 
+
+The verifier-guided workflow described in Section 4 of the paper separates dynamical admissibility from rollout-based ranking. Let CK denote the shortlist obtained after pooling, deduplicating, and ranking candidates across the discovery trajectories. For a candidate h ∈ C K , verifier ℓ evaluates a metric mℓ(h) against a tolerance τℓ. An inequality-based decision can be written compactly as 
+
+pass ℓ(h) = I[mℓ(h) ≤ τℓ] , (S1) where I[·] is the indicator function and τℓ is the largest accepted value of the metric. This form applies because the numerical metrics used here measure discrepancy, variability, drift, or growth, for which smaller values indicate closer agreement or greater admissibility. Conditions on symbolic structure, such as an identically zero parameter equation, are evaluated directly. The admissible set and selected model are then 
+
+A = {h ∈ C K : pass ℓ(h) = 1 for every applicable verifier ℓ} , h⋆ = arg min 
+
+> h∈A
+
+Lroll (h). (S2) Equations (S1) and (S2) therefore define admissibility separately from Lroll . Rollout error orders only the candidates that satisfy every applicable requirement. When A is empty, no admissible symbolic model is selected. 
+
+S2.2 Verifier definitions and interpretation Local vector-field agreement. Let ξ(m) 
+
+> i
+
+∈ Rdξ be the full state at sample i of discovery trajectory m. Its numerically estimated rate in evaluated coordinate j = 1 , . . . , d is the scalar ˙ξ(m) 
+
+> ij
+
+, while hj (ξ(m) 
+
+> i
+
+) is the corresponding scalar 12 component of the candidate vector field evaluated at the full state. The local discrepancy and its admissibility condition are given by 
+
+Vloc (h) = 1
+
+d
+
+> d
+
+X
+
+> j=1
+
+MSE m,i 
+
+
+
+hj (ξ(m) 
+
+> i
+
+), ˙ξ(m)
+
+> ij
+
+
+
+Var m,i 
+
+ ˙ξ(m)
+
+> ij
+
+
+
++ ϵ,
+
+pass loc (h) = I
+
+
+
+Vloc (h) ≤ 2 min 
+
+> eh∈C K
+
+Vloc (eh)
+
+
+
+,
+
+(S3) where ϵ = 10 −12 prevents division by zero. For the directly observed and fixed-parameter systems, dξ = d; for the cross-Re system, dξ = d + 1 because the input also contains the normalized Reynolds coordinate r = (Re − 300) /150 ,while the score is evaluated over the d latent-state equations. The variance normalization in Eq. (S3) gives each evaluated coordinate comparable influence despite different derivative scales. Because derivative scale and numerical differentiation error also differ between the observed Van der Pol states, POD coordinates, and autoencoder coordinates, the tolerance is defined relative to the lowest local discrepancy within the same shortlist. A candidate passes when its instantaneous direction and rate remain within a factor of two of that case-specific reference. 
+
+Long-horizon boundedness. Let bξ(s) 
+
+> h
+
+(t) denote the trajectory obtained by integrating candidate h from observed starting state s, and let Bobs = max m,i ∥ξ(m) 
+
+> i
+
+∥2 denote the largest state norm in the corresponding reference data. Boundedness requires 
+
+pass bound (h) = I
+
+bξ(s) 
+
+> h
+
+(t) is finite for all s, t ∧ max 
+
+> s,t
+
+bξ(s) 
+
+> h
+
+(t) 2
+
+≤ cbound Bobs 
+
+
+
+. (S4) In Eq. (S4) , the norm and its reference scale are evaluated only over the latent coordinates and separately at each Reynolds number for the cross-Re case. The factor is cbound = 1 .5 for Van der Pol and cbound = 3 for the reduced flow coordinates. This check rejects numerically divergent solutions and trajectories whose state magnitude grows well beyond that represented by the observations. 
+
+Oscillation amplitude. After removal of the initial verification interval, the amplitude of coordinate j is estimated by the robust percentile half-range Aj (ξ) = 12 [Q0.99 (ξj ) − Q0.01 (ξj )] . Let A(m) 
+
+> j
+
+be the amplitude of reference trajectory 
+
+m, and let bA(m) 
+
+> s,j
+
+be the corresponding amplitude of the candidate rollout from starting state s. If Mv indexes the reference cases used for verification and JA the coordinates whose amplitudes are evaluated, then 
+
+mamp (h) = 1
+
+|M v | |J A|
+
+X
+
+> m∈M v
+
+X
+
+> j∈J A
+
+median s bA(m) 
+
+> s,j
+
+− A(m)
+
+> j
+
+|A(m) 
+
+> j
+
+| + ϵ ,
+
+pass amp (h) = I[mamp (h) ≤ 0.15] .
+
+(S5) For Van der Pol, JA contains the observed oscillatory coordinate, and Mv contains one pooled reference case whose target is formed from the discovery trajectories. For the fixed-Re flow case, Mv contains the single Re = 300 reference trajectory; for the cross-Re case, it contains the three reference trajectories at Re = 150 , 300 , and 450 . All retained coordinates belong to JA in both flow cases. The verifier therefore tests whether the candidate reproduces the size of the recurrent motion, not only its pointwise path, as expressed by Eq. (S5). 
+
+Period or dominant frequency. Let q(m) 
+
+> j
+
+denote the characteristic temporal scale of coordinate j in reference case m,and let bq(m) 
+
+> s,j
+
+denote the same quantity from the candidate rollout. Its relative discrepancy is 
+
+mtime (h) = 1
+
+|M v | |J q |
+
+X
+
+> m∈M v
+
+X
+
+> j∈J q
+
+median s bq(m) 
+
+> s,j
+
+− q(m)
+
+> j
+
+|q(m) 
+
+> j
+
+| + ϵ ,
+
+pass time (h) = I[mtime (h) ≤ 0.10] .
+
+(S6) For Van der Pol, q is the median interval between successive peaks after the transient and Jq contains the observed oscillatory coordinate. For each reduced flow coordinate, qj is instead the dominant nonzero Fourier frequency, 
+
+qj = arg max ν> 0 |F [ξj − ξj ]( ν)|2. Peak spacing measures the period of the directly observed oscillator, whereas the spectral definition treats all reduced flow coordinates uniformly. In both cases, Eq. (S6) tests preservation of the dominant oscillation rate. 13 Starting-state consistency. Each candidate is integrated from three observed starting states. For a rollout property 
+
+u ∈ { A, q }, where A is amplitude and q is period or dominant frequency, define 
+
+Cu(h) = 1
+
+|M v | |J u|
+
+X
+
+> m∈M v
+
+X
+
+> j∈J u
+
+std s
+
+bu(m)
+
+> s,j
+
+
+
+mean s bu(m) 
+
+> s,j
+
++ ϵ,
+
+pass cons (h) = I[CA(h) ≤ 0.10 ∧ Cq (h) ≤ 0.05] .
+
+(S7) Here the hat denotes a quantity measured from an integrated candidate trajectory, and the standard deviation and mean are taken across the three starting states. A stable recurrent model should approach comparable amplitudes and time scales when initiated at different observed phases. Equation (S7) excludes candidates for which those long-time properties depend strongly on the selected starting state. 
+
+Parameter conservation and participation. For the cross-Re model, let hr denote the candidate equation for the normalized Reynolds coordinate defined above and let hj , j = 1 , . . . , d z , denote the equations for the dz latent coordinates. The parameter check is 
+
+pass par (h) = I
+
+
+
+hr ≡ 0 ∧ max  
+
+> s,t
+
+| br(s) 
+
+> h
+
+(t) − r(s)(0) | ≤ 10 −8 ∧ ∃ j ≤ dz : ∂h j
+
+∂r ̸ ≡ 0
+
+
+
+. (S8) The first condition preserves the autonomous augmentation ˙r = 0 symbolically, and the second confirms the same conservation in numerical rollouts. The third requires the latent dynamics to depend explicitly on r; carrying an unused constant coordinate is not sufficient for a shared cross-parameter model. Table S2 summarizes the settings associated with Eqs. (S3)–(S8). The cross-Re shortlist is the deduplicated union of the ten candidates with the lowest multi-trajectory rollout errors and the ten lowest-error candidates containing explicit Reynolds-number dependence in at least one latent-state equation. This two-branch construction retains hypotheses capable of representing a shared parametric law when rollout ranking favors a parameter-independent approximation over the discovery trajectories. Overlap between the branches produced the 17 distinct candidates reported in Table S2. For the cross-Re integration, one model-time unit corresponds to 0.1 physical-time units. The numerical horizon and discard interval of 300 and 50 model-time units therefore correspond to the reported values of 30 and 5. The numerical thresholds in Table S2 were held constant within each experimental setting. Their sensitivity is examined for the representative fixed-Re case in Section S2.7. Table S2: Verifier settings used in the three experimental settings. Setting Van der Pol Fixed Re = 300 Cross-Re 
+
+Shortlist size 10 10 17 ∗
+
+Local vector-field factor 2.0 2.0 2.0 Bound factor 1.5 3.0 3.0 Verification horizon 60 30 30 ∗∗ 
+
+Discard interval 30 5 5∗∗ 
+
+Amplitude tolerance 0.15 0.15 0.15 Period/frequency tolerance 0.10 0.10 0.10 Amplitude CV tolerance 0.10 0.10 0.10 Period/frequency CV tolerance 0.05 0.05 0.05 Parameter-drift tolerance NA NA 10 −8  
+
+> ∗The two cross-Re shortlist branches yielded 17 distinct candidates.
+> ∗∗ Cross-Re horizon and discard values are reported in physical-time units.
+
+S2.3 Identifiability interpretation 
+
+Identifiability concerns whether the observations and modeling assumptions distinguish one structure or coefficient vector from plausible alternatives. This issue is central to trajectory-based symbolic discovery because different equations can reproduce a finite observed path while defining different vector fields away from it, different long-time attractors, 14 or different responses to a changed initial condition or parameter. A low rollout error on the supplied trajectories is therefore not, by itself, evidence that the dynamics have been uniquely identified. The claim made in this work is intentionally restricted. The verifier suite does not establish global structural identifiability over an unrestricted class of differential equations. It improves discrimination within the finite hypothesis class generated by the symbolic backbone and over the specified state domains, initial conditions, parameter values, and verification horizons. To express this distinction, let HG be the generated, deduplicated hypothesis class, R(f ) its multi-trajectory rollout discrepancy, and ε a chosen rollout tolerance. The set of candidates that are indistinguishable at this rollout resolution is 
+
+ER(ε) = {f ∈ H G : R(f ) ≤ ε} . (S9) Equation (S9) describes equivalence only with respect to the sampled rollout discrepancy. Let HA ⊆ H G denote the candidates satisfying all applicable dynamical and physical-admissibility conditions. Verification then restricts the rollout-consistent set to 
+
+EV G (ε) = ER(ε) ∩ H A. (S10) The intersection in Eq. (S10) improves practical identifiability when it removes at least one rollout-consistent alternative while retaining an admissible candidate. The additional discrimination comes from properties not represented by a scalar rollout ordering alone, including local vector-field agreement, long-horizon boundedness, recurrent behavior across starting states, and parameter conservation and participation. 
+
+S2.4 Local sensitivity-rank interpretation 
+
+The preceding set-based view compares distinct candidates in a finite hypothesis class. A complementary local view asks whether the rollout and verification diagnostics can distinguish small coefficient changes within one symbolic structure. Let θ ∈ Rnθ contain its nθ free coefficients, y(θ) collect the sampled candidate rollouts, and m(θ) collect the real-valued verifier metrics before thresholding. The mapping from coefficients to the combined vector of rollout samples and verifier metrics has the local sensitivity matrix 
+
+JV G (θ) = 
+
+ ∂y/∂ θ
+
+∂m/∂ θ
+
+
+
+. (S11) Each column of JV G in Eq. (S11) describes how the measured quantities change under a perturbation of one coefficient. Appending verifier sensitivities cannot reduce the rank available from the rollout samples: 
+
+rank JV G ≥ rank ( ∂y/∂ θ) . (S12) A strict inequality in Eq. (S12) means that at least one coefficient direction unresolved by the sampled rollouts affects an additional diagnostic. Full column rank is a sufficient local condition for coefficient identifiability within the fixed structure, subject to numerical conditioning and symbolic symmetries. This rank analysis provides an interpretation of the information contributed by verification; it was not an additional computational step in the experiments. The binary decisions themselves are not differentiated, and metrics based on peak locations, percentiles, or discrete spectral maxima are interpreted locally only while the selected features remain unchanged. 
+
+S2.5 Implications for joint coordinate and equation discovery 
+
+In the present workflow, POD or autoencoder coordinates are selected before symbolic discovery, so identifiability is assessed conditionally on that representation. A future joint formulation could instead allow verification information to influence the coordinates themselves. Let Eϕ be an encoder with parameters ϕ, zϕ = Eϕ(ω) its latent state, and gθ asymbolic latent vector field with coefficients θ. The sensitivity of reconstruction, latent rollout, and verifier quantities to both parameter sets could be represented by 
+
+Jjoint = ∂∂(ϕ, θ)
+
+
+
+Rϕ(zϕ)
+
+bzϕ,θ (t)
+
+m(ϕ, θ)
+
+ , (S13) where Rϕ is the reconstruction map, bzϕ,θ (t) is the integrated latent trajectory, and m contains differentiable surrogates of the verifier properties. Equation (S13) shows how additional dynamical information could distinguish embeddings that reconstruct the field similarly but differ in approximate closure, boundedness, recurrence, or parameter dependence. Such a formulation could improve the identifiability of latent coordinates compatible with symbolic discovery. It remains a prospective extension; the autoencoder used here was optimized without verifier feedback. 15 S2.6 Parameter dependence in the cross-Re model 
+
+In the cross-Re experiment, each decoding is performed for one trajectory whose appended normalized Reynolds coordinate r is constant. A single trajectory therefore cannot identify how the latent dynamics vary with Reynolds number. For example, on a trajectory with r = r0̸ = 0 , the terms 
+
+αz j = αr0
+
+rz j when r = r0 (S14) are observationally indistinguishable. The occurrence of r in an individually decoded expression is therefore a candidate structural hypothesis, rather than evidence that one decoding has resolved the cross-trajectory parameter dependence. The ambiguity in Eq. (S14) is resolved only by evaluating a shared candidate across different values of r.Such terms can nevertheless arise because r is supplied as a state variable and the symbolic pretraining distribution includes cross-variable products and related dependencies. Variations in latent amplitude, frequency, and trajectory geometry at different Reynolds numbers can thus be represented by expressions involving the constant parameter channel. The cross-trajectory evidence enters after decoding: candidates are pooled and evaluated as shared equations over all seven discovery Reynolds numbers. The parameter verifier in Eq. (S8) additionally requires conservation of r
+
+and its participation in at least one latent equation. Parameter dependence in the selected model consequently emerges from candidate generation followed by cross-Re pooling, evaluation, and verification, rather than from simultaneous observation of all trajectories during an individual decode. 
+
+S2.7 Sensitivity to verifier tolerances 
+
+The numerical tolerances in Table S2 determine the boundary of the admissible set and therefore warrant a sensitivity check. We use the fixed-Re = 300 cylinder case as a representative example because it combines the local, boundedness, amplitude, frequency, and starting-state verifiers without the additional parameter constraints of the cross-Re model. The same perturbation procedure can be applied to the Van der Pol and cross-Re cases, although stability in this representative case does not imply invariance of their admissible sets. The sensitivity matrix crosses POD ranks four and six with candidate generation from either 8 evenly distributed development windows or all 24 development windows. The two even POD ranks retain complete modal pairs while testing a more compact and a more energetic representation; the two window counts compare selective and exhaustive candidate generation from the same window bank. Candidate ranking, verification, and coefficient refinement use all 24 windows in every configuration. Section S4.2 provides the full representation and selection comparison. Let γ ∈ { 0.75 , 1.0, 1.5} jointly scale the local vector-field agreement factor in Eq. (S3) and the amplitude, frequency, amplitude-CV, and frequency-CV tolerances. Thus γ < 1 imposes stricter quantitative agreement, γ = 1 recovers the nominal settings in Table S2, and γ > 1 relaxes them. Finite integration and boundedness remain at their nominal settings because they serve a different role: finite integration is a Boolean requirement for a valid rollout, while the boundedness limit defines the admissible state envelope relative to the observed dynamics. Changing either would alter the minimum dynamical-admissibility requirement rather than isolate sensitivity to the agreement tolerances. The number of admissible candidates, ordered by γ = (0 .75 , 1.0, 1.5) , was: 
+
+• POD rank four, 8 decoding windows: (10 , 10 , 10) ;
+
+• POD rank four, 24 decoding windows: (10 , 10 , 10) ;
+
+• POD rank six, 8 decoding windows: (5 , 6, 9) ; and 
+
+• POD rank six, 24 decoding windows: (9 , 10 , 10) .The admissible set therefore expands under looser tolerances for the rank-six cases, whereas every shortlisted rank-four candidate satisfies even the stricter setting. In all four configurations, however, the lowest-rollout admissible equation selected at the nominal tolerance remained the selected equation throughout the sensitivity range. The nominally selected pre-optimization equation and the next-lowest-rollout admissible alternative for the selected rank-six, eight-window configuration are reported in Section S4.2, together with the complete selection matrix. These results show that the verifier thresholds influence which secondary candidates enter the admissible set, as expected for any thresholded selection rule, but do not materially change the final outcome in this representative fixed-Re 
+
+case. The nominal values provide a reasonable balance: they reject candidates with substantial local or oscillatory disagreement without requiring near-exact agreement from an effective reduced-order model. Tightening or relaxing them by 25% and 50%, respectively, preserves the selected equation in every configuration. 16 S3 Van der Pol Test-Case Details and Extended Results 
+
+Section S1 used the Van der Pol oscillator to select the beam size and sampling temperature inherited from the symbolic backbone. The present section documents the final experiment conducted after those settings had been fixed. It provides the exact trajectory sets and their evaluation roles, the selected pre- and post-optimization equations, their verifier outcomes, and representative final-test rollouts. The candidate-generation (decoding) comparison is not repeated here: the results below use only the selected beam size of 20 and temperature of 0.1. 
+
+S3.1 Trajectory Sets and Evaluation Roles 
+
+For both μ = 0 .5 and 1.5, trajectories were integrated over 0 ≤ t ≤ 20 at 301 equally spaced times. The same initial-condition sets were used at both parameter values. The complete fixed-seed sets and their distinct roles are shown below: the model-construction bank is on the left, the validation set used in the beam–temperature comparison is in the center, and the final-test set is on the right.                                                                                        
+
+> Model-construction bank
+> jx0(0) x1(0) Candidate source 00.023643 0.900927 –1-0.711681 0.897299 late 2-0.376337 -0.153347 early, late 30.655405 -0.181602 –40.099187 -0.944882 –50.507026 0.076287 late 6-0.340537 0.576857 late 7-0.393610 -0.093004 –8-0.731917 -0.193774 early, late 9-0.593090 -0.475373 early 10 0.500729 -0.439182 –11 -0.029618 0.961474 –
+> Early window: 0≤t≤10 (151 samples). Late window: 10 ≤t≤20 (151 samples).
+> Beam–temperature validation
+> jx0(0) x1(0)
+> 0-0.476776 -0.403018 10.628451 -0.816168 20.200201 0.457121 3-0.624198 -0.889707 4-0.450061 0.314866 50.124531 -0.699875 6-0.134738 0.338595 7-0.154431 0.266369
+> Final test
+> jx0(0) x1(0)
+> 0-0.828702 -0.526379 10.602549 0.164324 2-0.811743 -0.133746 3-0.041897 -0.680522 40.469154 -0.772656 5-0.217544 0.033480 6-0.138744 0.173597 70.475676 0.912535
+
+As shown in the left-most table, the 12 model-construction trajectories each contributed one early and one late window, giving a 24-window bank. The eight windows used as inputs for candidate generation were fixed before the beam–temperature comparison: trajectory 1 contributed its late window; trajectory 2 contributed both windows; trajectories 5 and 6 contributed their late windows; trajectory 8 contributed both windows; and trajectory 9 contributed its early window. The saved bank orders the windows by trajectory, with each trajectory’s early window immediately followed by its late window. Under this storage convention, the eight candidate-generation inputs have global indices 
+
+(3 , 4, 5, 11 , 13 , 16 , 17 , 18) . Candidate pooling, rollout ranking, verification, and coefficient optimization then used evidence from all 24 model-construction windows, rather than only the eight inputs from which candidates were generated. The long-horizon verifier rollouts began from model-construction initial conditions 0, 4, and 8 in the left-most table. This reuse was intentional: the verifiers assess dynamical admissibility from multiple locations in the model-construction domain and do not provide a held-out performance estimate. The eight initial conditions in the center table were used only for the beam–temperature comparison in Section S1. The eight initial conditions in the right-most table were reserved for final testing after the candidate-generation settings and equations had been fixed. These two evaluation sets are disjoint from the model-construction bank and from one another. 
+
+S3.2 Selected equations and verifier outcomes 
+
+The canonical system has ˙x0 = x1 and ˙x1 = μx 1 − x0 − μx 20x1. The selected VG equations are written below in the factorized form returned by the symbolic workflow. Coefficients are rounded only for presentation; verification and rollout evaluation used the full-precision values. 
+
+μ = 0 .5.
+
+Pre-optimization: ˙x0 = 1 .0239 x1 − 0.0548 x0,
+
+˙x1 = 0 .2763 x1 − 1.0463 x0 − 0.0769 x1
+
+ 0.0736 x0 + 3 .6009 x20
+
+ . (S15) 17 Post-optimization: ˙x0 = 0 .99726 x1 − 0.012400 x0,
+
+˙x1 = 0 .54166 x1 − 0.99708 x0 − 0.13251 x1
+
+ 0.029451 x0 + 4 .0969 x20
+
+ . (S16) 
+
+μ = 1 .5.
+
+Pre-optimization: ˙x0 = 0 .0007 (1 + 1 .2715 x0)2 + 0 .9889 x1,
+
+˙x1 = 1 .4616 x1 − 0.9972 x0 − 0.1104 x1
+
+ 0.0690 x0 + 12 .5443 x20
+
+ . (S17) Post-optimization: ˙x0 = 0 .00067573 (0 .99818 + 1 .2726 x0)2 + 0 .99637 x1,
+
+˙x1 = 1 .43998 x1 − 1.00151 x0 − 0.11351 x1
+
+ 0.070367 x0 + 12 .8741 x20
+
+ . (S18) Comparison of each pre- and post-optimization pair shows that coefficient optimization preserves the generated symbolic structure and changes only its numerical constants; it does not add or remove terms. For each value of μ, only one of the ten rollout-ranked candidates passed the complete pre-optimization verifier suite. That candidate also had the lowest aggregate rollout error. The verifier suite therefore provided an independent admissibility requirement without changing the selected candidate in these two cases. The selected equations were verified again after coefficient optimization. Table S3 places each measured outcome beside the corresponding Van der Pol acceptance requirement. The local vector-field limit is shortlist-relative and therefore differs between the two parameter values; the remaining limits are the fixed settings defined in Section S2. Table S3: Post-optimization verifier outcomes for the selected Van der Pol equations. Percentages are reported relative to the corresponding ground-truth oscillation statistic.                               
+
+> Verifier Acceptance requirement μ= 0 .5μ= 1 .5
+> Finite integration All three long-horizon rollouts complete 3/3 3/3 Boundedness Maximum state norm no greater than 1.5
+> times the observed maximum Pass Pass Local vector field Score no greater than the case-specific limit 8.72 ×10 −4
+> (limit 4.02 ×10 −2)
+> 2.11 ×10 −4
+> (limit 4.60 ×10 −3)Amplitude error No greater than 15% 0.741% 0.678% Period error No greater than 10% 0.263% 0.236% Amplitude CV No greater than 10% 0.057% 0.016% Period CV No greater than 5% 0.370% Below numerical resolution Overall outcome Every applicable requirement satisfied Pass Pass
+
+The local vector-field scores are 2.17% and 4.59% of their respective limits for μ = 0 .5 and 1.5. Across both systems, the amplitude errors remain below 0.75%, the period errors below 0.27%, and the cross-start coefficients of variation below 0.38%. The post-optimization equations thus satisfy the numerical-integration, boundedness, local-dynamics, oscillation, and attractor-consistency requirements from all three verifier initial conditions. This reverification establishes dynamical admissibility after the constants have changed; Section S3.3 separately assesses predictive generalization from initial conditions excluded from model construction. 
+
+S3.3 Representative held-out rollouts 
+
+Across the eight final-test initial conditions, coefficient optimization reduced the median VG rollout NMSE from 0.287 to 6.99 × 10 −4 for μ = 0 .5, and from 0.0139 to 3.27 × 10 −3 for μ = 1 .5. These values differ from the validation errors in Table S1: the validation errors selected the candidate-generation settings, whereas the present values were obtained from the previously unused final-test trajectories after those settings and the equations had been fixed. Figure S1 shows one representative final-test case for each parameter. The representative-case rule was defined over the eight final-test trajectories before inspecting the plots. An eligible trajectory required complete rollouts from the original ODEFormer equation before coefficient optimization and from the VG equation both before and after optimization. Among these eligible trajectories, we selected the case whose post-optimization VG NMSE was closest to the median over all eight final-test trajectories. When the two observations bracketing the median were equally close, the lower trajectory index was used. This rule gives test trajectory 2, with x(0) = ( −0.811743 , −0.133746) , for μ = 0 .5, and test trajectory 3, with x(0) = ( −0.041897 , −0.680522) , for μ = 1 .5. The post-optimization original ODEFormer rollout is included in the figure to complete the before–after comparison but did not influence representative case selection. 18 Figure S1: Representative final-test Van der Pol rollouts. Ground-truth trajectories are compared with equations from the original single-trajectory ODEFormer workflow and the VG workflow, in each case before and after coefficient optimization. For μ = 0 .5, both original ODEFormer equations begin to separate markedly from the ground truth after approximately 
+
+t = 10 . Their oscillation amplitudes then grow rapidly, and neither preserves the bounded ground-truth cycle over the full displayed interval. The pre-optimization VG equation remains bounded and oscillatory but accumulates a visible phase discrepancy. Coefficient optimization brings the VG trajectory and phase portrait into close agreement with the ground truth. For μ = 1 .5, all four learned rollouts remain oscillatory. The original ODEFormer equations before and after optimization trace visibly different cycles, whereas the post-optimization VG rollout follows the ground-truth cycle throughout the interval; its smaller residual phase and shape differences are consistent with the final-test NMSE. The verifiers therefore contribute more than a check on numerical solvability: before selection, they require finite and bounded integration, local vector-field agreement, accurate oscillation amplitude and period, and consistent attractor statistics across several initial conditions. The final-test rollouts then provide separate evidence that the selected, reverified equations preserve the relevant oscillatory dynamics from initial conditions excluded from model construction. Together with the aggregate comparison in Figure 2, these results show that the VG advantage is supported by explicit multi-start dynamical requirements as well as by held-out predictive accuracy, rather than by low average rollout error alone. 
+
+# S4 Fixed-Reynolds-Number Representation and Selection Details 
+
+This section expands the fixed-Re = 300 experiment reported in Section 5.2. After the initial 500 snapshots were discarded, the remaining time series was divided chronologically into a 250-snapshot development interval, a 100-snapshot validation interval, and a 150-snapshot final-test interval. The development interval supplied the POD representation and supported candidate generation, multi-window ranking and verification, and coefficient optimization. The validation interval was used to choose the POD rank and decoding-window configuration; the final-test interval remained held out until those choices were complete. Sections S4.1, S4.2, and S4.3 respectively examine the representation, configuration selection, and final-test behavior. 19 S4.1 POD spectrum and mode-pair diagnostics 
+
+POD was applied to fluctuations about the development-interval mean, rather than to the total vorticity fields. If ω(ti)
+
+is the vectorized field at development time ti and ωD is their temporal mean, the fluctuation snapshot matrix and its singular-value decomposition are 
+
+X′ = ω(t1) − ωD · · · ω(tND ) − ωD
+
+ = UΣV T,Er =
+
+Prj=1 σ2
+
+> j
+
+PNs 
+
+> j=1
+
+σ2
+
+> j
+
+. (S19) Here ND = 250 , σj is the jth singular value, Ns is the number of nonzero singular values, and Er is the fraction of fluctuation energy represented by the first r modes. The mean field is restored only when the reduced coordinates are reconstructed in physical space. The near-equal singular values in Figure S2 form three leading pairs, as expected for quadrature components of an oscillatory wake. We therefore compared two even ranks that preserve complete pairs: rank four gives a compact representation of the first two pairs, whereas rank six adds the third pair and retains a larger fraction of the wake fluctuations. This comparison tests whether the additional oscillatory content improves field reconstruction sufficiently to justify a higher-dimensional symbolic system. Ranks four and six retain 85.61% and 94.52% of the fluctuation energy, respectively. 
+
+Figure S2: POD singular-value spectrum and cumulative fluctuation energy at fixed Re = 300 .For a consecutive pair (2 k − 1, 2k), we quantify its relative energy imbalance by 
+
+δk = |σ22k−1 − σ22k|
+
+σ22k−1 + σ22k
+
+. (S20) The pair-energy column in Table S4 is the percentage of the total fluctuation energy carried by the two modes in that row; the cumulative column gives the energy retained through that pair. The first pair therefore accounts for 73.44% of the wake fluctuations. The second adds 12.17 percentage points, bringing the rank-four representation to 85.61%, and the third adds a further 8.91 percentage points, bringing rank six to 94.52%. Their coefficient trajectories vary on successively faster time scales, corresponding to the fundamental shedding oscillation and its higher harmonics. The imbalance δk equals zero for an exactly energy-matched pair and increases as one member becomes dominant. Its small and decreasing values show that each retained pair uses both quadrature components, most closely for modes 5–6. Table S4 therefore complements the cumulative spectrum by separating the energy contributed by each oscillatory pair. 20 Table S4: POD mode-pair energy and imbalance diagnostics. Modes Pair energy (%) Cumulative energy (%) δk
+
+1–2 73.44 73.44 0.1309 3–4 12.17 85.61 0.0379 5–6 8.91 94.52 0.0097 
+
+S4.2 POD-rank and decoding-window selection matrix 
+
+The representation and decoding choices motivated in Section S4.1 were compared without using the final-test interval. For each rank, the VG workflow generated candidates independently from either eight evenly distributed windows or all 24 windows in the development interval. The eight-window setting tests whether broad temporal coverage is sufficient without decoding every available window; the 24-window setting instead maximizes the diversity of generated candidates. The resulting pools contained 160 and 480 equation systems, respectively. In every configuration, candidate ranking, verification, and coefficient optimization used all 24 windows. Only the number of windows supplied independently to the symbolic backbone during candidate generation was varied. Table S5 reports the validation comparison. The rank-four models have the smallest coordinate-space errors, but their POD truncation error exceeds 20%, and their end-to-end field errors consequently remain above 21%. Rank six reduces the representation error to 12.70%. Within this rank, decoding from eight windows gives the smaller continuous rollout and end-to-end field errors. It was therefore chosen before the final-test interval was evaluated. Table S5: Fixed-Re validation matrix. “Window” and “Continuous” are median coordinate errors; POD, VG–POD, and end-to-end are mean relative field errors. All errors are percentages, and “Adm.” gives the number of verifier-admissible candidates in the ten-candidate shortlist.                                    
+
+> Rank Windows Adm. Window Continuous POD VG–POD End-to-end 4810 1.30 1.54 20.87 4.57 21.39 424 10 1.11 2.03 20.87 5.88 21.75 6864.36 3.95 12.70 7.57 14.93 624 10 4.61 7.11 12.70 12.84 18.28
+
+Table S5 reports the admissible counts obtained at the nominal verifier settings. Section S2.7 examines how these counts change when the quantitative agreement tolerances are tightened or relaxed. For the selected rank-six, eight-window configuration, Eq. (S21) below is the pre-optimization equation selected at the nominal settings, and Eq. (S22) is the next-lowest-rollout admissible alternative. These are the two equations referenced in Section S2.7. Although the number of admissible rank-six candidates changes across the tested tolerance factors, Eq. (S21) remains selected in every case. Let z = ( z1, . . . , z 6)T denote the standardized POD coordinates, consistent with the notation used for the post-optimization system in Eq. (12) . The pre-optimization system with the lowest development- window rollout error, whose structure was advanced to coefficient optimization, was 
+
+˙z1 = 1 .0044 z2 − 0.0700(12 .3400 − 0.9594 z2)−1, ˙z2 = −1.1105 z1,
+
+˙z3 = −2.1602 z4, ˙z4 = 2 .1867 z3,
+
+˙z5 = 3 .4432 z6 − 0.1382 sin(0 .1052 + 9 .1998 z2), ˙z6 = −0.1399 − 2.8694 z5.
+
+(S21) The next-lowest-rollout admissible system provides a representative alternative: 
+
+˙z1 = 1 .1208 z2, ˙z2 = −1.0604 z1,
+
+˙z3 = −2.2995 z4, ˙z4 = 2 .0672 z3,
+
+˙z5 = 3 .1395 z6 − 0.2202 sin(11 .8700 + 148 .5203 z6), ˙z6 = −0.1463 − 3.1228 z5.
+
+(S22) Both systems preserve three oscillator pairs and satisfy all applicable verifiers, but their nonlinear structures differ. In Eq. (S21) , −0.0700(12 .3400 −0.9594 z2)−1 adds a reciprocal correction to ˙z1 in the first pair, while −0.1382 sin(0 .1052+ 9.1998 z2) couples the first pair to ˙z5 in the third pair. Equation (S22) leaves the first pair linear and instead introduces 21 −0.2202 sin(11 .8700 + 148 .5203 z6) as a nonlinear correction within the third pair. Both systems also contain a small constant offset in ˙z6.At the nominal settings, six of the ten shortlisted systems for this configuration satisfy every verifier. The coexistence of Eqs. (S21) and (S22) therefore illustrates the practical non-uniqueness discussed in Section S2.3: verification excludes four rollout-competitive candidates but does not imply a unique symbolic structure within the admissible set. Rollout error provides the remaining selection criterion and chooses Eq. (S21) . This supports improved discrimination within the generated hypothesis class, rather than global structural identifiability. Coefficient optimization of the selected equation produced the post-optimization system reported in Eq. (12). 
+
+S4.3 Extended coordinate and field comparisons 
+
+The final-test interval was evaluated only after the rank-six, eight-window configuration had been chosen. In Figures S3 and S4, aj denotes the plotted standardized POD coefficient and corresponds to zj in Eqs. (S21) and (S22) . The first oscillator pair remains closely aligned throughout the interval. The second pair develops the most visible phase difference, while the third retains the higher-frequency oscillation with moderate amplitude and phase differences. The phase portraits in Figure S4(a)–(c) show that all three predicted pairs remain bounded and continue to trace closed oscillatory paths. The first predicted orbit remains close to its POD counterpart; the higher-harmonic pairs show greater differences in orbit geometry. Because these pairs carry substantially less fluctuation energy than the first pair, their coordinate-level differences have a smaller influence on the reconstructed vorticity field. Field error was decomposed into three contributions. For the simulated vorticity field ω(t), its rank-six POD projection 
+
+ωPOD (t), and the field reconstructed from the symbolic rollout bωVG (t), the instantaneous relative errors are 
+
+ePOD (t) = ∥ωPOD (t) − ω(t)∥2
+
+∥ω(t)∥2
+
+,eVG -POD (t) = ∥bωVG (t) − ωPOD (t)∥2
+
+∥ωPOD (t)∥2
+
+,eend (t) = ∥bωVG (t) − ω(t)∥2
+
+∥ω(t)∥2
+
+.
+
+(S23) Their time-averaged values are 12.53%, 8.77%, and 15.56%, respectively. Figure S4(d) shows their variation over the final-test interval. All three errors remain bounded without systematic growth. The smaller VG-to-POD error indicates that the symbolic rollout remains closer to the retained six-mode trajectory than the POD reconstruction is to the simulation. The end-to-end error reflects both the POD truncation and the symbolic-rollout discrepancy, but it is not their arithmetic sum because the error fields are neither collinear nor normalized by the same reference. Representative vorticity fields are shown in Figure S5. The POD reconstruction preserves the alternating vortex street but smooths the smaller-scale vorticity gradients omitted by the six-mode representation. At all three times, the VG reconstruction closely follows the shedding phase and large-scale organization of the POD field. Its remaining deviation from the simulation reflects the POD truncation visible in the middle column together with the smaller additional differences introduced by the symbolic coordinate rollout. 22 Figure S3: Final-test fixed-Re rollouts in the six standardized POD coordinates. 23 Figure S4: Final-test fixed-Re comparisons: phase portraits for (a) a1–a2, (b) a3–a4, and (c) a5–a6; (d) POD truncation, VG-to-POD, and end-to-end field errors. 24 Figure S5: Simulation, rank-six POD reconstruction, and VG prediction at three times in the final-test fixed-Re interval. 25 S5 Autoencoder Representation–Discoverability Sensitivity 
+
+S5.1 Controlled architectures, seeds, and optimization protocol 
+
+Unlike POD coordinates, which follow directly from a covariance decomposition of a specified snapshot set up to sign and rotations within degenerate subspaces, nonlinear autoencoders do not define a unique latent embedding. Different architectures, initializations, and optimization paths may yield similar field reconstructions while producing latent trajectories with different temporal geometry. This non-uniqueness motivates examining representation fidelity together with properties relevant to symbolic discoverability. The controlled representation study crossed latent dimensions three and four with shallow and deep fully connected autoencoders. The shallow encoder used one hidden layer of width 256, whereas the deep encoder used hidden widths 4096 and 256; both used symmetric decoders, as shown in Figure S6. The independently prepared autoencoder used for the cross-Re result in Section 5.3 has the same architecture as the shallow three-coordinate autoencoders tested here. It was trained before the controlled study without a prespecified, recorded initialization seed and is therefore retained as a separate comparison rather than treated as an additional controlled seed. (a) Shallow autoencoder (b) Deep autoencoder    
+
+> Input
+> 60 ,000
+> Hidden
+> 256
+> Latent
+> 3
+> Hidden
+> 256
+> Output
+> 60 ,000
+> Input
+> 60 ,000
+> Hidden
+> 4096
+> Hidden
+> 256
+> Latent
+> 4
+> Hidden
+> 256
+> Hidden
+> 4096
+> Output
+> 60 ,000
+> encoder decoder encoder decoder
+
+Figure S6: Fully connected shallow and deep autoencoder architectures used in the representation study. Hidden layers use ReLU activation; latent and output layers are linear. Each configuration was initialized from seeds 17, 29, and 43 and optimized using the seven Reynolds numbers employed for symbolic model construction and the same 500 post-transient snapshots per Reynolds number. All comparisons in Table S6 use these post-transient fields. One predeclared seed per architecture was carried forward to the symbolic discovery comparison. 
+
+S5.2 Definition of the latent-representation diagnostics 
+
+Three diagnostics characterize the temporal properties of each embedding before symbolic model construction. Let 
+
+Z(m) ∈ RT ×dz contain the latent trajectory at the mth Reynolds number, where T is the number of snapshots and dz
+
+the latent dimension. Each coordinate is standardized using its mean μj and standard deviation σj on the concatenated trajectories: eZ(m) 
+
+> t,j
+
+= ( Z(m) 
+
+> t,j
+
+− μj )/(σj + ϵ). With ∆ and ∆2 denoting first and second temporal differences, respectively, the latent roughness is 
+
+Rz = 1
+
+MRMRX
+
+> m=1
+
+mean t,j 
+
+h
+
+(∆ 2 eZ(m) 
+
+> t,j
+
+)2
+
+i
+
+mean t,j 
+
+h
+
+(∆ eZ(m) 
+
+> t,j
+
+)2
+
+i
+
++ ϵ, (S24) where MR = 7 is the number of Reynolds numbers. The denominator normalizes by the overall first-difference scale, so Eq. (S24) measures rapid changes in temporal slope rather than latent amplitude. Smaller values indicate smoother trajectories. For spectral concentration, let P (m) 
+
+> k,j
+
+be the discrete Fourier power of the centered standardized coordinate at positive, nonzero frequency bin k, and let K(m,j )3 contain its three largest-power bins. The reported diagnostic is 
+
+Sz = 1
+
+MRdzMRX
+
+> m=1
+> dz
+
+X
+
+> j=1
+
+P
+
+> k∈K (m,j )3
+
+P (m)
+
+> k,j
+
+P 
+
+> k> 0
+
+P (m) 
+
+> k,j
+
++ ϵ . (S25) 26 Values of Sz in Eq. (S25) closer to one indicate that most temporal variation is organized around a small number of frequencies, as expected for a dominant shedding oscillator and its harmonics. Finally, concatenate the unstandardized trajectories into Zall and let λ1, . . . , λ dz ≥ 0 be the eigenvalues of its sample covariance matrix. The covariance participation ratio is 
+
+dPR =
+
+Pdz 
+
+> j=1
+
+λj
+
+2
+
+Pdz 
+
+> j=1
+
+λ2 
+
+> j
+
++ ϵ . (S26) This effective dimension equals one when nearly all covariance is concentrated in one direction and increases as variance is distributed more evenly among latent coordinates. Equations (S24) – (S26) describe complementary properties: temporal regularity, spectral organization, and covariance use of the available latent dimensions. 
+
+S5.3 Latent-representation diagnostics evaluation 
+
+Table S6 compares reconstruction fidelity with the three latent diagnostics. The smallest reconstruction error, 4.494%, was attained by the deep three-coordinate model initialized with seed 43. This representation did not have the smoothest latent trajectories: its roughness was 0.0465, compared with 0.0224 for the independent shallow reference. The latter also had the largest spectral concentration, 0.9264, despite its higher reconstruction error of 5.826%. The comparison therefore separates field reconstruction from temporal properties that affect compatibility with the symbolic backbone. As the symbolic-discovery outcomes in Table S7 subsequently show, an accurate snapshot reconstruction need not yield latent dynamics that are readily expressed within the backbone’s learned symbolic distribution. Table S6: Autoencoder representation sensitivity across architecture and initialization seed. Field error is the temporal mean of snapshot-wise relative spatial L2 error; the latent diagnostics are defined in Eqs. (S24)–(S26). 
+
+Configuration Seed Field error (%) Roughness Spectral conc. Participation AE3S 17 5.636 0.0472 0.8830 1.975 AE3S 29 6.349 0.0543 0.8841 1.910 AE3S 43 ∗ 5.637 0.0332 0.8970 2.447 AE4S 17 ∗ 5.379 0.1145 0.7842 1.733 AE4S 29 5.825 0.1082 0.8065 2.664 AE4S 43 5.021 0.1143 0.7877 2.854 AE3D 17 ∗ 4.838 0.0347 0.9232 2.291 AE3D 29 5.644 0.0383 0.9087 2.370 AE3D 43 4.494 0.0465 0.9098 2.562 AE4D 17 5.091 0.0993 0.8646 3.677 AE4D 29 ∗ 4.625 0.0935 0.8753 3.204 AE4D 43 4.650 0.0733 0.8759 3.650 Independent shallow reference ∗∗ – 5.826 0.0224 0.9264 2.149 
+
+> ∗Seed carried forward for the corresponding controlled architecture.
+> ∗∗ The independent shallow reference is the separately prepared autoencoder used for the cross-parameter result reported in Section 5.3. It has the same architecture as the shallow three-coordinate autoencoders but no prespecified, recorded initialization seed and is not one of the 12 controlled runs.
+
+S5.4 Corresponding symbolic-discovery outcomes 
+
+The same beam size of 20 and sampling temperature of 0.1 were used for the controlled symbolic-discovery comparison and for the independent shallow reference. Among the four controlled encodings identified by asterisks in Table S6, only AE3D produced a pre-optimization candidate satisfying every verifier. Its multi-trajectory rollout loss was 2.169; the post-optimization system was not admissible. By contrast, the independently prepared shallow reference used for the cross-parameter result in Section 5.3 yielded an admissible pre-optimization candidate with loss 1.042, and post-optimization reduced the loss to 0.200 while preserving admissibility. These outcomes are summarized in Table S7. 27 Table S7: Symbolic-discovery outcomes for the representations advanced from the controlled study and for the independent shallow reference. Representation Pre-opt. admissible Pre-opt. loss Post-opt. result AE3S, seed 43 No – Inadmissible AE4S, seed 17 No – Inadmissible AE3D, seed 17 Yes 2.169 Inadmissible AE4D, seed 29 No – Inadmissible Independent shallow reference Yes 1.042 0.200, admissible The comparison supports a specific conclusion: reconstruction fidelity alone did not determine whether VG could identify an admissible cross-parameter equation. It does not imply that roughness or spectral concentration is by itself sufficient for discoverability; these diagnostics describe relevant representation properties rather than a complete selection criterion. This result further supports the joint coordinate-and-equation discovery direction discussed in Section S2.5, in which dynamical verification can help distinguish latent embeddings with similar reconstruction fidelity but different compatibility with symbolic discovery. 
+
+# S6 Extended Results for the Cross-Parameter Cylinder-Flow Case 
+
+S6.1 Representation and evaluation protocol 
+
+The cross-Re study used the same shallow autoencoder as the result reported in Section 5.3; Section S5 examined this representation further. The autoencoder operates on mean-subtracted (fluctuation) vorticity fields. Its three latent coordinates were centered and scaled using the seven Reynolds numbers employed for symbolic model construction, 
+
+Re ∈ { 150 , 200 , 250 , 300 , 350 , 400 , 450 }.
+
+The Reynolds number was appended as r = (Re − 300) /150 . The symbolic backbone was given the uniformly sampled trajectories at unit time increments, so its model time is τ = t∗/0.1, where consecutive physical snapshots are separated by ∆t∗ = 0 .1. This rescaling changes the numerical values of the equation coefficients but not the represented trajectories. At each Reynolds number, the model state was therefore ξ = ( z1, z 2, z 3, r )T.For every Reynolds number, the first 500 simulation snapshots were removed as the wake-development transient. Model construction and evaluation use the subsequent 500 post-transient snapshots, spanning approximately 50 ≤ t∗ ≤ 100 .The withheld cases comprise interpolation at Re = 175 , 275 , and 425 and extrapolation at Re = 500 . None of these four latent trajectories contributed to generation, ranking, verification, or coefficient optimization of the symbolic model. The three interpolation values were also excluded when fitting the autoencoder. The autoencoder was fitted using fields at Re = 500 , but the corresponding latent trajectory was excluded from symbolic model construction. Thus, “extrapolation” at Re = 500 refers specifically to evaluating the Reynolds-conditioned equation at r = 4 /3, beyond its construction interval −1 ≤ r ≤ 1; it does not refer to extrapolation of the field representation. Candidates generated from these seven trajectories were verified using the cross-Re settings in Table S2. The two-branch shortlist contained 17 distinct systems, of which four satisfied all applicable verifiers. Coefficient optimization was then applied to the admissible candidates, followed by the same verifier suite. The resulting system was chosen before the withheld Reynolds numbers were examined. To retain the notation used elsewhere in the supplement, dots in Eqs. (S27) and (S28) denote differentiation with respect to the model time τ . The pre-optimization and post-optimization systems are 
+
+˙z1 = 0 .1070 z3 − 0.0013 r + 0 .0089 z2z3, ˙z2 = 0 .1003 z1,
+
+˙z3 = −0.1098 z1, ˙r = 0 , (S27) 
+
+˙z1 = 0 .114317 z3 + 0 .004217 r + 0 .020148 z2z3, ˙z2 = 0 .079842 z1,
+
+˙z3 = −0.099544 z1, ˙r = 0 . (S28) Since one unit of τ corresponds to 0.1 units of t∗, multiplying the right-hand sides of Eq. (S28) by ten gives the physical-time equation reported in Eq. (13). 28 S6.2 Latent-coordinate rollouts at withheld Reynolds numbers 
+
+Figure S7 compares the latent trajectories obtained by encoding the simulated fields with the pre-optimization and post-optimization VG rollouts. We retain zj for these nonlinear autoencoder coordinates, consistent with the notation in Section 5.3 and distinct from the POD coefficients aj in Figures S3 and S4. For an encoded trajectory z(tn) and its prediction bz(tn), the latent normalized mean-squared error is 
+
+Ez = 13
+
+> 3
+
+X
+
+> j=1
+
+N −1 PNn=1 (bzj (tn) − zj (tn)) 2
+
+Var n[zj (tn)] + ϵ , (S29) where N = 500 and ϵ is a small numerical constant. This metric weights each coordinate relative to its own variation; the conserved parameter coordinate is not included. Coefficient optimization reduces Ez at every withheld Reynolds number: 
+
+• Re = 175 : 2.312 → 0.142 , a 93.9% reduction; 
+
+• Re = 275 : 0.797 → 0.247 , a 69.0% reduction; 
+
+• Re = 425 : 0.188 → 0.043 , a 77.2% reduction; 
+
+• Re = 500 : 0.714 → 0.036 , a 94.9% reduction. All post-optimization rollouts remain finite and oscillatory over the complete interval. The largest remaining error occurs at Re = 275 , where a progressive phase difference is visible in all three coordinates without a loss of the oscillatory regime. The error ordering is not monotonic with distance from the Reynolds numbers used for model construction. It also depends on how accurately the selected equation represents the variation of latent frequency, phase, and amplitude across the parameter range, and on the accumulation of small frequency differences over a long rollout. In Eq. (S28) ,
+
+r enters explicitly through an additive term in ˙z1, while the oscillator couplings are shared across Reynolds number. The model can therefore represent a Reynolds-dependent shift of the common oscillator, but it does not allow every coupling or frequency coefficient to vary independently with Re . The strong result at Re = 500 indicates that the post-optimization equation continues the same periodic shedding dynamics beyond the parameter range used to construct it. 29 Figure S7: Autoencoder-encoded trajectories and the corresponding pre-optimization and post-optimization VG rollouts at the withheld Reynolds numbers. I denotes interpolation within the symbolic model-construction range, and E denotes extrapolation beyond that range. 30 S6.3 Spatially averaged wake evolution 
+
+The latent comparison can be related to an observable quantity in the physical field by averaging the nondimensional vorticity over the wake region 
+
+W = {(x/D, y/D ) : 0 .5 ≤ x/D ≤ 5, |y/D | ≤ 1.5} .
+
+For a field ω∗(x, t ∗) = ωD/U ∞, its spatial average is 
+
+⟨ω∗⟩W (t∗) = 1
+
+|W| 
+
+Z
+
+> W
+
+ω∗(x, t ∗) d x. (S30) This integral measures the net balance of positive and negative vorticity within the specified region and provides a scalar record of shedding phase and amplitude. 
+
+Figure S8: Spatially averaged wake vorticity from the simulation, autoencoder reconstruction, and post-optimization VG prediction. I denotes interpolation within the symbolic model-construction range; E denotes extrapolation beyond that range. The autoencoder traces in Figure S8 closely follow the simulation at all four Reynolds numbers, indicating that the common representation preserves this integral wake quantity. The VG traces retain the oscillation frequency and amplitude range throughout each withheld interval. Agreement is strongest at Re = 425 and 500 . At Re = 175 the predicted phase gradually separates from the reconstructed field, while Re = 275 exhibits the largest late-time phase difference, consistent with its larger latent error. All four cases remain within the periodic vortex-shedding regime, whose dominant oscillator provides a common dynamical structure across Reynolds number. The residual differences are consistent with the selected Reynolds-conditioned equation capturing this shared oscillator more accurately than the detailed variation of its phase and amplitude. 
+
+S6.4 Field reconstruction and error decomposition 
+
+The field comparison uses the same three-part error decomposition as Eq. (S23) . Here the POD reconstruction ωPOD is replaced by the autoencoder reconstruction ωAE . Accordingly, eAE and eVG -AE replace ePOD and eVG -POD , respectively, 31 while the end-to-end definition is unchanged. Table S8 summarizes the latent and field errors over all 500 snapshots. The mean autoencoder error varies only from 5.90% to 6.96% across the four cases, whereas the VG-to-autoencoder error varies more substantially. The difference in end-to-end accuracy is therefore associated mainly with the symbolic rollout rather than a deterioration of the common field representation. As in the fixed-Re decomposition, the end-to-end error is not the arithmetic sum of its two components. Table S8: Extended cross-Re latent and field errors. Field entries give the temporal mean with the median in parentheses, in percent.                                  
+
+> Re Regime Latent NMSE AE error VG–AE error End-to-end error Pre-opt. Post-opt. Mean (median) Mean (median) Mean (median) 175 Interpolation 2.312 0.142 6.96 (6.81) 19.85 (18.30) 20.86 (19.13) 275 Interpolation 0.797 0.247 5.90 (5.83) 32.07 (31.44) 33.01 (32.50) 425 Interpolation 0.188 0.043 6.00 (5.98) 18.88 (19.97) 20.74 (21.72) 500 Extrapolation 0.714 0.036 6.41 (6.46) 11.89 (13.10) 13.81 (14.26)
+
+Figure S9 consolidates all four withheld Reynolds numbers at t∗ = 75 , including the Re = 275 and 500 cases presented in the paper, so that the field predictions can be compared directly. The autoencoder consistently smooths smaller spatial features while preserving the alternating wake. The VG prediction reconstructs the dominant structures available in the three-coordinate representation at every Reynolds number. Its greater displacement from the encoded field at Re = 275 
+
+is consistent with the accumulated phase difference in Figures S7 and S8; the closer latent rollouts at Re = 425 and 500 
+
+correspond to more closely aligned large-scale fields. As discussed in Section S6.2, the recovered equation represents a Reynolds-conditioned common oscillator rather than a complete symbolic description of all parameter-dependent wake dynamics. Even with this qualification, obtaining one explicit system that remains bounded and predictive at four Reynolds numbers excluded from symbolic model construction—including one outside the construction range—is nontrivial for reduced coordinates of a high-dimensional flow, particularly when using a synthetically pretrained symbolic transformer as the backbone. Parametric symbolic modeling of physical flow systems remains an open challenge; these results demonstrate the value of combining shared oscillatory structure, explicit parameter dependence, and cross-trajectory verification. 32 Figure S9: Simulation, autoencoder reconstruction, and VG prediction at t∗ = 75 for all Reynolds numbers excluded from symbolic model construction. The first three rows are interpolation cases; the final row is extrapolation of the symbolic dynamics. 33

@@ -1,0 +1,1102 @@
+Title: AlphaG-OPD: Reliability-Gated Sibling Counterfactuals for On-Policy Distillation in Symbolic Alpha Factor Discovery
+
+URL Source: https://arxiv.org/pdf/2608.01303v1
+
+Published Time: Tue, 04 Aug 2026 01:45:30 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# AlphaG-OPD: Reliability-Gated Sibling Counterfactuals for On-Policy Distillation in Symbolic Alpha Factor Discovery 
+
+Yaoyu Su 
+
+syy21@tsinghua.org.cn 
+
+Abstract 
+
+Symbolic alpha factor discovery can score a completed ex-pression, but it provides no direct label for the structural deci-sions that produced it. Generative flow networks (GFlowNets) preserve a diverse, reward-proportional distribution over com-plete expressions, yet their trajectory-level objective does not compare unchosen sibling actions at an intermediate state. We introduce AlphaG-OPD , a structural on-policy distilla-tion framework that turns terminal factor evaluations into local action guidance. Its design separates three decisions. Compo-nent I determines where to teach by exposing grammar-valid siblings at partial abstract-syntax-tree (AST) states visited by the current forward policy. Component II determines what is reliable enough to teach : it evaluates three supported sib-lings under four shared suffixes and admits a KL-bounded target only when their matched comparisons exhibit sufficient winner agreement and a positive empirical lower confidence bound (LCB). Component III determines how strongly and for how long to teach by consolidating accepted targets through bounded replay, score-indexed expiry, and forward-gradient balancing, without additional factor evaluations. Terminal re-ward, Trajectory Balance, the backward policy, grammar, and factor-pool rules remain unchanged. An equal-physical-score four-arm ablation tests paired teaching, reliability gating, and consolidation. Across China’s CSI300, CSI500, and CSI1000 and the U.S. S&P 500, the complete method delivers strong cross-market performance over multiple random seeds. 
+
+Introduction 
+
+Symbolic alpha discovery searches a combinatorial pro-gram space, yet a factor is scored only after its expres-sion is complete. Genetic programming and neural sym-bolic regression explore this space effectively (Zhang et al. 2020; Cui et al. 2021; Landajuela et al. 2022; Biggio et al. 2021), while REINFORCE and proximal policy optimiza-tion (PPO)-style methods directly optimize expected termi-nal quality (Yu et al. 2023; Zhao et al. 2025; Schulman et al. 2017). GFlowNets provide a complementary strength: rather than return one maximizer, they learn a reward-proportional distribution and can preserve multiple useful, nonredundant factor modes (Bengio et al. 2023; Chen et al. 2025). These methods solve search and exploration; they do not by them-selves identify which alternative action at a partial expression caused a better terminal outcome. This distinction between global quality and local credit is consequential in AST search. Two trajectories may share the same partial expression but close it with different operands, operators, or normalization choices. Their terminal score en-tangles the action under study with all of those later decisions. A larger search budget can reduce uncertainty about which complete expressions are valuable, yet it still does not iden-tify which legal action was preferable at the shared prefix. Direct local supervision therefore requires a paired compar-ison that changes the action while controlling the reachable completion. On-policy distillation (OPD) supplies precisely this miss-ing interface. The evolving student policy provides the states, and a teacher supplies a local action target at those same states. This reduces the state-distribution mismatch of static distillation and turns feedback on the student’s current behav-ior into a direct probability update (Gu et al. 2024; Agarwal et al. 2024; Song and Zheng 2026). In our setting, TB remains the global search objective; OPD is helpful as a complemen-tary local-credit channel that can say which next construction should receive more mass on an AST the current GFlowNet actually visits. The difficulty is that an unfinished symbolic expression has no external teacher. Reusing its eventual terminal score merely repeats TB, independently completing sibling actions confounds action quality with continuation difficulty, and repeatedly distilling an unstable preference can be harm-ful. Recent OPD studies similarly find that teacher compati-bility, local teachability, and supervision horizon determine whether on-policy guidance helps or hurts (Li et al. 2026b; Fu et al. 2026; Armandpour et al. 2026; Liu et al. 2026; Liang et al. 2026). Structural OPD therefore needs matched action comparisons, an explicit reliability rule, and a bounded op-timization budget. We introduce AlphaG-OPD , to our knowledge the first structural OPD framework for GFlowNet-based symbolic al-pha factor discovery. AlphaG-OPD converts terminal factor evaluations into selective local action supervision by com-paring grammar-compatible sibling actions under matched completions at states visited by the current GFlowNet, then consolidates only accepted credit under a fixed evaluator budget without replacing Trajectory Balance. The frame-work is organized around three questions: where may OPD intervene, which local preference is reliable enough to teach, and how strongly and for how long should accepted credit arXiv:2608.01303v1 [cs.LG] 2 Aug 2026 influence the policy? A reward-blind structural interface, a paired counterfactual teacher, and bounded consolidation an-swer these questions in sequence. Figure 2 summarizes the division of labor. Our contributions are: 
+
+• Where to teach: a structural on-policy interface. We expose grammar-valid sibling decisions at partial AST states visited by the evolving forward policy. State se-lection is reward-blind, and local teaching is restricted to legal actions already supported on the current search frontier. 
+
+• What to teach: a reliability-gated paired preference. 
+
+We evaluate three siblings under four common com-pletions and admit a KL-bounded target only when the matched samples agree on the preferred action and yield a positive empirical advantage lower bound. This creates a self-generated teacher without an external model or a held-out verification-score budget. 
+
+• How accepted credit persists: budget-neutral bounded consolidation. We reuse immutable accepted targets through score-indexed expiry and measured forward-gradient balancing. Replay spends no additional factor evaluations, while TB remains the global objective. 
+
+Related Work 
+
+Symbolic Alpha Discovery 
+
+Formulaic alpha mining has progressed from genetic pro-gramming and evolutionary search (Zhang et al. 2020; Cui et al. 2021; Schmidt and Lipson 2010) to neural symbolic regression (Landajuela et al. 2022; Biggio et al. 2021; Sho-jaee et al. 2024; Mundhenk et al. 2021; Valipour et al. 2021; Petersen et al. 2021) and sequential decision methods. AlphaGen formulates expression construction as a Markov decision process (MDP) and searches for synergistic fac-tor sets (Yu et al. 2023); QuantFactor REINFORCE targets lower-variance policy optimization (Zhao et al. 2025); and AlphaForge couples factor generation with dynamic combi-nation (Shi et al. 2025). AlphaAgent regularizes LLM-driven exploration to counteract factor homogenization and de-cay (Tang et al. 2025) and serves as a cross-paradigm LLM-agent reference in our comparison. AlphaSAGE combines a structure-aware encoder with GFlowNet training and is our primary generative backbone (Chen et al. 2025). Relational graph convolutions, attention, and graph transformers pro-vide complementary structure-aware encoders (Schlichtkrull et al. 2018; Vaswani et al. 2017; Yun et al. 2019; Oono and Suzuki 2019), while relation graphs have also been used di-rectly for stock forecasting (Xu et al. 2021a,b). Non-symbolic comparisons include tree ensembles, latent factor models, and dynamic allocation policies (Chen and Guestrin 2016; Ke et al. 2017; Hochreiter and Schmidhuber 1997; Chung et al. 2014; Duan et al. 2022; Wang et al. 2021; Zhang, Ag-garwal, and Qi 2017). These methods operate over large op-erator libraries such as Alpha101 (Kakushadze 2016), where many syntactically different trajectories can encode corre-lated economic behavior. (a) GFlowNet with Trajectory Balance 
+
+> F
+> (
+> s
+> ₀)=
+> Z
+> φ
+> F(xᵢ)=R(xᵢ)
+> s
+> ₀
+> sₐ
+> s
+> sᵦ
+> x
+> ₁
+> x
+> ₂
+> x
+> ₃
+> R
+> (
+> x
+> ₁)
+> R
+> (
+> x
+> ₂)
+> R
+> (
+> x
+> ₃)
+> P
+> F
+> P
+> B
+> Z
+> φ
+> ∏
+> P
+> F
+> =
+> R
+> (
+> x
+> )
+> ∏
+> P
+> B
+
+(b) OPD at an On-Policy State  
+
+> accepted local teacher π*(·|s)
+> a
+> ₁
+> a
+> ₂
+> a
+> ₃
+> PF
+> (·|
+> s
+> )
+> DKL
+> s
+> s
+> ′₁
+> s
+> ′₂
+> s
+> ′₃
+> a
+> ₁
+> a
+> ₂
+> a
+> ₃
+> update outgoing P Fonly
+> PB, R, and TB unchanged
+> L
+> =
+> L
+> ETB
+> +
+> λ
+> L
+> OPD
+
+Figure 1: Trajectory-level TB and local OPD. The conceptual state flow F satisfies F (s0) = Zϕ and F (x) = R(x). TB balances PF , PB , and terminal reward; at visited s, AlphaG-OPD distills an accepted local sibling teacher into outgoing 
+
+PF only. PB and R remain unchanged. 
+
+GFlowNets and Local Credit 
+
+GFlowNets sample terminal objects proportionally to a nonnegative reward (Bengio et al. 2023). TB enforces a trajectory-level flow identity and provides a strong terminal-reward objective (Malkin et al. 2022). Unlike conventional expected-return policy optimization and constrained-action implementations (Schulman et al. 2017; Huang and Ontañón 2020), this distributional objective supports multiple high-reward modes and has been useful in diversity-sensitive gen-eration settings such as biological sequence design (Linder et al. 2020). Subtrajectory balance supplies additional con-straints on partial trajectories (Madan et al. 2023); forward-looking detailed balance uses partial reward structure to ob-tain denser updates (Pan et al. 2023); and guided or replay-based approaches prioritize informative trajectories (Shen et al. 2023). Backward-policy optimization can also im-prove the credit signal (Gritsaev et al. 2024). These objec-tives change where a flow constraint is applied. Our focus is complementary: we test whether an auxiliary action pref-erence contains information beyond the terminal objective and whether its direction remains positive across repeated matched completions. Figure 1 separates the signals: TB remains global, while OPD only reallocates mass among legal siblings at the visited state. 
+
+On-Policy Distillation for Structured Search 
+
+Policy distillation transfers a teacher distribution to a stu-dent, usually through KL or cross-entropy (Rusu et al. 2015). MiniLLM derives reverse-KL on-policy optimization for generative models (Gu et al. 2024), while GKD queries a teacher on student-generated sequences and unifies on- and off-policy mixtures with multiple divergences (Agarwal et al. 2024). Later formulations extend the interface to context-On-Policy GFlowNet     
+
+> Build a symbolic factor one legal action at a time.
+> +
+> xsin
+> x1 x2
+> Visited trajectory
+> s0 ... s
+> The currnt policy xposs its visitd partial AST, not an offliin stat pool.
+
+I Structural On-Policy Interface 
+
+> At visited state s, expose three legal siblings already supported by PF.
+
+s
+
+> a1
+> a1 sin(.)
+> a2
+> a2 log(1+.)
+> a3
+> a3 square(.)
+> PF(.|s,A_s)
+> Reward-blind probe site
+
+II Reliability-Gated Paired Counterfactual Teacher                 
+
+> Evaluate the same three siblings under four shared suffixxes; teach only a stable paired advantage.
+> 3 siblings x 4 common suffixes
+> u1 u2 u3 u4
+> a1 .19 .16 .22 .18
+> a2 .08 .10 .07 .09
+> a3 .03 .01 .05 .02
+> C_ki = log R(x_ki) - log q(u_k | s, A_s)
+> Reliability gate
+> 1 Winner agreement 2 Paired delta across u1:u4 3 Positive lower bound 4 Confiddence shrinkage
+> Accepted local teacher
+> a1
+> a2
+> a3
+> Gate fails -> abstain (zero OPD gradient)
+> KL(π*( . | s) || PF( . | s,A_s)) <= w(s) δ
+> Components I + II: an on-policy structural interface with a reliability-gated local teacher
+
+III Bounded Credit Consolidation      
+
+> Reuse accepted local credit brieflyy; spend no extra factor scores.
+> Accepted teacher row
+> (s, A_s, π*, n_score)
+> Bounded replay + expiry
+> 123... 512 age
+> Measured gradient balance
+> scale OPD so it informs, not overwhelms, TB
+> Update PF -> PF'
+
+Updated Search Policy 
+
+> Optional teacher-off fresh evaluation
+
+Fresh Factor Library 
+
+> sin(x1*x2)+x3
+> log(1+x1)-cos(x4)
+> (x1-x3)^2-x2
+
+... 
+
+> Clean ablation ladder under the same 10K physical-score budget
+> Probe-Matched Base
+> Same score ledger; discard all probe labels
+> Components I-II (Gate Off)
+> Paired teacher; no agreement, LCB, or shrinkage
+> Components I-II
+> Reliability-gated next-update local credit
+> Components I-III (Full)
+> Bounded replay, expiry, and gradient balance
+
+Figure 2: Overview of AlphaG-OPD through its three questions. Component I determines where OPD may teach by exposing supported structural actions at an on-policy partial AST. Component II determines what is reliable enough to teach by comparing siblings under four common suffixes. Component III controls how strongly and for how long accepted credit persists through bounded replay and measured forward-gradient balancing. All variants use the same physical score budget. conditioned teachers (Ye et al. 2026) and organize OPD by feedback source and loss granularity (Song and Zheng 2026). On-policy self-distillation instead constructs a privileged-context teacher from the same model (Zhao et al. 2026c). Objective analyses further separate prefix source from KL direction and revisit the advantage used by the update (Zhao et al. 2026a,b). OPD is not automatically beneficial. Teacher–student com-patibility and student-prefix reliability can reverse its ef-fect (Li et al. 2026b; Fu et al. 2026; Armandpour et al. 2026). Selective variants restrict teacher influence by rollout, action region, token, or horizon: best-of-N and step-wise weight-ing (Zhang et al. 2026; Zhong et al. 2026); asymmetric and trust-region updates (Jia et al. 2026; Xing et al. 2026); trajec-tory filtering and prefix pruning (Li et al. 2026a; Yang et al. 2026); and horizon-aware supervision (Liu et al. 2026; Liang et al. 2026). These findings support selective, state-matched guidance rather than an unconditional auxiliary KL. They still do not supply a teacher for symbolic search. We retain the on-policy interface—the evolving search policy supplies the states—but replace token logits with structural counterfactuals. Shared suffixes make sibling actions com-parable; agreement and a paired advantage LCB suppress unstable targets; and bounded replay determines whether ac-cepted credit can persist through subsequent TB updates. 
+
+Method 
+
+Problem Formulation and Design Overview 
+
+Let X be the set of valid factor expressions in a typed domain-specific language. Expression construction forms a directed acyclic graph with initial state s0, partial-expression states 
+
+s ∈ S , legal actions a ∈ A (s), and deterministic transition 
+
+T(s, a ). A trajectory τ = ( s0, a 1, s 1, . . . , a L, s L = x) ter-minates at expression x ∈ X . The forward policy P θF (a | s)
+
+generates the trajectory; the backward policy PB (s | s′) de-fines reverse flow. For nonnegative terminal reward R(x), forward-policy pa-rameters θ, and a separately learned partition function Zϕ,TB minimizes 
+
+LTB (τ ) = 
+
+"
+
+log Zϕ +
+
+LX
+
+t=1 
+
+log P θF (at | st−1) − log R(x)
+
+−
+
+LX
+
+t=1 
+
+log PB (st−1 | st)
+
+#2
+
+.
+
+(1) The evaluator computes rIC (x), the train-only mean cross-sectional Pearson information coefficient (IC). Its nonnega-tive reward is R(x) = max {| rIC (x)|, exp( −10) }. The im-plemented backbone is Entropy-TB, LETB = Eτ [LTB (τ )] −
+
+ηH Eτ [PL−1
+
+t=0 H(P θF (· | st))] , where H is categorical en-tropy, ηH = 0 .01 , and the entropy temperature is one. Pool admission, eviction, backward-policy semantics, this reward, and the Entropy-TB objective remain unchanged by AlphaG-OPD .Three-stage design. At a visited partial state s, consider a supported sibling set As = {a1, . . . , a m} ⊆ A (s). A local teacher must estimate how changing only a changes reach-able terminal quality while controlling the completion that follows. AlphaG-OPD answers three questions in sequence. 
+
+Where may OPD intervene? Component I identifies a legal, on-policy decision unit. What is reliable enough to teach? 
+
+Component II constructs a paired local preference and ab-stains when its empirical evidence is weak. How much and how long should it teach? Component III consolidates only accepted credit under explicit lifetime and gradient bounds. This decomposition separates eligibility, evidence, and per-sistence. Components I–II form the one-use teacher; the full method activates all three components. Only PF receives the auxiliary gradient; terminal reward, PB , TB, and factor-pool rules are unchanged. 
+
+Why an On-Policy Distillation Channel 
+
+Existing search objectives remain useful, but their supervi-sion has the wrong granularity for the local question con-sidered here. In terminal-reward symbolic search, expected-return methods apply a terminal advantage to the actions sampled along one trajectory, with PPO changing how that trajectory-level signal is clipped and reused. TB uses a dif-ferent, flow-matching objective, but it likewise observes the sampled trajectory and its terminal reward. A high-scoring expression therefore reinforces the actions that occurred; it does not reveal whether an unchosen legal sibling would have been better at the same partial expression. Applying balance constraints to shorter subtrajectories can densify optimiza-tion, but without an additional comparison it does not create that missing action label. OPD provides exactly this additional interface. It queries a teacher at states visited by the evolving student and updates a distribution over several legal actions, rather than assigning one terminal scalar to the chosen path. A single KL update can consequently increase one sibling and decrease another while the global TB objective continues to preserve reward-proportional, multimodal search. The on-policy state source is important: a fixed offline teacher over states that the cur-rent miner rarely visits would reintroduce a state-distribution mismatch and spend supervision away from the active search frontier. The interface alone is not sufficient because symbolic search has no external teacher. Component II builds a local target from matched terminal counterfactuals and abstains when the paired evidence is unreliable; Component III gives accepted sparse targets enough, but not unlimited, optimiza-tion strength. The division of labor is therefore explicit: TB determines which complete expressions deserve global prob-ability mass, while OPD redistributes local forward proba-bility only among compared siblings at a state the current policy actually encounters. 
+
+Component I: On-Policy Structural Interface 
+
+Question 1: Where may OPD intervene? The current forward policy samples a syntactically valid trajectory. Can-didate states are partial ASTs from that trajectory, selected without consulting the probe’s terminal scores. At state s,
+
+AlphaG-OPD retains the sampled action and two alterna-tives whose current probabilities exceed 10 −4 and whose Reverse Polish Notation (RPN) transition signatures match. In particular, operator siblings share family and arity, while feature, constant, and lag actions are compared only within their own classes. This preserves unresolved stack obliga-tions so one completion grammar can remain legal after ev-ery sibling. A probe is formed only when such a triple exists; otherwise the method continues ordinary Entropy-TB with-out spending a counterfactual score. The resulting interface is 
+
+I(s) =  s, As, {pi}3
+
+> i=1
+
+ ,
+
+As = {a1, a 2, a 3}, pi = P θF (ai | s)
+
+P  
+
+> aj∈A s
+
+P θF (aj | s) . (2) 
+
+Answer and invariant. Component I restricts teaching to states the student actually visits and actions it can legally take. The full partial state matters because the same token may satisfy different typed AST obligations in different con-texts. Component I does not inspect counterfactual scores or factor-pool contents, change admission rules, or decide which sibling is better. It determines only where a local comparison is well defined. 
+
+Design trade-off. On-policy, type-matched probes reduce coverage but ensure that each comparison is reachable and grammar-compatible. Broader probing produces more rows at the risk of mixing unreachable states or incomparable actions. Component I chooses fewer, well-defined teaching contexts. 
+
+Component II: Reliability-Gated Paired Counterfactual Teacher 
+
+Question 2: What is reliable enough to teach? The struc-tural interface supplies candidate actions but no preferred action. Component II creates that preference from matched train-only evaluations and uses an empirical reliability rule to decide whether any OPD update is warranted. 
+
+Matched completion matrix. For each interface I(s), a reward-blind shared proposal samples K = 4 unique suffixes 
+
+U = {u1, . . . , u K } that validly close every sibling. At each suffix step, the proposal is the normalized geometric mean of the three current branch policies on their common legal support. A fixed logit bias bexit = 1 .5 is added when exit is common-legal. Let q(uk | s, As) be the product of these stepwise proposal probabilities and xki = x(s, a i, u k) the resulting terminal expression. The implemented credit is 
+
+Cki = log R(xki ) − log q(uk | s, As). (3) This is the log importance contribution of one sampled suffix to the terminal flow estimator; we use it as a relative sibling credit, not as an unbiased estimate of log flow. The proposal term is common to all siblings in row k, so it cancels from both the row winner and any probability redistribution whose coefficients sum to zero. A suffix invalid for any sibling is discarded for the entire row, keeping the K ×3 matrix rectan-gular. The paired design therefore holds prefix, continuation, proposal draw, and reachable grammar fixed while changing only the structural action. Let pi be the sibling-normalized probability in Eq. (2), 
+
+¯Ci = K−1 P 
+
+> k
+
+Cki , and ci = ¯Ci − 13
+
+P 
+
+> j
+
+¯Cj . A provisional teacher is anchored to the current policy: 
+
+eπi(α) = pi exp( αc i/τ teach )
+
+P 
+
+> j
+
+pj exp( αc j /τ teach ) , DKL (eπ∥p) ≤ δ, 
+
+(4) where a one-dimensional search chooses the nonnegative α
+
+whose Kullback–Leibler (KL) divergence matches the target radius up to numerical tolerance, τteach = 1 , and δ = 0 .03 .Here DKL denotes KL divergence. Anchoring preserves current-policy support instead of replacing it with a stan-dalone softmax over noisy action credits. 
+
+Paired reliability gate. The teacher is used only when the four matched comparisons agree. Winner agreement and the per-suffix paired improvement are 
+
+γ(s) = 1
+
+K max 
+
+> iK
+
+X
+
+> k=1
+
+1
+
+
+
+i = arg max  
+
+> j
+
+Ckj 
+
+
+
+, (5) 
+
+∆k(s) = X
+
+> i
+
+(eπi − pi) Cki . (6) 
+
+¯∆( s) = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+∆k(s),
+
+SE(∆) = 
+
+s PKk=1 (∆ k − ¯∆) 2
+
+K(K − 1) ,
+
+LCB( s) = ¯∆( s) − z SE(∆) .
+
+(7) Here 1[·] is the indicator function. The main method fixes 
+
+K = 4 , z = 1 , and γmin = 0 .75 . This LCB is an empirical abstention rule over four paired construction samples, not a 95% confidence guarantee. Component II abstains when credit is constant, γ < γ min , or the LCB is nonpositive. Otherwise it computes 
+
+w(s) = min 
+
+
+
+1, γ(s) LCB( s)max {| ¯∆| + SE(∆) , ϵ }
+
+
+
+, ϵ = 10 −12 ,
+
+(8) and rebuilds Eq. (4) with target KL w(s)δ to obtain π∗(· | s).The implementation recomputes ∆k and the LCB for this shrunken target; reported accepted-row LCBs refer to that final target. The target is strongest when the preferred action is stable and its paired improvement is distinguishable from completion noise. 
+
+Answer and invariant. Component II calls a preference teachable only when the matched rows identify a stable win-ner and the candidate redistribution has a positive empirical LCB. The same four construction suffixes form the teacher and its reliability gate; the main method uses no held-out ver-ification suffixes. Each scheduled probe therefore consumes exactly 3 × 4 = 12 physical scores, whether the gate ac-cepts or abstains. The clean “Components I–II (Gate Off)” ablation keeps the state, siblings, suffixes, temperature, and KL radius fixed while removing winner agreement, positive-LCB abstention, and confidence shrinkage. It asks whether reliability gating adds value beyond paired evaluation alone. 
+
+Design trade-off. Independent completions cover more continuations but confound action quality with suffix dif-ficulty. Four shared suffixes spend coverage to obtain paired contrasts and an uncertainty estimate. Abstention then ex-changes update frequency for a smaller set of directionally reliable local targets. For Algorithm 1, let nscore denote the cumulative physical terminal-score count and let ρ denote the target ratio between the auxiliary and Entropy-TB forward-policy gradient norms. Component III fixes ρ = 0 .10 ; Components I–II use a one-update target and do not apply gradient balancing. 
+
+Algorithm 1 Reliability-Gated Structural OPD                                                         
+
+> Require: PθF,PB, reward R, score ledger, target KL δ, agreement threshold γmin , LCB multiplier z, gradient ratio ρ
+> 1: for each TB episode until the physical score budget is exhausted
+> do
+> 2: Sample a current-policy trajectory; evaluate Rand accumu-late Entropy-TB 3: if a sibling probe is scheduled and its 12 scores fit the re-maining budget then
+> 4: Select reward-blind visited state sand sibling set Asfrom the sampled trajectory 5: Sample four common valid suffixes from q
+> 6: Evaluate C∈R4×3; construct the anchored candidate in Eq. (4) 7: if Eqs. (5) and (7) pass then
+> 8: Rebuild π∗at radius w(s)δ
+> 9: if Component III is enabled then
+> 10: Enqueue (s, As, π ∗, n score )for bounded replay 11: else
+> 12: Place the accepted row in the next-update one-use buffer 13: end if
+> 14: else
+> 15: Abstain 16: end if
+> 17: end if
+> 18: At an optimizer step, select pending one-use rows (I–II) or unexpired replay rows (I–III) 19: Add Eq. (9); with Component III, scale it by Eq. (10); update parameters 20: end for Ensure: Score-indexed checkpoints; unchanged R, Entropy-TB,
+> PB, and pool rules
+
+Component III: Bounded Credit Consolidation 
+
+Question 3: How much, and for how long? Components I–II place each accepted teacher in a one-use buffer consumed at the next optimizer update; multiple accepted rows can therefore share one PF update. This pending buffer uses the same 512-row capacity as the replay queue. Component III instead stores the state, sibling actions, target probabilities, and creation score count nscore in a queue of at most 512 rows. Rows expire after 1,000 physical terminal evaluations; replay consumes no new factor score and never recomputes the stored target from a later policy. For active rows B, define the current sibling-normalized student as P θF (a | s, As) = P θF (a | s)/ P 
+
+> a′∈A s
+
+P θF (a′ | s).Table 1: Main comparison by method family. Literature-reference rows are from AlphaSAGE (Chen et al. 2025); GFlowNet rows report mean (SD) over three random seeds. Bold marks the better completed result within each matched GFlowNet pair.                                                                                                                                                                                                                                                                                                                                      
+
+> Dataset Family Method IC (%) ↑ICIR ↑RankIC (%) ↑RankICIR ↑AR (%) ↑MDD (%) ↓SR ↑Dataset Family Method IC (%) ↑ICIR ↑RankIC (%) ↑RankICIR ↑AR (%) ↑MDD (%) ↓SR ↑
+> CSI300
+> LLM Agent AlphaAgent 5.10 0.325 5.60 0.329 2.16 26.9 0.65 CSI1000
+> LLM Agent AlphaAgent 7.20 0.579 8.90 0.712 5.51 20.5 1.01
+> Conventional
+> MLP 2.00 0.158 1.90 0.142 3.54 20.9 0.68
+> Conventional
+> MLP 4.80 0.384 6.90 0.621 3.22 25.7 0.47 LightGBM 1.10 0.124 0.60 0.064 2.61 18.5 0.53 LightGBM 6.70 0.501 8.30 0.656 4.98 22.7 0.98 XGBoost 3.10 0.243 3.30 0.248 5.40 17.5 1.26 XGBoost 6.20 0.498 8.60 0.695 4.72 23.5 0.91 GP 2.60 0.215 2.80 0.216 6.80 17.6 1.55 GP 5.80 0.474 7.90 0.657 4.32 24.7 0.67
+> Neural/RL
+> AlphaGen 5.80 0.414 5.70 0.360 4.00 22.6 0.76
+> Neural/RL
+> AlphaGen 7.10 0.540 9.20 0.713 5.27 24.0 0.92 AlphaQCM 4.30 0.262 4.20 0.246 1.95 24.8 0.36 AlphaQCM 6.50 0.453 10.70 0.682 7.12 20.6 1.31 AlphaForge 4.10 0.259 5.20 0.306 3.90 21.9 0.88 AlphaForge 7.10 0.537 9.50 0.742 6.07 21.1 1.06
+> GFlowNet AlphaSAGE 5.81
+> (1 .03) 0.4177
+> (0 .0686) 7.50
+> (1 .69) 0.5195
+> (0 .0803) 6.146
+> (3 .787) 15 .140
+> (1 .397) 1.413
+> (0 .987) GFlowNet AlphaSAGE 6.04
+> (0 .28) 0.4781
+> (0 .0268) 8.44
+> (1 .15) 0.6088
+> (0 .0404) 4.011
+> (0 .256) 24 .804
+> (3 .883) 0.669
+> (0 .036)
+> AlphaG-OPD (ours) 6.73
+> (0 .74) 0.4479
+> (0 .0270) 8.78
+> (1 .13) 0.5408
+> (0 .0283) 8.382
+> (2 .222) 14 .184
+> (1 .562) 2.080
+> (0 .615) AlphaG-OPD (ours) 5.89
+> (0 .33) 0.4894
+> (0 .0347) 7.74
+> (0 .86) 0.6298
+> (0 .0715) 3.155
+> (0 .363) 25 .271
+> (2 .513) 0.534
+> (0 .081)
+> CSI500
+> LLM Agent AlphaAgent 5.30 0.396 6.50 0.495 1.82 22.4 0.36 S&P 500
+> LLM Agent AlphaAgent 4.80 0.479 3.30 0.315 18.66 5.7 6.27
+> Conventional
+> MLP 1.70 0.185 2.00 0.233 1.56 24.3 0.27
+> Conventional
+> MLP 3.50 0.287 2.00 0.143 12.85 5.6 3.35 LightGBM 2.40 0.305 2.10 0.264 4.61 17.5 0.89 LightGBM 2.30 0.196 1.80 0.165 11.11 5.1 4.22 XGBoost 3.90 0.365 5.20 0.528 5.50 17.1 1.15 XGBoost 1.60 0.159 2.60 0.168 13.25 8.3 3.61 GP 1.40 0.238 2.20 0.233 3.04 19.4 0.56 GP 3.20 0.308 0.20 0.016 13.39 13.0 3.15
+> Neural/RL
+> AlphaGen 3.20 0.270 3.10 0.230 1.15 32.4 0.19
+> Neural/RL
+> AlphaGen 4.40 0.396 1.30 0.127 10.31 5.5 3.96 AlphaQCM 4.80 0.378 7.30 0.546 4.06 24.0 0.75 AlphaQCM 3.80 0.262 1.00 0.071 13.86 13.0 3.30 AlphaForge 5.30 0.345 8.30 0.600 4.18 16.7 0.93 AlphaForge 3.90 0.422 3.10 0.324 17.24 5.0 6.30
+> GFlowNet AlphaSAGE 1.97
+> (1 .16) 0.1721
+> (0 .0950) 2.72
+> (1 .98) 0.2352
+> (0 .1691) −0.778
+> (2 .020) 25 .040
+> (3 .286) −0.139
+> (0 .361) GFlowNet AlphaSAGE 0.89
+> (1 .26) 0.0921
+> (0 .1314) 1.19
+> (0 .93) 0.1103
+> (0 .0950) 9.213
+> (1 .809) 26 .136
+> (0 .367) 1.795
+> (0 .319)
+> AlphaG-OPD (ours) 4.71
+> (1 .15) 0.3369
+> (0 .0547) 6.81
+> (1 .81) 0.4671
+> (0 .1114) 2.968
+> (1 .308) 18 .535
+> (1 .531) 0.577
+> (0 .237) AlphaG-OPD (ours) 0.56
+> (0 .73) 0.0519
+> (0 .0677) 1.20
+> (0 .74) 0.1043
+> (0 .0619) 9.398
+> (0 .627) 25 .530
+> (1 .418) 1.882
+> (0 .107)
+
+The auxiliary objective is forward KL from the teacher to this distribution: 
+
+LOPD (θ) = 1
+
+|B| 
+
+X
+
+(s, As,π ∗)∈B 
+
+DKL 
+
+ π∗(· | s) ∥ P θF (· | s, As) .
+
+(9) The KL is computed after both distributions are renormal-ized on the stored sibling set. It therefore changes the relative probabilities of the compared actions without assigning la-bels to unrelated legal actions at the same state. Forward KL is appropriate here because the accepted local teacher, not a new sample from the student, defines which supported actions must retain probability mass. The original TB loss remains responsible for states and actions that have no active accepted row. Sparse supervision can otherwise be numerically irrele-vant compared with Entropy-TB. At each optimizer update, 
+
+AlphaG-OPD measures the forward-policy gradient norms 
+
+gETB = ∥∇ θ LETB ∥2 and gOPD = ∥∇ θ LOPD ∥2, then sets 
+
+λ = min 
+
+
+
+λmax , ρ gETB 
+
+gOPD + ϵ
+
+
+
+, L = LETB + λLOPD ,
+
+(10) where ρ = 0 .10 is the target OPD-to-Entropy-TB gradient ratio on PF , λmax = 10 4, and ϵ = 10 −12 . The auxiliary gradient is exactly zero when no accepted row is active. All other auxiliary guides are disabled in the registered arms, so the reference gradient in Eq. (10) is the Entropy-TB forward-policy gradient. Replay age is measured in terminal score calls rather than optimizer steps. This choice makes freshness comparable across arms even when probing changes the number of up-dates between ordinary trajectories. The stored target is not silently recomputed from the later policy: doing so would change the teaching claim after acceptance. Expiration in-stead makes the intervention explicit— the row teaches the reliability-gated preference for a bounded period and then returns control entirely to current TB learning. 
+
+Answer and invariant. Component III controls duration through score-indexed expiry and strength through measured gradient balancing. It cannot reverse or recompute the ac-cepted preference, request another factor evaluation, or label actions outside the stored sibling set. When no accepted row is active, its auxiliary gradient is exactly zero; when replay is active, Eq. (10) bounds its influence relative to TB. Thus TB remains the global search objective throughout training. 
+
+Design trade-off. One-use supervision can be too weak relative to TB, whereas unlimited replay becomes stale and loses its connection to the current policy. Capping row age by physical score count preserves freshness, while balancing the gradient that actually reaches PF gives each accepted preference a controlled amount of influence. The Compo-nents I–II versus Components I–III comparison isolates this consolidation increment because both arms use the same teacher-construction rule; their realized states and accepted rows may differ as their policies diverge. 
+
+Ablation Controls and Physical Score Accounting 
+
+A sibling probe evaluates every supported action under every common suffix. For m actions and K shared suffixes, its direct evaluator cost is 
+
+N probe score = mK, (11) which is 3 × 4 = 12 in Component II. Every call enters the physical-score ledger even when the gate abstains; the same ledger indexes training, checkpoints, and replay expiry. Here N probe score is the per-probe call count, whereas nscore is the cumulative ledger position stored with an accepted row. The registered 10K ablation holds the total physical-score budget fixed. Base Model spends that budget on ordinary generation. Each OPD arm spends 8,008 ordinary and 1,992 
+
+probe evaluations. Components I–II (Gate Off) introduces the structural interface and 4 × 3 paired score matrix without agreement, LCB abstention, or confidence shrinkage. Com-ponents I–II keeps the same allocation and restores those gates, then consumes accepted targets once at the next up-date; Components I–III changes only their persistence and strength. Thus Base Model versus Gate-Off tests the cost-aware paired-teaching intervention, while the two later adja-cent contrasts isolate reliability gating and bounded consoli-dation. Table 2: CSI500 additive ablation under the same 10K physical-score budget and frozen Validation-Sign Equal-50 evaluator. Validation Pearson IC fixes each factor’s sign at magnitude 1/50 before the untouched test.                                                         
+
+> Method I: Interface Paired Teacher Reliability Gate III: Consolidation IC (%) ↑ICIR ↑RankIC (%) ↑RankICIR ↑AR (%) ↑SR ↑MDD (%) ↓
+> Base Model ––––2.175 0.182282 3.200 0.277667 -1.038 -0.209 24.571 Components I–II (Gate Off) ✓✓––4.040 0.342000 4.850 0.395800 0.920 0.164 22.860 Components I–II (Gate On) ✓✓✓–3.730 0.327100 5.520 0.453500 1.320 0.249 21.820
+> AlphaG-OPD (I–III) ✓✓✓✓6.018 0.399784 8.822 0.595058 4.384 0.835 17.417
+
+Experiments 
+
+We evaluate reliability, factor-pool transmission, and port-folio conversion on the Chinese A-share CSI300/500/1000 universes and the U.S. S&P 500. Following Qlib (Yang et al. 2020), the target is the 20-day forward close return Ref(close,-20)/close-1 . China uses 2010–2020/2021/2022–2024 and the U.S. uses 2010– 2016/2017/2018–2020 for train/validation/test. Matched arms use multiple random seeds, 10K physical scores, and otherwise frozen rules. Table 1 uses Validation-Sign Equal-50: validation Pearson IC fixes each factor’s sign at magni-tude 1/50 before one untouched test; S&P 500 portfolio met-rics are long-only. Table 2 uses the same frozen Validation-Sign Equal-50 evaluator for the CSI500 additive ablation. IC/RankIC are Pearson/Spearman correlations in percent; ICIR/RankICIR are unitless. AR, MDD, and SR denote an-nualized return, positive maximum drawdown magnitude, and Sharpe ratio. Parentheses report sample standard devia-tion across multiple random seeds, and bold marks the better completed value within each matched GFlowNet pair. 
+
+Results and Analysis 
+
+Main comparison. Across the completed multi-seed results, AlphaG-OPD improves all seven CSI300/500 means over AlphaSAGE. CSI300 IC/RankIC rise from 
+
+5.81 /7.50% to 6.73 /8.78% , AR/Sharpe from 6.146% /1.413 
+
+to 8.382% /2.080 , and MDD falls from 15 .140% to 14 .184% ;CSI500 return moves from −0.778% to 2.968% . Figure 3 shows persistent direction transfer and stronger frozen OOS quality in every test year. On CSI1000, AlphaG-OPD im-proves ICIR and RankICIR, demonstrating stronger temporal consistency in a broader universe. On S&P 500, it improves RankIC, annualized return, Sharpe, and drawdown. Together, these outcomes connect stronger ranking consistency with stronger portfolio conversion across distinct market scales. The multi-seed evidence demonstrates gains at both factor and portfolio levels. 
+
+Component ablation. Table 2 shows the staged effect of the three components on the fixed CSI500 ablation test. Components I–II with Gate Off already improve the Base Model. Enabling the reliability gate shifts the gain toward the decision-relevant metrics, further improving RankIC, return, Sharpe, and MDD. Adding Component III then improves all seven metrics over Gate On, yielding 8.822% RankIC, 
+
+4.384% return, 0.835 Sharpe, and 17 .417% MDD. The abla-tion therefore supports the intended progression from paired 2022 2023 2024  
+
+> 0.02
+> 0.04
+> 0.06
+> Frozen Equal-50 IC
+> 0.037
+> 0.052
+> 0.018
+> 0.050
+> 0.068
+> 0.035
+> AlphaG-OPD
+> GFlowNet
+> thin = seed thick = 3-seed mean
+> A. Direction transfer persists across test years
+> Factor
+> OOS IC
+> Worst-year
+> IC
+> Test
+> RankIC
+> 0
+> 1
+> 2
+> AlphaG-OPD / GFlowNet
+> +45%
+> +90%
+> +150%
+> B. Stronger frozen OOS quality
+> CSI500: direction transfer and OOS quality
+
+Figure 3: CSI500 direction transfer and frozen OOS qual-ity across multiple random seeds. (A) Directions fixed from 2021 Pearson IC remain positive in every 2022–2024 test year. (B) AlphaG-OPD improves factor OOS IC, worst-year Equal-50 IC, and test RankIC by 45 /90 /150% .local credit, through selective teaching, to bounded consoli-dation. This confirms cumulative component contributions. 
+
+Conclusion 
+
+AlphaG-OPD converts terminal factor evaluations into re-liable local structural guidance while preserving the global TB objective. Its structural interface, paired teacher, reliabil-ity gate, and bounded consolidation progressively strengthen decision-relevant factor quality under the same 10K eval-uator budget. Across four Chinese and U.S. equity mar-kets, the method delivers comprehensive CSI300/500 gains, stronger CSI1000 information-ratio consistency, and im-proved S&P 500 risk-adjusted performance. This establishes budget-efficient structural alpha discovery. By adding action-level supervision exactly where the current policy searches, 
+
+AlphaG-OPD turns sparse terminal feedback into reusable structural knowledge. The same design operates across mul-tiple universes without changing the grammar, terminal re-ward, factor-pool construction, or global flow objective. References 
+
+Agarwal, R.; Vieillard, N.; Zhou, Y.; Stanczyk, P.; Ramos Garea, S.; Geist, M.; and Bachem, O. 2024. On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes. In The Twelfth International Confer-ence on Learning Representations .Armandpour, M.; Ilhan, F.; Harrison, D.; Jaiswal, A.; Hoang, D. N. M.; Faghri, F.; Zhang, Y.; Cho, M.; and Farajtabar, M. 2026. Unmasking On-Policy Distillation: Where It Helps, Where It Hurts, and Why. arXiv preprint arXiv:2605.10889 .Bengio, Y.; Lahlou, S.; Deleu, T.; Hu, E. J.; Tiwari, M.; and Bengio, E. 2023. Gflownet foundations. Journal of Machine Learning Research , 24(210): 1–55. Biggio, L.; Bendinelli, T.; Neitz, A.; Lucchi, A.; and Paras-candolo, G. 2021. Neural symbolic regression that scales. In International Conference on Machine Learning , 936–945. Pmlr. Chen, B.; Ding, H.; Shen, N.; Huang, J.; Guo, T.; Liu, L.; and Zhang, M. 2025. AlphaSAGE: Structure-Aware Alpha Min-ing via GFlowNets for Robust Exploration. arXiv preprint arXiv:2509.25055 .Chen, T.; and Guestrin, C. 2016. Xgboost: A scalable tree boosting system. In Proceedings of the 22nd acm sigkdd international conference on knowledge discovery and data mining , 785–794. Chung, J.; Gulcehre, C.; Cho, K.; and Bengio, Y. 2014. Em-pirical evaluation of gated recurrent neural networks on se-quence modeling. arXiv preprint arXiv:1412.3555 .Cui, C.; Wang, W.; Zhang, M.; Chen, G.; Luo, Z.; and Ooi, B. C. 2021. Alphaevolve: A learning framework to discover novel alphas in quantitative investment. In Proceedings of the 2021 International conference on management of data ,2208–2216. Duan, Y.; Wang, L.; Zhang, Q.; and Li, J. 2022. Factorvae: A probabilistic dynamic factor model based on variational autoencoder for predicting cross-sectional stock returns. In 
+
+Proceedings of the AAAI conference on artificial intelligence ,volume 36, 4468–4476. Fu, Y.; Huang, H.; Jiang, K.; Liu, J.; Jiang, Z.; Zhu, Y.; and Zhao, D. 2026. Revisiting On-Policy Distillation: Em-pirical Failure Modes and Simple Fixes. arXiv preprint arXiv:2603.25562 .Gritsaev, T.; Morozov, N.; Samsonov, S.; and Tiapkin, D. 2024. Optimizing backward policies in GFlownets via trajectory likelihood maximization. arXiv preprint arXiv:2410.15474 .Gu, Y.; Dong, L.; Wei, F.; and Huang, M. 2024. MiniLLM: Knowledge Distillation of Large Language Models. In The Twelfth International Conference on Learning Representa-tions .Hochreiter, S.; and Schmidhuber, J. 1997. Long short-term memory. Neural computation , 9(8): 1735–1780. Huang, S.; and Ontañón, S. 2020. A closer look at invalid action masking in policy gradient algorithms. arXiv preprint arXiv:2006.14171 .Jia, N.; Yang, H.; Ma, X.; Lian, J.; Zhang, S.; Zhang, W.; Zeng, K.; Cai, X.; and Sun, Z. 2026. Asymmetric On-Policy Distillation: Bridging Exploitation and Imitation at the Token Level. arXiv preprint arXiv:2605.06387 .Kakushadze, Z. 2016. 101 formulaic alphas. Wilmott ,2016(84): 72–81. Ke, G.; Meng, Q.; Finley, T.; Wang, T.; Chen, W.; Ma, W.; Ye, Q.; and Liu, T.-Y. 2017. Lightgbm: A highly efficient gra-dient boosting decision tree. Advances in neural information processing systems , 30. Landajuela, M.; Lee, C. S.; Yang, J.; Glatt, R.; Santiago, C. P.; Aravena, I.; Mundhenk, T.; Mulcahy, G.; and Petersen, B. K. 2022. A unified framework for deep symbolic regres-sion. Advances in Neural Information Processing Systems ,35: 33985–33998. Li, Y.; Zheng, L.; Yu, Y.; Zhou, W.; Zhong, X.; Hu, X.; Jin, J.; Yuan, H.; and Feng, T. 2026a. Filter, Then Reweight: Re-thinking Optimization Granularity in On-Policy Distillation. 
+
+arXiv preprint arXiv:2606.02684 .Li, Y.; Zuo, Y.; He, B.; Zhang, J.; Xiao, C.; Qian, C.; Yu, T.; Gao, H.-a.; Yang, W.; Liu, Z.; and Ding, N. 2026b. Re-thinking On-Policy Distillation of Large Language Models: Phenomenology, Mechanism, and Recipe. arXiv preprint arXiv:2604.13016 .Liang, K.; Tang, C.; Bai, C.; Liu, W.; Yang, S.; and Wu, Y. 2026. ADWIN: Adaptive Windows for Horizon-Aware On-Policy Distillation. arXiv preprint arXiv:2605.28396 .Linder, J.; Bogard, N.; Rosenberg, A. B.; and Seelig, G. 2020. A generative neural network for maximizing fitness and diversity of synthetic DNA and protein sequences. Cell systems , 11(1): 49–62. Liu, K.; Zhuang, Z.; Bai, Y.; Wang, B.; Weng, R.; and Ye, J. 2026. Prefix Teach, Suffix Fade: Local Teachability Collapse in Strong-to-Weak On-Policy Distillation. arXiv preprint arXiv:2605.13643 .Madan, K.; Rector-Brooks, J.; Korablyov, M.; Bengio, E.; Jain, M.; Nica, A. C.; Bosc, T.; Bengio, Y.; and Malkin, N. 2023. Learning gflownets from partial episodes for improved convergence and stability. In International Conference on Machine Learning , 23467–23483. PMLR. Malkin, N.; Jain, M.; Bengio, E.; Sun, C.; and Bengio, Y. 2022. Trajectory balance: Improved credit assignment in gflownets. Advances in Neural Information Processing Sys-tems , 35: 5955–5967. Mundhenk, T. N.; Landajuela, M.; Glatt, R.; Santiago, C. P.; Faissol, D. M.; and Petersen, B. K. 2021. Symbolic re-gression via neural-guided genetic programming population seeding. arXiv preprint arXiv:2111.00053 .Oono, K.; and Suzuki, T. 2019. Graph neural networks expo-nentially lose expressive power for node classification. arXiv preprint arXiv:1905.10947 .Pan, L.; Malkin, N.; Zhang, D.; and Bengio, Y. 2023. Better training of gflownets with local credit and incomplete trajec-tories. In International Conference on Machine Learning ,26878–26890. PMLR. Petersen, B. K.; Landajuela, M.; Mundhenk, T. N.; Santi-ago, C. P.; Kim, S.; and Kim, J. T. 2021. Deep symbolic regression: Recovering mathematical expressions from data via risk-seeking policy gradients. In 9th International Con-ference on Learning Representations, ICLR 2021, Virtual Event, Austria, May 3-7, 2021 . OpenReview.net. Rusu, A. A.; Colmenarejo, S. G.; Gulcehre, C.; Desjardins, G.; Kirkpatrick, J.; Pascanu, R.; Mnih, V.; Kavukcuoglu, K.; and Hadsell, R. 2015. Policy Distillation. arXiv preprint arXiv:1511.06295 .Schlichtkrull, M.; Kipf, T. N.; Bloem, P.; Van Den Berg, R.; Titov, I.; and Welling, M. 2018. Modeling relational data with graph convolutional networks. In European semantic web conference , 593–607. Springer. Schmidt, M. D.; and Lipson, H. 2010. Age-fitness pareto optimization. In Proceedings of the 12th annual conference on Genetic and evolutionary computation , 543–544. Schulman, J.; Wolski, F.; Dhariwal, P.; Radford, A.; and Klimov, O. 2017. Proximal policy optimization algorithms. 
+
+arXiv preprint arXiv:1707.06347 .Shen, M. W.; Bengio, E.; Hajiramezanali, E.; Loukas, A.; Cho, K.; and Biancalani, T. 2023. Towards understanding and improving gflownet training. In International conference on machine learning , 30956–30975. PMLR. Shi, H.; Song, W.; Zhang, X.; Shi, J.; Luo, C.; Ao, X.; Arian, H.; and Seco, L. A. 2025. Alphaforge: A framework to mine and dynamically combine formulaic alpha factors. In 
+
+Proceedings of the AAAI conference on artificial intelligence ,volume 39, 12524–12532. Shojaee, P.; Meidani, K.; Gupta, S.; Farimani, A. B.; and Reddy, C. K. 2024. Llm-sr: Scientific equation discovery via programming with large language models. arXiv preprint arXiv:2404.18400 .Song, M.; and Zheng, M. 2026. A Survey of On-Policy Distillation for Large Language Models. arXiv preprint arXiv:2604.00626 .Tang, Z.; Chen, Z.; Yang, J.; Mai, J.; Zheng, Y.; Wang, K.; Chen, J.; and Lin, L. 2025. AlphaAgent: LLM-Driven Alpha Mining with Regularized Exploration to Counteract Alpha Decay. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2 , 2813–2822. Valipour, M.; You, B.; Panju, M.; and Ghodsi, A. 2021. Symbolicgpt: A generative transformer model for symbolic regression. arXiv preprint arXiv:2106.14131 .Vaswani, A.; Shazeer, N.; Parmar, N.; Uszkoreit, J.; Jones, L.; Gomez, A. N.; Kaiser, Ł.; and Polosukhin, I. 2017. Attention is all you need. Advances in neural information processing systems , 30. Wang, Z.; Huang, B.; Tu, S.; Zhang, K.; and Xu, L. 2021. DeepTrader: a deep reinforcement learning approach for risk-return balanced portfolio management with market condi-tions Embedding. In Proceedings of the AAAI conference on artificial intelligence , volume 35, 643–650. Xing, X.; Wang, H.; Gao, B.; Li, Z.; and Tang, Y. 2026. Trust Region On-Policy Distillation. arXiv preprint arXiv:2606.01249 .Xu, W.; Liu, W.; Wang, L.; Xia, Y.; Bian, J.; Yin, J.; and Liu, T.-Y. 2021a. Hist: A graph-based framework for stock trend forecasting via mining concept-oriented shared information. 
+
+arXiv preprint arXiv:2110.13716 .Xu, W.; Liu, W.; Xu, C.; Bian, J.; Yin, J.; and Liu, T.-Y. 2021b. Rest: Relational event-driven stock trend forecasting. In Proceedings of the Web Conference 2021 , 1–10. Yang, X.; Liu, W.; Zhou, D.; Bian, J.; and Liu, T.-Y. 2020. Qlib: An ai-oriented quantitative investment platform. arXiv preprint arXiv:2009.11189 .Yang, Z.; Guo, Z.; Song, Y.; Xu, M.; Wang, Y.; Wang, Y.; Liang, X.; and Tang, J. 2026. Prune-OPD: Efficient and Re-liable On-Policy Distillation for Long-Horizon Reasoning. 
+
+arXiv preprint arXiv:2605.07804 .Ye, T.; Dong, L.; Wu, X.; Huang, S.; and Wei, F. 2026. On-Policy Context Distillation for Language Models. arXiv preprint arXiv:2602.12275 .Yu, S.; Xue, H.; Ao, X.; Pan, F.; He, J.; Tu, D.; and He, Q. 2023. Generating synergistic formulaic alpha collections via reinforcement learning. In Proceedings of the 29th ACM SIGKDD conference on knowledge discovery and data min-ing , 5476–5486. Yun, S.; Jeong, M.; Kim, R.; Kang, J.; and Kim, H. J. 2019. Graph transformer networks. Advances in neural information processing systems , 32. Zhang, K.; Tian, Y.; Zhao, D.; Li, Y.; Liu, Y.; Patel, V. M.; and Fu, D. 2026. On-Policy Distillation with Best-of-N Teacher Rollout Selection. arXiv preprint arXiv:2605.09725 .Zhang, L.; Aggarwal, C.; and Qi, G.-J. 2017. Stock price pre-diction via discovering multi-frequency trading patterns. In 
+
+Proceedings of the 23rd ACM SIGKDD international confer-ence on knowledge discovery and data mining , 2141–2149. Zhang, T.; Li, Y.; Jin, Y.; and Li, J. 2020. AutoAlpha: An efficient hierarchical evolutionary algorithm for min-ing alpha factors in quantitative investment. arXiv preprint arXiv:2002.08245 .Zhao, A.; Xin, H.; Fan, Y.; Tong, J.; Li, W.; and Shen, X. 2026a. Decoupling KL and Trajectories: A Unified Per-spective for SFT, DAgger, Offline RL, and OPD in LLM Distillation. arXiv preprint arXiv:2605.16826 .Zhao, H.; Chen, H.; Lin, H.; Winata, G. I.; Yao, D.; and Tang, W. 2026b. OPD+: Rethinking the Advantage Design for On-Policy Distillation. arXiv preprint arXiv:2606.01039 .Zhao, J.; Zhang, C.; Qin, M.; and Yang, P. 2025. Quant-Factor REINFORCE: mining steady formulaic alpha factors with variance-bounded REINFORCE. IEEE Transactions on Signal Processing .Zhao, S.; Xie, Z.; Liu, M.; Huang, J.; Pang, G.; Chen, F.; and Grover, A. 2026c. Self-Distilled Reasoner: On-Policy Self-Distillation for Large Language Models. arXiv preprint arXiv:2601.18734 .Zhong, Q.; Zheng, M.; Song, M.; Lin, X.; Sun, J.; Jiang, H.; Wang, X.; and Fang, J. 2026. SOD: Step-wise On-policy Dis-tillation for Small Language Model Agents. arXiv preprint arXiv:2605.07725 .Table A.1: Core notation. 
+
+Symbol Meaning 
+
+s0, s, x root, partial state, and terminal expression 
+
+A(s) grammar-valid actions at s
+
+As three supported, type-matched sibling actions 
+
+P θF , P B forward and backward policies 
+
+R(x) nonnegative train-only terminal reward 
+
+Zϕ learned GFlowNet partition function 
+
+uk kth shared grammar-valid completion suffix 
+
+q(uk | s, As) reward-blind shared suffix proposal 
+
+Cki credit for suffix k and sibling ipi current policy restricted to As
+
+eπ, π ∗ provisional and accepted local teachers 
+
+γ matched-suffix winner agreement 
+
+∆k paired improvement on suffix knscore cumulative physical terminal-score count 
+
+A Detailed Derivations and Reproduction Contract 
+
+This appendix gives the complete notation, mathematical derivations, physical-score accounting, implementation con-figuration, data splits, and evaluation formulas for AlphaG-OPD . It expands each of the three components from the main paper and specifies how every reported factor and portfolio metric is computed. 
+
+A.1 Notation and Search Process 
+
+Table A.1 collects the notation used in the main paper and this supplement. A state is a typed partial abstract syntax tree (AST), represented operationally by its Reverse Polish Notation construction state and unresolved stack obligations. A deterministic grammar transition maps a legal action to the next state. A terminal state is a complete symbolic factor expression. A trajectory τ = ( s0, a 1, s 1, . . . , a L, s L = x) follows 
+
+st = T(st−1, a t). For terminal reward R(x) > 0, Trajectory Balance (TB) minimizes 
+
+LTB (τ ) = 
+
+"
+
+log Zϕ +
+
+> L
+
+X
+
+> t=1
+
+log P θF (at | st−1)
+
+− log R(x) −
+
+> L
+
+X
+
+> t=1
+
+log PB (st−1 | st)
+
+#2
+
+.
+
+(A.1) At zero TB residual, exponentiating the expression inside the square gives 
+
+ZϕLY
+
+> t=1
+
+P θF (at | st−1) = R(x)
+
+> L
+
+Y
+
+> t=1
+
+PB (st−1 | st), (A.2) which is the trajectory-level flow constraint. The imple-mented backbone adds an entropy bonus, 
+
+LETB = Eτ [LTB (τ )] 
+
+− ηH Eτ
+
+"L−1X
+
+> t=0
+
+H(P θF (· | st)) 
+
+#
+
+, ηH = 0 .01 .
+
+(A.3) The terminal evaluator computes the mean cross-sectional Pearson IC on the training period and uses R(x) =max {| rIC (x)|, exp( −10) }. Equations (A.1)–(A.3) provide the global flow objective, while the three components below provide local structural credit to P θF .
+
+B Component I: On-Policy Structural Interface 
+
+The intervention point is a state sampled by the current for-ward policy. This on-policy restriction aligns the teacher’s state distribution with the states on which the student is cur-rently making decisions. At a candidate state, the sampled action and two alternatives are retained only when all three: 1. have current forward probability above 10 −4;2. belong to the same action class, operator family, and arity; and 3. induce the same unresolved construction signature. These conditions ensure that one suffix can legally complete every sibling. The interface records 
+
+I(s) =  s, As, {pi}3
+
+> i=1
+
+ , pi = P θF (ai | s)
+
+P  
+
+> aj∈A s
+
+P θF (aj | s) .
+
+(B.4) Renormalization is important: OPD redistributes probabil-ity only inside the stored sibling set. It neither labels nor directly constrains other legal actions at s. If no legal sup-ported triple exists, the episode proceeds with Entropy-TB and no counterfactual evaluator calls are spent. 
+
+C Component II: Reliability-Gated Paired Teacher 
+
+C.1 Matched completion proposal 
+
+For a retained interface, the method samples K = 4 unique suffixes that are valid after every sibling. At suffix step t, let 
+
+Vt be the common legal action support and let ℓit (b) denote the forward logit of branch i for action b. The reward-blind shared proposal is 
+
+qt(b) ∝ 1[b ∈ V t]
+
+× exp 13
+
+> 3
+
+X
+
+> i=1
+
+ℓit (b) + bexit 1[b = exit] 
+
+!
+
+,bexit = 1 .5.
+
+(C.5) The suffix probability is the product of stepwise probabil-ities, q(uk | s, As) = Q 
+
+> t
+
+qt(ukt ). The proposal is con-structed without evaluating terminal rewards. If a sampled suffix becomes invalid for any branch, the entire matched row is discarded rather than selectively replacing one branch. For terminal expression xki = x(s, a i, u k), the relative credit is 
+
+Cki = log R(xki ) − log q(uk | s, As). (C.6) Within row k, the proposal term is identical for all siblings. Hence 
+
+Cki − Ckj = log R(xki ) − log R(xkj ), (C.7) and the row winner is unaffected by suffix sampling probabil-ity. More generally, for coefficients di satisfying P 
+
+> i
+
+di = 0 ,
+
+X
+
+> i
+
+diCki = X
+
+> i
+
+di log R(xki ). (C.8) This cancellation makes the comparison depend on sibling reward differences under the same completion. 
+
+C.2 Anchored exponential tilt 
+
+Average each sibling’s matched credit, ¯Ci = K−1 P 
+
+> k
+
+Cki ,and center it as ci = ¯Ci − 13
+
+P 
+
+> j
+
+¯Cj . The provisional teacher is 
+
+eπi(α) = pi exp( αc i/τ )
+
+P 
+
+> j
+
+pj exp( αc j /τ ) , τ = 1 . (C.9) This is an exponential tilt of the current sibling distribu-tion, rather than a new distribution that ignores current sup-port. At α = 0 , eπ = p. Increasing α moves mass toward larger centered credit. The implementation performs a one-dimensional search for the largest nonnegative tilt satisfying 
+
+DKL (eπ(α)∥p) ≤ δ, δ = 0 .03 . (C.10) Thus every accepted local target remains in an explicit trust region around the current policy. 
+
+C.3 Agreement, paired improvement, and abstention 
+
+The suffix-level winner agreement is 
+
+γ(s) = 1
+
+K max 
+
+> iK
+
+X
+
+> k=1
+
+1
+
+
+
+i = arg max  
+
+> j
+
+Ckj 
+
+
+
+. (C.11) With K = 4 and γmin = 0 .75 , at least three of the four matched suffixes must identify the same preferred sibling. For a candidate teacher, the paired improvement on row k is 
+
+∆k = X
+
+> i
+
+(eπi − pi)Cki . (C.12) Because P
+
+> i
+
+(eπi − pi) = 0 , the shared proposal term in Eq. (C.6) cancels from ∆k. Positive ∆k means that the pro-posed redistribution assigns more probability to siblings with higher credit under the same suffix. The empirical mean, standard error, and abstention statistic are 
+
+¯∆ = 1
+
+K
+
+X
+
+> k
+
+∆k, (C.13) 
+
+SE(∆) = 
+
+s P
+
+> k
+
+(∆ k − ¯∆) 2
+
+K(K − 1) , (C.14) 
+
+LCB( s) = ¯∆ − z SE(∆) , z = 1 . (C.15) The method accepts the local teacher when credits vary, agreement reaches the threshold, and the LCB is positive; otherwise the probe produces no teacher. For an accepted candidate, the confidence weight is 
+
+w(s) = min 
+
+
+
+1, γ(s) LCB( s)max {| ¯∆| + SE(∆) , 10 −12 }
+
+
+
+. (C.16) Equation (C.9) is solved again at the shrunken KL radius 
+
+w(s)δ, yielding the stored teacher π∗. The paired improve-ments and LCB are recomputed for this final target. Therefore weak but admissible evidence produces a smaller redistribu-tion rather than the same target with a smaller loss coefficient. 
+
+D Component III: Bounded Credit Consolidation 
+
+An accepted row stores (s, As, π ∗, n create score ). The queue con-tains at most 512 rows, and a row is active only while 
+
+nscore − ncreate score < 1000 . (D.17) Age is measured in physical terminal-score calls, not opti-mizer steps. This keeps the lifetime comparable when dif-ferent arms spend different fractions of their fixed budget on ordinary trajectories and probes. Replaying a row does not call the factor evaluator and does not recompute π∗ under a later policy. For active rows B, define the student’s sibling-restricted distribution 
+
+P θF (a | s, As) = P θF (a | s)
+
+P 
+
+> a′∈A s
+
+P θF (a′ | s) . (D.18) The auxiliary objective is 
+
+LOPD (θ) = 1
+
+|B| 
+
+X
+
+> (s, As,π ∗)∈B
+
+DKL 
+
+ π∗(· | s)∥P θF (· | s, As) .
+
+(D.19) For one row, ignoring the restriction Jacobian notation, the derivative with respect to a sibling logit zi has the familiar cross-entropy form 
+
+∂∂z i
+
+DKL (π∗∥P θF ) = ( P θF )i − π∗ 
+
+> i
+
+. (D.20) The update therefore increases an underweighted accepted action and decreases an overweighted one within the com-pared sibling set. Let gETB = ∥∇ θ LETB ∥2 and gOPD = ∥∇ θ LOPD ∥2,measured on the forward-policy parameters. The applied scale is 
+
+λ = min 
+
+
+
+10 4, 0.10 gETB 
+
+gOPD + 10 −12 
+
+
+
+,
+
+L = LETB + λLOPD .
+
+(D.21) When the cap is inactive and gOPD > 0, the auxiliary gra-dient norm is approximately 0.10 gETB . When no accepted row is active, LOPD contributes exactly zero. This control bounds the local teacher’s optimization strength without re-placing the global TB objective. 
+
+E Physical-Score Accounting and Matched Ablation 
+
+One probe evaluates m siblings under K shared suffixes, so its direct cost is 
+
+N probe score = mK = 3 × 4 = 12 . (E.22) Table E.2: Equal-physical-score ablation contract.                     
+
+> Method Interface Paired teacher Gate Consolidation Base Model ––––Components I–II (Gate Off) ✓✓––Components I–II ✓✓✓–Components I–III ✓✓✓✓
+
+Table F.3: Final training and OPD configuration.                 
+
+> Item Value Optimizer / learning rate Adam / 10 −4
+> Encoder 2-layer RGCN, hidden size 128 Update frequency 128 sampled trajectories Maximum expression length 20 Pool capacity 50 Entropy coefficient / temperature 0.01 / 1.0 Total / ordinary / probe scores 10000 / 8008 / 1992 Sibling actions / shared suffixes 3 / 4 Teacher temperature / target KL 1.0 / 0.03 Agreement / LCB multiplier 0.75 / 1.0 Replay capacity / score TTL 512 / 1000 Target OPD gradient ratio 0.10 Random seeds 0, 1, 2 Hardware NVIDIA A100 40GB; PyTorch
+
+Every terminal evaluation is charged, including rows later rejected by the gate. The formal budget is 
+
+Nordinary + Nprobe = 8008 + 1992 = 10000 . (E.23) Since 1992 /12 = 166 , the probe allocation permits exactly 166 complete probes. Replay does not appear in Eq. (E.23) because it reuses stored state-action targets and makes no evaluator call. All OPD arms use the same 8008 /1992 allocation. Gate Off retains the same visited-state interface, siblings, four matched suffixes, teacher temperature, and KL radius, while disabling winner agreement, positive-LCB abstention, and confidence shrinkage. The Gate-Off to Gate-On contrast therefore evaluates the reliability rule beyond paired eval-uation alone. Components I–II use an accepted row once at the next optimizer update. Components I–III retain the same acceptance rule and change only bounded persistence and measured gradient strength, isolating the consolidation mechanism. 
+
+F Implementation and Reproduction Contract 
+
+The expression search uses OPEN, CLOSE, HIGH, LOW, and VOLUME, with windows {10 , 20 , 30 , 40 , 50 }. Its con-stants are −30 , −10 , −5, −2, −1, −0.5, −0.01 , 0.01 , 0.5,
+
+1, 2, 5, 10 , and 30 . Unary, binary, and time-series operators follow the accompanying anonymous code archive. Training uses the training-period targets specified below. The Chinese universes use 2010–2020 for training, 2021 for validation, and 2022–2024 for test. The S&P 500 uses 2010–2016, 2017, and 2018–2020, respectively. The target is the 20-trading-day forward close return, 
+
+Ref(close,-20)/close-1 . Validation-Sign Equal-50 fixes each factor direction using validation Pearson IC and assigns magnitude 1/50 before one untouched test evalua-tion. 
+
+G Evaluation Metrics 
+
+For dates t = 1 , . . . , T and cross-sectional observations j =1, . . . , n t, let ftj be the factor score and ytj the forward return. The per-date Pearson information coefficient and its reported time-series mean are 
+
+IC t = Corr j (ftj , y tj ), IC = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+IC t. (G.24) Writing ¯ft = n−1
+
+> t
+
+P 
+
+> j
+
+ftj and ¯yt = n−1
+
+> t
+
+P 
+
+> j
+
+ytj , the cross-sectional correlation is 
+
+Corr j (ftj , y tj ) = 
+
+P 
+
+> j
+
+(ftj − ¯ft)( ytj − ¯yt)
+
+qP 
+
+> j
+
+(ftj − ¯ft)2
+
+qP 
+
+> j
+
+(ytj − ¯yt)2
+
+.
+
+(G.25) RankIC applies the same calculation after independently re-placing factor scores and returns by their within-date ranks, using average ranks for ties: 
+
+RankIC t = Corr j (rank( ftj ), rank( ytj )) ,
+
+RankIC = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+RankIC t. (G.26) With sample standard deviations sIC and sRankIC across dates, the information ratios are 
+
+ICIR = IC 
+
+sIC 
+
+, RankICIR = RankIC 
+
+sRankIC 
+
+. (G.27) For factor m ∈ { 1, . . . , 50 }, validation Pearson IC fixes 
+
+dm = sign(IC valid  
+
+> m
+
+). The frozen Validation-Sign Equal-50 score is 
+
+Ftj = 150 
+
+> 50
+
+X
+
+> m=1
+
+dmfmtj . (G.28) The portfolio mapping described in the main paper converts 
+
+Ft into a daily return sequence r1, . . . , r T . With A trading periods per year and wealth Wt = Qtu=1 (1 + ru), the port-folio metrics are 
+
+AR = W A/T T − 1, (G.29) 
+
+SR = √A ¯rsr
+
+, (G.30) 
+
+MDD = max 
+
+> 1≤u≤v≤T
+
+
+
+1 − Wv
+
+Wu
+
+
+
+, (G.31) where ¯r = T −1 P 
+
+> t
+
+rt and sr is the sample standard devia-tion of daily returns. MDD is reported as a positive drawdown magnitude. For S random seeds and any reported statistic zs, tables display 
+
+¯z = 1
+
+S
+
+> S
+
+X
+
+> s=1
+
+zs, sz =
+
+vuut 1
+
+S − 1
+
+> S
+
+X
+
+> s=1
+
+(zs − ¯z)2, (G.32) with sz shown in parentheses below the mean.

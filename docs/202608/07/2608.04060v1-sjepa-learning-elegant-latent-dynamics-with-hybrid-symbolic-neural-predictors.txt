@@ -1,0 +1,1834 @@
+Title: SJEPA: Learning Elegant Latent Dynamics with Hybrid Symbolic-Neural Predictors
+
+URL Source: https://arxiv.org/pdf/2608.04060v1
+
+Published Time: Thu, 06 Aug 2026 00:01:57 GMT
+
+Number of Pages: 42
+
+Markdown Content:
+# SJEPA: L EARNING ELEGANT LATENT DYNAMICS WITH HYBRID SYMBOLIC –N EURAL PREDICTORS 
+
+Yongchao Huang ∗
+
+23/07/2026 
+
+# ABSTRACT 
+
+Joint-embedding predictive architectures learn abstract states by predicting target embeddings from context embeddings, but their transition models are typically opaque neural maps. We introduce SJEPA, a reconstruction-free JEPA framework that learns predictive representations whose induced dynamics admit compact sym-bolic descriptions. Its hybrid transition combines a symbolic law with a regularised neural correction for dynamics that the selected grammar cannot express adequately. The central principle is to learn the simplest adequate dynamics: representation con-straints restrict learning to informative, non-collapsed predictive coordinates, while operator compression favours the lowest-complexity symbolic–neural transition that remains predictively adequate. We formalise this principle through induced-dynamics complexity, analyse the non-identifiability of predictive coordinates, and show that unconstrained operator compression creates a direct shortcut to represen-tation collapse. The framework supports both alternating representation–equation learning and symbolic dynamics fitted to fixed representations. In controlled pen-dulum experiments, joint representation–equation learning discovers substantially simpler symbolic dynamics with lower long-horizon rollout error and divergence than post-hoc fitting, while an unconstrained one-step diagnostic realises the col-lapse shortcut predicted by the theory. Under grammar misspecification, correction regularisation preserves the representable symbolic mechanism and encourages the neural component to focus on residual dynamics. The results demonstrate a controllable trade-off among predictive fidelity, representation quality, symbolic parsimony, and symbolic–neural allocation. SJEPA provides a complementary direction within the JEPA family and may be useful in applications where compact latent dynamics, explicit structural constraints, or controlled residual modelling are desirable. 
+
+# 1 INTRODUCTION 
+
+Joint-embedding predictive architectures (JEPAs) learn by predicting representations of missing or future observations rather than reconstructing all observation details (LeCun, 2022; Assran et al., 2023; Bardes et al., 2024; Assran et al., 2025). This design separates predictive semantics from pixel-level variability and provides a natural foundation for general-purpose world models. Yet the transition mechanism itself is usually represented by a neural predictor. Such a predictor can be accurate without revealing which variables interact, how actions alter the future, or whether the learned coordinates support a concise dynamical description. This paper asks a different question from standard representation learning: can a JEPA learn not only predictive states, but elegant dynamics over those states? We use “elegant” in a precise operational sense: an elegant transition is a compact and parsimonious law that remains adequate for prediction. The objective is therefore not the shortest possible equation. An equation that is too simple underfits; a representation that is made trivial merely to simplify the equation is also unacceptable. The target is the simplest adequate governing law for an informative predictive state. The core principle is 
+
+> ∗
+
+Email: yongchao.huang@abdn.ac.uk 
+
+1arXiv:2608.04060v1 [cs.LG] 4 Aug 2026 that operator compression should select predictive coordinates whose induced dynamics are simple yet adequate, while representation constraints prevent that simplicity from being achieved through collapse. We introduce Symbolic JEPA (SJEPA 1), a JEPA whose latent transition is decomposed into a symbolic governing law and a neural correction. Given a context embedding ZC and target-side information ε,with ZT providing the prediction target, the hybrid predictor is 
+
+bZT = fE,α (ZC , ε ) + cϕ(ZC , ε ). (Eq.3) Here, ε identifies the target or transition, for example through a target location, temporal offset, or action. The symbolic structure E and coefficients α capture the dominant reusable dynamics, while 
+
+cϕ corrects effects that the selected grammar does not represent adequately. This decomposition acts on the transition operator rather than partitioning the latent representation. SJEPA distinguishes representation compression from operator compression. The former determines which future-relevant state is retained; the latter seeks a concise law governing that state. These objectives must be coupled carefully because an unconstrained pressure for simple dynamics can encourage the encoder to erase information until the transition becomes trivial. We therefore formulate SJEPA as constrained operator compression: 
+
+min 
+
+> θ, ¯θ, E,α,ϕ
+
+Ω( E) + λcRcorr (ϕ)
+
+subject to Lpred (θ, ¯θ, E, α, ϕ ) ≤ δpred ,
+
+(θ, ¯θ) ∈ Θrepr .
+
+(Eq.10) The objective favours a compact symbolic law while discouraging unnecessary reliance on the correction. The predictive constraint prevents underfitting, whereas Θrepr restricts the context and target encoders to informative, predictively adequate, and non-collapsed representations. This formulation induces the dynamics-complexity functional Cdyn (Eθ , E ¯θ ): the minimum symbolic-plus-correction complexity required for adequate prediction in the coordinates selected by the encoders. Our contributions are: 1. Symbolic and hybrid JEPA dynamics. We replace the opaque neural predictor in JEPA with a compact symbolic law, together with an optional neural correction for dynamics that cannot be expressed adequately by the selected symbolic grammar. 2. Learning the simplest adequate dynamics. We introduce operator compression as a complement to representation learning: the representation must remain informative and non-collapsed, while its transition should be as compact as possible without sacrificing predictive adequacy. 3. A principled and modular learning framework. We develop objectives that control symbolic complexity and discourage the neural correction from unnecessarily absorbing representable dynamics. The framework supports both alternating representation–equation learning and symbolic dynamics fitted to frozen pretrained encoders. 4. Theoretical and empirical validation. We explain why predictive coordinates are not unique, show how dynamics compression can encourage representation collapse, and validate these effects experimentally. Joint learning discovers substantially simpler latent dynamics with more accurate and less divergent symbolic rollouts than post-hoc equation fitting, while correction regularisation preserves the dominant symbolic mechanism under grammar misspecification. 5. Extensions to uncertainty and control. We provide Bayesian and action-conditioned formulations that support uncertainty-aware latent dynamics, sensitivity analysis, local linearisation, and model-based planning. 
+
+# 2 RELATED WORKS 
+
+Joint-embedding predictive architectures. The JEPA family has expanded across modalities and learning objectives. I-JEPA introduced masked latent prediction for images (Assran et al., 2023), 
+
+> 1We use the unhyphenated abbreviation SJEPA because the framework is general-purpose rather than task-specific.
+
+2while MC-JEPA jointly learns motion and content features and V-JEPA extends feature prediction to video (Bardes et al., 2023; 2024). Audio-JEPA, Point-JEPA, and 3D-JEPA adapt the framework to audio and three-dimensional data, and VL-JEPA extends latent prediction to vision–language learning (Tuncay et al., 2025; Saito et al., 2025; Hu et al., 2024; Chen et al., 2026). Other variants move toward structured world modelling and decision making: ACT-JEPA jointly predicts actions and latent observation sequences, V-JEPA 2 develops action-conditioned video world models for planning, and C-JEPA introduces object-level latent interventions for causal reasoning (Vujinovic & Kovacevic, 2025; Assran et al., 2025; Posner et al., 2026a). LeJEPA provides a leaner and theoretically grounded training objective based on isotropic representation regularisation (Balestriero & LeCun, 2025). Complementing these deterministic formulations, Huang’s variational JEPA (VJEPA) develops a probabilistic JEPA framework that learns predictive distributions over future latent states and connects JEPA with predictive-state representations and Bayesian filtering (Huang, 2026b). Despite this diversity, most variants retain flexible neural predictors or primarily modify the representation objective, modality, or conditioning structure. SJEPA is complementary: it asks whether the induced latent transition itself can be compressed into a compact symbolic law, with a controlled neural correction for residual dynamics. 
+
+Symbolic regression and governing-equation discovery. Symbolic regression searches over analytical expressions rather than assuming a fixed parametric form (Koza, 1992; Schmidt & Lipson, 2009). SINDy identifies sparse governing dynamics within a user-specified library of candidate functions, while SINDYc extends this formulation to systems with external inputs and control (Brunton et al., 2016b; Kaiser et al., 2018). More recent methods distil symbolic relations from trained neural models, use neural generators or pretrained transformers to propose expressions, or employ scalable evolutionary search (Cranmer et al., 2020; Petersen et al., 2021; Biggio et al., 2021; Cranmer, 2023). Most such methods operate on a supplied set of explanatory variables; in governing-equation discovery, the state coordinates and either their derivatives or transition data are typically observed or selected beforehand. SJEPA instead couples symbolic equation discovery with learning the predictive coordinates in which those equations are expressed. 
+
+Joint coordinate and equation discovery. Several important precedents learn coordinates together with structured dynamics. SINDy autoencoders jointly learn a nonlinear coordinate transformation, a reconstruction map, and sparse latent governing equations (Champion et al., 2019). T-SHRED combines transformer-based temporal encoding with a SINDy-attention mechanism that regularises and interprets latent dynamics when forecasting full systems from sparse sensor histories (Yermakov et al., 2026). DYSCO uses multiple noisy views and temporal contrastive learning to jointly recover latent trajectories and structured dynamics, with identification guarantees up to an affine indeterminacy and symbolic recovery within that gauge (Muratore & Mathis, 2026). These works establish that representation learning and equation discovery can be coupled. SJEPA addresses a complementary setting through a reconstruction-free JEPA context–target interface, optional target-side information, and an explicit symbolic law plus neural correction. It further uses minimum adequate operator complexity to guide representation learning while imposing representation constraints to prevent trivial dynamics from being obtained through collapse. 
+
+Learned coordinates for dynamics. Latent-dynamics models combine compressed representa-tions with learned transition models for prediction and simulation. World Models, for example, learns compact visual states together with recurrent latent dynamics, while Neural ODEs parame-terise continuous-time hidden-state evolution and can be used within latent-variable models (Ha & Schmidhuber, 2018; Chen et al., 2018). Koopman-based methods pursue a more specific form of simplification by seeking observables or coordinates in which nonlinear dynamics evolve linearly, or approximately linearly, within a suitable invariant subspace (Brunton et al., 2016a; Lusch et al., 2018). SJEPA adopts a different but compatible inductive bias: the latent transition need not be linear, but should admit a compact symbolic description, with a controlled neural correction where the symbolic grammar is insufficient. Linear latent dynamics remain a possible special case of this broader symbolic operator class. 
+
+Information bottlenecks and non-collapse. The information bottleneck seeks a compressed repre-sentation that preserves information relevant to a target, with the variational information bottleneck providing a practical latent-variable formulation (Tishby et al., 1999; Alemi et al., 2017). Recent 3analysis of V-JEPA through the information bottleneck and predictive information bottleneck distin-guishes the removal of non-predictive nuisance information from the separate problem of avoiding representation collapse; predictable nuisance information may still be retained (Huang, 2026a). Non-contrastive representation-learning methods address collapse and redundancy through mechanisms such as variance preservation, cross-correlation control, architectural asymmetry, target networks, and distributional regularisation (Bardes et al., 2022; Zbontar et al., 2021; Grill et al., 2020; Balestriero & LeCun, 2025). These methods are not equivalent to one another or to an information-theoretic bottleneck. In SJEPA, RIB is therefore an umbrella notation for the representation-side requirement that the learned state remain predictive, informative, and non-collapsed. This requirement is particu-larly important because operator compression introduces a direct shortcut: the encoder can make the transition trivial by making the representation nearly constant. Our experiments instantiate RIB with a VICReg-style regulariser and use an unconstrained one-step diagnostic to show that the predicted fixed-point collapse shortcut can be reached in practice. 
+
+Mechanistic and neuro-symbolic world models. Mechanistic World Models propose organising learned world knowledge around reusable explanatory mechanisms rather than predictive mappings alone (Posner et al., 2026b). Neuro-symbolic JEPA explores a complementary connection between JEPA and symbolic reasoning: rule-informed JEPA uses explicit logical rules to shape the latent energy landscape and uses the learned continuous space to support differentiable rule discovery (Huang & Raza, 2026). SJEPA addresses a different form of symbolic structure. It does not primarily inject logical rules into the representation or discover rules relating symbolic concepts; instead, it learns a compact symbolic operator that describes how a predictive latent state evolves from context to target, optionally conditioned on time, actions, or other side information. A regularised neural correction accounts for residual dynamics that the selected grammar cannot express adequately. The resulting equations should be interpreted as compact predictive mechanisms rather than automatically as physical laws. Predictive, representation, complexity, and correction constraints are required to prevent an apparently simple symbolic description from being obtained through underfitting, collapse, or delegation of the dynamics to an unrestricted neural component. 
+
+# 3 SJEPA: S YMBOLIC AND HYBRID LATENT DYNAMICS 
+
+3.1 PROBLEM FORMULATION AND NOTATION 
+
+A training example is (XC , X T , ε ) ∼ D , where XC is a context observation or history, XT is a target observation or future segment, and ε denotes (possibly empty) side information supplied to the predictor. ε may encode target location, mask geometry, time offset, action, goal, intervention, or other conditioning variables. The context and target encoders produce 
+
+ZC = Eθ (XC ), ZT = E¯θ (XT ), (1) where both embeddings lie in a common latent space 2. The target encoder may be an exponential-moving-average (EMA) copy of the context encoder; in the frozen-encoder mode, both may instead be fixed copies of a pretrained encoder. A standard deterministic JEPA predictor can be written as 
+
+bZT = gψ (ZC , ε ), (2) where ψ denotes the parameters of an unrestricted neural predictor. In SJEPA, the predictor is 3
+
+HE,α,ϕ (ZC , ε ) = FE,α (ZC , ε ) + cϕ(ZC , ε ), (3)           
+
+> 2Although the context and target encoders have different parameter values during EMA training, they are treated as two parameterisations of the same ambient latent coordinate space Z. The target encoder supplies slowly moving prediction targets rather than defining a separate latent coordinate chart. For temporal prediction, the free-rollout objective additionally trains HE,α,ϕ on its own recursively generated outputs.
+> 3Equation (3) gives the general, direct-transition realisation of SJEPA, in which the symbolic and neural components directly predict the target embedding. For continuous-time temporal systems (e.g. a dynamical system), the same decomposition may instead parameterise a latent vector field (e.g. gradient)
+> VE,α,ϕ (z, ε ) = FE,α (z, ε ) + cϕ(z, ε ),
+> from which the complete transition is constructed by an integration operator:
+> HE,α,ϕ, ∆t(z, ε ) = I∆t(z, V E,α,ϕ , ε ).
+
+4XC Eθ ZC   
+
+> ε
+> symbolic law
+> FE,α
+> neural correction
+> cϕ
+> +bZT
+> XTE¯θZT
+> prediction loss
+
+Figure 1: SJEPA decomposes the latent transition operator into a compact symbolic governing law and a neural correction for dynamics. The decomposition acts on the transition operator rather than partitioning the latent representation. where FE,α ≡ FE,α is a symbolic expression with structure E and coefficients α, and cϕ is a neural corrector for dynamics not captured adequately by the symbolic grammar. Setting cϕ ≡ 0 recovers the purely symbolic model. The structure E is a typed syntax tree drawn from a grammar E of arithmetic, low-order polynomial, transcendental, and domain-specific primitives. Its structural complexity is 
+
+Ω( E) = X
+
+> v∈nodes( E)
+
+wtype( v), (4) where wtype( v) ≥ 0 assigns a complexity cost to each operator or primitive. This weighted score favours concise expressions while allowing more expressive or structurally complex primitives to receive larger penalties. In the differentiable sparse-library implementation used in our experiments, E is represented by the active library support and α by its coefficients. In that case, the same notation Ω( E) denotes the sum of prespecified complexity weights over active output–term pairs; a smooth coefficient-dependent surrogate is used during optimisation and the thresholded support is used for final reporting. Alternatively, the structural score may be replaced by a minimum-description-length criterion 4.The preceding definitions specify the representation and hybrid transition model. Section 4 introduces predictive adequacy, symbolic complexity, and correction control, and combines them to formulate elegant-dynamics learning as constrained operator compression. 3.2 WHY A HYBRID PREDICTOR ?A purely symbolic law is directly inspectable but may fail when the chosen grammar omits relevant interactions 5 or when the latent coordinates retain unresolved variability. A purely neural predictor is flexible but may absorb predictive regularities without exposing them. The hybrid model therefore seeks a disciplined division of labour: the symbolic component represents the dominant reusable mechanism, while the regularised correction accounts for effects that a compact law does not capture adequately. In a physical analogy, FE,α may represent a governing relation, while cϕ may capture friction, unresolved interactions, approximation error, observation effects, or representation mismatch. This interpretation does not imply that the two components form a unique or intrinsically physical de-composition. Prediction loss alone cannot determine how a transition should be divided between FE,α 
+
+Our later experiments use the forward-Euler realisation HE,α,ϕ, ∆t(z) = z + ∆ t [FE,α (z) + cϕ(z)] . Thus, the symbolic–neural decomposition may apply either to a direct transition map or to a vector field from which the transition map is constructed. 
+
+> 4
+
+The minimum description length (MDL) principle selects the model that minimises the total code length required to describe both the model and the data not explained by it. In our setting, this balances the description length of the symbolic structure and its coefficients against the remaining predictive error. MDL therefore does not favour the shortest expression unconditionally; it favours a concise expression that accounts adequately for the observed latent transitions. 
+
+> 5
+
+Discovering interactions, especially higher-order ones, is a challenging problem in statistical learning and can be particularly difficult in physical and dynamical systems. 
+
+5and cϕ. The symbolic-complexity and correction penalties instead encode a modelling preference: use a concise symbolic explanation where adequate, and reserve the correction for the remaining predictive structure. Section 4 formalises this allocation and its limitations. 3.3 THE ENCODER AS A LEARNED TRANSFORM 
+
+In the end-to-end mode, the encoder pair can be interpreted as learning coordinates in which the context–target relation admits a simple symbolic description. In the frozen-encoder mode, the same interpretation instead asks whether the pretrained coordinates already expose such a relation. Let Tε denote the observation-space target mechanism associated with side information ε, written schematically as 
+
+XT ≈ T ε(XC ). (5) For temporal tasks, Tε is a dynamical transition; for masked or spatial prediction, it denotes the corresponding target-generating relation. In stochastic settings, it represents the relevant conditional target mechanism rather than a deterministic map. There are then two routes from the context observation to the target latent representation. The first applies the observation-space target mechanism and subsequently encodes the resulting target; the second encodes the context and predicts the target embedding from the context embedding together with the same side information. SJEPA seeks consistency between these routes: 
+
+E¯θ (Tε(XC )) ≈ HE,α,ϕ (Eθ (XC ), ε ) . (6) Thus, ε identifies the relevant target relation and is supplied explicitly, together with the context embedding ZC = Eθ (XC ), to the latent predictor HE,α,ϕ .The analogy is to selecting Laplace, Fourier, canonical, or other transformed coordinates that simplify a governing relation. The claim is not that every system becomes linear or that the resulting coordinates must coincide with physical state variables. Rather, the representation should expose informative, non-collapsed coordinates in which an adequate symbolic context–target operator has low description complexity . For temporal tasks, this operator is the latent transition law. Such coordinates may be non-unique and need not remain affinely aligned with the original state, as observed later in Experiment 1. 
+
+# 4 LEARNING ELEGANT DYNAMICS BY OPERATOR COMPRESSION 
+
+4.1 PREDICTIVE ADEQUACY AND OPERATOR COMPLEXITY 
+
+For a pointwise latent-space discrepancy d, the one-step predictive risk is 
+
+Lpred = ED [d (HE,α,ϕ (ZC , ε ), sg( ZT ))] , (7) where sg( ·) stops gradients through the target embedding. The discrepancy d may, for example, be a squared Euclidean or cosine distance. For temporal prediction, one-step accuracy may be supplemented by the multi-step rollout loss Lroll defined in Equation (61) of Appendix A. The neural correction should improve predictive fidelity without absorbing reusable structure that can be represented adequately by the symbolic law. We therefore regularise both its output magnitude and parameter capacity: 
+
+Rcorr (ϕ) = ED
+
+h
+
+∥cϕ(ZC , ε )∥22
+
+i
+
++ τϕ∥ϕ∥22, (8) where τϕ ≥ 0 controls parameter regularisation. The first term discourages large corrections at the prediction level, while the second limits unnecessary complexity in the correction model. 
+
+Definition 4.1 (Operator-complexity score) . For a fixed latent normalisation, symbolic grammar, and correction class, define the operator-complexity score of the hybrid transition HE,α,ϕ = FE,α + cϕ
+
+in Equation (3) by 
+
+Γ( E, ϕ ) = Ω( E) + λcRcorr (ϕ), (9) 
+
+where λc ≥ 0 controls the trade-off between symbolic parsimony and reliance on the neural correc-tion. 
+
+6Table 1: Representation and operator compression address different objectives and failure modes. Operator compression is meaningful only within an admissible predictive representation class.       
+
+> Regime Consequence Too much representation compression Collapse or loss of future-relevant state information. Too little representation control Retention of nuisance variation, redundant coordinates, or degener-ate predictive shortcuts. Too little operator compression Accurate but opaque dynamics; the symbolic expression or neural correction absorbs unnecessary complexity. Too much operator compression Underfit or brittle laws, poor extrapolation, and pressure towards artificially simple coordinates. Balanced compression Informative predictive states governed by a concise and adequate transition law.
+
+Definition 4.2 (Elegant dynamics) . Fix an admissible prediction threshold δpred and representation class Θrepr . An elegant SJEPA solution is a feasible encoder–predictor tuple that minimises Γ. It therefore realises the simplest adequate transition within the chosen symbolic grammar and correction class, rather than the simplest transition without qualification. 
+
+This definition balances predictive fidelity, symbolic parsimony, and reliance on the correction. Predictive adequacy prevents a short but inaccurate law from being considered elegant. 4.2 REPRESENTATION COMPRESSION VERSUS OPERATOR COMPRESSION 
+
+Representation learning and dynamics learning play complementary roles, but they answer different questions: 
+
+What future-relevant state should be retained? 
+
+and 
+
+What is the simplest adequate law governing that state? 
+
+Representation learning must avoid collapse, redundancy, and the removal of variables required for future prediction, while discarding observation-specific nuisance information where possible. The representation module may therefore implement a full information bottleneck (Huang, 2026a) or a practical surrogate that preserves an informative, non-collapsed predictive state. Dynamics learning faces a different trade-off. If the transition is insufficiently compressed, a flexible symbolic expression or neural correction may reproduce the data accurately while remaining opaque. If it is compressed too aggressively, the resulting law may underfit, extrapolate poorly, or pressure the encoder towards artificially simple coordinates. A misspecified grammar may omit mechanisms required for prediction, while an overly expressive correction may absorb the structure that the symbolic component is intended to reveal. The objective is therefore not the simplest possible dynamics, but the simplest law that remains predictively adequate. Given an admissible representation, the dynamics module controls the induced transition through the symbolic-complexity term Ω( E) and correction penalty Rcorr (ϕ). Thus, SJEPA does not seek simplicity by discarding the state itself; it seeks an informative representation whose evolution admits a concise and adequate description. Table 1 summarises the distinct failure regimes associated with the two forms of compression. The slogan “compress the dynamics, not the representation” should therefore be interpreted precisely: the operator-complexity objective must not achieve simplicity by erasing the state 6. Representation compression may discard nuisance information only while preserving predictive sufficiency and non-collapse; operator compression may simplify the transition only while preserving predictive adequacy.            
+
+> 6For example, a collapsed SJEPA model may map every context and target observation to the same arbitrary vector z0, so that Eθ(XC) = E¯θ(XT) = z0. An identity predictor HE,α,ϕ (z, ε ) = z, or any transition having
+> z0as a fixed point, then predicts every target embedding perfectly. Collapse is characterised by the absence of variation or information in the representation, not by whether its constant value is zero.
+
+74.3 CONSTRAINED FORMULATION AND INDUCED -DYNAMICS COMPLEXITY 
+
+Let Θrepr denote the admissible set of encoder pairs satisfying the selected predictive-information and anti-collapse requirements. The ideal SJEPA objective is 
+
+min 
+
+> θ, ¯θ, E,α,ϕ
+
+Γ( E, ϕ )s.t. Lpred ≤ δpred ,
+
+(θ, ¯θ) ∈ Θrepr .
+
+(10) The predictive constraint prevents operator simplicity from being obtained through underfitting, while the representation constraint prevents it from being obtained through collapsed or uninformative coordinates. For fixed encoders, define the induced-dynamics complexity 
+
+Cdyn (Eθ , E ¯θ ) = inf  
+
+> E,α,ϕ
+
+{Γ( E, ϕ ) : Lpred ≤ δpred } . (11) This quantity asks how simple the latent transition can be once the representation coordinates have been fixed. It searches over symbolic structures E, coefficients α, and neural corrections ϕ that satisfy the predictive requirement, and returns the smallest symbolic-plus-correction complexity among them. A low value indicates that adequate prediction requires a compact symbolic expression and little reliance on the correction. If no predictor satisfies the constraint, then Cdyn (Eθ , E ¯θ ) = + ∞.
+
+For temporal applications in which recursive accuracy is part of the required notion of adequacy, the feasible set in Equation (11) may additionally impose 7 Lroll ≤ δroll .
+
+Remark 4.3 (Relative nature of induced-dynamics complexity) . The quantity Cdyn is not an intrinsic coordinate-invariant property of the underlying physical system. It is defined relative to the admissible representation class, latent normalisation, symbolic grammar and primitive weights, correction function class, and data distribution used to evaluate predictive and correction risks. In particular, arbitrary rescaling of the latent coordinates can change coefficient magnitudes, correction energy, and thresholded symbolic support. The admissible class Θrepr should therefore include an explicit scale convention, such as bounded per-coordinate variance, unit-variance normalisation, or whitening. The experiments enforce this convention through the unit-scale variance target in Rexp IB .
+
+Representation selection may then be written as 
+
+min 
+
+> (θ, ¯θ)∈Θrepr
+
+Cdyn (Eθ , E ¯θ ). (12) The inner optimisation finds the simplest adequate transition for each fixed representation, while the outer optimisation selects, among informative and non-collapsed representations, coordinates whose induced dynamics are easier to describe. Equation (12) formalises the central principle of SJEPA: a representation is valuable not only because it supports prediction, but also because its induced dynamics admit a concise and adequate governing law. 4.4 PREDICTIVE NON -IDENTIFIABILITY AND COORDINATE SELECTION 
+
+Proposition 4.4 (Predictive coordinates are non-identifiable) . Let E map context and target observa-tions into a common latent space Z, and suppose that 
+
+E(XT ) = F (E(XC ), ε ) (13) 
+
+almost surely, where F : Z × S ε → Z . For any bijection h : Z → eZ, define 
+
+eE = h ◦ E (14) 
+
+and eF (ez, ε ) = h  F (h−1(ez), ε ) . (15) 
+
+Then eE(XT ) = eF ( eE(XC ), ε ) (16) 
+
+almost surely. However, the symbolic description complexities of F and eF need not agree. 
+
+> 7We retain the one-step constraint in the task-general definition because recursive rollout is not defined for every JEPA context–target relation.
+
+8Intuitively, the proposition says that a predictive latent representation can be rewritten in any invertible coordinate system without changing what the model predicts. The encoder first expresses the state in the new coordinates through h, while the transformed predictor undoes this change, applies the original transition, and maps the result back. Prediction alone therefore cannot distinguish between these coordinate systems. Their symbolic descriptions, however, may differ substantially: a transition that is simple in one coordinate system may become complicated in another. The transformed transition follows the coordinate route 
+
+ezCh−1
+
+−−−→ zCF (·,ε )
+
+−−−−→ zTh
+
+−→ ezT .
+
+It maps the transformed context state back to the original coordinates, applies the original transition, and maps the predicted target state into the transformed coordinates. The proof is given in Appendix B.1.1. Prediction alone therefore does not determine a preferred coordinate system. Operator complexity supplies an additional inductive criterion: among predictively adequate coordinates, prefer those whose transition is easier to describe. This criterion does not guarantee that the selected coordinates coincide with physically meaningful variables. 4.5 DYNAMICS COMPRESSION CREATES A COLLAPSE SHORTCUT 
+
+Proposition 4.5 (Degenerate minimum without representation constraints) . Assume that the encoder classes contain a constant map E0(x) = z0 and that the predictor class contains a transition H0
+
+satisfying 
+
+H0(z0, ε ) = z0 (17) 
+
+for every admissible ε. Suppose further that H0 attains the minimum value of λsΩ( E) + λcRcorr (ϕ)
+
+within the predictor class and that all objective terms are nonnegative. Then the unconstrained objective 
+
+Lpred + λsΩ( E) + λcRcorr (ϕ) (18) 
+
+admits the collapsed solution (E0, E 0, H 0) as a global minimiser whenever d(z0, z 0) = 0 .
+
+This proposition says that, without explicit representation constraints, the easiest way to obtain simple and perfectly predictable latent dynamics may be to remove all variation from the representation. Once both encoders map every observation to the same point, any predictor for which z0 is a fixed point achieves zero latent prediction error. For example, the identity transition 
+
+H0(z, ε ) = z (19) satisfies H0(z0, ε ) = z0 for every z0. The model may therefore attain zero predictive loss and minimal operator complexity while retaining no information about the observations or their dynamics. Appendix B.1.2 gives the proof. This failure mode is more specific than the general possibility of collapse in non-contrastive representation learning: operator compression creates a direct incentive to make the transition trivial by first making the representation trivial. Representation constraints are therefore essential to ensure that the method simplifies the governing law rather than erasing the state on which it acts. 4.6 CONTROLLING ALLOCATION TO THE CORRECTION 
+
+Proposition 4.6 (Non-identifiability of the hybrid decomposition) . Let r be any function for which 
+
+FE,α + r remains in the symbolic function class and cϕ − r remains in the correction class. Then 
+
+FE,α + cϕ = ( FE,α + r) + ( cϕ − r), (20) 
+
+so predictive loss alone cannot determine how structure is allocated between the two components. 
+
+Intuitively, the same overall predictor can be obtained by transferring part of the transition function between the symbolic law and the neural correction. This fact, proved in Appendix B.2.1, motivates two forms of control. The symbolic-complexity penalty prevents uncontrolled symbolic growth, while 
+
+Rcorr prevents a powerful correction network from explaining predictable structure unnecessarily. The resulting decomposition represents an inductive preference; stronger identifiability would require additional assumptions on the grammar, correction class, data support, or relationship between the two function spaces. 9Proposition 4.7 (Regularised allocation to the correction) . Fix the encoders and a symbolic law F .Let 
+
+m(z, ε ) = E[ZT | ZC = z, ε ], (21) 
+
+and suppose the correction ranges over all square-integrable functions. For λ > 0, the minimiser of 
+
+E
+
+h
+
+∥ZT − F (ZC , ε ) − c(ZC , ε )∥22 + λ ∥c(ZC , ε )∥22
+
+i
+
+(22) 
+
+is 
+
+c⋆(z, ε ) = m(z, ε ) − F (z, ε )1 + λ (23) 
+
+almost surely. 
+
+The proof is given in Appendix B.2.2. Intuitively, the regulariser prevents the correction from fully absorbing the discrepancy left by the symbolic law, with larger λ assigning less of that discrepancy to the correction. When λ = 0 , an unrestricted correction absorbs the complete conditional-mean discrepancy m − F . For λ > 0, this discrepancy is shrunk by the factor (1 + λ)−1, limiting how much predictive structure is assigned to the correction. Because Proposition 4.7 holds F fixed, stronger regularisation leaves more discrepancy unexplained in this analytical setting. In the full joint optimisation, however, it encourages structure expressible by the symbolic grammar to be retained in the symbolic law. A finite neural correction generally learns a regularised projection of the residual onto its chosen function class. 4.7 LONG -HORIZON PREDICTION IS A SEPARATE REQUIREMENT 
+
+One-step adequacy does not imply accurate or non-divergent recursive prediction. Let T denote the true latent transition and H the learned hybrid transition. 
+
+Proposition 4.8 (Rollout error under uniform one-step adequacy) . Assume that H(·, u ) is L-Lipschitz for every relevant action or conditioning value u, and that 
+
+sup 
+
+> z,u
+
+∥T (z, u ) − H(z, u )∥2 ≤ δ. (24) 
+
+If 
+
+eh = ∥zt+h − bzt+h∥2 , (25) 
+
+then 
+
+eh ≤ Lhe0 +
+
+
+
+δ Lh − 1
+
+L − 1 , L̸ = 1 ,hδ, L = 1 .
+
+(26) Intuitively, long-horizon error depends not only on the one-step approximation error δ, but also on how strongly the learned transition amplifies existing errors through its Lipschitz constant L.Appendix B.3.1 gives the proof. The bound clarifies both the promise and the limitation of operator compression: a compact law may reduce local approximation error and expose properties relevant to stability analysis, but compactness alone does not guarantee L < 1 or prevent errors from accumulating. Long-horizon prediction must therefore be assessed separately through recursive rollout metrics, divergence rates, and, where appropriate, invariant or attractor statistics. 
+
+# 5 REPRESENTATION AND DYNAMICS LEARNING 
+
+This section turns the constrained principle of Section 4 into a practical learning procedure. We first describe the representation regulariser that preserves informative, non-collapsed latent states. We then introduce a unified practical objective combining prediction, rollout, representation quality, symbolic complexity, and correction control. Finally, we present two deployment modes: end-to-end alternating learning, which jointly adapts the coordinates and their dynamics, and frozen-encoder learning, which discovers dynamics in an existing representation space. Exact experimental instantiations are given in Section 8, while stage-specific objectives and optimisation details are deferred to Appendix C. 10 5.1 A MODULAR REPRESENTATION REGULARISER 
+
+The representation module should preserve information needed for prediction while preventing the collapse shortcut identified in Proposition 4.5. We write its training objective abstractly as 
+
+Lrepr = Lpred + λrLroll + λIB RIB , (27) where λr = 0 when multi-step prediction is not applicable. One information-theoretic choice is the predictive bottleneck 
+
+RMI IB = I( XC ; ZC ) − βrel I( ZC ; ZT ), (28) which compresses the context representation while preserving information relevant to the target (Huang, 2026a). In practice, RIB may instead be implemented using a variational bottleneck, VICReg-style variance and covariance constraints, Barlow Twins, latent noise, dimensional restrictions, or related non-collapse mechanisms. These alternatives are not mathematically equivalent; they are modular ways of enforcing an informative predictive representation. Appendix A.3 describes representative choices. Later, our experiments use a VICReg-style regulariser because its variance term directly prevents constant embeddings, while its covariance and invariance terms discourage redundant coordinates and encourage consistency under the selected observation augmentations. Its exact form is specified with the experimental objectives in Section 8. 5.2 UNIFIED PRACTICAL OBJECTIVE 
+
+A practical scalar relaxation of the constrained objective in Equation (10) is 
+
+Ltrain  
+
+> SJEPA
+
+= Lpred + λrLroll + λIB RIB + λsΩtrain (E, α ) + λcRcorr (ϕ), (29) where all weights are nonnegative. The five terms respectively control one-step prediction, recursive prediction, representation quality, symbolic parsimony, and reliance on the neural correction. The optimisation-compatible complexity Ωtrain may be the discrete structural score Ω( E) or a differentiable surrogate when symbolic coefficients and support are learned continuously. The final discovered law is evaluated using the thresholded structural complexity defined in Equation (4) . Exact forms are given in Appendix C. Different learning stages use restrictions of Equation (29) : terms that are constant or inapplicable in a particular stage are omitted. Because encoder learning and symbolic search are nonconvex, Equation (29) should be understood as a controllable scalarisation of the constrained principle rather than a guaranteed equivalent formulation. Bayesian fitting criteria and downstream planning objectives are separate from this deterministic training loss. 5.3 END -TO -END ALTERNATING LEARNING 
+
+End-to-end SJEPA jointly searches for an informative representation and a compact transition law. Direct joint optimisation is difficult because symbolic structure search is discrete or sparsity-driven, whereas encoder, coefficient, and correction learning are continuous. We therefore alternate between two complementary phases: 1. Dynamics search: hold the encoders fixed and find a compact symbolic law, together with a correction where required, in the current latent coordinates. 2. Space search: hold the symbolic structure fixed or locally relaxed and update the encoder and continuous dynamics parameters so that the representation remains predictive and non-collapsed while supporting a simpler transition. 11 Table 2: The two training modes share the same symbolic–correction transition model.      
+
+> Mode Optimised modules Main trade-off End-to-end Encoders, symbolic law, and correction Can search for coordinates with lower induced-dynamics complexity, but requires alternating opti-misation and explicit non-collapse control. Frozen encoder Symbolic law and correction Reduces training cost and directly uses pretrained representations, but cannot repair coordinates that potentially conceal simple dynamics.
+
+Algorithm 1 Alternating training for end-to-end SJEPA 
+
+Require: Dataset D, context encoder Eθ , target encoder E¯θ , grammar E, number of cycles C 
+
+> 1:
+
+Warm-start (θ, ¯θ) using a neural JEPA predictor and the representation objective in Equation (27)  
+
+> 2:
+
+Initialise symbolic structure E, coefficients α, and correction cϕ 
+
+> 3:
+
+for outer cycle c = 1 , . . . , C do  
+
+> 4:
+
+Encode latent tuples {(Z(i) 
+
+> C
+
+, Z (i) 
+
+> T
+
+, ε (i))} 
+
+> 5:
+
+Dynamics search: fix the encoders and minimise Equation (29) over (E, α, ϕ ), omitting RIB  
+
+> 6:
+
+Space search: fix or locally relax E and minimise Equation (29) over (θ, α, ϕ ) 
+
+> 7:
+
+Update ¯θ by exponential moving average of θ 
+
+> 8:
+
+end for  
+
+> 9:
+
+return (Eθ , E ¯θ , F E,α , c ϕ)
+
+Alternation implements the learned-transform interpretation of Section 4: improved coordinates permit simpler equations, while the symbolic objective provides pressure towards coordinates with lower induced-dynamics complexity. The representation regulariser prevents this pressure from being satisfied through collapse. Detailed phase-specific objectives, differentiable symbolic relaxations, and alternative optimisation schemes are given in Appendix C. 5.4 FROZEN PRETRAINED ENCODERS 
+
+Representation learning is optional . Given a frozen pretrained encoder Epre , such as a ViT, DINO, MAE, I-JEPA, or V-JEPA encoder (Dosovitskiy et al., 2021; Caron et al., 2021; He et al., 2022; Assran et al., 2023; Bardes et al., 2024), define 
+
+ZC = Epre (XC ), ZT = Epre (XT ),
+
+and optimise only (E, α, ϕ ). Because the representation is fixed, RIB and the EMA update are omitted, while the symbolic and correction modules remain unchanged. This mode turns Cdyn (Epre , E pre )
+
+into a diagnostic of whether the pretrained representation already exposes compact dynamics. It is computationally simpler than end-to-end learning, but it cannot reshape coordinates that hide an otherwise simple transition. 
+
+# 6 BAYESIAN SJEPA: U NCERTAINTY OVER LATENT DYNAMICS 
+
+We further introduce uncertainty into dynamics learning through a Bayesian formulation of SJEPA. The encoders remain deterministic and may be trained jointly beforehand or kept frozen, while Bayesian inference is applied only to the latent transition model. In particular, uncertainty is represented over the symbolic structure, its coefficients, the transition covariance, and an optional Gaussian-process correction. 6.1 BAYESIAN SYMBOLIC REGRESSION IN LATENT SPACE 
+
+The deterministic SJEPA formulation selects a single symbolic transition law. With finite data, however, several expressions may explain the observed latent transitions nearly equally well, leaving uncertainty about the symbolic structure, its coefficients, and residual transition variability. Bayesian 12 SJEPA represents this uncertainty explicitly rather than committing immediately to one equation. Throughout this section, the encoders are treated as fixed, so uncertainty is introduced only over the latent dynamics. Given latent transition data 
+
+DZ =
+
+n 
+
+z(i) 
+
+> C
+
+, z (i) 
+
+> T
+
+, ε (i)o ni=1 
+
+,
+
+we model each target embedding as 
+
+z(i) 
+
+> T
+
+| z(i) 
+
+> C
+
+, ε (i), E, α, Σ ∼ N 
+
+
+
+FE,α 
+
+
+
+z(i) 
+
+> C
+
+, ε (i)
+
+, Σ
+
+
+
+. (30) Here, E specifies the symbolic structure, α contains its numerical coefficients, and Σ represents latent transition variability not explained by the symbolic mean. To favour parsimonious laws, we place the complexity prior 
+
+p(E) = exp {− γΩ( E)}
+
+Zγ
+
+, Zγ = X
+
+> E∈ E
+
+exp {− γΩ( E)} , (31) where γ ≥ 0 controls the preference for simpler expressions. We assume that the candidate structure space is finite or countable and that Zγ < ∞. Together with priors p(α | E ) and p(Σ) , Bayes’ rule gives 
+
+p(E, α, Σ | D Z ) ∝ p(DZ | E , α, Σ) p(α | E )p(Σ) p(E). (32) The posterior balances predictive fit, symbolic complexity, and prior plausibility of the coefficients and residual covariance. For a new context embedding zC and side information ε, the posterior predictive distribution averages over plausible symbolic structures and parameter values: 
+
+p(zT | zC , ε, DZ ) = X
+
+> E
+
+Z
+
+p(zT | zC , ε, E, α, Σ) p(E, α, Σ | D Z )d α dΣ . (33) This distribution propagates uncertainty about the symbolic law, its coefficients, and residual transi-tion variability into the predicted target embedding. Bayesian SJEPA can therefore retain several competing explanations when the available data do not identify one law decisively. 
+
+Theorem 6.1 (MAP equivalence for penalised symbolic regression) . Assume that the latent transitions are conditionally independent under Equation (30) , with fixed isotropic covariance Σ = σ2I for 
+
+σ2 > 0. Let 
+
+p(E, α ) = p(α | E )p(E),
+
+where p(E) is the proper complexity prior in Equation (31) . Then any maximum-a-posteriori estimator of (E, α ) minimises 
+
+12σ2
+
+> n
+
+X
+
+> i=1
+
+z(i) 
+
+> T
+
+− FE,α 
+
+
+
+z(i) 
+
+> C
+
+, ε (i) 22
+
++ γΩ( E) − log p(α | E ), (34) 
+
+and any minimiser of Equation (34) is a MAP estimator, provided the extrema exist. 
+
+The proof is given in Appendix B.3.2. Intuitively, the theorem shows that deterministic symbolic penalties can be interpreted as negative log-priors: penalising complex expressions corresponds to assigning them lower prior probability. The symbolic-complexity penalty is induced by the structure prior, while coefficient regularisation is determined by p(α | E ). MAP estimation returns one most probable symbolic law and coefficient vector. By contrast, Equation (33) averages over competing structures and parameter values, retaining uncertainty when the data do not identify one law decisively. 6.2 BAYESIAN HYBRID PREDICTOR WITH A GAUSSIAN -PROCESS CORRECTION 
+
+To represent systematic residual dynamics not captured by the symbolic grammar, we augment the symbolic mean with a Gaussian-process correction 8:
+
+zT = FE,α (zC , ε ) + g(zC , ε ) + η, g ∼ GP (0 , k ), η ∼ N (0 , Σ) . (35)                  
+
+> 8Equation (35) is the direct-transition formulation. For a continuous-time vector-field model observed at step size ∆tt, the corresponding one-step likelihood may instead use
+> zt+1 |zt,∆tt,E, α, g, Σ∆tt∼ N (zt+ ∆ tt[FE,α (zt) + g(zt)] ,Σ∆tt).
+
+13 The Gaussian process represents input-dependent residual structure, whereas η represents transition variability remaining after conditioning on the symbolic law and correction. As in the deterministic hybrid model, the symbolic–GP decomposition is not identifiable from predictive fit alone. Its alloca-tion depends on the symbolic-structure prior, coefficient priors, GP kernel family, kernel-amplitude prior, and transition-noise prior. These priors provide the Bayesian analogue of deterministic correc-tion control: they encode a preference for a compact symbolic explanation with a modest residual correction, but they do not guarantee a unique decomposition. For fixed (E, α ), define the GP input 
+
+si =
+
+
+
+z(i) 
+
+> C
+
+, ε (i)
+
+.
+
+, and the symbolic residual ri = z(i) 
+
+> T
+
+− FE,α 
+
+
+
+z(i) 
+
+> C
+
+, ε (i)
+
+
+
+. Stacking the residuals gives 
+
+r = vec  [r1, . . . , r n]⊤ ∈ Rnd z , (36) where dz is the latent dimension. Let Kg denote the covariance matrix induced by the vector-valued GP over the stacked inputs and outputs. After integrating out g, the residual vector has the marginal distribution 
+
+r | E , α ∼ N (0 , C) , C = Kg + In ⊗ Σ. (37) Let ϑg denote the GP kernel hyperparameters. The corresponding negative log marginal likelihood is (Rasmussen & Williams, 2005) 
+
+− log p(DZ | E , α, ϑ g , Σ) = 12 r⊤C−1r
+
+| {z }
+
+> residual data fit
+
++ 12 log |C|
+
+| {z }
+
+> complexity penalty
+
++ nd z
+
+2 log(2 π). (38) The quadratic term measures the symbolic residual after accounting for the covariance structure permitted by the GP and transition noise. The log-determinant term is an Occam factor: it penalises covariance structures that can explain a broad range of residual functions, unless their additional flexibility is supported by improved fit. The final term is constant with respect to the model parameters. When independent GPs are used for the latent coordinates, Equation (38) decomposes across coordi-nates. Let rj ∈ Rn be the residuals for coordinate j and let 
+
+Cj = Kj + σ2 
+
+> j
+
+In. (37b) Then 
+
+− log p(DZ | E , α, ϑ g , Σ) = 
+
+> dz
+
+X
+
+> j=1
+
+ 12 r⊤ 
+
+> j
+
+C−1 
+
+> j
+
+rj + 12 log |Cj | + n
+
+2 log(2 π)
+
+
+
+. (38b) The Bayesian hybrid predictor provides a probabilistic analogue of the symbolic–correction decompo-sition in deterministic SJEPA. The resulting allocation remains prior-dependent, while the marginal likelihood balances residual fit against the covariance flexibility permitted by the selected GP kernel and quantifies uncertainty about unexplained dynamics. 
+
+# 7 EXPLICIT ACTION DEPENDENCE AND PLANNING 
+
+In control tasks, the side information ε may contain an action ut. For a discrete-time direct-transition model, the action-conditioned predictor is 9
+
+bzt+1 = HE,α,ϕ (zt, u t) = FE,α (zt, u t) + cϕ(zt, u t). (39) The symbolic component makes the role of the action explicit. For example, the discovered law may reveal whether an action affects a particular latent coordinate linearly, through an interaction with the         
+
+> Our later experiments use the deterministic counterpart of this residual formulation, whereas the task-general Bayesian development is written using the direct-transition notation.
+> 9For a continuous-time vector-field realisation, the planner instead uses the integrated transition
+> bzt+1 =HE,α,ϕ, ∆tt(zt, u t) = I∆tt(zt, F E,α +cϕ, u t).
+
+14 current state, or only within a particular operating regime. This provides information that is difficult to extract directly from an opaque neural predictor. When HE,α,ϕ is differentiable, its behaviour around the current (latent) state–action pair (zt, u t) can be approximated by a first-order local model. Define 10 
+
+At = ∂H E,α,ϕ (z, u )
+
+∂z (zt,u t)
+
+, Bt = ∂H E,α,ϕ (z, u )
+
+∂u (zt,u t)
+
+. (40) For small perturbations ∆zt and ∆ut, these matrices give 
+
+∆zt+1 ≈ At∆zt + Bt∆ut. (41) Intuitively, At describes how a small change in the current latent state propagates to the next state, while Bt describes how a small change in the action affects the next state. Thus, At captures local state sensitivity and Bt captures local action sensitivity. These matrices provide a direct interface to classical local analysis. Around an equilibrium (z⋆, u ⋆)
+
+satisfying 
+
+z⋆ = HE,α,ϕ (z⋆, u ⋆), (42) the eigenvalues of A⋆ can be used to assess local stability, while the pair (A⋆, B ⋆) can be examined to determine which latent directions are locally influenced by the available actions. The same local model may also be used by linear or locally linear control procedures, or as an approximation inside iterative trajectory-optimization and model-predictive-control methods. These linearised analyses do not guarantee global stability or controllability; they describe the model only in a neighbourhood of the selected operating point. For polynomial or elementary symbolic expressions, the derivatives of FE,α can often be obtained analytically. Automatic differentiation can be used for the neural correction cϕ, so that 
+
+At = ∂F E,α 
+
+∂z (zt,u t)
+
++ ∂c ϕ
+
+∂z (zt,u t)
+
+, Bt = ∂F E,α 
+
+∂u (zt,u t)
+
++ ∂c ϕ
+
+∂u (zt,u t)
+
+. (43) This decomposition further shows whether the dominant action sensitivity is explained by the symbolic law or delegated to the neural correction. Beyond local analysis, a generic external planner can use the full nonlinear hybrid predictor to simulate candidate action sequences. Let K denote the planning horizon. Starting from the current latent state bzt = zt, the planner recursively computes 
+
+bzt+h+1 = HE,α,ϕ (bzt+h, u t+h), h = 0 , . . . , K − 1. (44) It then selects an action sequence by solving 
+
+u⋆t:t+K−1 = arg min 
+
+> ut:t+K−1
+
+"K−1X
+
+> h=0
+
+ℓ(bzt+h, u t+h) + ℓT (bzt+K )
+
+#
+
+, (45) where ℓ is a stage cost and ℓT is a terminal cost. The planner itself is not the methodological contribution of SJEPA. The contribution is an action-conditioned predictive model whose governing structure can be inspected, differentiated, locally linearised, and used by a range of external planning or control methods. In Bayesian SJEPA, the deterministic rollout can be replaced by a posterior predictive rollout, and the planner may minimise posterior expected cost or a risk-sensitive objective that accounts for uncertainty. Compact action-conditioned laws may also improve sample efficiency and extrapolation by reusing the same structural mechanism across states and action sequences. This remains an empirical hypothesis rather than an unconditional guarantee: a misspecified symbolic grammar, an inaccurate latent representation, or a dominant neural correction can reduce both structural clarity and planning performance. 
+
+> 10
+
+For the forward-Euler realisation HE,α,ϕ, ∆t(z) = z + ∆ t [FE,α (z) + cϕ(z)] , the state Jacobian of the complete transition is 
+
+At = I + ∆ tt
+
+ ∂F E,α 
+
+∂z + ∂c ϕ
+
+∂z 
+
+
+
+> (zt,u t)
+
+,
+
+whereas the corresponding continuous-time local analysis uses the Jacobian of the vector field itself. These two stability criteria should not be conflated. 
+
+15 8 EXPERIMENTS 
+
+We conduct two controlled experiments targeting the two claims that define SJEPA. Experiment 1 asks whether joint representation and operator learning discovers predictive coordinates with simpler induced dynamics than post-hoc equation discovery . Experiment 2 removes representation learning and tests whether correction regularisation preserves a compact symbolic mechanism under controlled grammar misspecification . Detailed data generation, architectures, optimisation settings, checkpoint selection, per-seed equations, and additional metrics are given in Appendix D. Unless stated otherwise, reported values are means and standard deviations over three optimisation seeds. 
+
+Residual dynamics and evaluation protocol. Both experiments instantiate Equation (3) using residual vector-field predictors, 
+
+bzt+1 = zt + ∆ tt [FE,α (zt) + cϕ(zt)] , (46) with cϕ ≡ 0 for symbolic-only models. This parameterisation treats FE,α (zt) + cϕ(zt) as an estimate of the continuous-time latent derivative ˙zt and obtains the next state through a forward-Euler step, while explicitly accounting for variable step sizes ∆tt. Training combines one-step prediction with a ten-step free rollout. Training and model selection use disjoint trajectory splits. Model parameters and symbolic coefficients are learned from the training trajectories, while separate validation trajectories are used to select checkpoints and, in Experiment 1, the best completed alternating cycle. When validation risks are nearly tied, the lower-complexity thresholded symbolic model is preferred. Test and OOD trajectories are used only for final evaluation after all model selection is complete. Experiment 1 evaluates prediction directly in the latent space and evaluates physical-state rollouts after fitting an affine map from training latents to the physical state 11 ; Experiment 2 directly uses the physical state as the latent coordinate, zt = ( qt, p t), so predicted rollouts can be evaluated in physical-state space without fitting an additional affine alignment map. 
+
+Experimental objectives and model selection. Each experimental condition uses the applicable terms from the unified objective in Equation (29) ; Table 3 summarises the active objective terms in each condition. Experiment 1 jointly studies representation and operator learning, whereas Experiment 2 fixes the state coordinates and isolates the allocation between the symbolic law and neural correction. In Experiment 1, the representation regulariser is 
+
+Rexp IB = λinv Linv + λvar Lvar + λcov Lcov + λmean Lmean . (47) Here, Linv encourages consistency under observation augmentation, Lvar imposes a per-coordinate variance floor, Lcov penalises off-diagonal latent covariance, and Lmean provides weak centering. The variance term provides the principal protection against the constant-representation shortcut in Proposition 4.5. The weights in Equation (47) control the relative contributions within Rexp IB , while 
+
+λIB in Equation (29) controls its overall strength. Model parameters are learned from the training trajectories. Checkpoints and, for SJEPA, completed alternating cycles are selected using the held-out validation risk 
+
+Rval = Lval pred + λrLval roll , (48) where λr is the rollout weight used by the corresponding condition. For Experiment 1 conditions that update the encoder, candidates must satisfy the prescribed non-collapse diagnostics; the no-RIB 
+
+and fixed-point diagnostic conditions are exempt from this requirement. Among candidates whose validation risks lie within a predefined relative tolerance, the lower-complexity symbolic law is selected. Full loss definitions, weights, diagnostics, and selection tolerances are given in Appendix D. 8.1 EXPERIMENT 1: L EARNING COORDINATES WITH ELEGANT DYNAMICS 
+
+Design. We simulate the continuous-time pendulum 
+
+˙q = p, ˙p = − sin( q), (49) 
+
+> 11 The affine map converts learned latent coordinates into physical-state coordinates so that rollout errors can be measured meaningfully.
+
+16 Table 3: Active terms from Equation (29) in each experimental condition. A dash indicates that the corresponding term is absent. The unregularised hybrid retains a neural correction but sets λc = 0 , so the correction penalty is inactive.                                                   
+
+> Training condition Lpred Lroll RIB Ωtrain Rcorr
+> Experiment 1: Neural JEPA and warm start ✓✓✓––Experiment 1: post-hoc symbolic ✓✓–✓–Experiment 1: SJEPA dynamics phase ✓✓–✓–Experiment 1: SJEPA space phase ✓✓✓✓–Experiment 1: one-step collapse diagnostic ✓––✓–Experiment 2: symbolic-only models ✓✓–✓–Experiment 2: regularised hybrid ✓✓–✓✓
+> Experiment 2: unregularised hybrid ✓✓–✓–Experiment 2: neural-only dynamics ✓✓–––
+
+using fourth-order Runge–Kutta integration. At each transition, the time step is sampled independently from 
+
+∆tt ∈ { 0.025 , 0.04 , 0.06 }.
+
+The two-dimensional physical state is embedded in a noisy 32 -dimensional observation by combining raw and nonlinear state features and applying fixed orthogonal mixing. Thus, q and p are not supplied as named input coordinates, although they remain linearly recoverable from the noiseless full observation because the raw state features are included. The experiment therefore tests predictive-coordinate selection under high-dimensional mixing and nonlinear distractor features rather than recovery from a genuinely nonlinear observation inverse. The context encoder and its EMA target copy map these observations to a common two-dimensional latent space. We compare: 1. Neural JEPA , which jointly learns the encoder and a neural residual vector field; 2. post-hoc symbolic , which freezes the Neural JEPA coordinates and subsequently fits a symbolic vector field, as detailed in Appendix D.4; 3. SJEPA symbolic , which alternates symbolic-dynamics search and representation-space search with cϕ ≡ 0;4. an unconstrained one-step collapse diagnostic , which removes representation regularisation and rollout supervision and trains the symbolic model using only the one-step objective; 5. a collapsed fixed-point control , in which both encoders are initialised as the same nonzero constant map. The unconstrained one-step diagnostic sets both the representation-regularisation weight and rollout-loss weight to zero in order to expose the one-step fixed-point shortcut directly. It therefore demon-strates that the unconstrained one-step objective can reach the collapse mechanism identified in Proposition 4.5; it is not a matched ablation isolating the effect of removing RIB alone. The collapsed fixed-point control uses the same one-step objective and constructs the degenerate solution explicitly. Because a constant representation is preserved under repeated identity transitions, the existence of the shortcut itself is not specific to one-step training. The symbolic library is 
+
+Θ( z) = 1, z 1, z 2, sin( z1), sin( z2), cos( z1), cos( z2), z 21 , z 22 , z 1z2 . (50) The reported symbolic complexity is the weighted complexity of the terms whose fitted coefficients exceed the fixed reporting threshold specified in Appendix D. 
+
+Joint coordinate search exposes a substantially simpler law. Table 4 compares the 3 predictive models. Neural JEPA achieves the lowest raw prediction and rollout errors, as expected from its flexible neural vector field. The primary operator-compression comparison is therefore between post-hoc symbolic regression and joint symbolic SJEPA. 17 Table 4: Experiment 1 results. Latent MSE is evaluated within each model’s learned embedding space and is therefore coordinate-dependent. Rollout columns report clipped physical-state MSE after applying an affine map fitted only on training latents; divergence thresholds are defined in Appendix D. A dash denotes a metric that is not applicable, and bold identifies the better of the two symbolic methods. Values are mean ± standard deviation over 3 optimisation seeds.                                                      
+
+> Method Latent MSE ↓Ω↓Test rollout ↓OOD rollout ↓OOD divergence ↓
+> Neural JEPA 9.81 ×10 −5±3.93 ×10 −5–0.180 ±0.066 2.376 ±1.433 0.000 ±0.000
+> Post-hoc symbolic 2.09 ×10 −3±2.48 ×10 −326 .00 ±3.24 1.229 ±0.709 9.262 ±4.021 0.178 ±0.143
+> SJEPA symbolic 5.81 ×10 −4±4.39 ×10 −44.67 ±2.49 0.467 ±0.222 3.435 ±1.394 0.017 ±0.024
+
+Joint coordinate search reduces mean symbolic complexity from 26 .0 to 4.67 , a factor of approxi-mately 5.6. Within the respective learned latent spaces, it also reduces one-step latent MSE from 
+
+2.09 × 10 −3 to 5.81 × 10 −4, a factor of approximately 3.6. Because latent MSE depends on the scale and coordinate system of the learned representation, this comparison is descriptive rather than coordinate-invariant. The physical-state rollout results provide a complementary cross-model comparison: joint symbolic SJEPA reduces test rollout MSE from 1.229 to 0.467 , OOD rollout MSE from 9.262 to 3.435 , and OOD divergence rate from 0.178 to 0.017 . Figure 2(a) shows the corresponding reduction in recursively accumulated error. The dominant SJEPA structure is consistent across seeds: every discovered law contains z2 in the equation for ˙z1 and z1 in the equation for ˙z2. Up to a reversal of latent orientation, the learned dynamics are therefore oscillator-like: 
+
+˙z1 ≈ − az 2, ˙z2 ≈ bz 1 + lower-magnitude terms , a, b > 0. (51) To illustrate the difference between the three predictors, consider the selected models for the same seed. Neural JEPA represents the vector field by an unrestricted neural network, 
+
+˙z = fψ (z), (52) and therefore does not produce a closed-form symbolic equation. Symbolic regression fitted post hoc to the Neural JEPA coordinates gives 
+
+˙z1 = −1.189 sin( z2) − 0.602 + 0 .414 cos( z2) + 0 .244 sin( z1) + 0 .238 z22
+
+− 0.188 z1 + 0 .074 cos( z1) + 0 .069 z21 ,
+
+˙z2 = 1 .888 sin( z1) + 1 .133 cos( z1) − 0.967 − 0.386 z1 + 0 .320 z21 − 0.245 z1z2.
+
+By contrast, joint representation and equation learning produces 
+
+˙z1 = −0.806 z2, ˙z2 = 0 .822 z1 + 0 .177 − 0.143 z21 .
+
+The complete per-seed SJEPA equations are reported in Appendix D.5.1. The post-hoc and Neural JEPA models share the same prediction-only coordinates, whereas SJEPA learns a different latent coordinate system. Their coefficients should therefore not be compared term by term. The relevant comparison is whether each representation admits an accurate and compact induced transition. In this example, the prediction-only coordinates require a mixture of polynomial and trigonometric terms, while joint representation and equation learning exposes a much more concise cross-coupled system. Together with Table 4, these results support our operator-compression claim: SJEPA discovers substantially simpler symbolic dynamics and achieves lower physical-state rollout error than symbolic regression fitted post hoc. They do not imply that the symbolic model universally exceeds Neural JEPA in predictive accuracy. Rather, SJEPA trades some predictive flexibility for a considerably more concise and inspectable transition. 
+
+Representation constraints prevent trivial operator compression. The unconstrained one-step diagnostic 12 exhibits the degenerate behaviour predicted by Proposition 4.5. In all 3 seeds, the learned 
+
+> 12
+
+As this diagnostic removes both RIB and rollout supervision, it demonstrates that the unconstrained one-step objective can reach the theoretical fixed-point shortcut; it is not a matched ablation isolating the effect of removing RIB alone. 
+
+18 Table 5: Experiment 1 representation-collapse diagnostics. Latent MSE is evaluated on test transi-tions, while min j Std( Zj ) and Tr(Cov Z) are computed from context embeddings of the training trajectories. Regularised SJEPA is included as a non-collapsed reference; the no-RIB and fixed-point conditions are collapse diagnostics rather than matched predictive baselines. Very low latent pre-diction error is uninformative when absolute latent variation vanishes. Values are mean ± standard deviation over 3 optimisation seeds.                                        
+
+> Method Latent MSE ↓min jStd( Zj)Tr(Cov Z)Ω
+> SJEPA symbolic 5.81 ×10 −4±4.39 ×10 −41.087 ±0.012 2.406 ±0.047 4.67 ±2.49
+> One-step collapse diagnostic 4.15 ×10 −7±1.78 ×10 −70.0137 ±0.0023 (6 .53 ±1.82) ×10 −40
+> Collapsed fixed-point control (7 .00 ±0.88) ×10 −10 (3 .69 ±0.09) ×10 −5<10 −80
+
+(a) Physical-state rollout error (b) Minimum latent coordinate standard deviation Figure 2: Experiment 1 evaluates operator compression and representation collapse. (a) Joint symbolic SJEPA accumulates substantially less physical-state rollout error than symbolic regression fitted post hoc, although the flexible Neural JEPA predictor remains the most accurate. (b) Removing 
+
+RIB causes absolute latent variation to nearly vanish, while the fixed-point control is effectively constant. Curves and error bars show means and one standard deviation over 3 seeds. vector field becomes 
+
+˙z1 = 0 , ˙z2 = 0 .
+
+Under the residual parameterisation in Equation (46) , this zero vector field implements the identity transition bzt+1 = zt. Its latent prediction error is smaller than that of every non-collapsed model, but Table 5 shows that this apparent success is obtained by reducing the representation to a region with almost no variation. The constructive fixed-point control reaches essentially exact collapse at a nonzero constant latent state. Table 4 evaluates the predictive and rollout performance of the three non-collapsed models. Table 5 instead isolates the collapse mechanism by comparing regularised SJEPA with two diagnostic conditions. The no-RIB model tests whether collapse emerges when representation control is removed, while the fixed-point control constructs the constant-representation solution directly. We report absolute latent-variation statistics because a low latent prediction error can be obtained trivially when all observations are encoded near the same point. Figure 2(b) visualises the corresponding loss of latent variation. Relative to the regularised model, the one-step collapse diagnostic reduces the minimum coordinate standard deviation by approximately two orders of magnitude, while the fixed-point control is effectively constant. The experiment therefore distinguishes genuine operator compression from representation collapse: the regularised model retains substantial two-dimensional variation, whereas the unconstrained objective obtains a trivial identity transition by making successive embeddings almost constant. Effective rank alone is insufficient for this diagnosis because it measures relative dimensional usage but is insensitive to the absolute scale of latent variation. As reported in Table 12 (Appendix.D), the learned SJEPA coordinates are less affinely aligned with the original physical state than the prediction-only coordinates: test affine-probe R2 decreases 19 Table 6: Experiment 2 results under controlled grammar mismatch. The normalised correction-energy ratio ρcorr measures reliance on the neural correction and should be interpreted jointly with predictive error and symbolic complexity. Values are mean ± standard deviation over three optimisation seeds.                                                                                      
+
+> Method State MSE ↓Field MSE ↓Ω↓ρcorr Test rollout ↓OOD rollout ↓
+> Symbolic, incomplete (1 .630 ±0.001) ×10 −40.0835 ±0.00004 301.280 ±0.008 1.274 ±0.006
+> Hybrid, regularised (2 .474 ±0.083) ×10 −50.0130 ±0.0004 30.0627 ±0.0012 0.0671 ±0.0034 0.1045 ±0.0031
+> Hybrid, unregularised (1 .888 ±0.038) ×10 −50.0114 ±0.0003 30.555 ±0.042 0.0879 ±0.0141 0.0778 ±0.0081
+> Symbolic, complete (1 .573 ±0.017) ×10 −6(7 .79 ±0.07) ×10 −4600.00462 ±0.00010 0.00344 ±0.00007
+> Neural only (1 .746 ±0.216) ×10 −7(3 .85 ±0.35) ×10 −4––(1 .70 ±0.48) ×10 −40.00184 ±0.00012
+
+from 0.814 ± 0.063 to 0.293 ± 0.154 . We therefore interpret Experiment 1 as evidence that joint learning can produce simpler, non-collapsed latent dynamics, rather than as evidence that operator compression preserves a simple affine correspondence with the original state. An illustrative example of the nonlinear latent geometry learned in Experiment 1 is shown in Figure 4(a). 8.2 EXPERIMENT 2: H YBRID DYNAMICS UNDER CONTROLLED GRAMMAR MISMATCH 
+
+Design. Experiment 2 isolates the transition decomposition by using state-aligned coordinates, namely the physical state, 
+
+z = ( q, p ), (53) and learning no encoder. The true dynamics include quadratic drag: 
+
+˙q = p, ˙p = − sin( q) − 0.4p|p|. (54) The incomplete output-specific grammar permits 
+
+˙q : {p}, ˙p : {sin( q)}, (55) whereas the complete grammar additionally permits p|p| in the second equation. Linear p is de-liberately excluded from ˙p so that it cannot act as a symbolic surrogate for the omitted quadratic drag. We compare symbolic-only dynamics under the incomplete and complete grammars, a neural-only vector field, and hybrid models with and without the correction penalty. The two hybrid models use the incomplete grammar and the same bounded neural correction architecture. Thus, their only methodological difference is whether Rcorr is active. We measure reliance on the neural correction using the normalised correction-energy ratio 
+
+ρcorr = E ∥cϕ(z)∥22
+
+
+
+E [∥FE,α (z) + cϕ(z)∥22] + η0
+
+, η0 = 10 −12 . (Eq.64) A small value indicates limited reliance on the correction, but is meaningful only when considered jointly with predictive error and symbolic complexity. For symbolic-only models, cϕ ≡ 0 and hence 
+
+ρcorr = 0 ; the ratio is not applicable to the neural-only model because it has no symbolic–correction decomposition. 
+
+A complete grammar recovers the governing law. Table 6 shows that the incomplete symbolic model underfits the drag mechanism, whereas restoring the omitted primitive reduces one-step state MSE by approximately two orders of magnitude and test rollout MSE by approximately 277 times. Across all 3 seeds, the complete symbolic model selects exactly the intended three terms and recovers 
+
+˙q = (0 .9830 ± 0.0005) p, ˙p = −(0 .9553 ± 0.0010) sin( q) − (0 .3724 ± 0.0007) p|p|.
+
+The true coefficients are (1 , −1, −0.4) , corresponding to relative errors of approximately 1.7% , 4.5% ,and 6.9% . Figure 3(a) shows the corresponding long-horizon behaviour: the incomplete symbolic law accumulates substantial error, whereas restoring the omitted primitive produces rollouts approaching those of the neural predictor while retaining an explicit governing equation. 20 Table 7: Correction-allocation diagnostics in Experiment 2. Residual denotes the complete test-set 
+
+p-field residual after the fitted symbolic law; drag denotes the isolated contribution −0.4p|p|. The reported R2 values use a scalar calibration fitted on the training set.                                      
+
+> Method ρcorr Corr( cp, r p)R2(cp, r p)Corr( cp,drag) R2(cp,drag)
+> Hybrid, regularised 0.0627 ±0.0012 0.9969 ±0.0002 0.9937 ±0.0004 0.9495 ±0.0014 0.9011 ±0.0028
+> Hybrid, unregularised 0.555 ±0.042 0.9765 ±0.0023 0.9532 ±0.0047 0.4357 ±0.0561 0.1885 ±0.0506
+
+(a) State-space rollout error (b) Recovery of the symbolic residual Figure 3: Experiment 2 evaluates controlled grammar mismatch and symbolic–neural allocation. 
+
+(a) The incomplete symbolic grammar accumulates substantial rollout error, whereas the complete symbolic grammar approaches the neural predictor. Both hybrid models substantially improve over the incomplete symbolic model. (b) For the regularised hybrid using the incomplete grammar, the neural correction closely tracks the held-out p-field residual left by the fitted symbolic component after scalar calibration on the training set. The dashed line denotes exact recovery. 
+
+Correction regularisation preserves the symbolic mechanism. Under the incomplete grammar, the regularised hybrid retains 
+
+˙q = (0 .9581 ± 0.0008) p, ˙p = −(0 .7942 ± 0.0024) sin( q),
+
+and has a normalised correction-energy ratio of 0.0627 . Without Rcorr , the symbolic coefficients shrink to 
+
+˙q = (0 .3324 ± 0.0065) p, ˙p = −(0 .1718 ± 0.0746) sin( q),
+
+while the normalised correction-energy ratio rises to 0.555 . Thus, an unrestricted correction largely takes over dynamics that the symbolic component could otherwise explain. To evaluate whether the correction captures the mechanism omitted by the symbolic law, let 
+
+rp(q, p ) = ftrue ,p (q, p ) − FE,α,p (q, p ) (Eq.81) be the complete residual left in the p vector field. A scalar calibration is fitted using training data and then evaluated on held-out test transitions. Table 7 shows that the regularised correction closely recovers both this total residual and the physical drag term. Figure 3(b) visualises the near one-to-one relationship between the calibrated correction and the complete symbolic residual. The drag-specific comparison is reported as a secondary diagnostic in Figure 4(b). The unregularised model remains predictive, but its correction is much less specifically aligned with the omitted mechanism. The unregularised hybrid attains a numerically lower one-step state MSE, (1 .888 ± 0.038) × 10 −5
+
+compared with (2 .474 ±0.083) ×10 −5 for the regularised hybrid, and a lower mean OOD rollout MSE, 
+
+0.0778 ± 0.0081 compared with 0.1045 ± 0.0031 , as shown in Table 6. Conversely, the regularised hybrid achieves the lower test rollout MSE, 0.0671 ± 0.0034 compared with 0.0879 ± 0.0141 .Consequently, Rcorr should not be interpreted as providing an unconditional accuracy improvement. Its role is to control symbolic–neural allocation: the symbolic component retains the dominant reusable mechanism, while the correction is reserved for residual dynamics that the grammar does not express adequately. 21 8.3 EXPERIMENTS SUMMARY AND SCOPE 
+
+The two experiments support complementary parts of the proposed framework. Experiment 1 shows that operator complexity can guide predictive coordinate selection. Relative to symbolic regression fitted post hoc to frozen Neural JEPA coordinates, joint symbolic SJEPA reduces mean weighted symbolic complexity from 26 .0 to 4.67 , a factor of approximately 5.6 (Table 4). It also reduces physical-state test rollout MSE from 1.229 to 0.467 , OOD rollout MSE from 9.262 to 
+
+3.435 , and OOD divergence rate from 0.178 to 0.017 . Across all three seeds, the discovered laws retain the same dominant oscillator-like cross-coupling between z1 and z2. The within-representation one-step latent MSE is also approximately 3.6 times lower, although this comparison is descriptive because latent MSE depends on the scale and coordinate system of each learned representation. The collapse diagnostics establish the complementary necessity of representation constraints. Remov-ing RIB produces nearly constant embeddings and a zero vector field, which implements an identity transition under the residual parameterisation. The constructive fixed-point control reaches the same degenerate solution directly. Extremely low latent prediction error and zero symbolic complexity can therefore indicate representation collapse rather than successful dynamics discovery, confirming the shortcut identified in Proposition 4.5. These findings do not imply that SJEPA universally outperforms a neural predictor. Neural JEPA remains the most accurate model in raw one-step and rollout prediction. Moreover, the jointly learned symbolic coordinates are less affinely aligned with the original physical state than the prediction-only coordinates. Experiment 1 therefore demonstrates a trade-off: SJEPA sacrifices some predictive flexibility and simple physical-state alignment in exchange for a substantially more concise symbolic transition with lower recursive rollout error and divergence than the post-hoc symbolic baseline. Experiment 2 separates grammar adequacy and symbolic–neural allocation from representation learn-ing. When the grammar contains the required quadratic-drag primitive, the symbolic model selects the intended governing structure in every seed and recovers all coefficients to within approximately 
+
+7% of their true values. Its rollout error approaches that of the neural predictor while retaining an explicit equation, showing that a sufficiently expressive grammar can remove the need for a residual correction in this controlled setting. Under the incomplete grammar, the regularised hybrid retains the representable pendulum terms and has a normalised correction-energy ratio of 0.0627 , compared with 0.555 for the unregularised hybrid. After scalar calibration on the training set, the regularised correction predicts the held-out complete symbolic residual with R2 = 0 .994 and is strongly aligned with the deliberately omitted quadratic-drag mechanism, with drag-specific R2 = 0 .901 . Without Rcorr , the symbolic coefficients shrink substantially and the correction absorbs much of the dynamics that the grammar can already represent. Correction regularisation is nevertheless not an unconditional accuracy improvement. The unregu-larised hybrid attains a numerically lower one-step state MSE and lower mean OOD rollout MSE in this experiment, whereas the regularised hybrid attains the lower test rollout MSE. The role of 
+
+Rcorr is therefore explanatory allocation: it encourages the symbolic component to retain compact representable structure and reserves the neural component for the remaining residual, rather than guaranteeing the smallest prediction error under every evaluation condition. These experiments are controlled diagnostics rather than evidence of large-scale generality. They test coordinate selection, representation collapse, grammar adequacy, rollout behaviour, and symbolic– neural allocation in systems where the underlying state and omitted mechanism are known. Evaluation with visual observations at scale, genuinely pretrained foundation encoders, action-conditioned control tasks, real scientific datasets, and Bayesian posterior calibration remains future work. 
+
+# 9 DISCUSSION 
+
+Key innovation. The contribution of SJEPA is not merely to insert symbolic regression into a JEPA predictor, and joint coordinate–equation learning has important precedents. Its distinctive contribution is to make the complexity of the induced transition operator an explicit criterion for learning a reconstruction-free predictive representation. The symbolic law is therefore not fitted only 22 as a post-hoc explanation of fixed coordinates; in the end-to-end mode, it directly influences which predictive coordinates are selected. The constrained formulation, induced-dynamics complexity, and collapse analysis formalise this principle as learning the simplest adequate dynamics over an informative, non-collapsed state. A second innovation is the controlled symbolic–neural decomposition HE,α,ϕ = FE,α + cϕ. The symbolic component represents the dominant reusable mechanism, while the correction accounts for predictive structure that the selected grammar cannot express adequately. Because this decomposition is not identifiable from prediction loss alone, the symbolic-complexity and correction penalties encode an explicit allocation preference. The framework thereby addresses two coupled questions: which coordinates expose compact dynamics, and how predictable structure should be allocated between an explicit symbolic law and a flexible residual model. 13 ?
+
+Empirical implications. The controlled experiments validate the two main deterministic conse-quences of the framework. First, allowing operator complexity to influence representation learning produces substantially more concise symbolic dynamics with lower rollout error and divergence than fitting equations post hoc, provided that explicit representation constraints prevent collapse. Second, correction regularisation controls how predictable structure is allocated between the symbolic law and neural residual under grammar misspecification. These findings establish a controllable trade-off among predictive fidelity, operator simplicity, representation quality, and symbolic–neural allocation rather than a universal improvement in raw predictive accuracy. 
+
+Interpretation of elegant dynamics. A compact symbolic transition can expose signs, interactions, symmetries, action couplings, and candidate invariants that are difficult to inspect in an unrestricted neural predictor. It can also be differentiated, simplified, checked against known constraints, and reused across trajectories. These advantages do not make a learned latent equation automatically physical, causal, or valid outside the observed regime. Its interpretation remains conditional on the learned coordinates, symbolic grammar, data support, predictive tolerance, and adequacy of the residual model. The oscillator-like coordinates discovered in Experiment 1 illustrate both the value and the ambiguity of operator compression. The learned transition is concise and produces substantially lower rollout error than the post-hoc symbolic baseline, but the coordinates are nonlinearly related to the original physical state. Operator compression selects coordinates with simple evolution, not necessarily coordinates with direct physical semantics. Likewise, symbolic simplicity and linear simplicity are not mutually exclusive: the approximately linear oscillator discovered by SJEPA is a special case of compact symbolic dynamics. Comparisons with Koopman-style methods should therefore jointly evaluate predictive risk, operator complexity, coordinate quality, rollout behaviour, and downstream control utility under matched budgets. These results motivate reporting prediction error, rollout stability, symbolic complexity, representation variation, coordinate alignment, and correction reliance together. No single metric is sufficient: low predictive error may accompany collapse, low symbolic complexity may reflect underfitting, and a small correction may simply indicate that an incomplete symbolic model has been left uncorrected. 
+
+Scope, modularity, and limitations. SJEPA is modular with respect to the encoder, representation regulariser, symbolic search procedure, correction architecture, and downstream planner. Experi-ment 1 evaluates the end-to-end mode in which representation and symbolic dynamics are learned jointly. Experiment 2 uses fixed, state-aligned coordinates and isolates the corresponding fixed-coordinate question: whether the supplied representation admits an adequate compact law and how unexplained structure is allocated to a correction. Direct experiments with genuinely pretrained JEPA or foundation encoders remain to be conducted. The empirical validation is deliberately narrow. Both experiments use variants of one controlled pendulum system, two-dimensional states, prescribed symbolic libraries, and 3 optimisation seeds. They do not establish that compact symbolic latent laws will emerge in high-dimensional video, 
+
+> 13 At a broader level, this raises a more general question that we leave to separate work: given a task and dataset, which representation geometry or latent space is most suitable for JEPA learning? Different modelling objectives and selection criteria implicitly favour different latent geometries.
+
+23 partially observed environments, scientific datasets, or embodied control tasks. The present differen-tiable sparse-library implementation also explores a more restricted model class than unrestricted expression-tree symbolic regression. Simplicity is relative to the coordinate system, grammar, primitive weights, coefficient threshold, predictive tolerance, and observed regime. Alternating representation–operator optimisation is more expensive than fitting a single neural predictor, is susceptible to local optima, and does not guarantee recovery of a globally simplest adequate law. A correction with excessive capacity may conceal grammar misspecification, whereas an overly restricted correction may force residual effects into distorted symbolic coefficients. Moreover, discontinuous, stochastic, multiscale, or regime-switching systems may require local, piecewise, hierarchical, context-dependent, or distributional symbolic mechanisms rather than one compact global equation. 
+
+Bayesian and decision-making extensions. The present experiments validate only the deterministic framework. The Bayesian formulation provides uncertainty over symbolic structures, coefficients, residual covariance, and an optional Gaussian-process correction, but posterior calibration and decision-theoretic utility have not yet been evaluated. Similarly, the action-conditioned formulation exposes sensitivities, local linearisations, and an interface to external planning, but the paper reports no control experiment. Claims concerning posterior calibration, sample efficiency, control performance, or uncertainty-aware planning therefore remain hypotheses for future empirical study. 
+
+# 10 CONCLUSION 
+
+We introduced SJEPA, a reconstruction-free joint-embedding predictive framework that learns latent transitions as compact symbolic laws with optional neural corrections. Its central principle is to complement representation learning with operator compression: the representation must preserve an informative, non-collapsed predictive state, while the transition model should realise the simplest adequate law over that state. We formalised this principle through constrained operator compression and induced-dynamics complexity, characterised the coordinate non-identifiability of predictive representations, identified the collapse shortcut introduced by unconstrained dynamics simplification, and analysed how correction regularisation controls the allocation between symbolic and neural dynamics. The framework supports both alternating representation–equation learning and symbolic dynamics over fixed representations, with Bayesian and action-conditioned formulations providing extensions to uncertainty and decision making. The controlled experiments support the two principal deterministic claims. Joint representation and symbolic-dynamics learning reduces symbolic complexity by approximately 5.6 times and produces substantially lower physical-state rollout error and OOD divergence than symbolic regression fitted post hoc to prediction-only coordinates. The unconstrained one-step diagnostic yields near-constant embeddings and trivial identity dynamics, demonstrating that the predicted collapse shortcut is attainable and that operator simplicity is meaningful only for an admissible representation. Under controlled grammar misspecification, a complete grammar recovers the governing structure and coefficients consistently, while correction regularisation reduces the normalised correction-energy ratio from 0.555 to 0.0627 and yields a residual correction with calibrated test R2 = 0 .994 , while limiting unnecessary reliance on the correction for representable dynamics. These findings expose a controllable trade-off rather than a universal accuracy advantage. Flexible neural predictors remain more accurate, learned symbolic coordinates need not be simply aligned with physical variables, and correction regularisation may exchange some predictive flexibility for more controlled symbolic–neural allocation. The central conclusion is therefore that operator compression can select predictive coordinates whose induced dynamics are simple yet adequate, while representation constraints and correction control ensure that this simplicity is achieved by compressing the transition law rather than collapsing the representation or delegating the dynamics to the neural correction. 
+
+# REFERENCES 
+
+Alexander A. Alemi, Ian Fischer, Joshua V. Dillon, and Kevin Murphy. Deep variational information bottleneck. In International Conference on Learning Representations , 2017. URL https: 
+
+24 //openreview.net/forum?id=HyxQzBceg .Mahmoud Assran, Quentin Duval, Ishan Misra, Piotr Bojanowski, Pascal Vincent, Michael Rabbat, Yann LeCun, and Nicolas Ballas. Self-supervised learning from images with a joint-embedding predictive architecture. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 15619–15629, 2023. Mido Assran, Adrien Bardes, David Fan, Quentin Garrido, Russell Howes, Mojtaba, Komeili, Matthew Muckley, Ammar Rizvi, Claire Roberts, Koustuv Sinha, Artem Zholus, Sergio Arnaud, Abha Gejji, Ada Martin, Francois Robert Hogan, Daniel Dugas, Piotr Bojanowski, Vasil Khalidov, Patrick Labatut, Francisco Massa, Marc Szafraniec, Kapil Krishnakumar, Yong Li, Xiaodong Ma, Sarath Chandar, Franziska Meier, Yann LeCun, Michael Rabbat, and Nicolas Ballas. V-jepa 2: Self-supervised video models enable understanding, prediction and planning, 2025. URL 
+
+https://arxiv.org/abs/2506.09985 .Randall Balestriero and Yann LeCun. Lejepa: Provable and scalable self-supervised learning without the heuristics, 2025. URL https://arxiv.org/abs/2511.08544 .Adrien Bardes, Jean Ponce, and Yann LeCun. VICReg: Variance-invariance-covariance regularization for self-supervised learning. In International Conference on Learning Representations , 2022. URL 
+
+https://openreview.net/forum?id=xm6YD62D1Ub .Adrien Bardes, Jean Ponce, and Yann LeCun. Mc-jepa: A joint-embedding predictive architecture for self-supervised learning of motion and content features, 2023. URL https://arxiv.org/ abs/2307.12698 .Adrien Bardes, Quentin Garrido, Jean Ponce, Xinlei Chen, Michael Rabbat, Yann LeCun, Mido Assran, and Nicolas Ballas. Revisiting feature prediction for learning visual representations from video. Transactions on Machine Learning Research , 2024. ISSN 2835-8856. URL https: //openreview.net/forum?id=QaCCuDfBk2 .Luca Biggio, Tommaso Bendinelli, Alexander Neitz, Aurelien Lucchi, and Giambattista Parascandolo. Neural symbolic regression that scales. In Proceedings of the 38th International Conference on Machine Learning , volume 139 of Proceedings of Machine Learning Research . PMLR, 2021. Steven L. Brunton, Bingni W. Brunton, Joshua L. Proctor, and J. Nathan Kutz. Koopman invariant subspaces and finite linear representations of nonlinear dynamical systems for control. PLOS ONE , 11(2):1–19, 02 2016a. doi: 10.1371/journal.pone.0150171. URL https://doi.org/ 10.1371/journal.pone.0150171 .Steven L. Brunton, Joshua L. Proctor, and J. Nathan Kutz. Discovering governing equations from data by sparse identification of nonlinear dynamical systems. Proceedings of the National Academy of Sciences , 113(15):3932–3937, 2016b. doi: 10.1073/pnas.1517384113. URL https://www. pnas.org/doi/abs/10.1073/pnas.1517384113 .Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J ´egou, Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerging properties in self-supervised vision transformers. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pp. 9650–9660, 2021. Kathleen Champion, Bethany Lusch, J. Nathan Kutz, and Steven L. Brunton. Data-driven discovery of coordinates and governing equations. Proceedings of the National Academy of Sciences , 116 (45):22445–22451, 2019. doi: 10.1073/pnas.1906995116. URL https://www.pnas.org/ doi/abs/10.1073/pnas.1906995116 .Delong Chen, Mustafa Shukor, Theo Moutakanni, Willy Chung, Jade Yu, Tejaswi Kasarla, Yejin Bang, Allen Bolourchi, Yann LeCun, and Pascale Fung. Vl-jepa: Joint embedding predictive architecture for vision-language, 2026. URL https://arxiv.org/abs/2512.10942 .Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David K Duvenaud. Neural ordinary differential equations. In S. Bengio, H. Wallach, H. Larochelle, K. Grauman, N. Cesa-Bianchi, and R. Garnett (eds.), Advances in Neural Information Processing Systems , volume 31. Curran Asso-ciates, Inc., 2018. URL https://proceedings.neurips.cc/paper_files/paper/ 2018/file/69386f6bb1dfed68692a24c8686939b9-Paper.pdf .25 Miles Cranmer. Interpretable machine learning for science with pysr and symbolicregression.jl, 2023. URL https://arxiv.org/abs/2305.01582 .Miles Cranmer, Alvaro Sanchez-Gonzalez, Peter Battaglia, Rui Xu, Kyle Cranmer, David Spergel, and Shirley Ho. Discovering symbolic models from deep learning with inductive biases. In 
+
+Proceedings of the 34th International Conference on Neural Information Processing Systems ,NIPS ’20, Red Hook, NY, USA, 2020. Curran Associates Inc. ISBN 9781713829546. Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is worth 16x16 words: Transformers for image recognition at scale. In International Conference on Learning Representations , 2021. URL https://openreview. net/forum?id=YicbFdNTTy .Jean-Bastien Grill, Florian Strub, Florent Altch ´e, Corentin Tallec, Pierre H. Richemond, Elena Buchatskaya, Carl Doersch, Bernardo Avila Pires, Zhaohan Daniel Guo, Mohammad Gheshlaghi Azar, Bilal Piot, Koray Kavukcuoglu, R ´emi Munos, and Michal Valko. Bootstrap your own latent a new approach to self-supervised learning. In Proceedings of the 34th International Conference on Neural Information Processing Systems , NIPS ’20, Red Hook, NY, USA, 2020. Curran Associates Inc. ISBN 9781713829546. David Ha and J ¨urgen Schmidhuber. Recurrent world models facilitate policy evolution. In S. Bengio, H. Wallach, H. Larochelle, K. Grauman, N. Cesa-Bianchi, and R. Garnett (eds.), 
+
+Advances in Neural Information Processing Systems , volume 31. Curran Associates, Inc., 2018. URL https://proceedings.neurips.cc/paper_files/paper/2018/ file/2de5d16682c3c35007e4e92982f1a2ba-Paper.pdf .Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr Doll ´ar, and Ross Girshick. Masked autoencoders are scalable vision learners. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pp. 16000–16009, June 2022. Naiwen Hu, Haozhe Cheng, Yifan Xie, Shiqi Li, and Jihua Zhu. 3d-jepa: A joint embedding predictive architecture for 3d self-supervised representation learning, 2024. URL https:// arxiv.org/abs/2409.15803 .Yongchao Huang. On the information bottleneck of VJEPA. HAL preprint, 2026a. URL https: //hal.science/hal-05622405 . HAL: hal-05622405. Yongchao Huang. VJEPA: Variational joint embedding predictive architectures as probabilistic world models. In Forty-third International Conference on Machine Learning , 2026b. URL 
+
+https://openreview.net/forum?id=omJqMJt2fC .Yongchao Huang and Hassan Raza. Knowledge, rules and their embeddings: Two paths towards neuro-symbolic JEPA. arXiv preprint arXiv:2603.13265 , 2026. E. Kaiser, J. N. Kutz, and S. L. Brunton. Sparse identification of nonlinear dynamics for model predictive control in the low-data limit. Proceedings of the Royal Society A: Mathematical, Physical and Engineering Sciences , 474(2219):20180335, 11 2018. ISSN 1364-5021. doi: 10.1098/rspa.2018.0335. URL https://doi.org/10.1098/rspa.2018.0335 .John R. Koza. Genetic Programming: On the Programming of Computers by Means of Natural Selection . MIT Press, Cambridge, MA, 1992. ISBN 9780262111706. Yann LeCun. A path towards autonomous machine intelligence. OpenReview preprint, 2022. URL 
+
+https://openreview.net/forum?id=BZ5a1r-kVsf .Bethany Lusch, J. Nathan Kutz, and Steven L. Brunton. Deep learning for universal linear embeddings of nonlinear dynamics. Nature Communications , 9:4950, 2018. doi: 10.1038/s41467-018-07210-0. URL https://doi.org/10.1038/s41467-018-07210-0 .Paolo Muratore and Mackenzie Weygandt Mathis. Extracting governing equations from latent dynamics via multi-view contrastive learning, 2026. URL https://arxiv.org/abs/2606. 13260 .26 Brenden K Petersen, Mikel Landajuela Larma, Terrell N. Mundhenk, Claudio Prata Santiago, Soo Kyung Kim, and Joanne Taery Kim. Deep symbolic regression: Recovering mathematical expressions from data via risk-seeking policy gradients. In International Conference on Learning Representations , 2021. URL https://openreview.net/forum?id=m5Qsh0kBQG .Ingmar Posner, Anson Lei, and Bernhard Sch ¨olkopf. From observation to insight: Mechanistic world models and the quest for autonomous discovery, 2026a. URL https://arxiv.org/abs/ 2607.12474 .Ingmar Posner, Anson Lei, and Bernhard Sch ¨olkopf. From observation to insight: Mechanistic world models and the quest for autonomous discovery, 2026b. URL https://arxiv.org/abs/ 2607.12474 .Carl Edward Rasmussen and Christopher K. I. Williams. Gaussian Processes for Machine Learning .The MIT Press, 11 2005. ISBN 9780262256834. doi: 10.7551/mitpress/3206.001.0001. URL 
+
+https://doi.org/10.7551/mitpress/3206.001.0001 .Ayumu Saito, Prachi Kudeshia, and Jiju Poovvancheri. Point-jepa: Joint embedding predictive architecture for 3d point cloud self-supervised learning. In IEEE/CVF Winter Conference on Applications of Computer Vision (WACV) , 2025. Michael Schmidt and Hod Lipson. Distilling free-form natural laws from experimental data. Science ,324(5923):81–85, 2009. doi: 10.1126/science.1165893. URL https://www.science.org/ doi/abs/10.1126/science.1165893 .Naftali Tishby, Fernando C. Pereira, and William Bialek. The information bottleneck method. In 
+
+Proceedings of the 37th Annual Allerton Conference on Communication, Control, and Computing ,pp. 368–377, 1999. Ludovic Tuncay, Etienne Labb ´e, Emmanouil Benetos, and Thomas Pellegrini. Audio-jepa: Joint-embedding predictive architecture for audio representation learning, 2025. URL https:// arxiv.org/abs/2507.02915 .Aleksandar Vujinovic and Aleksandar Kovacevic. Act-jepa: Novel joint-embedding predictive architecture for efficient policy representation learning. arXiv preprint arXiv:2501.14622 , 2025. Alexey Yermakov, David Zoro, L. Mars Gao, and J. Nathan Kutz. T-shred: symbolic regression for regularization and model discovery with transformer shallow recurrent decoders. Philosophical Transactions of the Royal Society A: Mathematical, Physical and Engineering Sciences , 384 (2317):20240586, 04 2026. ISSN 1364-503X. doi: 10.1098/rsta.2024.0586. URL https: //doi.org/10.1098/rsta.2024.0586 .Jure Zbontar, Li Jing, Ishan Misra, Yann LeCun, and St ´ephane Deny. Barlow twins: Self-supervised learning via redundancy reduction. In Proceedings of the 38th International Conference on Machine Learning , volume 139 of Proceedings of Machine Learning Research , pp. 12310–12320. PMLR, 2021. 
+
+# A OBJECTIVES AND REPRESENTATION CONSTRAINTS 
+
+A.1 NOTATION 
+
+A.2 TEMPORAL OBJECTIVES AND CORRECTION DIAGNOSTICS 
+
+For temporal tuples 
+
+(X≤t, X t+1: t+K , ε t:t+K−1) ,
+
+and, for continuous-time models, step sizes ∆tt:t+K−1, define 
+
+zt = Eθ (X≤t), (56) 
+
+ztar  
+
+> t+h
+
+= E¯θ (Xt+h), h = 1 , . . . , K. (57) 27 Table 8: Main notation. Operator-complexity quantities are defined relative to the selected latent normalisation, symbolic grammar, correction class, and evaluation distribution. 
+
+Symbol Meaning 
+
+XC , X T Context and target observations or temporal segments. 
+
+ZC , Z T Context and target embeddings in a common ambient latent space. 
+
+ε Predictor side information, such as masks, time offsets, actions, goals, or interventions. 
+
+Eθ , E ¯θ Context and target encoders; E¯θ may be an EMA copy of Eθ .
+
+E, α Symbolic expression structure and its numerical coefficients. 
+
+FE,α , c ϕ, H E,α,ϕ Symbolic component, neural correction, and complete direct-transition pre-dictor, with HE,α,ϕ = FE,α + cϕ.
+
+VE,α,ϕ , I∆t, H E,α,ϕ, ∆t Hybrid latent vector field, integration operator, and resulting temporal transi-tion, HE,α,ϕ, ∆t = I∆t(z, V E,α,ϕ , ε ).
+
+Ω, Rcorr , Γ Symbolic complexity, correction regulariser, and combined operator-complexity score, Γ = Ω + λcRcorr .
+
+RIB Information-bottleneck or representation-quality regulariser. 
+
+Θrepr Admissible class of informative, non-collapsed representations satisfying the selected latent-scale convention. 
+
+Cdyn (Eθ , E ¯θ ) Minimum adequate operator-complexity score induced by the encoders. 
+
+Lpred , Lroll One-step predictive risk and multi-step rollout risk. 
+
+δpred , δ roll Optional one-step and rollout adequacy tolerances; ε is not used for tolerances. 
+
+ρcorr Normalised correction-energy ratio. 
+
+The target encoder supplies slowly moving prediction targets in the same ambient latent space as the context encoder. To cover both temporal realisations, define the complete one-step transition used at rollout step h by 
+
+Ht+h(z) = 
+
+(HE,α,ϕ (z, ε t+h) , direct-transition realisation ,
+
+I∆tt+h (z, V E,α,ϕ , ε t+h) , vector-field realisation . (58) The free recursive rollout is 
+
+bzt = zt, bzt+h+1 = Ht+h (bzt+h) , h = 0 , . . . , K − 1. (59) For the forward-Euler realisation used in the reported experiments, Equation (58) becomes 
+
+Ht+h(z) = z + ∆ tt+h [FE,α (z, ε t+h) + cϕ (z, ε t+h)] . (60) The rollout loss is 
+
+Lroll =
+
+> K
+
+X
+
+> h=1
+
+whd  bzt+h, sg  ztar 
+
+> t+h
+
+ , wh ≥ 0. (61) Teacher-forced and free-rollout terms may be combined. For temporal applications in which recursive accuracy is part of the required notion of adequacy, the constrained formulation may additionally impose 
+
+Lroll ≤ δroll .
+
+The task-general definition retains only the one-step constraint because recursive rollout is not defined for every JEPA context–target relation. When correction control is applied during temporal rollout, the correction output may be penalised at every recursively visited state. In the vector-field realisation, the correction penalty and diagnostics are evaluated on the raw vector-field correction cϕ before numerical integration and before multiplication by ∆t. This prevents them from depending artificially on the integration step size. The correction-energy ratio is evaluated on the decomposed predictive object itself: the complete predicted target in the direct-transition realisation, or the latent vector field in the continuous-time realisation. Define 
+
+GE,α,ϕ (z, ε ) = 
+
+(HE,α,ϕ (z, ε ), direct-transition realisation ,VE,α,ϕ (z, ε ), vector-field realisation . (62) 28 The normalised correction-energy ratio is 
+
+ρcorr =
+
+E
+
+h
+
+∥cϕ(ZC , ε )∥22
+
+i
+
+E
+
+h
+
+∥G E,α,ϕ (ZC , ε )∥22
+
+i
+
++ η0
+
+, η0 > 0. (63) For the vector-field experiments, this reduces to 
+
+ρcorr =
+
+E
+
+h
+
+∥cϕ(z)∥22
+
+i
+
+E
+
+h
+
+∥FE,α (z) + cϕ(z)∥22
+
+i
+
++ η0
+
+. (64) The residual identity contribution z in Equation (60) and the factor ∆t are excluded because they are not part of the symbolic–neural decomposition of the vector field. A low value of ρcorr indicates limited reliance on the correction, but is not automatically preferable: a near-zero correction paired with high predictive error may indicate underfitting. The ratio is therefore interpreted jointly with predictive risk and symbolic complexity. Because the symbolic and correction components need not be orthogonal, ρcorr is a normalised energy ratio rather than an additive fraction of the total dynamics. A.3 REPRESENTATION REGULARISATION 
+
+The theory requires an admissible, non-collapsed predictive representation. Different implementations impose different assumptions. Table 9: Representative implementations of RIB . VICReg and Barlow Twins are practical surrogates for representation quality and non-collapse, not exact estimators of the mutual-information bottleneck. 
+
+Form Example objective Role in SJEPA Predictive mutual information 
+
+I( XC ; ZC ) − βrel I( ZC ; ZT ) Direct statement of relevant compression; diffi-cult to estimate in high dimension. Variational bottle-neck 
+
+ExKL( qθ (z | x)∥p0(z)) plus predictive loss Controls representational rate and supports stochastic encoders. VICReg-style invariance + variance + covari-ance Prevents constant collapse, encourages consis-tency under selected augmentations, and reduces linear redundancy. Barlow Twins-style cross-correlation toward identity Encourages invariance and redundancy reduc-tion without an explicit rate term. Dimensional bottle-neck fixed low dz or rank penalty Simple capacity control; may remove relevant variables if too restrictive. Latent noise ez = z + η, η ∼ pη Discourages fragile encodings and can regularise symbolic search. Explicit admissibil-ity 
+
+Var( Zj ) ≥ vmin and off-diagonal covariance bounds Directly rules out constant and highly redundant representations. 
+
+A concrete VICReg-style instance is 
+
+RVIC IB = λinv Linv + λvar Lvar + λcov Lcov . (65) The three terms are the usual invariance, per-coordinate variance-floor, and off-diagonal covariance penalties. In SJEPA, the variance term blocks the constant-coordinate shortcut of Proposition 4.5; the covariance term discourages redundant linear dependence between coordinates; and the invariance term encourages consistency under the specified observation augmentations. The experimental instantiation in Appendix D additionally includes a weak mean-centering term λmean Lmean .29 B PROOFS 
+
+B.1 PREDICTIVE COORDINATES AND COLLAPSE 
+
+B.1.1 PROOF OF PROPOSITION 4.4 For almost every training tuple, 
+
+eF ( eE(XC ), ε ) = h  F  h−1(h(E(XC ))) , ε  
+
+= h(F (E(XC ), ε )) = h(E(XT )) = eE(XT ).
+
+Thus, the transformed representation is equally exact. Symbolic complexity is not invariant under general conjugacies: a simple linear or polynomial F can become a complicated rational, transcenden-tal, or non-representable eF , and conversely. Therefore, predictive exactness alone does not identify coordinates, while an operator-complexity criterion can distinguish them. □
+
+B.1.2 PROOF OF PROPOSITION 4.5 Under the constant encoders, 
+
+ZC = ZT = z0
+
+for every example. By assumption, 
+
+H0(z0, ε ) = z0
+
+for every admissible ε. Hence 
+
+d (H0(ZC , ε ), Z T ) = d(z0, z 0) = 0 ,
+
+and therefore Lpred = 0 . Every feasible model has nonnegative predictive loss, while H0 attains the minimum weighted operator penalty by assumption. Consequently, (E0, E 0, H 0) attains the global lower bound of the unconstrained objective. □
+
+B.2 SYMBOLIC –N EURAL ALLOCATION 
+
+B.2.1 PROOF OF PROPOSITION 4.6 Direct substitution gives 
+
+(FE,α + r) + ( cϕ − r) = FE,α + cϕ.
+
+Both decompositions therefore induce identical predictions on every input and have identical predic-tive risk. Unless the penalties or function classes distinguish them, the allocation of structure is not identifiable. □
+
+B.2.2 PROOF OF PROPOSITION 4.7 Condition on (ZC , ε ) = ( z, e ) and write m = m(z, e ) and a = F (z, e ). For any correction value c,
+
+E[∥ZT − a − c∥22 | z, e ] = E[∥ZT − m∥22 | z, e ] + ∥m − a − c∥22, (66) because the conditional cross term vanishes. The first term does not depend on c. Hence the conditional objective is 
+
+q(c) = ∥m − a − c∥22 + λ∥c∥22.
+
+It is strictly convex for λ > 0, and 
+
+∇cq(c) = −2( m − a − c) + 2 λc. 
+
+Setting the gradient to zero gives (1 + λ)c = m − a, proving Equation (23) . Integrating the pointwise minimiser over (ZC , ε ) completes the proof. □
+
+30 B.3 ROLLOUT AND BAYESIAN RESULTS 
+
+B.3.1 PROOF OF PROPOSITION 4.8 For the same action ut+h in the true and learned rollouts, 
+
+eh+1 = ∥T (zt+h, u t+h) − H(bzt+h, u t+h)∥2
+
+≤ ∥ T (zt+h, u t+h) − H(zt+h, u t+h)∥2
+
++ ∥H(zt+h, u t+h) − H(bzt+h, u t+h)∥2
+
+≤ δ + Le h.
+
+Iterating this recursion yields 
+
+eh ≤ Lhe0 + δ
+
+> h−1
+
+X
+
+> j=0
+
+Lj .
+
+Evaluating the geometric sum gives Equation (26). □
+
+B.3.2 PROOF OF THEOREM 6.1 Under the conditionally independent Gaussian model in Equation (30) and the isotropic covariance assumption Σ = σ2I, the negative log-likelihood is 
+
+− log p(DZ | E , α, σ 2I) = nd z
+
+2 log(2 πσ 2)+ 12σ2
+
+> n
+
+X
+
+> i=1
+
+z(i) 
+
+> T
+
+− FE,α 
+
+
+
+z(i) 
+
+> C
+
+, ε (i) 22
+
+,
+
+where dz is the target-embedding dimension. From the structure prior in Equation (31), 
+
+− log p(E) = γΩ( E) + const .
+
+Bayes’ rule gives 
+
+− log p(E, α | D Z ) = − log p(DZ | E , α, σ 2I) − log p(α | E ) − log p(E) + const = 12σ2
+
+> n
+
+X
+
+> i=1
+
+z(i) 
+
+> T
+
+− FE,α 
+
+
+
+z(i) 
+
+> C
+
+, ε (i) 22
+
++ γΩ( E) − log p(α | E ) + const ,
+
+where the final constant is independent of (E, α ). Therefore, maximising the posterior is equivalent to minimising the objective in Equation (34). □
+
+# C SYMBOLIC MODEL AND OPTIMISATION 
+
+C.1 GRAMMAR AND STRUCTURAL COMPLEXITY 
+
+This subsection describes a general expression-tree realisation of SJEPA. The reported experiments instead use the fixed differentiable symbolic libraries specified in Appendix D. A grammar should be expressive enough to represent plausible mechanisms but small enough to make search and structural analysis meaningful. A generic typed grammar is 
+
+E ::= α | zj | εk | E + E | E − E | E × E | safeDiv( E, E) | sin( E) | cos( E) | exp clip (E) | log safe (E).
+
+Domain-safe operators avoid undefined evaluations during search. For vector dynamics, one expres-sion is learned per target coordinate, with optional shared subexpressions. A weighted-tree complexity may satisfy 
+
+wconstant < w linear < w product < w division < w transcendental ,
+
+31 or use a code length derived from operator frequencies. Complexity weights must be fixed before test evaluation or tuned on validation data; otherwise, equation simplicity can be selected post hoc. For unrestricted expression-tree search, equivalent expressions should be canonicalised before scoring. Recommended steps include constant folding, commutative sorting, algebraic simplification, removal of neutral elements, coefficient thresholding, and numerical equivalence checks on held-out points. In the reported sparse-library experiments, the feature ordering is fixed, and canonicalisation reduces primarily to coefficient thresholding and removal of inactive output–term pairs. C.2 DIFFERENTIABLE SPARSE -L IBRARY REALISATION 
+
+For discrete expression-tree search, Ωtrain may equal the structural complexity Ω( E) in Equation (4) .For the differentiable sparse-library implementation used in the experiments, we use 
+
+Ωtrain (E, α ) = 
+
+> dz
+
+X
+
+> j=1
+> P
+
+X
+
+> k=1
+
+wk
+
+q
+
+α 2 
+
+> kj
+
++ ξα, ξα > 0, (67) where αkj is the coefficient of library term k in output coordinate j, and P denotes the number of candidate library terms. This smooth quantity guides optimisation, while the thresholded support is used to compute the reported structural complexity Ω( bE).C.3 STAGE -S PECIFIC OBJECTIVES 
+
+The practical training objective in Equation (29) contains five common components. Each optimisa-tion stage restricts its trainable variables and omits terms that are constant or inapplicable. 
+
+Representation warm start. Before symbolic search, the encoder and a neural predictor are trained using 
+
+Lwarm = Lpred + λrLroll + λIB RIB . (68) The target encoder is updated by exponential moving average. 
+
+Dynamics search. With the encoders fixed, the dynamics phase minimises 
+
+Ldyn = Lpred + λrLroll + λsΩtrain (E, α ) + λcRcorr (ϕ) (69) over (E, α, ϕ ).
+
+Space search. With the discrete symbolic structure fixed or locally relaxed, the space phase minimises 
+
+Lspace = Lpred + λrLroll + λIB RIB + λsΩtrain (E, α ) + λcRcorr (ϕ) (70) over the encoder and continuously optimised dynamics parameters. When both E and α are fixed, the symbolic-complexity term is constant and may be omitted. When α or a relaxed support remains trainable, the term remains active. 
+
+Frozen-encoder search. For a permanently frozen encoder, the objective becomes 
+
+Lfrozen = Lpred + λrLroll + λsΩtrain (E, α ) + λcRcorr (ϕ), (71) optimised only over (E, α, ϕ ).C.4 RELATION BETWEEN CONSTRAINED AND PENALISED FORMULATIONS 
+
+For completeness, consider a finite-dimensional convex relaxation with objective Γ( w) and convex constraints gj (w) ≤ 0. If Slater’s condition holds, strong duality gives multipliers λ⋆j ≥ 0 such that every primal optimum minimises 
+
+Γ( w) + X
+
+> j
+
+λ⋆j gj (w).
+
+32 This standard result motivates Equation (29) . It does not establish global equivalence for neural encoders, discrete expression search, or nonconvex correction models. In those settings, constraint-aware search and Pareto reporting are safer than interpreting one penalty weight as canonical. Equation (29) should therefore be interpreted as a scalarisation of the constrained principle. The regularisation weights control trade-offs rather than recovering a unique constrained optimum. Models should be assessed jointly using predictive error, rollout error, symbolic complexity, representation-collapse diagnostics, and the normalised correction-energy ratio. Across multiple regularisation settings, this gives the empirical trade-off 
+
+
+
+Lpred , Lroll , Ω( bE), ρ corr 
+
+
+
+,
+
+subject to an admissible non-collapsed representation. 
+
+# D DETAILED EXPERIMENTAL SETUP AND ADDITIONAL RESULTS 
+
+This section gives the complete implementation details for the two experiments in Section 8. Both experiments use the same continuous-time simulator, residual-predictor convention, trajectory counts, temporal windows, and validation-based checkpoint procedure unless stated otherwise. D.1 EXPERIMENTAL PROTOCOL 
+
+Simulation and data splits. The physical state is s = ( q, p ), with vector field 
+
+fκ(q, p ) = 
+
+ p
+
+− sin( q) − κp |p|
+
+
+
+. (72) Experiment 1 uses κ = 0 , whereas Experiment 2 uses κ = 0 .4. Trajectories are generated using fourth-order Runge–Kutta integration. At every transition, the time step is sampled independently from 
+
+∆t ∈ { 0.025 , 0.04 , 0.06 }.
+
+Each experiment uses 300 training trajectories, 80 validation trajectories, 80 test trajectories, and 80 
+
+OOD trajectories, with 100 transitions per trajectory. The initial-state ranges are listed in Table 10. Table 10: Initial-state ranges used to generate trajectories. Validation and test sets use independent trajectories from the same ranges.                              
+
+> Experiment Split q0range p0range Experiment 1 Train [−1.8,1.8] [−1.4,1.4]
+> Validation/test [−1.8,1.8] [−1.4,1.4]
+> OOD [−2.65 ,2.65] [−2.0,2.0]
+> Experiment 2 Train [−2.2,2.2] [−2.4,2.4]
+> Validation/test [−2.2,2.2] [−2.4,2.4]
+> OOD [−2.9,2.9] [−3.0,3.0]
+
+The fixed dataset seeds are 1001 , 1004 , 1002 , and 1003 for the Experiment 1 training, validation, test, and OOD sets, respectively. Experiment 2 uses 2001 , 2004 , 2002 , and 2003 . Model optimisation is repeated with seeds 
+
+{7, 19 , 37 }.
+
+Experiment 1 observation map. Experiment 1 does not provide the physical state as named input coordinates. Define the raw feature vector 
+
+ψ(q, p ) = q, p, sin q, cos q, sin(2 q), cos(2 q), sin p, cos p, tanh q, tanh p, qp, q 2, p 2, q 3/6, p 3/6, 1, tanh( W s + b), sin( W s + b),
+
+where W ∈ R8×2 and b ∈ R8 are fixed random parameters. The final observation is 
+
+X = Qψ (q, p ) + ξ, ξ ∼ N (0 , 0.003 2I), (73) 33 where Q ∈ R32 ×32 is a fixed orthogonal matrix. The random observation map uses seed 101 . Every observation dimension is standardised using the mean and standard deviation of the training set only. Because the raw coordinates q and p are included in ψ(q, p ) and Q is orthogonal, the noiseless physical state is linearly recoverable from the complete observation. The nonlinear terms act as mixed distractor and auxiliary features. This controlled design is intended to study predictive-coordinate and operator selection rather than nonlinear observability. D.2 MODEL AND TRAINING CONFIGURATION 
+
+Architectures. The Experiment 1 encoder is 
+
+32 −→ 96 −→ 96 −→ 2,
+
+with SiLU activations in the hidden layers. The target encoder is an exponential-moving-average copy with decay 0.99 .The neural vector field has two hidden layers of width 96 with SiLU activations and bounded output 
+
+fψ (z) = 3 tanh (MLP ψ (z)) .
+
+The correction network in Experiment 2 has two hidden layers of width 48 , uses tanh activations, and has bounded output 
+
+cϕ(z) = tanh (MLP ϕ(z)) .
+
+All predictors use the residual transition in Equation (46) . Consequently, the zero vector field implements an identity transition: 
+
+bzt+1 = zt.
+
+If both encoders map every input to the same arbitrary constant z0, this identity transition predicts every target embedding perfectly. The constant need not be the zero vector. 
+
+Representation regularisation. The practical representation term is 
+
+Rexp IB = 2 Linv + 3 Lvar + 0 .25 Lcov + 0 .01 Lmean .
+
+The invariance term compares two observation-noise augmentations with standard deviation 0.012 .The variance term imposes a unit-scale coordinate-variance target, the covariance term penalises off-diagonal covariance, and the mean term weakly centres the representation. The total representation term has unit weight in the practical objective. 
+
+Symbolic libraries and coefficient initialisation. For Experiment 1, the symbolic feature library is 
+
+Θ( z) = 1, z 1, z 2, sin z1, sin z2, cos z1, cos z2, z 21 , z 22 , z 1z2
+
+ .
+
+The corresponding complexity weights are 
+
+(0 .5, 1, 1, 2, 2, 2, 2, 1.5, 1.5, 2) .
+
+Experiment 2 uses an output-specific mask rather than permitting every feature in every equation. The incomplete grammar is 
+
+˙q : {p}, ˙p : {sin( q)},
+
+whereas the complete grammar is 
+
+˙q : {p}, ˙p : {sin( q), p |p|} .
+
+The complexity weight of p|p| is 3. Linear p is not permitted in the equation for ˙p.Coefficients are initialised by sequentially thresholded ridge regression. The ridge parameter is 10 −5
+
+and the STLSQ threshold is 0.035 . Continuous training uses 
+
+Ωtrain = X
+
+> j,k
+
+wk
+
+q
+
+α2 
+
+> kj
+
++ 10 −8.
+
+After each symbolic phase, coefficients with magnitude below 0.0175 are set to zero. Final equations and discrete complexity are reported using the stricter threshold 
+
+|αkj | ≥ 0.05 .
+
+34 Table 11: Optimisation settings used in the full three-seed experiments. 
+
+Parameter Value Use Batch size 256 All training phases Training rollout horizon 10 Free recursive rollout loss Rollout weight 0.35 Warm JEPA, Neural JEPA, post-hoc symbolic, joint SJEPA, and all Experiment 2 models Collapse-diagnostic rollout weight 
+
+0 One-step collapse and fixed-point diagnostic condi-tions Evaluation horizon 80 Open-loop evaluation on 60 trajectories Encoder learning rate 5×10 −4 Warm representation training Neural continuation scale 0.5 Effective encoder rate 2.5×10 −4
+
+SJEPA space-search scale 0.35 Effective encoder rate 1.75 ×10 −4
+
+One-step collapse-diagnostic encoder scale 
+
+0.35 Collapse diagnostic Fixed-point encoder scale 0.20 Constructive constant-representation control Neural/correction learning rate 
+
+8×10 −4 Neural vector fields and corrections Symbolic coefficient learning rate 
+
+2×10 −3 Continuous coefficient fitting AdamW weight decay 10 −5 All optimisers Gradient clipping 3.0 Global gradient norm Experiment 1 λs 2.5×10 −4 Symbolic complexity Default joint λc 2.0×10 −2 Available in the general implementation but inactive for symbolic-only Experiment 1 Experiment 2 λs 1.5×10 −4 Symbolic complexity Experiment 2 regularised λc 1.5×10 −2 Hybrid correction control Correction parameter penalty 10 −6∥ϕ∥22 Capacity component of Rcorr 
+
+Optimisation settings. The Experiment 1 warm neural JEPA is trained for at most 130 epochs. Neural JEPA is then continued for at most 90 epochs. Post-hoc symbolic regression trains the symbolic dynamics for at most 65 epochs with both encoders frozen. Joint symbolic SJEPA performs four alternating cycles. Each cycle consists of at most 65 epochs of dynamics search with frozen encoders and at most 85 epochs of representation-space search. The one-step collapse diagnostic is trained for at most 100 epochs using 
+
+Lcollapse = Lpred + λsΩtrain ,
+
+with neither RIB nor Lroll . The constructive fixed-point control is initialised at 
+
+z0 = (0 .65 , −0.35) 
+
+and trained for at most five epochs with the same one-step objective. Each Experiment 2 model is trained for at most 260 epochs. D.3 VALIDATION AND EVALUATION 
+
+Checkpoint and cycle selection. Validation is performed every five epochs using at most sixteen validation batches. Define 
+
+Rval = Lval pred + 0 .35 Lval roll .
+
+For Experiment 1 conditions that update the encoder, checkpoints failing the prescribed non-collapse thresholds are ineligible whenever at least one eligible checkpoint is available. The one-step collapse and fixed-point diagnostic conditions are exempt from this rule. Eligible checkpoints are selected lexicographically: 1. lower validation predictive risk is preferred; 2. when two risks are within a relative tolerance of 2% , lower discrete symbolic complexity is preferred; 3. the regularised validation objective and then the earlier epoch break any remaining tie. 35 For checkpoint selection, a representation is considered non-collapsed when 
+
+min  
+
+> j
+
+Std( Zj ) ≥ 0.20 and Tr(Cov Z) ≥ 0.10 .
+
+The one-step collapse and explicit fixed-point controls are selected without imposing this constraint because their purpose is to measure collapse. Their observed collapse statistics are nevertheless recorded. The same validation rule is applied within every standard training phase, and the best completed alternating cycle is restored for final testing. The selected Experiment 1 cycles are 
+
+c⋆ 
+
+> 7
+
+= 3 , c⋆ 
+
+> 19
+
+= 1 , c⋆ 
+
+> 37
+
+= 4 .
+
+Evaluation metrics. Experiment 1 reports: • latent one-step MSE against the corresponding next-state target embedding; end-to-end JEPA models use the EMA target embedding, whereas the post-hoc symbolic baseline uses next-state embeddings from the same frozen context encoder used to construct its transition dataset; • affine-aligned physical-state rollout MSE, using an affine map fitted only on training latents; • minimum latent coordinate standard deviation and covariance trace; • affine state-probe R2;• thresholded symbolic complexity; • clipped rollout MSE and divergence rate. A rollout is marked divergent when the latent norm exceeds 40 , the mapped state norm exceeds 25 ,or a non-finite value occurs. Diverged or missing errors are assigned the clipping value 100 when computing the clipped mean. Experiment 2 reports the same state and rollout metrics directly in (q, p ) coordinates. It uses the normalised correction-energy ratio defined in Equation (Eq.64) , with expectations computed over independent test states. The residual identity contribution zt is excluded from the denominator because including it would make the diagnostic depend on the arbitrary scale of the state coordinates. For the p coordinate, define the symbolic residual 
+
+rp(z) = ftrue ,p (z) − FE,α,p (z).
+
+A scale-only calibration 
+
+a⋆ = arg min 
+
+> a
+
+Etrain 
+
+h
+
+(rp(z) − ac ϕ,p (z)) 2i
+
+is fitted on training transitions. Correlation and calibrated R2 are then evaluated on the independent test set. The same procedure is applied to the isolated drag target 
+
+−0.4p|p|.
+
+D.4 POST -H OC SYMBOLIC BASELINE 
+
+The post-hoc symbolic baseline separates representation learning from equation discovery. It tests whether coordinates learned solely for neural prediction already admit a compact symbolic transition, without allowing symbolic simplicity to influence the representation itself. 
+
+Stage 1: learning prediction-oriented coordinates. We first train Neural JEPA by jointly optimis-ing the context encoder and neural residual vector field. Given an observation xt, the selected model produces 
+
+zt = Eθ⋆ (xt), (74) and predicts the next latent state according to 
+
+bzt+1 = zt + ∆ ttfψ⋆ (zt). (75) The Neural JEPA checkpoint is selected using the held-out validation risk defined in Equation (48) .At this stage, the representation is optimised for predictive accuracy and representation quality, but not for the complexity of a subsequently fitted symbolic equation. 36 Stage 2: freezing the learned coordinates. After model selection, the encoder parameters θ⋆ are frozen. The training trajectories are encoded to construct 
+
+DZ =
+
+n 
+
+z(i) 
+
+> t
+
+, z (i)
+
+> t+1
+
+, ∆t(i)
+
+> t
+
+o Ni=1 
+
+, (76) where 
+
+z(i) 
+
+> t
+
+= Eθ⋆
+
+
+
+x(i)
+
+> t
+
+
+
+, z(i) 
+
+> t+1
+
+= Eθ⋆
+
+
+
+x(i)
+
+> t+1
+
+
+
+. (77) Using the same frozen context encoder at both endpoints ensures that the fitted symbolic transition and its recursive rollouts remain in one latent coordinate system. The EMA target encoder is used during Neural JEPA training but is not used to construct the post-hoc symbolic transition dataset. No gradients from the symbolic model are propagated into the frozen encoder. 
+
+Stage 3: fitting symbolic dynamics. A symbolic vector field is fitted to the frozen latent transitions using the same candidate library and reporting threshold as the jointly learned symbolic model. Its residual transition is 
+
+bzsym  
+
+> t+1
+
+= zt + ∆ ttFE,α (zt). (78) The symbolic structure E and coefficients α are learned by minimising 
+
+min  
+
+> E,α
+
+Lpred + λrLroll + λsΩtrain . (79) The representation regulariser RIB is absent because the encoder is frozen, and no neural correction is used. Checkpoints are selected using the validation trajectories; among candidates with nearly tied validation risks, the lower-complexity thresholded symbolic law is preferred. 
+
+Evaluation. One-step latent prediction error is evaluated directly in the frozen Neural JEPA coor-dinate system. For physical-state rollout evaluation, an affine map from the frozen training latents to (q, p ) is fitted using the training trajectories and then applied to test and OOD rollouts. The physical-state variables are used only for this evaluation alignment and are not provided to the symbolic regression procedure. The post-hoc baseline therefore implements learn predictive coordinates −→ freeze the coordinates −→ fit symbolic dynamics . (80) By contrast, SJEPA alternates representation-space and symbolic-dynamics optimisation, allowing the latent coordinates to change so that the induced transition becomes simpler while maintaining predictive adequacy and the prescribed non-collapse constraints. D.5 ADDITIONAL EXPERIMENTAL RESULTS 
+
+D.5.1 PER -SEED EQUATIONS FOR EXPERIMENT 1After applying the fixed reporting threshold, the selected SJEPA equations are Seed 7: ˙z1 = −0.806 z2, ˙z2 = 0 .822 z1 + 0 .177 − 0.143 z21 ,
+
+Seed 19: ˙z1 = −0.847 z2 + 0 .146 − 0.085 z21 , ˙z2 = 0 .811 z1 + 0 .185 − 0.143 z21 + 0 .116 z1z2,
+
+Seed 37: ˙z1 = 0 .867 z2, ˙z2 = −0.835 z1.
+
+The sign reversal in seed 37 reflects the non-identifiability of latent orientation rather than a different qualitative mechanism. The cross-coordinate oscillator terms are selected in all three seeds. By contrast, the post-hoc symbolic models select most of the available polynomial and trigonometric library, with mean weighted complexity 
+
+26 .0 ± 3.24 .
+
+D.5.2 REPRESENTATION AND ALIGNMENT METRICS 
+
+The nonzero affine probe score of the one-step collapse diagnostic does not contradict near-collapse. An affine map can amplify very small state-correlated variations. The decisive collapse diagnostics are the absolute coordinate standard deviation and covariance trace. 37 Table 12: Additional Experiment 1 representation and alignment metrics.                                                           
+
+> Method Train probe R2Test probe R2Effective rank Affine one-step state MSE Neural JEPA 0.849 ±0.067 0.814 ±0.063 1.9994 ±0.0004 0.171 ±0.058
+> Post-hoc symbolic 0.849 ±0.067 0.814 ±0.063 1.9994 ±0.0004 0.176 ±0.063
+> SJEPA symbolic 0.396 ±0.295 0.293 ±0.154 1.9996 ±0.0001 0.647 ±0.141
+> One-step collapse diagnostic 0.323 ±0.041 0.308 ±0.027 1.701 ±0.201 0.631 ±0.026
+> Collapsed fixed-point control 0−0.016 00.931
+
+D.5.3 COEFFICIENT AND SUPPORT STABILITY IN EXPERIMENT 2Every permitted symbolic term is selected in all three Experiment 2 seeds. The fitted coefficients have extremely small variation: Incomplete symbolic: ˙q = (0 .9607 ± 0.0017) p, ˙p = −(0 .8382 ± 0.0008) sin( q),
+
+Regularised hybrid: ˙q = (0 .9581 ± 0.0008) p, ˙p = −(0 .7942 ± 0.0024) sin( q),
+
+Unregularised hybrid: ˙q = (0 .3324 ± 0.0065) p, ˙p = −(0 .1718 ± 0.0746) sin( q),
+
+Complete symbolic: ˙q = (0 .9830 ± 0.0005) p, ˙p = −(0 .9553 ± 0.0010) sin( q) − (0 .3724 ± 0.0007) p|p|.
+
+The complete grammar therefore recovers both the structure and coefficients of the true vector field consistently. Under the incomplete grammar, correction regularisation preserves the symbolic pendulum mechanism; without it, the correction absorbs much of both equations. D.5.4 QUALITATIVE AND MECHANISM -SPECIFIC DIAGNOSTICS 
+
+Figure 4 collects two secondary diagnostics. Panel (a) illustrates the geometry of one selected SJEPA representation in Experiment 1, while panel (b) evaluates the drag-specific neural correction in Experiment 2. The colour progression follows a curved latent manifold rather than either coordinate axis, suggesting that the true angle q is encoded nonlinearly across both latent dimensions. This visual evidence is qualitative; affine alignment is assessed quantitatively using the probe R2.The correction is primarily evaluated against the complete residual 
+
+rp = ftrue ,p − FE,α,p , (81) because this residual contains both the omitted drag and any coefficient error remaining in the fitted symbolic law. Figure 4(b) additionally compares the calibrated correction with the isolated quadratic-drag term. This is therefore a secondary mechanism-specific diagnostic rather than the primary correction target. 
+
+# E BAYESIAN INFERENCE DETAILS 
+
+This section provides additional details for the Bayesian formulation in the main text. The encoders remain deterministic throughout: Bayesian uncertainty is introduced only over the latent transition law, its coefficients, transition covariance, and, in the hybrid model, the Gaussian-process correction. E.1 FINITE -C ANDIDATE SYMBOLIC INFERENCE 
+
+Exact inference over all symbolic expression trees is generally intractable. Possible schemes in-clude reversible-jump Markov chain Monte Carlo, sequential Monte Carlo over expression trees, nested sampling, and Bayesian inference over a finite candidate set. A practical implementation for SJEPA uses symbolic search as a proposal mechanism and subsequently performs Bayesian model comparison over the resulting candidate structures. Let 
+
+SM = {E m}Mm=1 
+
+denote a finite candidate set generated using candidate-generation data Dgen . Candidates may be obtained from sparse-library search, genetic programming, beam search, or another symbolic-discovery procedure. Algebraically equivalent or numerically duplicate expressions are canonicalised 38 (a) Example SJEPA latent geometry (b) Drag-specific correction diagnostic 
+
+Figure 4: Additional qualitative and mechanism-specific diagnostics. (a) Nonlinear latent geometry in Experiment 1. Each point is an SJEPA embedding (z1, z 2) coloured by the true pendulum angle 
+
+q. The smooth colour ordering indicates that information about q is retained, while the curved geometry shows that the learned coordinates are not simply affinely aligned with the original state. 
+
+(b) Drag-specific diagnostic for Experiment 2 using the regularised hybrid model with the incomplete grammar, whose symbolic component contains ˙q ∝ p and ˙p ∝ − sin( q). The panel compares the calibrated p-coordinate correction on held-out states with the omitted quadratic-drag term −0.4p|p|.By contrast, Figure 3(b) compares the same correction with the complete residual left by the fitted symbolic law, which also includes error arising from imperfect estimation of the sin( q) coefficient. The dashed line denotes exact recovery. and removed. To preserve diversity, candidates may be retained from the predictive-error–complexity Pareto set rather than selecting only the lowest-error expressions. A disjoint evidence set Devid is used for Bayesian fitting and model comparison. For each candidate, 
+
+p(Devid | E m) = 
+
+Z
+
+p(Devid | E m, α, Σ) p(α | E m)p(Σ)d α dΣ . (82) The evidence integrates over symbolic coefficients and transition covariance rather than evaluating only one fitted parameter value. It therefore accounts for parameter uncertainty and penalises structures whose apparent fit depends on a narrowly tuned or unnecessarily flexible parameterisation. The integral in Equation (82) is generally unavailable in closed form. It may be estimated using posterior sampling, nested sampling, variational inference, or a Laplace approximation. For the latter, let 
+
+ϑm = ( αm, λ m) , Σm = L(λm)L(λm)⊤, (83) where λm contains unconstrained parameters defining a lower-triangular Cholesky factor L(λm) with positive diagonal entries. Thus, Σm remains positive definite throughout optimisation. Let bϑm = arg max 
+
+> ϑm
+
+p(ϑm | D evid , Em) (84) be the posterior mode, and let 
+
+Hm = −∇ 2 
+
+> ϑm
+
+log p (Devid , ϑ m | E m) 
+
+> ϑm=bϑm
+
+(85) be the negative Hessian of the log joint density at that mode. If dm = dim( ϑm) and Hm is positive definite, the Laplace approximation gives 
+
+log p(Devid | E m) ≈ log p
+
+
+
+Devid | E m, bϑm
+
+
+
++ log p
+
+bϑm | E m
+
+
+
++ dm
+
+2 log(2 π) − 12 log |Hm|. (86) 39 The log-determinant term accounts for posterior concentration: a structure whose good fit is confined to a narrow parameter region need not receive the same evidence as one that explains the data over a larger plausible region. Within the selected candidate set, define 
+
+p(Em | S M ) ∝ exp {− γΩ( Em)} . (87) The posterior structure probabilities are 
+
+p(Em | D evid , SM ) = p(Devid | E m)p(Em | S M )
+
+> M
+
+X
+
+> r=1
+
+p(Devid | E r )p(Er | S M )
+
+. (88) For numerical stability, define 
+
+am = log p(Devid | E m) − γΩ( Em). (89) The normalised weight is 
+
+wm = exp( am − amax )
+
+> M
+
+X
+
+> r=1
+
+exp( ar − amax )
+
+, amax = max  
+
+> 1≤r≤M
+
+ar . (90) For each candidate, the structure-conditional posterior predictive distribution is 
+
+p (zT | zC , ε, Devid , Em) = 
+
+Z
+
+p (zT | zC , ε, Em, α, Σ) p (α, Σ | D evid , Em) d α dΣ . (91) Bayesian model averaging gives 
+
+p (zT | zC , ε, Devid , SM ) = 
+
+> M
+
+X
+
+> m=1
+
+wmp (zT | zC , ε, Devid , Em) . (92) A Monte Carlo approximation first draws 
+
+J(b) ∼ Categorical( w1, . . . , w M ), (93) then draws 
+
+α(b), Σ(b)
+
+∼ p (α, Σ | D evid , EJ(b) ) , (94) and finally samples or evaluates the corresponding latent transition. The symbolic-search stage constructs a finite, data-dependent support over which Bayesian model comparison is performed; its original search score is not itself treated as a posterior probability. The resulting weights are approximate posterior probabilities conditional on the selected candidate set SM , rather than the exact posterior over the full grammar. Hyperparameters such as γ, prior scales, and M may be chosen using validation data, while test and OOD data are reserved for final posterior-predictive evaluation. The encoders remain point-estimated and are not included in the Bayesian averaging. 
+
+Algorithm 2 Finite-candidate Bayesian symbolic inference 
+
+Require: Fixed encoders, candidate-generation data Dgen , evidence data Devid , symbolic grammar 
+
+E 
+
+> 1:
+
+Generate candidate structures using Dgen  
+
+> 2:
+
+Canonicalise expressions and remove duplicate structures  
+
+> 3:
+
+Retain M candidates from the predictive-error–complexity Pareto set evaluated on Dgen  
+
+> 4:
+
+for m = 1 , . . . , M do  
+
+> 5:
+
+Infer p(α, Σ | D evid , Em) 
+
+> 6:
+
+Estimate log p(Devid | E m) 
+
+> 7:
+
+Set am ← log p(Devid | E m) − γΩ( Em) 
+
+> 8:
+
+end for  
+
+> 9:
+
+Normalise {am}Mm=1 using Equation (90)  
+
+> 10:
+
+Form the posterior predictive distribution using Equation (92)  
+
+> 11:
+
+return Candidate structures, posterior weights, and posterior predictive model 40 E.2 GAUSSIAN -P ROCESS HYBRID INFERENCE 
+
+Output-wise GP correction. For a fixed symbolic structure E, coefficients α, and latent output coordinate j, define 
+
+si =
+
+
+
+z(i) 
+
+> C
+
+, ε (i)
+
+, mij = FE,α,j (si), rij = z(i) 
+
+> T,j
+
+− mij .
+
+Let 
+
+gj ∼ GP  0, k ϑg,j 
+
+ , (95) and define 
+
+[Kj ]ab = kϑg,j (sa, s b), Cj = Kj + σ2 
+
+> j
+
+In. (96) The residual vector 
+
+rj = ( r1j , . . . , r nj )⊤
+
+has the marginal distribution 
+
+rj | E , α, ϑ g,j , σ 2 
+
+> j
+
+∼ N (0, C j ) . (97) Consequently, its negative log marginal likelihood is 
+
+− log p  rj | E , α, ϑ g,j , σ 2
+
+> j
+
+ = 12 r⊤ 
+
+> j
+
+C−1 
+
+> j
+
+rj + 12 log |Cj | + n
+
+2 log(2 π). (98) The quadratic term measures how well the GP explains systematic residual structure left by the symbolic law. The log-determinant term controls the covariance flexibility used to explain the data. Their balance concerns residual fit and GP complexity, but does not by itself identify a unique symbolic–GP allocation. 
+
+Joint symbolic–GP posterior. Let g = ( g1, . . . , g dz ) and let ϑg collect the GP hyperparameters. The joint posterior has the schematic form 
+
+p(E, α, g, ϑ g , Σ | D Z ) ∝ p(DZ | E , α, g, Σ) p(g | ϑg )p(ϑg )p(α | E )p(Σ) p(E). (99) Uncertainty in E concerns symbolic structure; uncertainty in α concerns its numerical coefficients; uncertainty in g concerns systematic residual dynamics; and Σ represents transition variability remaining after conditioning on the symbolic law and correction. The symbolic–GP allocation remains dependent on the structure prior, coefficient priors, GP kernel and amplitude priors, and transition-noise prior. Integrating out g gives the GP marginal likelihood in Equation (98) . One may then infer or average over E, α, kernel hyperparameters, and Σ using posterior sampling, variational approximations, Laplace approximations, or a finite candidate ensemble. 
+
+Posterior correction at a new input. For 
+
+s⋆ = ( zC , ε ),
+
+define 
+
+k⋆,j =  kϑg,j (s⋆, s 1), . . . , k ϑg,j (s⋆, s n)⊤ , k⋆⋆,j = kϑg,j (s⋆, s ⋆).
+
+Conditional on fixed symbolic and GP parameters, 
+
+gj (s⋆) | D Z , E, α, ϑ g,j , σ 2 
+
+> j
+
+∼ N  μgj (s⋆), v gj (s⋆) , (100) where 
+
+μgj (s⋆) = k⊤ 
+
+> ⋆,j
+
+C−1 
+
+> j
+
+rj , (101) 
+
+vgj (s⋆) = k⋆⋆,j − k⊤ 
+
+> ⋆,j
+
+C−1 
+
+> j
+
+k⋆,j . (102) The posterior mean supplies the data-supported correction to the symbolic law, while the posterior variance typically becomes larger in regions weakly supported by the latent transition data, subject to the selected kernel and hyperparameters. For vector-valued target embeddings, one may use independent output-wise GPs, a shared kernel with output-specific parameters, or a matrix-valued kernel that models dependence between latent coordinates. Independent output-wise models are computationally simplest, whereas multi-output kernels can represent correlated transition uncertainty. 41 E.3 POSTERIOR PREDICTIVE ROLLOUTS 
+
+Posterior predictive rollouts propagate uncertainty recursively through the learned latent dynamics. For rollout sample b, first draw one coherent transition model: 
+
+
+
+E(b), α (b), g (b), ϑ (b) 
+
+> g
+
+, Σ(b)
+
+∼ p (E, α, g, ϑ g , Σ | D Z ) . (103) Starting from z(b) 
+
+> t
+
+= zt, recursively sample 
+
+z(b) 
+
+> t+h+1
+
+∼ N 
+
+
+
+FE(b),α (b)
+
+
+
+z(b)
+
+> t+h
+
+, ε t+h
+
+
+
++ g(b) 
+
+z(b)
+
+> t+h
+
+, ε t+h
+
+
+
+, Σ(b)
+
+, (104) for h = 0 , . . . , K − 1.Equation (104) gives the direct-transition formulation. For a vector-field realisation, its mean is replaced by the corresponding integrated transition, for example 
+
+z(b) 
+
+> t+h
+
++ ∆ tt+h
+
+h
+
+FE(b),α (b)
+
+
+
+z(b)
+
+> t+h
+
+, ε t+h
+
+
+
++ g(b) 
+
+z(b)
+
+> t+h
+
+, ε t+h
+
+i 
+
+under forward Euler. The same sampled structure, coefficients, and GP function are retained throughout a rollout. This preserves the interpretation of epistemic uncertainty as uncertainty about one underlying transition model. Resampling the symbolic law or GP independently at every step would instead introduce artificial temporal variation in the model itself. Transition noise may still be sampled separately at each step because it represents aleatoric variability conditional on the sampled dynamics. Repeating Equations (103)–(104) produces an empirical approximation to 
+
+p (zt+1: t+K | zt, ε t:t+K−1, DZ ) . (105) The resulting distribution reflects uncertainty over symbolic structure, coefficients, systematic correc-tion, transition covariance, and the uncertain states visited during recursion. Calibration should be evaluated separately for one-step and multi-step prediction. Even a well-calibrated one-step model can become miscalibrated over long horizons because uncertain states are repeatedly fed back into the transition, model misspecification compounds, and trajectories may enter regions poorly represented in the training data. Appropriate diagnostics include horizon-wise log predictive density, empirical interval coverage, calibration error, and task-level decision quality under posterior-predictive planning. 42
