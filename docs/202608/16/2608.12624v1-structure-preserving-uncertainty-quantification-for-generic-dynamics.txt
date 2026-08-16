@@ -1,0 +1,1322 @@
+Title: Structure-preserving uncertainty quantification for GENERIC dynamics
+
+URL Source: https://arxiv.org/pdf/2608.12624v1
+
+Published Time: Fri, 14 Aug 2026 00:17:24 GMT
+
+Number of Pages: 34
+
+Markdown Content:
+# Structure-preserving uncertainty quantification for GENERIC dynamics 
+
+Zequn He a, ∗, Celia Reina a, ∗
+
+> aDepartment of Mechanical Engineering and Applied Mechanics, University of Pennsylvania, Philadelphia, 19104, PA, United States of America
+
+Abstract 
+
+Structure-preserving machine learning embeds physical structure directly into model architectures, yet uncertainty quantification (UQ) for such hard-constrained models remains limited because standard UQ methods may violate the encoded admissibility conditions, require architectural modifications, or impose substantial computational costs. In this work, we propose Structure-Preserving Epistemic Neural Networks (S-PENNs), a general framework for UQ in scientific machine learning models with hard architectural constraints, and instantiate it for GENERIC (General Equa-tion for Non-Equilibrium Reversible-Irreversible Coupling) dynamics. S-PENNs preserve the structural constraints of a pretrained model by attaching lightweight epinets to its constrained components, ensuring that every sampled realization remains physically admissible by construction. When applied to GENERIC dynamics, such a proposed framework yields thermodynamically consistent rollouts that preserve the first and second laws. Furthermore, we combine S-PENNs with split conformal prediction as a post-hoc calibration method to produce prediction intervals with finite-sample marginal coverage guarantees. We validate S-PENNs on three numerical examples: a harmonic oscillator coupled to a heat bath and an idealized chemical motor, both governed by ODEs, and a one-dimensional viscoplastic model governed by PDEs. Across all three examples, S-PENNs produce thermodynamically consistent stochastic realizations and well-calibrated prediction intervals while reducing the computational cost by about 1 − 3orders of magnitude compared to deep ensembles. Although the present study focuses on GENERIC dynamics, S-PENNs can be extended more broadly to scientific machine learning models in computational mechanics with either hard or soft constraints. 
+
+Keywords: Structure-preserving machine learning, Uncertainty quantification, Thermodynamic consistency, Coverage guarantee, GENERIC, Non-equilibrium thermodynamics, Generalized gradient flows, Constitutive modeling 
+
+1. Introduction 
+
+Scientific machine learning has become an important computational tool in applied mechanics, where learned models are used to approximate governing equations, constitutive laws, and solution operators from data and physical knowledge. Representative subclasses include neural ODEs for continuous-time dynamics [1], physics-informed neural networks (PINNs) for di ff erential-equation-constrained learning [2, 3], and neural operators for maps between function spaces [4–6]. A central distinction among these methods is how physical constraints are imposed. In soft-constrained formulations, the governing equations or admissibility conditions enter the training objective as residual or penalty terms. In hard-constrained formulations, often referred to as structure-preserving machine learning, the model class is restricted through the architecture or parameterization itself, so selected invariants, stability properties, or thermodynamic laws are satisfied by construction rather than only encouraged during optimization [7–10]. Within this structure-preserving paradigm, reversible dynamics have served as the initial proving ground. Hamil-tonian Neural Networks [11] and Lagrangian Neural Networks [12] infer the dynamics from learned energy or action principles, whereas SympNets [8], Symplectic ODE-Net [13], and Poisson neural networks [14] encode symplectic     
+
+> ∗Corresponding authors.
+> Email addresses: hezequn@engineering.upenn.edu (Zequn He), creina@engineering.upenn.edu (Celia Reina) arXiv:2608.12624v1 [cs.LG] 12 Aug 2026
+
+or Poisson geometry directly in the model class. However, many mechanical systems are governed by coupled re-versible and irreversible dynamics. The GENERIC (General Equation for Non-Equilibrium Reversible-Irreversible Coupling) formalism [15–18], which is tightly connected to metriplectic evolution [19], provides a natural foundation for such systems by decomposing the evolution into reversible and irreversible contributions, subject to structural conditions that imply energy conservation and nonnegative entropy production. These thermodynamic guarantees make GENERIC a natural inductive bias for machine learning where neural networks provide flexible parameteriza-tions of the thermodynamic building blocks, while the GENERIC structure controls their physical admissibility. Early work in this direction adopted soft constraints, as in Structure-Preserving Neural Networks, which learn conservative-dissipative dynamics by adding the so-called degeneracy conditions to the training objective [20]. In contrast, hard-constrained formulations build the structural conditions into the parameterization itself and have focused largely on the linear GENERIC /metriplectic setting, where the irreversible contribution is represented by a friction or dissipative operator applied to the entropy gradient. In this setting, bracket-based models parameterize admissible dissipative brackets [21]. GFINNs reparameterize the reversible and irreversible operators so the GENERIC degeneracy con-ditions are satisfied for deterministic and stochastic systems [10]. Neural Metriplectic Systems provide superior scalability of metriplectic dynamics that retains the energy-entropy structure [22]. Nonlinear GENERIC-Embedded Neural Networks (N-GENNs) move beyond this linear setting by learning nonlinear GENERIC dynamics with general dissipation potentials, including non-quadratic ones [23], combining GFINN-style projections for the reversible de-generacy condition with a convex dissipation-potential parameterization as introduced in VONNs [24]. These models secure thermodynamic admissibility by architectural design, but admissibility is not the same as predictive reliability. The predictions may satisfy the thermodynamic laws while still being poorly supported by sparse data, noisy measure-ments, model misspecification, or extrapolation beyond the training regime. To use these learned models in practice, one crucial requirement is to obtain uncertainty estimates that preserve the imposed structure while quantifying pre-dictive reliability. Uncertainty quantification (UQ) provides the standard framework for characterizing such predictive uncertainty and has received substantial attention in scientific machine learning. In broad terms, uncertainty in learned surrogates is commonly separated into aleatoric uncertainty, which captures irreducible variability from noise or unresolved stochasticity, and epistemic uncertainty, which captures lack of knowledge due to limited data, model misspecifica-tion, or unobserved regimes [25]. Standard UQ methods include Bayesian neural networks (BNNs) [26, 27], which place priors over network parameters and infer a posterior predictive distribution. Deep ensembles [28] estimate un-certainty from the spread of predictions across independently initialized and trained models. Monte Carlo dropout [29] keeps dropout active at test time so that repeated stochastic forward passes are interpreted as samples from an approx-imate variational posterior. In physics-informed machine learning, existing UQ methods can be organized by where uncertainty is introduced. Bayesian PINNs (B-PINNs) place priors on network parameters (or unknown physical pa-rameters in inverse problems) and infer posterior predictive distributions, for example, with Hamiltonian Monte Carlo or variational inference [30]. NN-aPC uses deep NNs to learn modal functions of arbitrary Polynomial Chaos (aPC) expansion of the solution or parameters in stochastic PDEs, and employs dropout to quantify their uncertainty [31]. Adversarial UQ PINNs use latent-variable generative models to represent PDE solution distributions under random physical inputs (e.g., boundary or initial data) or noisy measurements, while WGAN-PINNs learn uncertainty in initial or boundary data and propagate it to interior solution fields through physics-informed constraints [32, 33]. Physics-informed variational autoencoders (PI-VAE) and physics-informed variational inference introduce latent variables and physics-based constraints to solve forward and inverse problems involving stochastic di ff erential equations [34, 35]. Physics-informed polynomial chaos expansions augment conventional PCE surrogate construction with di ff erential-equation and boundary-condition constraints [36]. More recently, conformal prediction (CP) has been used to calibrate existing PINN uncertainty estimators into intervals with finite-sample coverage guarantees and spatial adaptivity [37]. These approaches target soft-penalized or physics-regularized surrogates, rather than models with hard-encoded phys-ical constraints in which every sampled realization must satisfy structural admissibility conditions. By contrast, UQ for models with hard-encoded physical constraints must preserve admissibility rather than merely estimate variation around a physics-regularized predictor. Existing methods have demonstrated such a requirement in several specialized settings. For Hamiltonian systems with additive dissipation, Symplectic Spectrum Gaussian Processes (SSGP) use a symplectic Gaussian-process prior with random Fourier features to infer Hamiltonians from noisy, sparse data while retaining conservative or dissipative structure [38]. Similarly, Hamiltonian Gaussian Pro-cesses (HGP) use a decoupled Gaussian-process Hamiltonian and energy-conserving shooting for inference from long 2noisy trajectories [39], while Bayesian identification of nonseparable Hamiltonians combines a structure-preserving Hamiltonian parameterization, dependent additive and multiplicative noise models, and reduced-order Bayesian infer-ence [40]. Thermodynamic and constitutive examples use analogous admissible representations. Thermodynamically constrained Gaussian-process equations of state capture model and data uncertainty subject to consistency and stabil-ity constraints [41]. Bayesian-EUCLID performs Bayesian sparse discovery over a hyperelastic feature library from displacement and reaction-force data, quantifying uncertainty in active constitutive terms and data noise through a momentum-balance likelihood and spike-slab prior [42]. Bayesian constitutive artificial neural networks learn prob-ability distributions for the weights of free-energy-based constitutive networks, yielding credible intervals for the used model terms and associated constitutive responses [43]. More recently, conformal quantile regression adopts a frequentist approach to probabilistic modeling and has calibrated tensor-valued quantile predictions from a strain-invariant, polyconvex, and thermodynamically consistent constitutive network, with the resulting intervals targeting aleatoric uncertainty from data variability rather than epistemic uncertainty [44]. This body of work shows that UQ for hard-encoded physics constraints is both desirable and feasible, but it also indicates that generic UQ methods do not automatically yield hard-constrained UQ easily. The core limitation is that hard-encoded constraints restrict the admissible model class itself, so sampled UQ realizations must remain in a space that is closed under those constraints. Randomizing unconstrained weights or perturbing intermediate activations can move a realization outside that space, while preserving admissibility by in-dependent replication requires training complete constrained models. BNNs can preserve structure only when the prior, posterior approximation, and inference procedure are defined over the constrained surrogate itself; otherwise, generic weight-space uncertainty does not enforce the required relations, and posterior inference over a constrained architecture can be expensive at scale [45]. Deep ensembles can preserve constraints by training several full con-strained models with cost growing essentially linearly in the ensemble size [28, 46]. MC dropout uses stochastic internal masks, so hard-encoded properties may be lost unless every masked subnetwork still satisfies the same con-straints [29, 46]. This di ffi culty increases in structure-preserving models whose admissibility usually depends on several interacting constrained building blocks rather than on a single output map. Therefore, a practical UQ frame-work is expected to introduce uncertainty inside the constrained parameterization, preserve the structural relations under each realization, propagate uncertainty coherently through the coupled constrained blocks, and keep the added computational cost tractable. To address the gap and meet the requirements, we propose Structure-Preserving Epistemic Neural Networks (S-PENNs), an epistemic UQ framework that injects uncertainty into constrained scientific machine learning parameter-izations without violating their encoded physical and structural relations. S-PENNs build on the Epistemic Neural Networks (ENNs) introduced in [47], in which a conventional base network is augmented by a lightweight auxiliary network called the epinet. Recent work has applied this idea to operator learning through NEON [48], to PINNs through E-PINNs [49], and to thermodynamics-informed di ff usion models through EVODMs [50] and SPIEDi ff [51]. Nevertheless, none of these works address structure-preserving architectures formally in settings in which each UQ realization must satisfy coupled admissibility conditions by construction. To demonstrate the feasibility of S-PENNs, we develop and instantiate the framework for GENERIC dynamics, specifically, on top of the N-GENNs [23]. This is a particularly demanding test bed for structure-preserving UQ because the GENERIC formalism couples four thermo-dynamic building blocks through skew-symmetry, convexity, and degeneracy conditions that jointly enforce the first and second laws of thermodynamics, which will be detailed in Section 2.1. Any UQ method equipped on N-GENNs must preserve these constraints jointly rather than one block at a time, and the perturbations must propagate coherently across blocks to yield consistent uncertainty estimates for the resulting dynamics. The key idea here for S-PENNs is to treat the deterministic N-GENNs as base networks and attach a separate epinet to each building block of N-GENNs so that each epinet inherits the architectural properties of its corresponding block. Since the perturbed blocks are then assembled through the same structure-preserving reparameterizations as in N-GENNs, every sampled realization remains thermodynamically admissible by construction. The component-wise perturbations are driven by a common source of randomness. Each epinet is conditioned on stop-gradient features from its corresponding deterministic block and on the same inputs as that block, while the shared epistemic index couples the block-wise perturbations across the assembled GENERIC vector field. One uncertainty realization therefore perturbs the entire GENERIC pa-rameterization coherently and propagates uncertainty consistently across blocks without breaking the thermodynamic structure. The nonlinear GENERIC instantiation of S-PENNs also requires uncertainty representations for global, input-independent quantities, such as the state-independent terms in the GENERIC reparameterization. This setting is 3analogous to inverse problems with unknown physical parameters, where the parameters are inferred jointly with the solution field but are not themselves functions of the input variables. Prior epinet-based work in scientific machine learning has either not considered such global parameters [48, 50, 51] or handled them indirectly by softly penaliz-ing parameter variance during optimization [49]. To have a hard-constrained solution for this problem, we introduce an epinet construction tailored to global parameters, which enforces input-independent uncertainty by construction with no soft-penalized variance term. Lastly, beyond preserving thermodynamic consistency, we use split conformal prediction [52] on S-PENNs as a post-hoc calibration step to obtain distribution-free finite-sample marginal coverage guarantees on the resulting prediction intervals. The proposed framework is evaluated on three numerical examples: a harmonic oscillator coupled to a heat bath, an idealized chemical motor, and a one-dimensional viscoplastic model. Across all three examples, S-PENNs yield thermodynamically admissible uncertainty realizations and well-calibrated prediction intervals while reducing training cost by about 1 − 3 orders of magnitude compared to deep ensembles. Although the presented work focuses on GENERIC dynamics, the proposed idea extends to broader classes of sci-entific machine learning models that encode physical structure through either hard architectural constraints or soft physics-informed penalties. The remainder of the paper is organized as follows. Section 2 reviews the GENERIC formalism and the N-GENNs framework of [23], introduces the S-PENNs construction, and presents the conformal calibration procedure. Section 3 reports the main numerical results for a harmonic oscillator coupled to a heat bath (Section 3.1), an idealized chemical motor (Section 3.2), and a one-dimensional viscoplastic model (Section 3.3). Section 4 discusses limitations and future directions. Additional inverse-problem benchmarks demonstrating the proposed epinet construction are provided in Appendix D. 
+
+2. Methodology 
+
+This section begins by reviewing the structure-preserving N-GENNs framework for nonlinear GENERIC dynam-ics in Section 2.1. Section 2.2 reviews the epinet construction, and Section 2.3 specializes it to N-GENNs to obtain the proposed S-PENNs architecture. Finally, Section 2.4 presents the split conformal calibration procedure used to obtain finite-sample marginal coverage guarantees for the resulting prediction intervals. 
+
+2.1. Nonlinear GENERIC-embedded neural networks (N-GENNs) 
+
+We first recall the nonlinear GENERIC formalism, which decomposes the evolution into a reversible Hamiltonian part and an irreversible generalized gradient flow. For a finite-dimensional state vector x ∈ Rd and its conjugate variable x∗, the nonlinear GENERIC dynamics are written as ˙x = L(x)D E(x) + Dx∗ Ξ(x, x∗)|x∗=DS (x) . (1) Here L is the Poisson operator describing reversible dynamics, E is the total energy, S is the entropy, and Ξ is the dissipation potential. In finite-dimensional settings, D and D x∗ denote ordinary partial derivatives; in infinite-dimensional settings, where the state variables are fields, they denote the corresponding functional derivatives. Among the thermodynamic constraints imposed on the GENERIC building blocks, the two degeneracy conditions are reversible degeneracy condition L(x)D S (x) = 0, ∀x,
+
+irreversible degeneracy condition Ξ(x, x∗ + λDE(x)) = Ξ (x, x∗), ∀x, x∗, ∀λ ∈ R. (2) When combined with the skew-symmetry of the Poisson operator, L(x) = −L(x)⊤, and the admissibility conditions 
+
+Ξ(x, 0) = 0, Ξ(x, x∗) ≥ 0, and convexity of Ξ with respect to x∗, these degeneracy conditions ensure conservation of total energy and nonnegative entropy production [53, 54]. Building on the above GENERIC structure, N-GENNs [23] represent the thermodynamic building blocks with neural networks and enforce the constraints through structure-preserving reparameterizations. With the deterministic trainable parameter set denoted by ψ1, the deterministic backbone uses scalar networks Eψ and S ψ, a reversible     
+
+> 1In this subsection, ψdenotes the aggregate trainable parameter set of the deterministic N-GENNs backbone. It includes neural-network weights and biases as well as finite-dimensional trainable variables used in the structure-preserving reparameterizations. A shared subscript ψis used here only for clarity and does not imply weight sharing among distinct networks.
+
+4operator network ˜ Lψ, and a raw dissipation-potential network ˜ Ξψ. Let Bψ = (B1ψ, . . . , Bdψ) ∈ Rd×d×d denote the trainable matrices included in ψ, and define 
+
+Aiψ = Biψ − B⊤
+
+> iψ
+
+, i = 1, . . . , d. (3) The matrix QS ψ (x) ∈ Rd×d is constructed so that its ith row is ( AiψDS ψ(x)) ⊤, and the reparameterized Poisson operator is defined as 
+
+Lψ(x) = QS ψ (x)⊤ ˜Lψ(x)QS ψ (x). (4) Because each Aiψ is skew-symmetric, QS ψ (x)D S ψ(x) = 0, which gives Lψ(x)D S ψ(x) = 0. This enforces the reversible degeneracy condition by construction. For the irreversible part, the raw dissipation potential ˜ Ξψ(x, x∗) is represented by a partially input-convex neural network (PICNN) [24, 55], treating x∗ as the convex variable and x as a conditioning input. Let PEψ be the projection matrix onto the orthogonal complement of D Eψ,
+
+PEψ (x) = I − DEψ(x)D Eψ(x)⊤
+
+∥DEψ(x)∥22
+
+. (5) The dissipation potential used in the dynamics is obtained by the reparameterization as follows 
+
+Ξψ(x, x∗) = ˜Ξψ
+
+x, PEψ (x)x∗ − ˜Ξψ(x, 0) −  Dx∗ ˜Ξψ(x, x∗) x∗=0
+
+⊤
+
+PEψ (x)x∗. (6) Here, x∗ enters only through PEψ (x)x∗. Since PEψ (x)D Eψ(x) = 0, replacing x∗ by x∗ + λDEψ(x) leaves this projected argument unchanged, and therefore Ξψ(x, x∗ +λDEψ(x)) = Ξ ψ(x, x∗). As a result, the irreversible degeneracy condition is satisfied. The reparameterization preserves convexity in x∗ because it combines a linear composition of the raw convex potential with an a ffi ne subtraction. The a ffi ne correction further gives Ξψ(x, 0) = 0 and D x∗ Ξψ(x, 0) = 0, so by convexity x∗ = 0 is a global minimizer and Ξψ(x, x∗) ≥ 0. These properties make Ξψ admissible by construction. The constrained building blocks define the deterministic N-GENNs vector field 
+
+gψ(x) = Lψ(x)D Eψ(x) + Dx∗ Ξψ(x, x∗) x∗=DS ψ(x) . (7) Since the reversible and irreversible constraints are built into the parameterization, gψ is thermodynamically admissi-ble by construction. 
+
+2.2. Epistemic neural networks and the epinet 
+
+According to [47], ENNs refer to conventional neural networks augmented with a lightweight auxiliary network, the epinet. Such models can be written as 
+
+τϑ(x, z) = μψ(x) + σϕ( ¯ hψ(x), z), ¯hψ(x) = [sg hψ(x) , x], (8) where ψ and ϕ denote the base-network and epinet trainable parameter sets, respectively, and ϑ = (ψ, ϕ) denotes the trainable parameter set of the augmented model. Here μψ(x) denotes the base network and σϕ( ¯ hψ(x), z) is the epinet. 
+
+z ∈ Rdz is an epistemic index drawn from a chosen reference distribution π(z). hψ(x) represents the base-network features, typically taken from the last hidden layer, and sg( ·) is the stop-gradient operator that prevents gradients from flowing into the base network. Throughout the paper, the notation ¯ hψ(x) = [sg( hψ(x)) , x] means the concatenation of stop-gradient hidden features and the raw input variables. This is the same typical setting used in [47], but we state it explicitly here to avoid ambiguity. The epinet is decomposed into a learnable network σlearn  
+
+> ϕ
+
+and a prior network σprior ,
+
+σϕ( ¯ h, z) = σlearn  
+
+> ϕ
+
+( ¯ h, z) + w σprior ( ¯ h, z), (9) where w > 0 is the prior-weight hyperparameter that scales the contribution of the fixed random prior network relative to the learnable network, thereby controlling the strength of the prior perturbation and hence the initial epistemic 5spread. Since the prior network is randomly initialized and kept fixed throughout training, its parameters are omitted from the notation for conciseness. The learnable and prior networks are written as 
+
+σlearn  
+
+> ϕ
+
+( ¯ h, z) = NN ϕ([ ¯ h, z]) ⊤z, (10) 
+
+σprior ( ¯ h, z) =
+
+> dz
+
+X
+
+> n=1
+
+zn σprior  
+
+> n
+
+( ¯ h), (11) respectively. Here NN ϕ is a trainable network whose output dimension matches that of z, and {σprior  
+
+> n
+
+}dz 
+
+> n=1
+
+are fixed randomly initialized networks that typically share the same architecture as the learnable network, with one prior network for each component of the epistemic index. 
+
+2.3. Structure-preserving epistemic neural networks (S-PENNs) 
+
+We now introduce S-PENNs and specialize the framework to N-GENNs for learning GENERIC dynamics with quantified uncertainty. S-PENNs attach epinets to the thermodynamic building blocks of the N-GENNs backbone, and reassemble the perturbed objects through the same structure-preserving parameterization. Consequently, every draw of the epistemic index yields a thermodynamically consistent dynamics sample. Fig. 1 depicts the overall framework. To preserve the thermodynamic structure under epistemic perturbations, we attach a separate epinet to each deter-ministic building block in Eq. (7), i.e., the reversible operator network ˜ Lψ, the energy network Eψ, the entropy network 
+
+S ψ, and the raw dissipation-potential network ˜ Ξψ. The augmented blocks can be written as ˜Lϑ(x, z) = ˜Lψ(x) + σ ˜L
+
+> ϕ
+
+( ¯ h ˜L
+
+> ψ
+
+(x), z),
+
+Eϑ(x, z) = Eψ(x) + σE 
+
+> ϕ
+
+( ¯ hE 
+
+> ψ
+
+(x), z),
+
+S ϑ(x, z) = S ψ(x) + σS 
+
+> ϕ
+
+( ¯ hS
+
+> ψ
+
+(x), z),
+
+˜Ξϑ(x, x∗, z) = ˜Ξψ(x, x∗) + σ ˜Ξ 
+
+> ϕ
+
+( ¯ h ˜Ξ
+
+> ψ
+
+(x, x∗), z).
+
+(12) Here and below, the shared subscripts ψ and ϕ denote aggregate parameter collections and do not imply weight sharing across thermodynamic blocks. The inputs to the correspoding epinet branches are denoted as ¯ h ˜L
+
+> ψ
+
+, ¯ hE 
+
+> ψ
+
+, ¯ hS
+
+> ψ
+
+, and ¯ h ˜Ξ
+
+> ψ
+
+, more specifically, they are constructed as ¯h ˜L
+
+> ψ
+
+(x) = [sg h ˜L
+
+> ψ
+
+(x) , x],
+
+¯hE 
+
+> ψ
+
+(x) = [sg hE 
+
+> ψ
+
+(x) , x],
+
+¯hS
+
+> ψ
+
+(x) = [sg hS
+
+> ψ
+
+(x) , x],
+
+¯h ˜Ξ
+
+> ψ
+
+(x, x∗) = [sg h ˜Ξ
+
+> ψ
+
+(x, x∗) , x, x∗].
+
+(13) The same epistemic index z is used in all augmented blocks, so each draw selects a joint perturbation of the full GENERIC parameterization. 
+
+2.3.1. Input-independent epinet branch for global tensors 
+
+As introduced in Section 2.1, the N-GENNs backbone contains finite-dimensional trainable quantities that are not state-dependent neural-network outputs. The tensor Bψ = (B1ψ, . . . , Bdψ) ∈ Rd×d×d is one such quantity. It is shared over the state space and enters the reversible operator reparameterization only through the skew matrices Aiψ. For each fixed epistemic index, the perturbation should be a single state-independent tensor whereas a standard epinet does not enforce this property, and soft penalizing [49] would only encourage, rather than guarantee, input independence. Alternatively, we propose to use a linear epinet branch driven only by the epistemic index, 
+
+Bϑ(z) = Bψ + σB 
+
+> ϕ
+
+(z),
+
+σB 
+
+> ϕ
+
+(z) = σB,learn  
+
+> ϕ
+
+(z) + w σB,prior (z),
+
+σB,learn  
+
+> ϕ
+
+(z) =
+
+> dz
+
+X
+
+> n=1
+
+zn ϕBn , σB,prior (z) =
+
+> dz
+
+X
+
+> n=1
+
+zn ζBn .
+
+(14) 6Epinets 
+
+Energy epinet Reversible operator epinet Dissipation potential epinet Entropy epinet 
+
+Structure-Preserving Epistemic Neural Networks (S-PENNs) 
+
+State variables 
+
+Base-network features Structure-preserving dynamics ensemble Base-network outputs Epistemic index Feature construction Epinet outputs 
+
+Base networks 
+
+Entropy network Dissipation potential network Reversible operator network Energy network Reparameterization Assembly and reparameterization Figure 1: Schematic of the S-PENNs construction for GENERIC dynamics. The state variables x are passed through the deterministic N-GENNs base networks, which produce the raw thermodynamic building blocks ˜ Lψ, Eψ, S ψ, and ˜ Ξψ, together with their hidden representations. The stop-gradient hidden representations and the relevant inputs are used to construct epinet feature vectors ¯ h ˜L
+
+> ψ
+
+, ¯ hE 
+
+> ψ
+
+, ¯ hS
+
+> ψ
+
+, and ¯ h ˜Ξ
+
+> ψ
+
+. These feature vectors, together with a shared epistemic index z ∼ π(z), are passed to block-specific epinets, which generate perturbations of the reversible operator, energy, entropy, and dissipation-potential branches. The epinet outputs are then assembled with the corresponding base-network outputs to obtain ˜Lϑ, Eϑ, S ϑ, and ˜ Ξϑ; the same structure-preserving reparameterizations used in N-GENNs map the raw reversible operator and dissipation-potential blocks to Lϑ and Ξϑ. Hence each draw of z defines one admissible GENERIC vector field Lϑ(x, z)D Eϑ(x, z) + Dx∗ Ξϑ(x, x∗, z)|x∗=DS ϑ(x,z), and repeated draws form a structure-preserving dynamics ensemble. 
+
+7Here ϕBn , ζBn ∈ Rd×d×d have the same shape as Bψ. The tensors ϕB = {ϕBn }dz 
+
+> n=1
+
+are included in the epinet parameter set 
+
+ϕ, whereas ζB = {ζBn }dz 
+
+> n=1
+
+are fixed prior coe ffi cients and are not trained. For each realization, the skew matrices used in the reversible operator reparameterization are 
+
+Aiϑ(z) = Biϑ(z) − Biϑ(z)⊤, i = 1, . . . , d. (15) In this construction, the state-dependent branch perturbs the reversible operator ˜ Lψ(x) as a function of ( x, z), whereas the input-independent branch perturbs the global matrices Bψ as a function of z alone. Because both branches are driven by the same epistemic index, a single realization jointly perturbs the reversible operator ˜ Lϑ(x, z) and the skew-symmetric matrices {Aiϑ(z)}di=1 used in the reparameterization. This preserves the state-independent character of Bψ while allowing the state-dependent uncertainty to be expressed through ˜ Lϑ. Although introduced here for the global matrices in the GENERIC reparameterization, the input-independent branch can also be extended to global unknown quantities in inverse problems. In Appendix D, we further discuss the details, validate this extension on the Kraichnan–Orszag and Korteweg–de Vries benchmarks studied in [56], and compare the proposed method with B-PINNs-HMC [30, 56]. 
+
+2.3.2. Structure-preserving reparameterization 
+
+According to [47], the epinet framework does not prescribe a fixed architecture for the learnable and prior net-works. This flexibility is central in the present structure-preserving setting, since the epinet attached to each ther-modynamic building block can be selected to preserve the admissible function class required by the corresponding N-GENNs component. For the reversible contribution, the reversible operator epinet associated with ˜ Lψ uses uncon-strained neural networks for both the learnable network and the prior network, and incorporates the two-branch design of Section 2.3.1. The energy and entropy epinets associated with Eψ and S ψ are also represented by unconstrained multilayer perceptrons (MLPs). Finally, the dissipation-potential epinet must preserve the convexity conditions im-posed in N-GENNs. We therefore use the PICNNs for the raw dissipation-potential epinet to ensure the outputs are convex in x∗.Specifically, to enforce the reversible degeneracy condition, we apply the reversible operator reparameterization at each epistemic index. For sampled z, the base networks in Eq. (4) are replaced by S ϑ, ˜ Lϑ, and the matrices defined in Eq. (15). This yields the reparameterized reversible operator 
+
+Lϑ(x, z) = QS ϑ (x, z)⊤ ˜Lϑ(x, z)QS ϑ (x, z), (16) where QS ϑ (x, z) is constructed from {Aiϑ(z)}di=1 and D S ϑ(x, z) in the same manner as in the deterministic construction. For the irreversible contribution, we form the energy-orthogonal projection using the augmented energy, 
+
+PEϑ (x, z) = I − DEϑ(x, z)D Eϑ(x, z)⊤
+
+∥DEϑ(x, z)∥22
+
+. (17) The augmented dissipation potential used in the S-PENNs dynamics is obtained by applying the same projection-based reparameterization to the augmented raw potential, 
+
+Ξϑ(x, x∗, z) = ˜Ξϑ
+
+ x, PEϑ (x, z)x∗, z − ˜Ξϑ(x, 0, z) −  Dx∗ ˜Ξϑ(x, x∗, z) x∗=0
+
+⊤
+
+PEϑ (x, z)x∗. (18) Together with the constrained epinet parameterizations described above, each epistemic realization remains in the same admissible function classes as the deterministic N-GENNs building blocks. It is worth noting that the dissipation-potential epinet preserves the required convexity only when their constrained components are combined with nonnegative coe ffi cients. Since the epinet outputs in Eqs. (10)–(11) are weighted by the epistemic index, the coe ffi cients multiplying the dissipation-potential components must be nonnegative. Since the reference distribution π(z) can be freely chosen as stated in [47], π(z) having nonnegative support is picked here. The constrained augmented building blocks define the S-PENNs vector field 
+
+gϑ(x, z) = Lϑ(x, z)D Eϑ(x, z) + Dx∗ Ξϑ(x, x∗, z)|x∗=DS ϑ(x,z) . (19) Since the reversible and irreversible constraints are built into the augmented parameterization, gϑ(·, z) is thermody-namically consistent for every fixed draw of z.82.3.3. Training and predictive sampling 
+
+Let Dtrain = {Xi}Ntrain  
+
+> i=1
+
+denote the training dataset, where Xi = (x(t) 
+
+> i
+
+)Nt 
+
+> t=0
+
+is the i-th reference rollout and x(0)  
+
+> i
+
+is its initial state. S-PENNs are trained in two stages. First, the deterministic base networks are fitted by minimizing 
+
+Lbase S−PENNs (ψ) = 1
+
+Ntrain (Nt + 1) 
+
+> Ntrain
+
+X
+
+> i=1
+> Nt
+
+X
+
+> t=0
+
+gψ(x(t) 
+
+> i
+
+) − ˙x(t) 
+
+> i
+> 22
+
+, (20) where ˙ x(t) 
+
+> i
+
+denotes the ground-truth time derivative. Second, the base-network parameters ψ are frozen and only the epinet parameters ϕ are optimized. For each trajectory i, an epistemic index zi ∼ π is sampled and kept fixed over the rollout. The epinet objective is 
+
+Lepinet S−PENNs (ϕ) = Ezii.i.d. 
+
+> ∼π
+
+
+
+1
+
+Ntrain (Nt + 1) 
+
+> Ntrain
+
+X
+
+> i=1
+> Nt
+
+X
+
+> t=0
+
+gϑ(x(t) 
+
+> i
+
+, zi) − ˙x(t)
+
+> i
+> 22
+
+ . (21) At test time, let Ns denote the number of predictive samples. For each testing trajectory i, independent draws {z(r) 
+
+> i
+
+}Ns
+
+> r=1
+
+generate predictive rollouts { ˆX(r) 
+
+> i
+
+}Ns 
+
+> r=1
+
+initialized at x(0)  
+
+> i
+
+. This ensemble is summarized by the empirical predictive mean ˆμϑ and componentwise predictive standard deviation ˆ σϑ.
+
+2.4. Post-hoc calibration via split conformal prediction 
+
+The sampled S-PENNs realizations are thermodynamically consistent by construction, but their empirical uncer-tainty summaries, the mean ˆ μϑ and componentwise standard deviation ˆ σϑ, do not by themselves guarantee to be well-calibrated. Standard regression calibration techniques, including variance scaling [57] and CDF-based correc-tions [58, 59], are less suitable here because they need additional model fitting and can modify the implied predic-tive distribution. We instead use split conformal prediction [60, 61] to calibrate the prediction intervals. This post-processing step leaves the sampled trajectories unchanged and gives distribution-free finite-sample marginal coverage under the exchangeability assumption stated next. The calibration and testing samples used in the split conformal prediction are required to be jointly exchange-able [60, 61]. For dynamical systems, the exchangeable unit is the full trajectory rather than an individual timestep, since time levels within one rollout are coupled by the evolution equations. Following trajectory-level conformal treatments for dynamical systems [62–64], we regard each reference rollout Xi as one sample. Using the notation of Section 2.3.3, the available trajectories are partitioned into three disjoint datasets: a training dataset Dtrain for train-ing the S-PENNs (Section 2.3.3), a calibration dataset Dcal of Ncal trajectories reserved for calibration, and a testing dataset Dtest used only for evaluation. In the numerical examples below, this assumption is satisfied by drawing the initial conditions independently from the same distribution for the calibration and testing datasets. For each calibration trajectory Xi = (x(t) 
+
+> i
+
+)Nt 
+
+> t=0
+
+∈ D cal , initialized at x(0)  
+
+> i
+
+, let j ∈ I index one scalar entry of the corresponding forecast rollout. For ODE trajectories, j specifies a state variable and a noninitial time point; for field-valued problems, it specifies a state variable and a noninitial space–time grid point. The initial state is prescribed as an input to the predictor and is therefore excluded from I. Similarly, prescribed boundary conditions are also excluded from I. Calibration is applied only to the forecast portion of the rollout, namely the time points t = 1, . . . , Nt for trajectory-valued problems and the corresponding non-prescribed space–time grid points for field-valued problems. We define the normalized nonconformity score [52] 
+
+si( j) = Xi( j) − ˆμϑ(x(0)  
+
+> i
+
+; j)
+
+ˆσϑ(x(0)  
+
+> i
+
+; j) , i = 1, . . . , Ncal . (22) Then, for each fixed index j ∈ I , let s(1) ( j) ≤ · · · ≤ s(Ncal )( j) denote the ordered calibration scores at j, obtained by sorting the normalized nonconformity scores {si( j)}Ncal  
+
+> i=1
+
+. For a target miscoverage level α ∈ (0 , 1), set 
+
+rα = ⌈(Ncal + 1)(1 − α)⌉ , ˆq1−α( j) =
+
+
+
+s(rα)( j), rα ≤ Ncal ,
+
++∞, rα = Ncal + 1. (23) 9Here, rα is the finite-sample-adjusted integer rank and ˆ q1−α( j) is the corresponding split-conformal score threshold at 
+
+j. For a testing trajectory X = (x(t))Nt
+
+> t=0
+
+, this threshold rescales the predictive standard deviation to give 
+
+bC1−α(x(0) ; j) = h ˆμϑ(x(0) ; j) − ˆq1−α( j) ˆ σϑ(x(0) ; j), ˆμϑ(x(0) ; j) + ˆq1−α( j) ˆ σϑ(x(0) ; j)i . (24) For any testing trajectory that is jointly exchangeable with the calibration trajectories, the interval in Eq. (24) satisfies, for every fixed j ∈ I ,
+
+PX( j) ∈ bC1−α(x(0) ; j) ≥ 1 − α. (25) This is the standard split-conformal rank argument [52, 65]: exchangeability of the trajectories implies exchangeability of the Ncal calibration scores and the corresponding test score at the same index j. Therefore, the test score exceeds the empirical quantile ˆ q1−α( j) with probability at most α. A proof of this result is given in Appendix D of [52], following [60]. This finite-sample statement is distribution-free in the sense that it does not assume a parametric data-generating law, a correctly specified predictive distribution, or a particular residual model. Its only statistical requirement is the exchangeability condition above. 
+
+3. Numerical examples 
+
+In this section, we evaluate the proposed S-PENNs framework against two benchmark UQ methods, deep en-sembles and MC dropout, on three numerical examples of increasing complexity. As discussed in Section 2.3, the reference distribution for the epistemic index z is a modeling choice. We therefore consider three cases: a half-normal distribution, denoted “S-PENNs (half-normal)”; a uniform distribution on [0 , 5], denoted “S-PENNs (uniform)”; and a unit-rate exponential distribution truncated to [0 , 5], denoted “S-PENNs (exponential)”. For quantitative evaluation, we consider the following metrics. Predictive accuracy for each state variable is measured by the relative ℓ2 error (RL2E) of the predictive mean over the simulated time interval or over the space–time grid, and by pointwise abso-lute errors for field-valued quantities. Probabilistic performance is evaluated with the continuous ranked probability score (CRPS) and the energy score (ES), both proper scoring rules for predictive distributions [66]. The CRPS is evaluated on scalar marginals and provides a componentwise measure expressed in the physical units of each pre-dicted variable [67, 68]. The ES extends this assessment to vector-valued probabilistic forecasts and is used here to evaluate the predictive distribution of the full rollout [69]. This is appropriate in the present setting because the learned dynamics couple the state variables, whereas scalar marginal scores do not assess their joint behavior. CRPS and ES are evaluated on the uncalibrated predictive samples from all methods. Meanwhile, the calibration quality of split conformal prediction is separately assessed through the empirical coverage of the calibrated S-PENNs predic-tion intervals. Unless otherwise stated, the calibrated prediction intervals shown in the trajectory and field plots use 
+
+α = 0.05, corresponding to a target marginal coverage level of 1 − α = 95%. Definitions of these metrics are given in Appendix A. 
+
+3.1. Harmonic oscillator in a heat bath 
+
+We first consider the harmonic oscillator example used in the N-GENNs study [23]. This low-dimensional problem has a closed-form GENERIC representation, and its irreversible response is generated by a quadratic dissipation potential. It therefore provides a controlled setting for testing whether the proposed UQ construction can perturb a learned thermodynamic model without violating its conservation and dissipation properties. The state of the system is given by x = (q, p, ϵ ), where q and p are the oscillator position and conjugate momentum, respectively, and ϵ represents the internal energy of the heat bath. The total energy and the canonical Poisson operator are given by 
+
+E(x) = p2
+
+2m + 12 kq 2 + ϵ, L =
+
+
+
+0 1 0
+
+−1 0 00 0 0
+
+ . (26) For a heat bath at constant temperature Tbath , the entropy and the mobility matrix are 
+
+S (x) = ϵ
+
+Tbath 
+
+, M(x) = γTbath 
+
+
+
+0 0 00 1 − pm
+
+0 − pmp2
+
+> m2
+
+ , (27) 10 where m is the mass, k is the sti ff ness of the linear spring connecting the mass to a fixed support, and γ is the damping coe ffi cient. The dissipation potential is Ξ(x, x∗) = 12 (x∗)T M(x)x∗. Altogether, these building blocks give the evolution equations ˙q = pm , ˙p = −kq − γ pm , ˙ϵ = γ p2
+
+m2 . (28) 
+
+3.1.1. Data generation and model validation 
+
+For this example, the dataset is generated by using an implicit midpoint integrator for the ODE system above. The simulations use a uniform timestep ∆t = 0.015 and physical parameters m = 1.0, k = 1.2, and γ = 0.4. Initial states are drawn uniformly from q(0) ∈ [−1.0, 1.0] and p(0) ∈ [−1.0, 1.0], while the heat-bath energy is initialized as 
+
+ϵ(0) = 0. The generated dataset consists of 100 trajectories with 1000 state records per trajectory. The trajectory-level partition follows the protocol described in Section 2.4: 60 trajectories are used for training, 50 for calibration, and 40 for testing, where the splitting is performed randomly. Model validation is performed by rolling out each trained model from the initial conditions of the testing trajecto-ries and comparing the predictions with the corresponding simulated reference solutions. All rollout predictions use a standard fourth-order Runge–Kutta (RK4) integrator with the same timestep as the generated dataset, ∆t = 0.015. S-PENNs and MC dropout use Ns = 2000 UQ realizations for each testing trajectory, while the deep ensembles use 50 independently trained N-GENNs with di ff erent architecture choices and random initializations. The network architectures, optimization settings, and inference parameters are summarized in Table C.4 of Appendix C. 
+
+3.1.2. Results and discussion          
+
+> Figure 2: Predictive trajectories and calibration diagnostics for the harmonic oscillator example. The first three columns compare deep ensembles, MC dropout, and S-PENNs (half-normal) on a representative testing trajectory; rows correspond to q,p, and ϵ.In each panel, the predictive mean is shown as a solid line, the reference trajectory as a dashed line, and the uncalibrated ˆ μ±2 ˆ σband as a blue shaded region. For S-PENNs (half-normal), the calibrated 95% conformal prediction interval is overlaid in red. The rightmost column plots empirical coverage against target coverage for S-PENNs (half-normal), with the diagonal indicating ideal calibration. Titles report the relative ℓ2error (RL2E) for each method and state variable.
+
+11 Fig. 2 compares the predictions of deep ensembles, MC dropout, and S-PENNs (half-normal) on a representative testing trajectory. The first three columns correspond to the di ff erent methods, while the rows show the results for the state variables q, p, and ϵ. Each panel displays the predictive trajectory together with its associated uncertainty band. The rightmost column reports empirical coverage for the uncalibrated and calibrated S-PENNs (half-normal) intervals. All three methods reproduce the damped oscillator response, including the oscillatory exchange between q
+
+and p and the monotonic increase in the bath energy ϵ. Deep ensembles give the smallest relative ℓ2 errors on this trajectory, with 2 .25 × 10 −2 for q, 1 .67 × 10 −2 for p, and 1 .54 × 10 −3 for ϵ. S-PENNs (half-normal) remain accurate on this displayed trajectory, with errors of 3 .019 × 10 −2 for q, 2 .20 × 10 −2 for p, and 1 .24 × 10 −2 for ϵ. MC dropout is the worst of the three methods for all three variables, giving errors of 6 .43 × 10 −2 for q, 5 .86 × 10 −2 for p, and 1.38 × 10 −2 for ϵ. The uncertainty bands in the trajectory panels provide a qualitative comparison of predictive spread. MC dropout produces the broadest bands, whereas the other two methods produce narrower bands. The rightmost panels show that the uncalibrated S-PENNs deviate from the target coverage, as empirical coverage can lie above or below the target depending on the state variable and coverage level. Split conformal calibration moves the curves toward the ideal diagonal, improving coverage without changing the sampled trajectories.        
+
+> Figure 3: Predictive accuracy and structure-preservation diagnostics for the harmonic oscillator example. The top panel shows the componentwise trajectory-wise relative ℓ2error (RL2E) over the testing dataset for q,p, and ϵ, comparing deep ensembles, MC dropout, and S-PENNs using half-normal, uniform, and exponential distributions for the epistemic index. The box plots show the median with the solid lines and the boxes span the interquartile ranges. The bottom-left panel shows the energy rate ˙ Eover time, with the median as a solid line and the 95% prediction interval as a shaded band across sampled rollouts. The bottom-right panel shows the pointwise minimum entropy production min( ˙ S) over time on a logarithmic scale, where the minimum is taken across the sampled S-PENNs rollouts at each timestep.
+
+As a broader assessment, Fig. 3 extends the comparison to the full testing dataset and examines the thermodynamic structure of the S-PENNs rollouts. The top panel reports the trajectory-wise relative ℓ2 errors. All three S-PENNs variants have lower median errors than MC dropout for q and p. Among them, the half-normal distribution gives the lowest median errors for all three state variables. Its medians for q and p are nearly identical to those of deep ensembles, while deep ensembles retain the lowest median error for ϵ. The uniform and exponential variants of S-PENNs have higher median errors on ϵ than MC dropout. The bottom panels assess the first and second laws for the sampled rollouts of the representative testing trajectory. For all three S-PENNs variants, the median energy rate remains centered at zero, and the 95% intervals stay at the 10 −7 scale. The pointwise minimum entropy-production 12 rate over the sampled rollouts remains positive throughout the trajectory and decreases overall as the damped oscillator approaches equilibrium. These results indicate that, in this example, S-PENNs preserve thermodynamic consistency across all three reference distributions, while predictive accuracy remains stable, with slightly greater variation for ϵ
+
+than for q and p.Beyond predictive accuracy and thermodynamic consistency, computational cost and the statistical quality of the resulting uncertainty estimates are central to the practical value of the UQ method. Table 1 compares serial wall time and proper scoring rules computed from the uncalibrated predictive samples. Deep ensembles attain the lowest ES and CRPS values, while all S-PENNs variants outperform MC dropout in ES and in CRPS for q and p; the half-normal variant also improves CRPS for ϵ. Measured wall times are 9 .1 × 10 3 s for the 50-member deep ensemble, 2 .3 × 10 2 sfor MC dropout, and 1 .2 × 10 2–1 .3 × 10 2 s for S-PENNs. Thus, S-PENNs are less costly despite using 2000 rather than 50 samples. Scaling the deep ensemble to 2000 members gives 3 .6 × 10 5 s, which is three orders of magnitude higher than the cost for S-PENNs. 
+
+> Table 1: Serial wall time and proper scoring rules for the harmonic oscillator example. The wall time includes model training and generation of predictive samples for all testing trajectories. ES denotes the energy score over the full multivariate trajectory, and CRPS is averaged for each state variable. Scores are computed from uncalibrated predictive samples and averaged over the testing dataset. Lower ES and CRPS values indicate better probabilistic predictions.
+
+Method Wall time (sec) ES ↓ CRPS( q) ↓ CRPS( p) ↓ CRPS( ϵ) ↓
+
+Deep ensembles ∗ 9.1 × 10 3 6.8 × 10 −2 1.1 × 10 −3 9.3 × 10 −4 5.1 × 10 −4
+
+MC dropout 2.3 × 10 2 7.0 × 10 −1 1.2 × 10 −2 1.3 × 10 −2 4.5 × 10 −3
+
+S-PENNs (half-normal) 1.2 × 10 2 2.4 × 10 −1 4.1 × 10 −3 3.8 × 10 −3 3.0 × 10 −3
+
+S-PENNs (uniform) 1.3 × 10 2 4.9 × 10 −1 7.4 × 10 −3 7.4 × 10 −3 7.8 × 10 −3
+
+S-PENNs (exponential) 1.3 × 10 2 3.2 × 10 −1 4.2 × 10 −3 4.3 × 10 −3 5.9 × 10 −3 
+
+> ∗For deep ensembles, the reported wall time is the serial cost of the 50-member ensemble, and the scoring rules are computed from the same ensemble.
+
+Overall, the harmonic oscillator example shows that S-PENNs can introduce epistemic uncertainty into a hard-constrained learned dynamics model at a low computational cost while guaranteeing thermodynamic consistency. Across the testing dataset, S-PENNs produce accurate mean predictions, improve clearly over MC dropout, and remain largely insensitive to the choice of reference distribution. The sampled rollouts preserve energy conservation and nonnegative entropy production, and split conformal prediction improves empirical coverage without modifying these admissible samples. Although deep ensembles remain the strongest baseline in accuracy and proper scoring rules for this low-dimensional problem, S-PENNs achieve competitive predictive accuracy and UQ performance at substantially lower computational cost. 
+
+3.2. Idealized chemical motor 
+
+The second example is the idealized chemical motor considered in the N-GENNs study [23]. A piston of mass m
+
+and cross-sectional area A is attached to a linear spring with natural length q0 and encloses a van der Waals mixture undergoing a chemical reaction X 1 + X2 ⇌ X3. The absolute piston position q determines the chamber volume through V(q) = Aq , while q − q0 is the spring extension. The state variables and vector of species mole numbers are 
+
+x = (q, p, ϵ, n1, n2, n3), n = (n1, n2, n3)T , (29) where p is the piston momentum, ϵ is the internal energy of the gas mixture, and nμ is the number of moles of specie Xμ. The total energy combines the kinetic energy of the piston, the elastic energy of the spring, and the internal energy of the mixture, 
+
+E(x) = p2
+
+2m + 12 k(q − q0)2 + ϵ, (30) 13 where k is the spring sti ff ness. The Poisson operator for this system is noncanonical and couples the piston momentum to the gas internal energy as, 
+
+L(x) =
+
+
+
+0 1 0 0 0 0
+
+−1 0 F(x) 0 0 00 −F(x) 0 0 0 00 0 0 0 0 00 0 0 0 0 00 0 0 0 0 0
+
+
+
+, F(x) = (∂S /∂ q)p,ϵ 
+
+(∂S /∂ϵ )p,q
+
+. (31) Here F(x) is the force exerted by the gas on the piston. We adopt the N-GENNs dimensionless convention R = h = NA = 1, where R, h, and NA denote the gas constant, Planck constant, and Avogadro constant, respectively. With S = S phys /R, the gas-constant-scaled van der Waals entropy is 
+
+S (x) =
+
+> 3
+
+X
+
+> μ=1
+
+nμ
+
+
+
+52 + ln 
+
+
+
+V − P3 
+
+> ν=1
+
+nνbν
+
+nμ
+
+
+
+4πmμ
+
+3 P3 
+
+> β=1
+
+nβ
+
+ϵ +
+
+P3 
+
+> ρ,σ =1
+
+nρnσaρσ 
+
+V
+
+
+
+> 3/2
+
+ , (32) here mμ is the molecular mass of species X μ, bμ is its excluded-volume parameter, and aρσ is the interaction parameter between species X ρ and X σ. The mass-action kinetics are generated by the non-quadratic dissipation potential 
+
+Ξ(x, x∗) = α √n1n2n3
+
+"
+
+cosh n∗ 
+
+> 1
+
++ n∗ 
+
+> 2
+
+− n∗
+
+> 3
+
+2
+
+!
+
+− 1
+
+#
+
+, (33) where x∗ = (q∗, p∗, ϵ ∗, n∗
+
+> 1
+
+, n∗
+
+> 2
+
+, n∗
+
+> 3
+
+) is the conjugate state, and α > 0 is the rate coe ffi cient. Evaluating the GENERIC evolution with Eqs. (30)–(33) gives ˙q = pm ,
+
+˙p = − k(q − q0) + 23
+
+ϵAq + P3 
+
+> ρ,σ =1
+
+nρnσaρσ 
+
+q Aq − P3 
+
+> ν=1
+
+nνbν
+
+ −
+
+P3 
+
+> ρ,σ =1
+
+nρnσaρσ 
+
+Aq 2 ,
+
+˙ϵ = − pm
+
+
+
+23
+
+ϵAq + P3 
+
+> ρ,σ =1
+
+nρnσaρσ 
+
+q Aq − P3 
+
+> ν=1
+
+nνbν
+
+ −
+
+P3 
+
+> ρ,σ =1
+
+nρnσaρσ 
+
+Aq 2
+
+ ,
+
+˙n1 = α
+
+4
+
+
+
+Kn 3 − n1n2
+
+K
+
+
+
+,
+
+˙n2 = α
+
+4
+
+
+
+Kn 3 − n1n2
+
+K
+
+
+
+,
+
+˙n3 = α
+
+4
+
+ n1n2
+
+K − Kn 3
+
+
+
+.
+
+(34) Here K is the reaction constant. With n = P3 
+
+> β=1
+
+nβ, a = (aρσ ), and b = (b1, b2, b3)T , it is given by 
+
+K = exp 
+
+ 3n P3
+
+> σ=1
+
+(a1σ + a2σ − a3σ)nσ
+
+2( ϵAq + nT an ) − n(b1 + b2 − b3)2( Aq − nT b)
+
+ m1m2
+
+m3
+
+!3/4
+
+(Aq − nT b)1/2
+
+" 4π
+
+3n ϵ + nT an 
+
+Aq 
+
+!# 3/4
+
+. (35) More details on this example can be found in Section 4.2.1 and Appendix B of [23]. 
+
+3.2.1. Data generation and model validation 
+
+For this example, the dataset is generated using the implicit midpoint integrator. The simulations use a uniform timestep ∆t = 0.01, and the physical parameters 
+
+m = 0.8, A = 1.0, q0 = 2.0, k = 31 .6, α = 2.0,
+
+a =
+
+
+
+0.1 0.1 0.10.1 0.1 0.10.1 0.1 20 .0
+
+ , b = (0 .05 , 0.05 , 0.05) T , (m1, m2, m3) = (1 .0, 1.2, 2.2) . (36) 14 The piston starts from rest, p(0) = 0, while the initial mole numbers, piston position, and dimensionless temperature 
+
+T0 are sampled uniformly and independently from 
+
+q(0) ∈ [1 .2, 2.8] , T0 ∈ [0 .8, 1.2] ,
+
+n1(0) ∈ [0 .8, 1.3] , n2(0) ∈ [1 .2, 2.4] , n3(0) ∈ [0 .002 , 0.003] . (37) The initial internal energy is set to ϵ(0) = 32 n(0) T0, which gives ϵ(0) ∈ [2 .4, 6.7] to the reported precision. The generated dataset consists of 220 trajectories with 1000 state records per trajectory on t ∈ [0 , 9.99]. Among these generated trajectories, 140 trajectories are used for training, 50 for calibration, and 30 for testing. Model validation is performed by rolling out each trained model from the initial condition of every testing tra-jectory and comparing the predictions with the corresponding reference solution. RK4 integrator is used with the same timestep employed to generate the dataset, ∆t = 0.01. For each test trajectory, S-PENNs and MC dropout use Ns = 2000 uncertainty realizations, whereas the deep-ensemble method comprises 50 independently trained N-GENNs with di ff erent architecture choices and random initializations. Further details on the network architectures, optimization settings, and inference parameters are provided in Table C.4. 
+
+3.2.2. Results and discussion 
+
+In Fig. 4, we compare the three UQ methods on a representative testing trajectory. The six columns correspond to the state variables q, p, ϵ, n1, n2, and n3, while the first three rows show deep ensembles, MC dropout, and S-PENNs (half-normal), respectively. Deep ensembles produce the most accurate predictive mean for every component, with relative ℓ2 error of 7 .96 × 10 −4 for q, 1 .10 × 10 −2 for p, 6 .43 × 10 −4 for ϵ, 9 .33 × 10 −4 for n1, 2 .80 × 10 −4 for n2,and 3 .62 × 10 −4 for n3. S-PENNs (half-normal) gives corresponding errors of 3 .40 × 10 −3, 4 .55 × 10 −2, 7 .64 × 10 −3,8.29 ×10 −3, 1 .45 ×10 −3, and 4 .23 ×10 −3. For both methods, the momentum p has the largest error because small phase discrepancies are amplified as the trajectory repeatedly changes sign. MC dropout shows larger phase and amplitude deviations, with errors of 4 .86 × 10 −2 for q, 6 .84 × 10 −1 for p, 1 .19 × 10 −2 for ϵ, 3 .17 × 10 −2 for n1, 2 .39 × 10 −3
+
+for n2, and 1 .75 × 10 −2 for n3. Additionally, the presented uncertainty bands provide a further distinction between the methods on this representative testing trajectory. The bands obtained from deep ensembles remain narrow and successfully cover the errors. MC dropout gives the widest bands, particularly for q and p. However, this larger spread does not fully cover the discrepancies in n1 and n3. The uncalibrated S-PENNs bands are comparable to those of deep ensembles. The coverage curves in the bottom row of Fig. 4 confirm that these raw bands systematically under-cover, indicating the model is overconfident. Split conformal calibration successfully brings every component close to the target without altering the underlying thermodynamically admissible samples. The comparison over the full test dataset is shown in Fig. 5. Deep ensembles have the lowest median relative ℓ2
+
+error for every component. MC dropout constantly produces the largest errors, while all S-PENNs variants have a lower median than MC dropout across all six variables. The lower panels verify the thermodynamic behavior of the S-PENNs samples. For all three reference distributions, the energy-rate median remains at zero and the 95% interval stays on the order of 10 −7. The minimum sampled entropy-production rate remains positive throughout the rollout. Thus, as intended by the framework’s design, the uncertainty realizations retain the first- and second-law structure even in the presence of nonlinear chemical kinetics and state-dependent reversible coupling.                                                                                                                                         
+
+> Table 2: Serial wall time and proper scoring rules for the idealized chemical motor example. The wall time includes model training and generation of predictive samples for all testing trajectories. ES denotes the energy score over the full multivariate trajectory, and CRPS is averaged for each state variable. Scores are computed from uncalibrated predictive samples and averaged over the testing dataset. Lower ES and CRPS values indicate better probabilistic predictions.
+> Method Wall time (sec) ES ↓CRPS( q)↓CRPS( p)↓CRPS( ϵ)↓CRPS( n1)↓CRPS( n2)↓CRPS( n3)↓
+> Deep ensembles ∗1.5×10 48.2×10 −13.5×10 −31.8×10 −28.1×10 −36.0×10 −46.3×10 −46.8×10 −4
+> MC dropout 4.4×10 21.6×10 17.4×10 −23.7×10 −18.7×10 −26.4×10 −34.7×10 −31.3×10 −2
+> S-PENNs (half-normal) 3.2×10 22.0×10 07.5×10 −33.8×10 −22.5×10 −22.0×10 −31.6×10 −31.8×10 −3
+> S-PENNs (uniform) 2.7×10 26.0×10 02.1×10 −21.0×10 −18.6×10 −25.7×10 −35.6×10 −37.1×10 −3
+> S-PENNs (exponential) 3.1×10 22.7×10 01.1×10 −25.4×10 −23.1×10 −22.3×10 −32.0×10 −32.2×10 −3
+> ∗For deep ensembles, the reported wall time is the serial cost of the 50-member ensemble, and the scoring rules are computed from the same ensemble.
+
+15 Figure 4: Predictive trajectories and calibration diagnostics for the idealized chemical motor. Columns correspond to q, p, ϵ, n1, n2, and n3. The first three rows show deep ensembles, MC dropout, and S-PENNs (half-normal), respectively, on a representative testing trajectory. The predictive mean is plotted as a solid line, the simulated reference as a dashed line, and the uncalibrated ˆ μ ± 2 ˆ σ interval as a blue band. The S-PENNs row also includes the calibrated 95% conformal interval in red. Insets enlarge the late-time response of the three species. The final row compares empirical and target coverage for the uncalibrated and calibrated S-PENNs intervals. Titles report the componentwise relative ℓ2 error (RL2E). 
+
+Figure 5: Predictive accuracy and structure-preservation diagnostics for the idealized chemical motor. The top panel shows the componentwise trajectory-wise relative ℓ2 error (RL2E) over the testing dataset for q, p, ϵ, n1, n2, and n3, comparing deep ensembles, MC dropout, and S-PENNs using half-normal, uniform, and exponential distributions for the epistemic index. The box plots show the medians as solid lines, while the boxes span the interquartile ranges. The bottom-left panel shows the energy rate ˙ E over time for a representative testing trajectory, with the median as a solid line and the 95% prediction interval as a shaded band across sampled S-PENNs rollouts. The bottom-right panel shows the pointwise minimum entropy-production rate min( ˙ S ) on a logarithmic scale, where the minimum is taken across the sampled S-PENNs rollouts at each timestep. 
+
+16 To complete the comparison, Table 2 reports probabilistic scores and serial computational time. Deep ensembles give the lowest ES, 8 .2 × 10 −1, and the lowest componentwise CRPS values. Measured wall times are 1 .5 × 10 4 s for the 50-member deep ensemble, 4 .4 × 10 2 s for MC dropout, and 2 .7 × 10 2–3 .2 × 10 2 s for S-PENNs. Thus, S-PENNs are about two times less costly compared to deep ensembles and outperform MC dropout in probabilistic scores. Scaling the deep ensemble to 2000 members gives 5 .9 × 10 5 s, which is about three orders of magnitude higher than the cost needed for S-PENNs. These results extend the proposed construction to systems with noncanonical reversible coupling and a non-quadratic reaction potential. 
+
+3.3. Viscoplastic model 
+
+The third example is designed to assess S-PENNs on a field-valued problem characterized by a nonsmooth non-linear dissipation law, moving beyond finite-dimensional ODE dynamics, as considered in the first two examples. More specifically, we consider a one-dimensional continuum system governed by a viscoplastic constitutive relation of Perzyna type [70, 71], whose governing equations have been put in GENERIC form in [72]. The state vector 
+
+x = (u, p, ε vp , θ ), consists of the displacement field u(x, t), momentum field p(x, t), viscoplastic strain field εvp (x, t), and temperature field θ(x, t). The total and elastic strains are 
+
+ε = ∂u
+
+∂x , εe = ε − εvp . (38) Neglecting heat conduction, the energy and the entropy functionals are 
+
+E[x] =
+
+Z 12ρ p2 + cθ + 12C(ε − εvp )2
+
+!
+
+dx, S [x] =
+
+Z
+
+c log θ dx, (39) where ρ, C, and c denote the mass density, elastic modulus, and specific heat, respectively. The reversible part is governed by the canonical Poisson operator 
+
+L =
+
+
+
+0 I 0 0
+
+−I 0 0 00 0 0 00 0 0 0
+
+
+
+, (40) whereas the irreversible response is governed by a non-quadratic Perzyna-type dissipation potential 
+
+Ξ[x; x∗] =
+
+Z θ
+
+2η
+
+
+
+ξεvp + ξθ
+
+c σ − σy
+
+θ
+
+2
+
+dx, (41) where x∗ = (ξu, ξ p, ξ εvp , ξ θ) denotes the dual variables, η is the viscosity, σ = C(ε − εvp ) is the stress, σy > 0 is the constant yield stress, and ⟨a⟩ = max( a, 0) is the Macaulay bracket. The potential is convex with respect to the dual variables and non-quadratic and non-smooth due to the overstress threshold. Substitution into the GENERIC evolution equation gives ˙u = p
+
+ρ , ˙p = ∂∂x (C(ε − εvp )) , ˙εvp = 1
+
+η ⟨| σ| − σy⟩ sign( σ), ˙θ = σ ˙εvp 
+
+c . (42) 
+
+3.3.1. Data generation and model validation 
+
+The dataset is generated by solving the evolution equations above on a bar of length l = 0.2 m over t ∈ [0 , 2.0 ×
+
+10 −4] s. The material parameters are 
+
+ρ = 7800 kg · m−3, C = 210 GPa , η = 8 GPa · s, σy = 250 MPa , c = 1000 J · kg −1 · K−1. (43) All simulations start from u(x, 0) = 0, p(x, 0) = 0, εvp (x, 0) = 0, and θ(x, 0) = 298 K. A uniform mesh with Nx = 29 cells gives ∆x = 6.90 × 10 −3 m, with displacement and momentum stored at nodes, and strain, viscoplastic strain, and temperature stored at cell centers. A Courant–Friedrichs–Lewy (CFL) number of 0 .5 based on the elastic wave 17 speed pC/ρ gives ∆t = 6.65 × 10 −7 s. The nodal mechanical variables are advanced with velocity–Verlet, and the cell-centered viscoplastic strain and temperature are advanced with a forward Euler scheme, as in [23]. The left boundary is fixed, u(0 , t) = 0, while the right boundary follows a smooth ramp to a target engineering strain εt and is then held fixed as 
+
+u(l, t) =
+
+
+
+εt l 3
+
+ ttramp 
+
+2
+
+− 2
+
+ ttramp 
+
+3!
+
+, t ≤ tramp ,εt l, otherwise ,
+
+(44) where tramp = 1.6 × 10 −4 s. The dataset contains 150 loading cases with uniformly spaced target strains εt ∈ [1% , 2%]. As in the harmonic oscillator example, the split uses 70 loading cases for training, 50 for conformal calibration, and 30 for testing. The deterministic backbone follows the N-GENNs parameterization reviewed in Section 2.1. Because the state variables are fields, the networks learn the local energy, entropy, and dissipation densities rather than the correspond-ing functionals, which are obtained by integrating these densities over the domain. The kinetic contribution to the energy density, p2/(2 ρ), is imposed analytically, while the remaining energy density, and the total entropy and dissi-pation densities are learned from data. The Poisson operator is fixed to the canonical form above, consistent with the GENERIC structure for generalized standard materials [72]; hence, S-PENNs perturb only the density networks in this example. During rollout, ˙ u = p/ρ and the prescribed boundary histories are imposed directly, while the learned model supplies the interior momentum rate and the cell-centered rates of εvp and θ.For evaluation, the learned model is fed with the initial conditions of each testing case and rolled out on the same one-dimensional mesh using an RK4 scheme with the same timestep used to generate the dataset, ∆t = 6.65 × 10 −7 s. The rollout state consists of the interior nodal values of u and p together with all cell-centered values of εvp and θ.Boundary histories for u and p are imposed from the corresponding simulated case. S-PENNs and MC dropout use 
+
+Ns = 2000 stochastic rollouts per testing case, while the deep-ensemble baseline uses 50 independently initialized N-GENNs with the width choices reported in Table C.4. The full architecture, optimization, and inference settings are summarized in Appendix C. 
+
+3.3.2. Results and discussion 
+
+We present S-PENNs (half-normal) on a representative testing case for this example in Fig. 6, with the correspond-ing deep ensemble and MC dropout baseline results provided in Appendix B. In these field visualizations, columns correspond to u, p, εvp , and θ, and the rows show their predictive mean, simulated reference field, pointwise absolute error, and uncalibrated uncertainty. Fig. 6 further reports the calibrated uncertainty and the empirical coverage against target coverage for S-PENNs (half-normal). For this testing case, S-PENNs (half-normal) yield relative ℓ2 errors of 1.39 × 10 −3 for u, 1 .27 × 10 −2 for p, 5 .11 × 10 −3 for εvp , and 2 .80 × 10 −4 for θ. The corresponding errors for deep ensembles are 1 .85 × 10 −3, 1 .82 × 10 −2, 1 .72 × 10 −3, and 1 .30 × 10 −4, respectively. MC dropout produces the largest errors overall with 5 .13 × 10 −3 for u, 5 .09 × 10 −2 for p, 9 .99 × 10 −3 for εvp , and 1 .63 × 10 −3 for θ. Despite these quantitative di ff erences, none of the methods qualitatively reproduces the spatial patterns in the pointwise absolute error fields. The last row of Fig. 6 compares the empirical and target coverage of S-PENNs (half-normal). Before calibration, the uncertainty estimates under-cover for u and p but over-cover for εvp and θ, indicating overconfidence in the former two variables and underconfidence in the latter two. After split conformal calibration, the four coverage curves follow the target diagonal more closely. After split conformal calibration, all four empirical coverage curves follow the target diagonal more closely. The calibrated uncertainty fields also provide a closer representation of both the spatial error patterns and the range of error magnitudes for each state variable. These findings show that conformal prediction calibration improves coverage reliability in this PDE example. Fig. 7 moves from the representative case to the full testing dataset by plotting the statistics of the componentwise relative ℓ2 error for each testing case. MC dropout has the largest median RL2E for every field. The deep ensemble has the lowest median errors for εvp and θ, while S-PENNs (exponential) have the lowest median errors for u and 
+
+p. Among the S-PENNs variants, half-normal gives the lowest median errors for εvp and θ, whereas uniform and exponential reduce the u and p errors relative to half-normal. Thus, no S-PENNs reference distribution dominates across all four variables, but all three variants have lower median errors than MC dropout for every component. 18 Figure 6: S-PENNs (half-normal) prediction, uncertainty, and calibration fields for the 1D viscoplastic model on a representative testing case. Columns correspond to u, p, εvp , and θ. From top to bottom, the rows show the predictive mean, the reference field, the pointwise absolute error, the uncalibrated uncertainty given by the pointwise empirical standard deviation across sampled rollouts, the calibrated uncertainty given by the conformal interval half-width ˆ q1−α ˆσ, and empirical coverage against target coverage. Titles report the relative ℓ2 error (RL2E) for each state variable. 
+
+19 Figure 7: Componentwise testing-case relative ℓ2 error (RL2E) over the space–time grid for the 1D viscoplastic testing dataset. The grouped boxplots compare deep ensembles, MC dropout, and the half-normal, uniform, and exponential S-PENNs variants for u, p, εvp , and θ. Each box shows the median as a solid line and boxes span the interquartile ranges. 
+
+To compare the quality of the quantified uncertainty and the computational cost, Table 3 reports ES and compo-nentwise CRPS from the uncalibrated samples together with serial wall time. All three S-PENNs variants achieve lower ES values than the deep ensemble, ranging from 4 .8 × 10 4 to 6 .6 × 10 4, compared with 1 .0 × 10 5. MC dropout performs worst, with an ES of 3 .0×10 5. The componentwise CRPS results show that S-PENNs (exponential) achieves the lowest values for u and p, whereas the deep ensemble performs best for εvp and θ. Each S-PENNs variant also improves all four componentwise CRPS values relative to MC dropout while requiring less than half its wall time. Specifically, the S-PENNs runs take 1 .0 × 10 3 s, compared with 2 .3 × 10 3 s for MC dropout. Measured wall times is 7 .5 × 10 4 s for the 50-member deep ensemble, which is about one order of magnitude higher than the cost for S-PENNs. Scaling the deep ensemble to 2000 members gives 3 .0 × 10 6 s, or approximately 3 .0 × 10 3 times the S-PENNs cost.  
+
+> Table 3: Serial wall time and proper scoring rules for the 1D viscoplastic model. The wall time includes model training and generation of predictive samples for all testing cases. For deep ensembles, the reported time is extrapolated from the measured 50-member ensemble as described in the table note. ES denotes the energy score over the full-state rollout, and CRPS is reported for each physical field. Scores are computed from uncalibrated predictive samples and averaged over the testing dataset. Lower ES and CRPS values indicate better probabilistic predictions.
+
+Method Wall time (sec) ES ↓ CRPS( u) ↓ CRPS( p) ↓ CRPS( εvp ) ↓ CRPS( θ) ↓
+
+Deep ensembles ∗ 7.5 × 10 4 1.0 × 10 5 1.1 × 10 −6 9.0 × 10 2 7.5 × 10 −9 1.9 × 10 −2
+
+MC dropout 2.3 × 10 3 3.0 × 10 5 3.3 × 10 −6 2.4 × 10 3 1.2 × 10 −7 3.6 × 10 −1
+
+S-PENNs (half-normal) 1.0 × 10 3 6.6 × 10 4 7.4 × 10 −7 5.7 × 10 2 3.8 × 10 −8 7.1 × 10 −2
+
+S-PENNs (uniform) 1.0 × 10 3 4.8 × 10 4 4.8 × 10 −7 3.9 × 10 2 8.5 × 10 −8 2.2 × 10 −1
+
+S-PENNs (exponential) 1.0 × 10 3 4.8 × 10 4 2.4 × 10 −7 3.8 × 10 2 3.8 × 10 −8 1.1 × 10 −1 
+
+> ∗For deep ensembles, the reported wall time is the serial cost of the 50-member ensemble, and the scoring rules are computed from the same ensemble.
+
+Taken together, the 1D viscoplastic results extend the ODE findings from the previous examples to a PDE set-ting where uncertainty must be quantified over spatiotemporal fields rather than finite-dimensional trajectories. All three S-PENNs variants achieve consistently strong predictive accuracy and comparable overall performance, while outperforming MC dropout in both predictive accuracy and probabilistic scores. They also provide competitive UQ performance relative to the deep ensemble, with a much lower computational cost.These results show that the advan-tages observed in the ODE example carry over to field-valued PDE dynamics. 20 4. Conclusion 
+
+This work introduces Structure-Preserving Epistemic Neural Networks (S-PENNs) for uncertainty quantification in scientific machine learning models with architecturally enforced physical constraints. In the GENERIC setting, S-PENNs attach block-specific epinets to the thermodynamic building components of N-GENNs, which serve as base networks. The epinets share a common epistemic index. The resulting augmented blocks are then assembled through the same structure-preserving reparameterizations as in N-GENNs. As a result, each sampled vector field remains thermodynamically consistent by construction, preserving total energy and nonnegative entropy production at the level of individual realizations. Split conformal prediction is then used to calibrate interval widths obtained from the ensemble mean and standard deviation, providing finite-sample marginal coverage under trajectory-level exchangeability. The numerical examples show that S-PENNs provide a practical balance between structural fidelity, predictive quality, and computational cost across both finite-dimensional and field-valued dynamical systems. S-PENNs required typically 1 − 3 orders of magnitude less serial wall time than deep ensembles, improved substantially over MC dropout in probabilistic scores, and showed only moderate sensitivity to the reference distribution for the epistemic index. The present study is limited in two main respects. First, all three numerical examples use noise-free state mea-surements. With noisy states, the problem becomes an errors-in-variables (EiV) problem [73–76]: the clean trajectory should satisfy energy conservation and nonnegative entropy production, but the noise-corrupted trajectory need not. This di ff ers from intrinsic physical stochasticity, for which individual realizations are governed by the appropriate balance and dissipation laws. Training the same constrained dynamics directly on noisy measurements would there-fore impose the thermodynamic constraints on a noise-contaminated trajectory, which can bias the learned dynamics. Recent work in scientific machine learning has begun to address such EiV problems, for example in [76]. Second, epinets are designed as lightweight auxiliary networks for UQ [47] and have been shown to match large ensembles at orders-of-magnitude lower computational cost in benchmarks [77]. However, the present study evaluates S-PENNs only on two low-dimensional ODE systems and a one-dimensional PDE system, and the computational cost advantage of S-PENNs relative to deep ensembles is expected to be further amplified in higher-dimensional settings. Future work will first address noisy state measurements by separating the thermodynamically admissible trajectory from the measurement process. One route is to denoise the measurements before learning the constrained dynamics, while another is to use latent-variable formulations that represent noisy inputs before dynamics identification [78]. A second direction is to evaluate scalability on higher-dimensional thermomechanical systems, where the relative cost of epinet sampling, rollout generation, and deep ensembles may di ff er from the present benchmarks. More broadly, the S-PENNs principle is not tied to GENERIC dynamics. It is relevant to other structure-preserving or physics-constrained machine learning models in computational mechanics and may also be useful for pretrained foundation models in science and engineering whose architectures or adaptation procedures encode physical priors. In these settings, uncertainty estimates should remain compatible with the encoded structure. Because epinets can be attached to frozen or partially frozen building blocks, they provide a lightweight route to physically admissible uncertainty samples for active learning, material design, and reliability assessment. 
+
+Appendix A. Evaluation metrics for the numerical examples 
+
+This appendix defines the evaluation metrics used in Section 3. To distinguish the testing data from the training trajectories in Section 2.3.3, let i = 1, . . . , Ntest index a trajectory in Dtest , let Xi denote its reference rollout, and let ˆX(r) 
+
+> i
+
+, r = 1, . . . , Ns, denote its r-th predictive rollout sample. The scalar index j identifies a state variable at a discrete time point and, for a field-valued variable, at a spatio-temporal grid point. For each reported variable ν, Jν is the set of retained forecast entries used by the componentwise metric: forecast time points for an ODE variable and retained space–time grid points for a field-valued variable. The predictive sample mean at entry j is ˆ μi( j) = N−1
+
+> s
+
+PNs 
+
+> r=1
+
+ˆX(r) 
+
+> i
+
+( j). All metrics use the forecast portion of each rollout and therefore exclude the prescribed initial state at t = 0, and prescribed boundary conditions, if applicable. Thus, the harmonic-oscillator and chemical-motor metrics use t =
+
+1, . . . , Nt. In the viscoplastic example, the imposed boundary conditions of u and p are also excluded. 21 Relative ℓ2 error. Predictive accuracy is measured by the relative ℓ2 error (RL2E) of the predictive mean. For testing trajectory i and state variable ν,RL2E (ν) 
+
+> i
+
+=
+
+P j∈J ν ( ˆ μi( j) − Xi( j)) 2
+
+P j∈J ν (Xi( j)) 2
+
+
+
+> 1/2
+
+. (A.1) Figure titles report RL2E (ν) 
+
+> i
+
+for the displayed trajectory, and the box plots summarize its distribution over the testing dataset. For field-valued variables, the figures also show the pointwise absolute error | ˆμi( j) − Xi( j)|.
+
+Empirical coverage. For a nominal coverage level 1 − α, let bC1−α, i( j) denote the prediction interval at entry j of testing trajectory i. For the uncalibrated rollout samples, its endpoints are the empirical α/ 2 and 1 − α/ 2 quantiles; for calibrated results, bC1−α, i( j) = bC1−α(x(0)  
+
+> i
+
+; j) is the split-conformal interval in Eq. (24). Empirical coverage is the fraction of reference rollout entries contained in these intervals [52]: EC (ν)(1 − α) = 1
+
+Ntest |J ν|
+
+> Ntest
+
+X
+
+> i=1
+
+X
+
+> j∈J ν
+
+1nXi( j) ∈ bC1−α, i( j)o , (A.2) where 1{·} is the indicator function. The set Jν contains only forecast entries, namely, it excludes the prescribed initial conditions and boundary conditions. Ideal empirical calibration corresponds to EC (ν)(1 − α) = 1 − α. Curves below this diagonal indicate under-coverage associated with overconfident models, whereas curves above it indicate over-coverage associated with underconfident models [52, 79, 80]. We remark that finite calibration and testing datasets can produce deviations from the diagonal even when the conformal procedure satisfies its marginal coverage guarantee [52]. 
+
+Proper scoring rules. Probabilistic forecast quality is evaluated on the uncalibrated rollout samples using the contin-uous ranked probability score (CRPS) and the energy score (ES). These proper scoring rules assess calibration and sharpness jointly, with sharpness considered subject to calibration [66, 79]. Lower values indicate better probabilistic forecasts. The CRPS is computed on scalar marginals and averaged separately for each state variable [67, 68]: CRPS (ν) = 1
+
+Ntest |J ν|
+
+> Ntest
+
+X
+
+> i=1
+
+X
+
+> j∈J ν
+
+
+
+1
+
+NsNsX
+
+> r=1
+
+ˆX(r) 
+
+> i
+
+( j) − Xi( j) − 12N2
+
+> sNs
+
+X
+
+> r,r′=1
+
+ˆX(r) 
+
+> i
+
+( j) − ˆX(r′) 
+
+> i
+
+( j)
+
+ . (A.3) The ES extends the same assessment to the joint predictive distribution of the full rollout [69]. Viewing all forecast entries that remain after the exclusions above as vectors Xi and ˆ X(r) 
+
+> i
+
+, respectively, we estimate ES = 1
+
+Ntest 
+
+> Ntest
+
+X
+
+> i=1
+
+
+
+1
+
+NsNsX
+
+> r=1
+
+ˆX(r) 
+
+> i
+
+− Xi 2 − 12N2
+
+> sNs
+
+X
+
+> r,r′=1
+
+ˆX(r) 
+
+> i
+
+− ˆX(r′) 
+
+> i2
+
+ . (A.4) 
+
+Appendix B. Additional baseline results 
+
+This appendix reports the representative field visualizations on the same testing case for the deep ensembles and MC dropout baselines referenced in Section 3.3. Figures B.8 and B.9 use the same layout as the S-PENNs results in Fig. 6. The four columns correspond to u, p, εvp , and θ, and the rows display, from top to bottom, the predictive mean, simulated reference field, pointwise absolute error, and uncalibrated uncertainty. The uncertainty is the pointwise empirical standard deviation across the 50 independently trained models for the deep ensemble and across 2000 stochastic rollouts for MC dropout. 
+
+Appendix C. Neural-network setting, training, and inference details 
+
+All models are implemented in Python with JAX and Flax. Training and inference are performed in single pre-cision on a single NVIDIA RTX A6000 GPU. Unless otherwise stated, the N-GENNs backbone architectures and base-network training settings used by each UQ method follow the settings for the corresponding numerical exam-ples in the original N-GENNs paper [23]. Table C.4 summarizes the architecture, optimization, and inference settings used in the harmonic oscillator, idealized chemical motor, and 1D viscoplastic model. The following paragraphs detail method-specific implementation choices not fully captured by the table. 22 Figure B.8: Deep ensemble prediction and uncertainty fields for the 1D viscoplastic model on a representative testing instance. Columns correspond to u, p, εvp , and θ. From top to bottom, the rows show the predictive mean, the simulated solution, the pointwise absolute error, and the uncalibrated uncertainty given by the pointwise empirical standard deviation across ensemble members. Titles report the relative ℓ2 error (RL2E) for each state variable. 
+
+S-PENNs. S-PENNs’ training follows the two-stage procedure described in Section 2.3.3: the deterministic N-GENNs backbone is trained first, and then frozen while only the epinet parameters are optimized. In the harmonic-oscillator and chemical-motor examples, the epinets augment all thermodynamic blocks. In the 1D viscoplastic ex-ample, they augment only the non-kinetic contribution to the energy density and the entropy and dissipation potential densities, while the canonical Poisson operator remains fixed. The same architecture is used for all reference distri-butions considered in each example. Each sampled epistemic index produces one rollout sample, and the resulting samples are used to compute the predictive mean, empirical standard deviation, and proper scoring rules. 
+
+Deep ensembles. For deep ensembles, the hidden width cycles through the values in Table C.4 and remains fixed across the hidden layers of each member. Every member uses the full training dataset, with diversity introduced through the random seed and hidden width. The wall times in Tables 1, 2, and 3 report the measured computational cost without parallelization. The predictive statistics and proper scoring rules are computed from the 50 trained members. 
+
+MC dropout. MC dropout uses the same N-GENNs backbone as the deterministic model, with dropout active during training and inference. A dropout realization is held fixed over all timesteps of a rollout, so each sample follows one sampled vector field. We note that the 1D viscoplastic example uses a lower dropout rate of 0.1, rather than the rate of 0.2 used in the two ODE examples, because the higher rate produced non-convergent training runs and unstable rollout predictions. 
+
+Appendix D. Epinet construction for inverse problems 
+
+The input-independent epinet branch introduced in Section 2.3.1 can also be used for inverse problems with unknown global physical parameters. These benchmarks are reported in the appendix because the main S-PENNs 23 Figure B.9: MC dropout prediction and uncertainty fields for the 1D viscoplastic model on a representative testing instance. Columns correspond to 
+
+u, p, εvp , and θ. From top to bottom, the rows show the predictive mean, the simulated solution, the pointwise absolute error, and the uncalibrated uncertainty given by the pointwise empirical standard deviation across stochastic forward passes. Titles report the relative ℓ2 error (RL2E) for each state variable. Table C.4: Architectural and training settings for the harmonic oscillator, idealized chemical motor, and 1D viscoplastic examples. Each method block includes the optimizer, learning-rate settings, network architecture, and method-specific training and inference settings. All neural networks are trained with Softplus activation functions. 
+
+Method Setting Harmonic oscillator Chemical motor 1D viscoplastic model 
+
+S-PENNs 
+
+Optimizer SOAP SOAP SOAP Learning rate (base networks) 3 × 10 −3 3 × 10 −3 3 × 10 −3
+
+Learning rate (epinets) 3 × 10 −3 3 × 10 −3 3 × 10 −3
+
+Num. of hidden layers per block (base networks) 2 2 2Num. of hidden layers per block (epinets) 2 2 2Hidden-layer width (base networks) 30 30 30 Hidden-layer width (epinets) 10 10 10 Training epochs (base networks) 10000 10000 10000 Training epochs (epinets) 200 2500 1000 Epistemic-index dimension 5 5 5Prior scale 0.1 0.1 0.1 
+
+Deep ensembles 
+
+Optimizer SOAP SOAP SOAP Learning rate 3 × 10 −3 3 × 10 −3 3 × 10 −3
+
+Ensemble members 50 50 50 Num. of hidden layers per block 2 2 2Hidden-layer width choices (20, 30, 40) (20, 30, 40) (20, 25, 30) Training epochs per member 10000 10000 10000 
+
+MC dropout 
+
+Optimizer SOAP SOAP SOAP Learning rate 3 × 10 −3 3 × 10 −3 3 × 10 −3
+
+Dropout rate 0.2 0.2 0.1 Num. of hidden layers per block 2 2 2Hidden-layer width 30 30 30 Training epochs 10000 10000 10000 
+
+24 construction is developed for GENERIC dynamics, whereas the inverse problems isolate the same global-parameter mechanism in a PINN setting. Let s denote the independent variables, with s = t for an ODE trajectory and s = (x, t) for a spatiotemporal PDE field, and let Ω be the domain on which the governing residual is evaluated. We consider inverse problems in which the state u(s) and the unknown global physical parameters β ∈ Rdβ are inferred from measurements while violations of the governing equations are penalized through the residual [2], 
+
+R(u; β)( s) = 0, s ∈ Ω. (D.1) Here, R denotes the governing residual. In the deterministic PINN baseline, the state is parameterized by a neural network μu
+
+> ψ
+
+(s), and the global parameters are represented by the trainable vector βψ; both are included in the determin-istic parameter set ψ. The corresponding loss combines data-misfit and residual terms, with additional terms included when initial or boundary conditions are applicable. Following the ENN notation in Eq. (8), the deterministic PINN is first pretrained and then held fixed while the epinet parameters ϕ are optimized. The state-branch correction σu 
+
+> ϕ
+
+takes as input the stop-gradient feature vector ¯hu
+
+> ψ
+
+(s) = [sg( hu
+
+> ψ
+
+(s)) , s], which concatenates the frozen base features with the input coordinates. The parameter-branch correction σβ 
+
+> ϕ
+
+is deliberately input independent and depends only on the shared epistemic index z. Each realization therefore assigns one global perturbation of the parameter vector over Ω, rather than a coordinate-dependent parameter field. The augmented model is 
+
+uϑ(s, z) = μu
+
+> ψ
+
+(s) + σu
+
+> ϕ
+
+( ¯ hu
+
+> ψ
+
+(s), z), βϑ(z) = βψ + σβ
+
+> ϕ
+
+(z), (D.2) where ϑ = (ψ, ϕ). The state-branch correction follows the input-dependent epinet construction in Eqs. (9)–(11) and the parameter-branch correction follows the same linear input-independent form as in Eq. (14), 
+
+σβ
+
+> ϕ
+
+(z) = σβ, learn  
+
+> ϕ
+
+(z) + w σβ, prior (z),
+
+σβ, learn  
+
+> ϕ
+
+(z) =
+
+> dz
+
+X
+
+> n=1
+
+zn ϕβ
+
+> n
+
+, σβ, prior (z) =
+
+> dz
+
+X
+
+> n=1
+
+zn ζβ 
+
+> n
+
+. (D.3) Here, ϕβ 
+
+> n
+
+∈ Rdβ are learnable coe ffi cient vectors and ζβ 
+
+> n
+
+∈ Rdβ are fixed prior coe ffi cient vectors. For each sampled z,the residual R is evaluated using the corresponding state realization uϑ(·, z) and global parameter vector βϑ(z). The shared epistemic index couples state and parameter uncertainty, while βϑ(z) remains a single global parameter vector over Ω.We evaluate this construction on two benchmark inverse problems from [56], using the datasets distributed with the open-source NeuralUQ repository ( https://github.com/Crunch-UQ4MI/neuraluq ). The B-PINNs-HMC baseline [30] is reproduced from the same NeuralUQ implementation used in [56]. The proposed construction uses the two-branch epinet design described above, with the state-branch associated with u and the parameter-branch associated with β. Table D.5 summarizes the architecture, training, and inference settings for the two benchmarks shown in the following sections. At inference, uncertainty is summarized by the empirical predictive mean and standard deviation with the same number of samples generated in the B-PINNs-HMC baselines for fair comparison. 
+
+Appendix D.1. Inverse Kraichnan–Orszag system 
+
+As a first benchmark, we consider the inverse Kraichnan–Orszag system, a three-variable nonlinear dynamical model arising from interactions among inviscid shear waves [81]. The governing dynamics and initial conditions considered are ˙x1 = ax 2 x3, (D.4) ˙x2 = bx 1 x3,
+
+˙x3 = −(a + b)x1 x2,
+
+ x1(0) , x2(0) , x3(0)  = (1 .0, 0.8, 0.5) . (D.5) 25 Table D.5: Architecture, training, and inference settings for the proposed two-branch epinet construction in the Kraichnan–Orszag (KO) and Korteweg–de Vries (KdV) inverse problems. Tanh is used as the activation function and AdamW is the optimizer used for both training stages. 
+
+Setting KO KdV 
+
+Deterministic PINN hidden-layer widths (50 , 50) (50 , 50) Epinet hidden-layer widths (learnable and prior) (10 , 10) (10 , 10) Epistemic-index dimension 5 5Learning rate (base PINN / epinet) 10 −3 / 10 −3 10 −3 / 10 −3
+
+Training epochs (base PINN / epinet) 20 ,000 / 10 ,000 20 ,000 / 10 ,000 Prior scale 1.0 1.0 Reference distribution N(0, I) N(0, I)Predictive samples 1000 500 
+
+The reference coe ffi cients are a = 1 and b = 1. In the inverse setting, both coe ffi cients and the initial conditions are treated as unknowns. The task is to infer a and b together with the full trajectories x1, x2, and x3 over t ∈ [0 , 10] from sparse noisy measurements. Following [56], we use 11 measurements for x1 and x3 and 7 measurements for x2, each corrupted by zero-mean Gaussian noise with known standard deviation 0 .05. Fig. D.10 compares the reconstructed trajectories. Both the reproduced B-PINNs-HMC baseline and the proposed two-branch epinet construction recover the oscillatory dynamics from sparse noisy measurements, and their predictive means remain close to the reference trajectories over the full time interval. The componentwise relative ℓ2 errors show comparable state-reconstruction performance. The proposed construction reduces the errors for x1 and x3, from 7.29 × 10 −2 to 3 .93 × 10 −2 and from 8 .10 × 10 −2 to 6 .69 × 10 −2, respectively, while B-PINNs-HMC is more accurate for x2, with an error of 6 .30 × 10 −2 compared to 7 .39 × 10 −2. The estimated parameter distributions in Fig. D.11 show that B-PINNs-HMC gives sample means and standard deviations of a = 0.86 ± 0.06 and b = 1.06 ± 0.03, whereas the proposed two-branch epinet construction gives more accurate results with a = 0.98 ± 0.07 and b = 1.01 ± 0.06.      
+
+> Figure D.10: Predictive trajectories for the inverse Kraichnan–Orszag problem. Columns correspond to x1,x2, and x3; rows compare B-PINNs-HMC and the proposed two-branch epinet construction. In each panel, the predictive mean is shown as a solid line, the reference solution as a dashed line, training measurements as orange markers, and the ±2 standard deviation band as a blue shaded region. Titles report the relative ℓ2
+> error (RL2E).
+
+26 Figure D.11: Estimated distributions of the unknown parameters for the inverse Kraichnan–Orszag problem. Columns correspond to a and b; rows compare B-PINNs-HMC and the proposed two-branch epinet construction. Each panel shows the sample histogram, the sample mean as a solid vertical line, and the reference value as a dashed vertical line. The sample mean μ and standard deviation σ are annotated above each panel. 
+
+Appendix D.2. Inverse Korteweg–de Vries problem 
+
+The second benchmark considers an inverse Korteweg–de Vries (KdV) problem. Compared with the Kraichnan– Orszag system, this example tests the proposed construction on a field-valued inverse problem with localized wave profiles and soliton interaction. The KdV equation is a classical dispersive model for nonlinear wave propagation [82], and we write it as 
+
+ut = κ1uu x + κ2uxxx + f, (D.6) where the reference problem uses κ1 = 1.5, κ2 = 0.25 and f = 0. Following [82], the exact two-soliton solution is 
+
+u(x, t) = 2∂2 
+
+> x
+
+log 
+
+"
+
+exp( −ω1 − ω2) + exp( ω1 − ω2) + exp( ω2 − ω1) + (a1 − a2)2
+
+(a1 + a2)2 exp( ω1 + ω2)
+
+#
+
+, (D.7) where the phase variables are 
+
+ωi = ai x + a3 
+
+> i
+
+χt + bi, i = 1, 2, (D.8) with a1 = 1, a2 = 2, b1 = b2 = log(3) /2, and χ = 1. The inverse task is to infer κ1 and κ2 while reconstructing u(x, t) over the spatiotemporal domain from sparse noisy measurements. We again use the data from [56], with 200 random measurements of u and 100 measurements of f .Both measurement types are perturbed by zero-mean Gaussian noise with known standard deviation 0 .1. Fig. D.12 reports the predicted profiles at two representative time slices. Both B-PINNs-HMC and the proposed two-branch epinet construction recover the dominant two-soliton structure, including the narrow high-amplitude peak and the smaller secondary wave. Their errors di ff er by regime. At t = −1.5, where the soliton peaks remain well separated, the proposed construction reduces the relative ℓ2 error from 2 .41 × 10 −1 to 1 .23 × 10 −1. At t = 0.4, closer to the interaction regime, B-PINNs-HMC gives the smaller error, 4 .82 × 10 −2 compared with 5 .37 × 10 −2 for the proposed two-branch epinet construction. The parameter distributions in Fig. D.13 show that B-PINNs-HMC gives κ1 = 1.39 ± 0.03 and 27 κ2 = 0.26 ± 0.01, whereas the proposed two-branch epinet construction gives κ1 = 1.50 ± 0.05 and κ2 = 0.37 ± 0.02. Thus, the input-independent parameter branch identifies κ1 nearly exactly, but it overestimates κ2. In contrast, B-PINNs-HMC is closer for κ2 but biased low for κ1.          
+
+> Figure D.12: Predictive solution profiles for the inverse KdV problem at two representative time slices. Columns correspond to t=−1.5 and
+> t=0.4; rows compare B-PINNs-HMC and the proposed two-branch epinet construction. In each panel, the predictive mean is shown as a solid line, the reference solution as a dashed line, training measurements as orange markers, and the ±2 standard deviation band as a blue shaded region. Titles report the relative ℓ2error (RL2E). The scaling for tfollows [82].
+
+Code availability 
+
+The code will be made available upon publication. 
+
+Declaration of competing interest 
+
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper. 
+
+Acknowledgments 
+
+The authors acknowledge support from the US Department of the Army W911NF2310230. 
+
+Declaration of generative AI and AI-assisted technologies in the writing process 
+
+During the preparation of this work, the authors used ChatGPT to check grammar and improve sentence clarity. After using this tool, the authors reviewed and edited the content as needed and took full responsibility for the final published article. 28 Figure D.13: Estimated distributions of the unknown parameters for the inverse KdV problem. Columns correspond to κ1 and κ2; rows compare B-PINNs-HMC and the proposed two-branch epinet construction. Each panel shows the sample histogram, the sample mean as a solid vertical line, and the reference value as a dashed vertical line. The sample mean μ and standard deviation σ are annotated above each panel. 
+
+References 
+
+[1] Ricky TQ Chen, Yulia Rubanova, Jesse Bettencourt, and David K Duvenaud. Neural ordinary di ff erential equa-tions. Advances in neural information processing systems , 31, 2018. [2] Maziar Raissi, Paris Perdikaris, and George E Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial di ff erential equations. Journal of Computational physics , 378:686–707, 2019. [3] George Em Karniadakis, Ioannis G Kevrekidis, Lu Lu, Paris Perdikaris, Sifan Wang, and Liu Yang. Physics-informed machine learning. Nature Reviews Physics , 3(6):422–440, 2021. [4] Lu Lu, Pengzhan Jin, Guofei Pang, Zhongqiang Zhang, and George Em Karniadakis. Learning nonlinear oper-ators via DeepONet based on the universal approximation theorem of operators. Nature machine intelligence ,3(3):218–229, 2021. [5] Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Fourier neural operator for parametric partial di ff erential equations. arXiv preprint arXiv:2010.08895 , 2020. [6] Nikola Kovachki, Zongyi Li, Burigede Liu, Kamyar Azizzadenesheli, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Neural operator: Learning maps between function spaces with applications to pdes. 
+
+Journal of Machine Learning Research , 24(89):1–97, 2023. [7] Elena Celledoni, Matthias J Ehrhardt, Christian Etmann, Robert I McLachlan, Brynjulf Owren, C-B Schonlieb, and Ferdia Sherry. Structure-preserving deep learning. European journal of applied mathematics , 32(5):888– 936, 2021. 29 [8] Pengzhan Jin, Zhen Zhang, Aiqing Zhu, Yifa Tang, and George Em Karniadakis. SympNets: Intrinsic structure-preserving symplectic networks for identifying Hamiltonian systems. Neural Networks , 132:166–179, 2020. [9] Haijun Yu, Xinyuan Tian, Weinan E, and Qianxiao Li. OnsagerNet: Learning stable and interpretable dynamics using a generalized Onsager principle. Physical Review Fluids , 6(11):114402, 2021. [10] Zhen Zhang, Yeonjong Shin, and George Em Karniadakis. GFINNs: GENERIC formalism informed neural networks for deterministic and stochastic dynamical systems. Philosophical Transactions of the Royal Society A: Mathematical, Physical and Engineering Sciences , 380(2229), 2022. [11] Samuel Greydanus, Misko Dzamba, and Jason Yosinski. Hamiltonian Neural Networks. Advances in neural information processing systems , 32, 2019. [12] Miles Cranmer, Sam Greydanus, Stephan Hoyer, Peter Battaglia, David Spergel, and Shirley Ho. Lagrangian Neural Networks. In ICLR 2020 Workshop on Integration of Deep Neural Models and Di ff erential Equations ,2019. [13] Yaofeng Desmond Zhong, Biswadip Dey, and Amit Chakraborty. Symplectic ODE-Net: Learning Hamiltonian dynamics with control. In International Conference on Learning Representations , 2020. [14] Pengzhan Jin, Zhen Zhang, Ioannis G Kevrekidis, and George Em Karniadakis. Learning Poisson systems and trajectories of autonomous systems via Poisson neural networks. IEEE Transactions on Neural Networks and Learning Systems , 34(11):8271–8283, 2022. [15] Miroslav Grmela and Hans Christian Öttinger. Dynamics and thermodynamics of complex fluids. I. development of a general formalism. Physical Review E , 56(6):6620, 1997. [16] Hans Christian Öttinger and Miroslav Grmela. Dynamics and thermodynamics of complex fluids. II. illustrations of a general formalism. Physical Review E , 56(6):6633, 1997. [17] Hans Christian Öttinger. Beyond Equilibrium Thermodynamics . John Wiley & Sons, 2005. [18] Michal Pavelka, Václav Klika, and Miroslav Grmela. Multiscale Thermo-Dynamics: Introduction to GENERIC .Walter de Gruyter GmbH & Co KG, 2018. [19] Philip J Morrison. A paradigm for joined Hamiltonian and dissipative systems. Physica D: Nonlinear Phenom-ena , 18(1-3):410–419, 1986. [20] Quercus Hernández, Alberto Badías, David González, Francisco Chinesta, and Elías Cueto. Structure-preserving neural networks. Journal of Computational Physics , 426:109950, 2021. [21] Kookjin Lee, Nathaniel Trask, and Panos Stinis. Machine learning structure preserving brackets for forecasting irreversible processes. Advances in Neural Information Processing Systems , 34:5696–5707, 2021. [22] Anthony Gruber, Kookjin Lee, Haksoo Lim, Noseong Park, and Nathaniel Trask. Effi ciently parameterized neural metriplectic systems. In International Conference on Learning Representations , volume 2025, pages 24835–24859, 2025. [23] Vojtˇ ech Votruba, Zequn He, Weilun Qiu, Celia Reina, and Michal Pavelka. Nonlinear GENERIC Informed Neural Networks (N-GINNs): learning GENERIC dynamics with non-quadratic dissipation potentials. arXiv preprint arXiv:2605.09058 , 2026. [24] Shenglin Huang, Zequn He, and Celia Reina. Variational Onsager Neural Networks (VONNs): Athermodynamics-based variational learning strategy for non-equilibrium PDEs. Journal of the Mechanics and Physics of Solids , 163:104856, 2022. 30 [25] Apostolos F Psaros, Xuhui Meng, Zongren Zou, Ling Guo, and George Em Karniadakis. Uncertainty quantifi-cation in scientific machine learning: Methods, metrics, and comparisons. Journal of Computational Physics ,477:111902, 2023. [26] Radford M Neal. Bayesian learning for neural networks , volume 118. Springer Science & Business Media, 2012. [27] Ethan Goan and Clinton Fookes. Bayesian Neural Networks: An introduction and survey. In Case Studies in Applied Bayesian Data Science: CIRM Jean-Morlet Chair, Fall 2018 , pages 45–87. Springer, 2020. [28] Balaji Lakshminarayanan, Alexander Pritzel, and Charles Blundell. Simple and scalable predictive uncertainty estimation using deep ensembles. Advances in neural information processing systems , 30, 2017. [29] Yarin Gal and Zoubin Ghahramani. Dropout as a Bayesian approximation: Representing model uncertainty in deep learning. In international conference on machine learning , pages 1050–1059. PMLR, 2016. [30] Liu Yang, Xuhui Meng, and George Em Karniadakis. B-PINNs: Bayesian physics-informed neural networks for forward and inverse PDE problems with noisy data. Journal of Computational Physics , 425:109913, 2021. [31] Dongkun Zhang, Lu Lu, Ling Guo, and George Em Karniadakis. Quantifying total uncertainty in physics-informed neural networks for solving forward and inverse stochastic problems. Journal of Computational Physics , 397:108850, 2019. [32] Yibo Yang and Paris Perdikaris. Adversarial uncertainty quantification in physics-informed neural networks. 
+
+Journal of Computational Physics , 394:136–152, 2019. [33] Yihang Gao and Michael K Ng. Wasserstein generative adversarial uncertainty quantification in physics-informed neural networks. Journal of Computational Physics , 463:111270, 2022. [34] Weiheng Zhong and Hadi Meidani. PI-VAE: Physics-Informed Variational Auto-encoder for stochastic di ff er-ential equations. Computer Methods in Applied Mechanics and Engineering , 403:115664, 2023. [35] Hyomin Shin and Minseok Choi. Physics-informed variational inference for uncertainty quantification of stochastic di ff erential equations. Journal of Computational Physics , 487:112183, 2023. [36] Lukáš Novák, Himanshu Sharma, and Michael D Shields. Physics-informed polynomial chaos expansions. 
+
+Journal of Computational Physics , 506:112926, 2024. [37] Yifan Yu, Cheuk Hin Ho, and Yangshuai Wang. A conformal prediction framework for uncertainty quantification in physics-informed neural networks. Journal of Computational Physics , 561:114979, 2026. [38] Yusuke Tanaka, Tomoharu Iwata, et al. Symplectic Spectrum Gaussian Processes: Learning Hamiltonians from noisy and sparse data. Advances in Neural Information Processing Systems , 35:20795–20808, 2022. [39] Magnus Ross and Markus Heinonen. Learning energy conserving dynamics e ffi ciently with Hamiltonian Gaus-sian processes. Transactions on Machine Learning Research , 2023. [40] Nicholas Galioto, Harsh Sharma, Boris Kramer, and Alex Arkady Gorodetsky. Bayesian identification of non-separable Hamiltonians with multiplicative noise using deep learning and reduced-order modeling. Computer Methods in Applied Mechanics and Engineering , 430:117194, 2024. [41] Himanshu Sharma, Jim A Ga ff ney, Dimitrios Tsapetis, and Michael D Shields. Learning thermodynamically constrained equations of state with uncertainty. APL Machine Learning , 2(1), 2024. [42] Akshay Joshi, Prakash Thakolkaran, Yiwen Zheng, Maxime Escande, Moritz Flaschel, Laura De Lorenzis, and Siddhant Kumar. Bayesian-EUCLID: Discovering hyperelastic material laws with uncertainties. Computer Methods in Applied Mechanics and Engineering , 398:115225, 2022. 31 [43] Kevin Linka, Gerhard A Holzapfel, and Ellen Kuhl. Discovering uncertainty: Bayesian constitutive artificial neural networks. Computer Methods in Applied Mechanics and Engineering , 433:117517, 2025. [44] Bahador Bahmani. Conformal quantile regression for neural probabilistic constitutive modeling. Computer Methods in Applied Mechanics and Engineering , 457:118981, 2026. [45] Laurent Valentin Jospin, Hamid Laga, Farid Boussaid, Wray Buntine, and Mohammed Bennamoun. Hands-on Bayesian neural networks—a tutorial for deep learning users. IEEE Computational Intelligence Magazine ,17(2):29–48, 2022. [46] Jakob Gawlikowski, Cedrique Rovile Njieutcheu Tassi, Mohsin Ali, Jongseok Lee, Matthias Humt, Jianxiang Feng, Anna Kruspe, Rudolph Triebel, Peter Jung, Ribana Roscher, et al. A survey of uncertainty in deep neural networks. Artificial intelligence review , 56(Suppl 1):1513–1589, 2023. [47] Ian Osband, Zheng Wen, Seyed Mohammad Asghari, Vikranth Dwaracherla, Morteza Ibrahimi, Xiuyuan Lu, and Benjamin Van Roy. Epistemic neural networks. Advances in Neural Information Processing Systems ,36:2795–2823, 2023. [48] Leonardo Ferreira Guilhoto and Paris Perdikaris. Composite Bayesian optimization in function spaces using NEON—Neural Epistemic Operator Networks. Scientific Reports , 14(1):29199, 2024. [49] Bruno Jacob, Ashish S Nair, Amanda A Howard, Jan Drgona, and Panos Stinis. E-PINNs: Epistemic Physics-Informed Neural Networks. arXiv preprint arXiv:2503.19333 , 2025. [50] Zequn He and Celia Reina. EVODMs: variational learning of PDEs for stochastic systems via di ff usion models with quantified epistemic uncertainty. Journal of Computational Physics , page 114722, 2026. [51] Zequn He and Celia Reina. SPIEDi ff : robust learning of long-time macroscopic dynamics from short-time particle simulations with quantified epistemic uncertainty. arXiv preprint arXiv:2505.13501 , 2025. [52] Anastasios N Angelopoulos and Stephen Bates. Conformal prediction: A gentle introduction. Foundations and Trends in Machine Learning , 16(4):494–591, 2023. [53] Miroslav Grmela. GENERIC guide to the multiscale dynamics and thermodynamics. Journal of Physics Com-munications , 2(3):032001, 2018. [54] Richard C Kraaij, Alexandre Lazarescu, Christian Maes, and Mark Peletier. Fluctuation symmetry leads to GENERIC equations with non-quadratic dissipation. Stochastic Processes and their Applications , 130(1):139– 170, 2020. [55] Brandon Amos, Lei Xu, and J Zico Kolter. Input convex neural networks. In International conference on machine learning , pages 146–155. PMLR, 2017. [56] Zongren Zou, Xuhui Meng, Apostolos F Psaros, and George E Karniadakis. NeuralUQ: A comprehensive library for uncertainty quantification in neural di ff erential equations and operators. SIAM Review , 66(1):161–190, 2024. [57] Dan Levi, Liran Gispan, Niv Giladi, and Ethan Fetaya. Evaluating and calibrating uncertainty prediction in regression tasks. Sensors , 22(15):5540, 2022. [58] Volodymyr Kuleshov, Nathan Fenner, and Stefano Ermon. Accurate uncertainties for deep learning using cali-brated regression. In International conference on machine learning , pages 2796–2804. PMLR, 2018. [59] Eric Zelikman, Christopher Healy, Sharon Zhou, and Anand Avati. CRUDE: calibrating regression uncertainty distributions empirically. arXiv preprint arXiv:2005.12496 , 2020. [60] Harris Papadopoulos, Kostas Proedrou, Volodya Vovk, and Alex Gammerman. Inductive confidence machines for regression. In European conference on machine learning , pages 345–356. Springer, 2002. 32 [61] Jing Lei, Max G’Sell, Alessandro Rinaldo, Ryan J Tibshirani, and Larry Wasserman. Distribution-free predictive inference for regression. Journal of the American Statistical Association , 113(523):1094–1111, 2018. [62] Kamile Stankeviciute, Ahmed M Alaa, and Mihaela Van der Schaar. Conformal time-series forecasting. Ad-vances in neural information processing systems , 34:6216–6228, 2021. [63] Sophia Huiwen Sun and Rose Yu. Copula Conformal prediction for multi-step time series prediction. In The Twelfth International Conference on Learning Representations , 2024. [64] Vignesh Gopakumar, Ander Gray, Joel Oskarsson, Lorenzo Zanisi, Daniel Giles, Matt J Kusner, Stanislas Pamela, and Marc Peter Deisenroth. Uncertainty quantification of surrogate models using conformal predic-tion. Machine Learning: Science and Technology , 7(1):015025, 2026. [65] Glenn Shafer and Vladimir Vovk. A tutorial on conformal prediction. Journal of machine learning research ,9(3), 2008. [66] Tilmann Gneiting and Adrian E Raftery. Strictly proper scoring rules, prediction, and estimation. Journal of the American statistical Association , 102(477):359–378, 2007. [67] James E Matheson and Robert L Winkler. Scoring rules for continuous probability distributions. Management science , 22(10):1087–1096, 1976. [68] Hans Hersbach. Decomposition of the continuous ranked probability score for ensemble prediction systems. 
+
+Weather and Forecasting , 15(5):559–570, 2000. [69] Tilmann Gneiting, Larissa I Stanberry, Eric P Grimit, Leonhard Held, and Nicholas A Johnson. Assessing probabilistic forecasts of multivariate quantities, with an application to ensemble predictions of surface winds. 
+
+Test , 17(2):211–235, 2008. [70] Jacob Lubliner. Plasticity theory . Courier Corporation, 2008. [71] Juan C Simo and Thomas JR Hughes. Computational inelasticity . Springer, 1998. [72] Alexander Mielke. Formulation of thermoelastic dissipative material behavior using GENERIC. Continuum Mechanics and Thermodynamics , 23(3):233–256, 2011. [73] Wayne A Fuller. Measurement error models . John Wiley & Sons, 2009. [74] Raymond J Carroll, David Ruppert, Leonard A Stefanski, and Ciprian M Crainiceanu. Measurement error in nonlinear models: a modern perspective . Chapman and Hall /CRC, 2006. [75] Torsten Söderström. Errors-in-variables methods in system identification. Automatica , 43(6):939–958, 2007. [76] Zongren Zou, Xuhui Meng, and George Em Karniadakis. Uncertainty quantification for noisy inputs–outputs in physics-informed neural networks and neural operators. Computer Methods in Applied Mechanics and Engi-neering , 433:117479, 2025. [77] Ian Osband, Zheng Wen, Seyed Mohammad Asghari, Vikranth Dwaracherla, Morteza Ibrahimi, Xiuyuan Lu, and Benjamin Van Roy. Approximate thompson sampling via epistemic neural networks. In Uncertainty in Artificial Intelligence , pages 1586–1595. PMLR, 2023. [78] Paolo Conti, Jonas Kneifl, Andrea Manzoni, Attilio Frangi, Jörg Fehr, Steven L Brunton, and J Nathan Kutz. VENI, VINDy, VICI: a generative reduced-order modeling framework with uncertainty quantification. Neural Networks , page 108543, 2026. [79] Tilmann Gneiting, Fadoua Balabdaoui, and Adrian E Raftery. Probabilistic forecasts, calibration and sharpness. 
+
+Journal of the Royal Statistical Society Series B: Statistical Methodology , 69(2):243–268, 2007. 33 [80] Chen Xu and Yao Xie. Conformal prediction interval for dynamic time-series. In International Conference on Machine Learning , pages 11559–11569. PMLR, 2021. [81] Xiaoliang Wan and George Em Karniadakis. Multi-element generalized polynomial chaos for arbitrary proba-bility measures. SIAM Journal on Scientific Computing , 28(3):901–928, 2006. [82] Nicholas Benes, Alex Kasman, and Kevin Young. On decompositions of the KdV 2-soliton. Journal of Nonlinear Science , 16(2):179–200, 2006. 34

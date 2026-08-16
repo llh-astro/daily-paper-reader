@@ -1,0 +1,2380 @@
+Title: Closing the loop in learning with missing data
+
+URL Source: https://arxiv.org/pdf/2608.09030v1
+
+Published Time: Tue, 11 Aug 2026 02:14:19 GMT
+
+Number of Pages: 46
+
+Markdown Content:
+# Closing the Loop in Learning with Missing Data 
+
+Dimitrios Pylorof Dimitrios.ParsinasPylorof@inl.gov U.S. Department of Energy Idaho National Laboratory 
+
+Humberto E. Garcia Humberto.Garcia@inl.gov U.S. Department of Energy Idaho National Laboratory 
+
+# Abstract 
+
+What should a machine learning model learn when data is missing during training? We look at the learning process from a dynamical systems perspective, cast data missingness as a structured loss of actuation that limits controllability of the parameter error dynamics, and ultimately derive adaptation mechanisms with Lyapunov stability characteristics that throttle model updates in ways that preserve learning coherence under partial, intermittent observability. Under recurrent excitation, our analysis provides ISS-type residual-to-state bounds with respect to a bounded closed-loop mismatch between the loss residual and the preconditioned update geometry. We evaluate the efficacy of our directional observability-aware adaptive learning approach on multimodal contexts, reinforcing its premise in pro-moting learning coherence and stability even in pathologically sparse domains and problems. 
+
+# 1 Introduction 
+
+Machine learning models are commonly trained under the implicit assumption that all relevant input and output components are, consistently, fully observed. In operational settings, however, data are frequently missing, censored, or intermittently unavailable due to sensing failures, communication constraints, or data integrity considerations. Existing approaches typically address such missingness through imputation, mask-ing, or marginalization, focusing on statistical consistency or likelihood maximization. These methods offer limited insight into the dynamical behavior of learning algorithms under partial observability, and generally provide no guarantees on the stability or boundedness of the parameter evolution when data are absent.                                                   
+
+> features  x ∈ Rdy ∈ R
+> wt+1 =wt−ηB−1
+> t∇wℓt(ˆ yt(wt,˜xt), y t)∥et∥ ≤ Aq ⌊t/T ⌋∥e0∥+Lδ A, q, T, L, δ :expl. characterizable constants (∼windowed observability, model structure)
+> (q∈(0 ,1))
+> available missing
+> ℓt(·,·): loss
+> et:= wt−w∗w∗: ref.
+> directional observability-aware, control-theoretic adaptation ISS-like stability in parameter error dynamics
+> Gramian-like observability matrix Bt
+> provably guiding parameter motion within empirically justified directions and scales
+> St:= βSt−1+ (1 −β)At,Bt=St+ϵI
+> At:= ∇wˆyt(wt,˜xt) ( ∇wˆyt(wt,˜xt)) T
+> iteration t
+> currently available features ˜ xt
+> yt
+> ˜xtˆyt(w,˜xt)
+> ∼w
+
+Figure 1: A temporal view of learning with missing data, where intermittent observability drives our direc-tionally aware adaptation which, in turn, yields stable and coherent learning dynamics. In this work, we recast supervised learning with missing data as a closed-loop adaptive dynamical system subject to time-varying losses of observability, to provably guide parameter motion within empirically justified directions and margins and promote stability, reliability, and coherence of the learning process. Rather than treating missing components as stochastic noise, we model missingness as a structured, possibly adversarial, reduction in the excitation available to the learning dynamics. The learning parameters are viewed as the system state, while the learning rate, update direction, and regularization strength constitute control inputs 1arXiv:2608.09030v1 [eess.SY] 10 Aug 2026 that govern how the model adapts in response to available information. Missingness changes both the feedback signal and the actuation geometry; our stability analysis treats the resulting closed-loop residual mismatch explicitly, rather than presuming that missingness enters as an independent exogenous input. Building on tools from adaptive control and Lyapunov stability theory, we introduce an observability-aware learning framework that explicitly reshapes parameter updates according to directions supported by the currently observed data. By tracking the evolving actuation geometry induced by the data stream, we derive controlled update laws and finite-window conditions under which the parameter error contracts while remaining bounded in the presence of a bounded closed-loop residual mismatch. The resulting learning dynamics admit residual-to-state bounds when this mismatch remains bounded and the effective update geometry is recurrently excited, without requiring imputation, probabilistic modeling of the missingness mechanism, or distributional assumptions on the data. We derive Lyapunov-style guarantees establishing boundedness of the parameter trajectories and controlled evolution of extrapolative components, even when persistent excitation is intermittently lost. The proposed formulation applies to general supervised learning models, including linear regression and nonlinear function approximators trained via gradient-based methods, and naturally extends to settings with partial output supervision and intermittent labels. From a control perspective, the framework can be interpreted as gain-scheduled adaptive learning under time-varying observability constraints. By framing learning under missing data as a stabilization problem rather than a purely statistical inference task, this work provides a complementary notion of robustness that addresses failure modes such as parameter drift, hallucination, and instability that are not captured by standard generalization or regret analyses. The proposed perspective bridges adaptive control and modern machine learning, offering principled mechanisms for enforcing stability and bounded behavior in partially observable learning environments. In Figure 1, we illustrate the landscape of learning under missing data for which our methods are developed to eventually yield coherent, reliable learning subject to ISS-like stability, whereas in Figure 2, we sketch the potentially detrimental effect of missing data in the actual update directions, compared to full-view learning, and also compared to the update directions that our two methods — scalar observability-aware adaptation 
+
+and directional observability-aware adaptation — yield.        
+
+> full-view SGD
+> wtwtwtwt
+> ∇wℓt(ˆ yt(wt,xt), y t)
+> masked SGD
+> ∇wℓt(ˆ yt(wt,˜xt), y t)potentially hallucinated or incoherent update direction
+> scalar observability-aware learning
+> moderated update
+> ∼(4)
+> directional observability-aware learning
+> ∼(19) empirically justified & scaled update
+
+Figure 2: Illustration of how missing data (resulting in the masked observation ˜ xt) can distort gradient-based learning updates, compared to the full-view SGD update direction (shown on the left, and then repeated with dashed lines), and how our two methods, scalar and directional -observability-aware adaptation progressively moderate and reshape parameter motion, to promote learning stability and coherence. 
+
+# 2 A canonical failure under missing data, and a prototypic defense 
+
+We introduce a minimal supervised learning example illustrating how standard gradient-based training can exhibit unstable or unjustified parameter evolution under partial observability. We emphasize that the failure is dynamical rather than statistical, and arises once realistic learning dynamics such as intermittent observability, feature correlations, regularization, or momentum are taken into account. The purpose of this section is not to solve the general problem, but to isolate the core mechanism motivating our framework that we develop in subsequent sections. 22.1 Linear regression with masked inputs 
+
+Consider the linear regression model yt = ⟨w∗, xt⟩, where xt ∈ Rd are input features and w∗ ∈ Rd is a fixed but unknown parameter vector. At each time step t, only a subset of the components of xt is observed. We encode this using the diagonal masking matrix Mt ∈ Rd×d with entries {0, 1}, and define the observed input ˜xt = Mtxt. The learner trains using the masked squared loss ℓt(w) = 12 (yt − ⟨ w, ˜xt⟩)2, and updates parameters via stochastic gradient descent: 
+
+wt+1 = wt + η ˜xt (yt − ⟨ wt, ˜xt⟩) (1) where η > 0 is a fixed step size. This update corresponds to standard practice in supervised learning with missing inputs: gradients are computed using only observed components, while missing features are ignored. 
+
+2.2 Residual decomposition under partial observability 
+
+Define the parameter error et := wt − w∗ and the residual rt := yt − ⟨ wt, ˜xt⟩. Substituting yt = ⟨w∗, xt⟩
+
+and wt = w∗ + et into the residual definition yields: 
+
+rt = ⟨w∗, xt⟩ − ⟨ w∗ + et, Mtxt⟩,
+
+= −⟨ et, ˜xt⟩
+
+︸ ︷︷ ︸
+
+> error on observable subspace
+
++ ⟨w∗, (I − Mt) xt⟩.
+
+︸ ︷︷ ︸ 
+
+> =: dt(unobserved contribution)
+
+This decomposition separates two distinct contributions: the first term reflects error on the currently observed subspace; the second term is an unknown, unobservable disturbance arising from components of the signal that are not currently sensed. Crucially, the learner cannot distinguish these two contributions using the masked loss alone. 
+
+2.3 Idealized behavior under strict masking 
+
+If a coordinate of xt is masked at time t, then the corresponding component of ˜ xt is zero, and the associated parameter coordinate in wt receives no gradient update at that time step. In a fully idealized setting (i.e., absent of correlations, momentum, regularization, or noise) strict masking therefore freezes unobserved coordinates. However, rather critically, freezing alone does not imply stability of the learning dynamics. To the contrary, freezing amplifies instability .Under partial observability, the parameter vector decomposes into: coordinates that are currently actuated by the gradient, and coordinates that are temporarily frozen. Standard SGD continues to evolve the actuated coordinates as if the entire parameter vector were observable. The resulting updates are computed with respect to a reduced observation model and are therefore inconsistent with the frozen components (and whatever the value of these components is in reality unbeknownst to the learner). This asymmetry induces relative misalignment within the parameter vector: some coordinates evolve rapidly while others remain fixed, even though the loss function implicitly couples them through the residual. 
+
+2.4 Partial actuation and coherence loss 
+
+From a dynamical systems perspective, masking induces a loss of actuation authority over a subset of the parameter state. Standard SGD does not account for this loss and therefore applies control inputs (gradient updates) designed for the fully actuated system to a partially actuated one. In physical systems, such behavior leads to instability: when some actuators fail, aggressive inputs from the remaining actuators cause distortion rather than coherent motion. The analogous effect in learning is internal inconsistency 
+
+between parameter components trained under different observation regimes. This effect is exacerbated in realistic learning settings where observability is intermittent rather than permanent, features are correlated, momentum or weight decay induces motion even in unobserved directions or otherwise influences training, and/or stochastic noise accumulates over time. 3The resulting failure is dynamical rather than statistical: the learning algorithm operates open-loop and under 
+
+partial actuation . A concrete numerical illustration of the fault mode that arises under partial actuation of the learning dynamics is given in Appendix A. 
+
+2.5 A prototypic observability-aware update 
+
+To restore coherence, we introduce a simple modification inspired by adaptive control. Define the instanta-neous observed-feature energy: 
+
+γt := ∥ ˜xt∥2. (2) We replace the fixed step size η in the method (1) with the observability-dependent gain: 
+
+αt := ηϵ + γt
+
+, (3) where ϵ > 0 is a constant, to obtain the following iterative update: 
+
+wt+1 = wt + αt ˜xt (yt − ⟨ wt, ˜xt⟩) . (4) Although the scalar gain increases as γt decreases, the effective update magnitude satisfies 
+
+∥∆wt∥ = ∥wt+1 − wt∥ = αt∥ ˜xt∥| rt| = ηϵ + γt
+
+∥ ˜xt∥| rt| = η|rt| ∥ ˜xt∥
+
+ϵ + ∥ ˜xt∥2 , (5) which vanishes as observability is lost. Thus, when only a small fraction of the parameter vector is actuated, 
+
+all parameter updates are proportionally throttled. We note that this update does not aim to mobilize masked coordinates or in any way guess or impute their missing values. Instead, it limits the motion of unmasked coordinates so that learning proceeds more coherently under partial actuation. 
+
+2.6 Lyapunov interpretation and ISS-style bound 
+
+Consider the Lyapunov function Vt = ∥et∥2, and let at := ⟨et, ˜xt⟩. A direct calculation gives 
+
+Vt+1 − Vt = − (2αt − α2 
+
+> t
+
+γt
+
+) a2 
+
+> t
+
++ 2 αt (1 − αtγt) atdt + α2 
+
+> t
+
+γtd2 
+
+> t
+
+, (6) where γt = ∥ ˜xt∥2 and dt = ⟨w∗, (I − Mt) xt⟩. If 0 < η ≤ 1, then αtγt ≤ 1, and Young’s inequality yields the dissipation-disturbance bound 
+
+Vt+1 − Vt ≤ − αt
+
+2 a2 
+
+> t
+
++ (2αt + α2 
+
+> t
+
+γt
+
+) d2 
+
+> t
+
+. (7) Inequality (7) exhibits the standard structure familiar from input-to-state stability (ISS) analyses. In par-ticular, under reasonable finite-window excitation and bounded-feature conditions, it implies contraction of the parameter error up to a disturbance-dependent neighborhood, yielding an ISS-style bound: 
+
+∥et∥ ≤ ρt∥e0∥ + C sup 
+
+> τ <t
+
+|dτ |, ρ ∈ (0 , 1) , C ≥ 0. (8) 
+
+2.7 Beyond linear regression: observability-driven adaptation in implicit Hilbert spaces and deep neural networks 
+
+Take ϵ−SVR (Support Vector Regression) with a kernel k(x, x′). The training dynamics, whether we view them via primal SGD on w in Reproducing Kernel Hilbert Space (RKHS), or dual variable ascent on αi,are driven by inner products of feature maps: k(x, x′) = ⟨ϕ(x), ϕ (x′)⟩H. Missing data leading to masked inputs, i.e., x 7 → ˜x = M x , means that the feature maps ϕ(x) now operate on the masked inputs instead, i.e., 
+
+ϕ( ˜ x). This is a crucial differentiation compared to the linear regression case, as the learner does not know which directions in H have lost excitation. The problem is structurally the same, however, the parameter 
+
+w here lives in a possibly infinite-dimensional space, actuation happens through kernel evaluations, and 4correlations between directions are baked-in by construction. Given these complications we view the failure mode in ϵ−SVR as actually more dangerous than the linear counterpart: missingness can silently destroy excitation along entire RKHS directions without freezing anything explicitly and overtly. Our defensive posture in Hilbert spaces remains the same on the basis of using observability metrics to throttle the learning dynamics. Replacing the method’s fixed step size η with the gain αt = η/ (ϵ + k( ˜ xt, ˜xt)) preserves the same observability-aware conditioning principle. A finite-window contraction guarantee, however, can hold only for a finite-dimensional kernel realization or on a finite-dimensional active subspace containing the analyzed error trajectory: a finite sum of rank-one sensitivity operators cannot dominate the identity on a genuinely infinite-dimensional RKHS. We therefore make no claim of full-space finite-window contraction in an infinite-dimensional Hilbert space, as we also state in Section 5.4.2. The same observability-aware adaptation principle applies to (deep) neural networks, with suitable measures of observability/excitation that can extend to learned, time-varying representations. 
+
+2.8 Scope and limitations of scalar adaptation 
+
+The prototypic controller introduced here is intentionally myopic. It reacts only to instantaneous observabil-ity and applies a uniform gain across all parameter directions. Its role is not to recover missing information, but to enforce a basic stability principle: when only part of the system can be actuated, learning should slow down globally to preserve internal coherence. In the following sections we generalize this idea by introducing directionally-aware controllers that track excitation history and selectively constrain parameter evolution based on data-supported observability. 
+
+2.9 Summary and motivation for directional awareness 
+
+• Masking does not destabilize learning by moving unobserved parameters. • Instability arises because observed parameters move as if unobserved ones were also considered and moved by the method. • A minimal, d = 2 numerical walkthrough that makes the partial actuation mechanism concrete is provided in Appendix A. • The toy defense restores coherence by throttling learning under partial actuation. Yet, isotropic throttling may still miss opportunities to learn in well-observed subsets of a model and lacks the dis-criminating ability to more assertively slow down learning in persistently or increasingly unobserved subsets, in models and architectures of any level of complexity. • This control perspective and the pursuit of directional awareness motivate the general framework that we develop next. 
+
+# 3 Learning coherence and stability metrics 
+
+When we invoke learning coherence and stability , our main target is preventing parameter oscillation and hallucination at training time, that is, parameter motion that is unjustified by currently available –and intermittently-varying– data streams. Even though our stability analysis machinery will operate mostly in the parameter error space, it is still useful to introduce a plurality of metrics besides ∥et∥ that can illustrate, simply and in a way that is decoupled from our mathematical constructs such as the Gramian-like directional observability matrix Bt, what we refer to as learning coherence and stability, and help us evaluate the progression of a learning process under missing data. • Update coherence , evaluated at time t by averaging cosine similarity of the last two update directions (only for pairs of nonzero updates, or after applying a small positive denominator floor): Coherence( t) = 1
+
+W 
+
+> W−1
+
+∑
+
+> k=0
+
+⟨∆wt−k, ∆wt−k−1⟩∥∆wt−k∥∥ ∆wt−k−1∥ . (9) 5One may consider update coherence over an end-to-end-run by averaging Coherence( t) for t =1, . . . , N , or, as we do in Experiment 6.1, in an occupation time sense (i.e., how much effort / time does the method spend undoing itself vs. moving in a similar direction? ). Our update coherence metric is measuring directional consistency of consecutive updates. Higher is better; in general: positive values imply self-alignment, negative values indicate inconsistent motion. • Trajectory smoothness , evaluated at time t by looking at second-order differences: Smoothness( t) = 1
+
+W 
+
+> W−1
+
+∑
+
+> k=0
+
+∥wt−k − 2wt−k−1 + wt−k−2∥. (10) Our smoothness metric indicates acceleration in the parameter space. Lower values indicate smoother parameter motion. Under the challenging, pathological conditions induced by missing data, we regard smooth trajectories that do not steer aggressively whenever modalities appear and disappear in the data stream as safer. • Final stability . Even if we are mostly motivated by enduring (in time) learning processes and we scrutinize the ensuing parameter trajectory rather than just the final parameter state, we believe it is still important to consider the stability of the learned parameter late in the process. Assuming a finite learning run of length N , we evaluate final stability by looking at the standard deviation of the parameter vector norm in the last W learning iterations: Stability = std ( ∥wt∥ : t ∈ [N − W, N ]) . (11) Lower is more stable. • Lyapunov contraction rate . Motivated by the fact that, nominally (and under no missing data conditions), we expect gradient descent to reduce the parameter error vector exponentially, over relatively large temporal windows or in the middle of a finite learning run (to isolate initialization or late-stage oscillation/convergence effects) we fit log (∥et∥2) ∼ − ρt + c to estimate the contraction rate ρ ≈ − ddt log Vt = − ˙Vt/V t. Higher ρ implies faster (exponential-like) convergence. The quantities introduced in this section are not used to define or prove stability, but to operationalize the qualitative notions of coherence and (in)stability discussed in Sections 2 and 4, and to make them empirically visible in finite learning runs. 
+
+# 4 Directional observability-aware learning 
+
+Across linear models, kernels, and gradient networks, the key question that needs to be asked at every update under missing data is: 
+
+How much control authority is currently available to move the model in directions that matter for the loss? 
+
+We argue that, in a model-agnostic and unifying way, this authority is not a property of the parameter space. Rather, it is a property of the Jacobian of the model output with respect to parameters, evaluated at the current input. Concretely, consider a scalar prediction: ˆyt = f (wt, ˜xt) (12) where wt are the model parameters and ˜ xt is the currently observed –and possibly masked– input. The local sensitivity of the prediction to parameter motion is given by 
+
+gt := ∇w ˆy(wt, ˜xt), (13) which maps infinitesimal parameter changes δw to first-order output changes: δ ˆyt ≈ ⟨ gt, δ w⟩. The sensitivity vector induces a rank-one actuation operator 
+
+At := gtgT 
+
+> t
+
+, (14) 6which captures which directions of the parameter state are instantaneously actuated by the current data. Equivalently, writing the sensitivity in Jacobian form, 
+
+Jt := ∂f (wt, ˜xt)
+
+∂w , gt = JT 
+
+> t
+
+, (15) we obtain At = JT 
+
+> t
+
+Jt. The operator At captures both the total energy of the current actuation level, as induced by the masked input and captured by the Jacobian, and, more crucially as we will discuss and further develop next, the directions of varying actuation, as evidenced by current and recent data. Indicatively: • In the case of linear regression, with f (w, x) = wTx, the sensitivity is gt = ˜ xt, so Jt = ˜ xT 
+
+> t
+
+, and the actuation energy collapses to tr( At) = ∥ ˜xt∥2 whereas directional information is encoded in the entries of At.• For kernel methods with f (w, x) = ⟨wt, ϕ( ˜ xt)⟩H, the sensitivity is gt = ϕ( ˜ xt), so Jt = ϕ( ˜ xt)T, and the actuation energy is weighed by tr( At) = ∥ϕ( ˜ xt)∥2 
+
+> H
+
+= k( ˜ xt, ˜xt), and directional information is similarly encoded in At. We notice that we obtain the same object over a different basis. • For neural networks, transformers, and, in general, a differentiable model parameterized by wt, we evaluate Jt = ∂f (wt, ˜xt)/∂ w, and measure the instantaneous actuation energy via ∥Jt∥2 
+
+> F
+
+or even the loss-scaled variant ∥JT 
+
+> t
+
+∇ˆy ℓt∥2 (weighing how much actuation authority the learner has along the signal that the loss function provides for parameter motion). To preserve stability and coherence, our thesis is that learning across diverse bases and models should adapt 
+
+to the time - and directionally -varying controllability of the parameter dynamics , provably and empirically, as measured through the gradient channel induced by the (intermittently) observed data. 
+
+4.1 Motivation: Why scalar throttling is insufficient 
+
+In Section 2, we restored learning coherence and stability by modulating the learning rate using a scalar measure of actuation, effectively treating the gradient channel as isotropic. In the notation introduced above, this corresponds to collapsing the instantaneous actuation operator At = gtgT 
+
+> t
+
+into the single scalar quantity tr( At) = ∥gt∥2, and regulating updates uniformly across all parameter directions. Such a reduction is appropriate when loss of observability affects all directions similarly. In such cases, the rank-one structure of At carries little additional information beyond its overall magnitude, and scalar throttling suffices to prevent incoherent motion. In general, however, the actuation induced by the data stream can be directionally heterogeneous. Missing inputs, partial outputs (i.e., beyond the scalar prediction case prototyped here), and masked modalities (e.g., in large models learning on text and pictures, where part or the entirety of either modality may be unavailable) suppress excitation along specific parameter directions while leaving others well actuated. This anisotropy is already encoded in At: although At is rank-one at each instant, its orientation varies over time, and different directions may be persistently excited or persistently silent through iterations. Moreover, this anisotropy can be amplified in more complex, nonlinear models –from kernel methods to neural networks– as individual input coordinates or features propagate through shared representations and influence broad subsets of parameters. As a result, excitation patterns that are localized or intermittent in input space can induce highly anisotropic actuation in parameter space, further widening the gap between well-supported and weakly supported directions. A scalar gain discards such directional information by design. As a result, it cannot distinguish between directions that remain reliably actuated (where learning could safely proceed) and directions that are effec-tively blind (where motion risks being unjustified). Scalar throttling is therefore overly conservative in some directions and insufficiently discriminating in others. We posit that to preserve both learning progress and coherence under partial observability, the adaptation mechanism must be sensitive not only to the amount of actuation present (as is the scalar adaptation approach) but also to how that actuation is distributed across the parameter space. This motivates retaining and building on the directional structure of the actuation operator and aggregating it over time, leading naturally to the observability matrix Bt that we introduce next and the associated directionally-aware adaptive update law. 74.2 Directional excitation and observability history 
+
+The rank-one operator At is, by definition, instantaneous and, as such, relatively volatile. To obtain a smoother, more informative measure of directional excitation, we maintain the unregularized exponential moving average state St and form the regularized observability matrix Bt according to: 
+
+St := βSt−1 + (1 − β)At, S−1 = 0 ,
+
+Bt := St + ϵI, β ∈ (0 , 1) , ϵ > 0. (16) The state St encodes which parameter directions have recently been actuated by the data stream, whereas the ridge term in Bt provides a fixed conditioning floor without recursively accumulating an isotropic background. By unrolling the recursion, we obtain 
+
+Bt = ϵI + (1 − β)
+
+> t
+
+∑
+
+> k=0
+
+βkgt−kgT
+
+> t−k
+
+. (17) The matrix Bt is reminiscent of the concept of a finite-horizon or discounted Gramian in control. In analogy with observability Gramians in dynamical systems, Bt here quantifies which directions of the parameter state have been excited by the data stream under partial observability as we look at the learning dynamics from a dynamical and control systems viewpoint. 
+
+4.3 Directionally-aware update law 
+
+Let ℓt( ˆ yt, yt) denote a scalar loss. For any differentiable scalar-output model, the parameter gradient can be written as: 
+
+∇wℓt(ˆ yt(wt, ˜xt), y t) = ∂ℓ t(ˆ yt(wt, ˜xt), y t)
+
+∂ ˆyt
+
+∇w ˆyt(wt, ˜xt)
+
+︸ ︷︷ ︸
+
+> =: gt
+
+= gt
+
+∂ℓ t(ˆ yt(wt, ˜xt), y t)
+
+∂ ˆyt
+
+(18) so the gradient lies entirely in the span of sensitivity directions induced by the currently observed data. We propose the following state-dependent adaptive control law: 
+
+wt+1 = wt − ηB−1 
+
+> t
+
+∇wℓt (19) where Bt evolves according to (16). At first glance, the role of B−1 
+
+> t
+
+may appear counterintuitive: directions that are well observed correspond to large eigenvalues of Bt, which become small when inverting to obtain B−1 
+
+> t
+
+. If the gradient magnitude scaled cleanly with observability, this inversion would indeed appear redundant as its effect on the gain would be undone by terms in ∇wℓt. However, there’s much more going on in the adaptive control law (19) that yields the sought-after directional observability-aware adaptation. 
+
+4.3.1 Gradient structure under partial observability 
+
+Under partial observability, gradients are computed from incomplete information. As a result, the instan-taneous gradient ∇wℓt should be treated as an uncertain measurement conditioned on what the learner observes (without making at this point any assumption on the underlying distribution). Let It denote the information available through the observed input-output pair at time t. We may write, by definition of conditional expectation, ∇wℓt = E [∇wℓt|I t] + ξt. Solving for ξt yields ξt := ∇wℓt − E [∇wℓt|I t]. By con-struction, E [ξt|I t] = 0, though the variance of ξt may be large, time-varying, and structured under partial observability. No assumption is made that the gradients are unbiased with respect to any latent ground truth; the instantaneous decomposition separates what is predictable from observed data from what is not. 84.3.2 Directional scaling of gradient uncertainty & effect of the inverse observability metric 
+
+Let vi be an eigenvector of the empirical EMA state St with eigenvalue λi ≥ 0. The same vector is an eigenvector of Bt = St + ϵI with eigenvalue λi + ϵ. Define the scalar gradient component 
+
+Gi,t := ⟨∇ wℓt, vi⟩ = ⟨gt, vi⟩ ∂ℓ t
+
+∂ ˆyt
+
+.
+
+For λi > 0, we introduce the normalized excitation ζi,t := ⟨gt, vi⟩/√λi, which allows us to write ⟨gt, vi⟩ =√λiζi,t . Recall that the direction indicated by vi and the corresponding empirical eigenvalue λi encode recent, evidence-driven information on directional observability and strength. Therefore, our normalization expresses instantaneous excitation along vi in units of its recent empirical scale. When λi = 0, the exact EMA carries no recent excitation in that direction and the corresponding instantaneous component is also zero. The update component along direction vi is ∆wi = −η 1
+
+λi + ϵ Gi,t = −η
+
+√λi
+
+λi + ϵ ζi,t 
+
+∂ℓ t
+
+∂ ˆyt
+
+. (20) This expression makes the conditioning mechanism explicit: • in strongly and repeatedly excited directions ( λi ≫ ϵ), the update is normalized by the recent excitation scale, preventing overly aggressive repeated motion; • as empirical excitation vanishes ( λi → 0), the sensitivity component itself vanishes, and so does the corresponding update, while the ridge ϵI prevents numerical singularity. Crucially, the inverse does not act on gradient magnitude alone. It regulates parameter motion through the interaction between current sensitivity and its recent empirical scale, ensuring that learning proceeds through directions that remain supported by the observed data. 
+
+4.3.3 Geometric interpretation 
+
+The update law admits a natural variational interpretation. At each iteration, the learner seeks a parameter increment δw that reduces the loss while regulating motion according to the recent actuation geometry. This trade-off can be expressed by the optimization problem: 
+
+δwt = arg min 
+
+> δw
+
+(
+
+⟨∇ wℓt, δ w⟩ + 12η ⟨δw, Btδw⟩
+
+)
+
+, (21) where the first term in the cost corresponds to linearized loss reduction, whereas the second term measures parameter motion in the empirical observability geometry. Solving this problem yields: 
+
+δwt = −ηB−1 
+
+> t
+
+∇wℓt, (22) which coincides with the proposed update law. The matrix Bt therefore defines a time-varying geometry on parameter space: it induces an inner product ⟨u, v⟩Bt = ⟨u, Btv⟩ and a corresponding norm ∥u∥2 
+
+> Bt
+
+=
+
+⟨u, Btu⟩. The quadratic term alone assigns larger cost to directions with larger empirical eigenvalues; the resulting update, however, is determined jointly by this geometry and by a gradient whose components are themselves generated by the current sensitivity. Accordingly, the controller should be interpreted as normalizing current actuation relative to its recent directional scale, rather than as imposing a standalone hard penalty on weakly observed coordinates. The resulting learning dynamics reshape parameter evolution under partial actuation without introducing externally scripted constraints or heuristic scheduling. 
+
+4.3.4 Scalar adaptive throttling as a special case 
+
+The directionally-aware adaptive law introduced in this section generalizes the scalar observability-aware throttling mechanism introduced in Section 2 and prototyped for the case of linear regression. To see 9this, let us approximate the observability matrix as Bt ≈ (ϵ + γt)I, where γt := ∥gt∥2, that is, ignoring directional structure and retaining only a measure of the instantaneous actuation energy. Substituting this approximation into the update law (19) yields: 
+
+wt+1 = wt − ηϵ + γt
+
+∇wℓt,
+
+which coincides with the scalar adaptive throttling rule (4) when gt = ˜ xt (as is the case for the linear regression example used in our prototyping in Section 2). Therefore, scalar throttling can be interpreted as an isotropic approximation of the full directional controller developed in the present section, in which all parameter directions are treated as equally observable. The directional formulation developed here recovers the same stability-preserving behavior while allowing the learner to explore anisotropy in the excitation induced by the data. In this sense, the proposed framework does not replace scalar observability-aware adaptation, but embeds it as a limiting case, and significantly builds on its premise to specialize direction-specific adaptation based on empirically-observed evidence in the data stream. 
+
+4.4 Interpretation as closed-loop control 
+
+From a control-theoretic perspective, the learning process defined by (19) constitutes a closed-loop adaptive system in which the parameter vector wt assumes the role of the system state, the gradient ∇wℓt provides feedback, and the matrix B−1 
+
+> t
+
+defines a state- and data-dependent control law. It is important to note that 
+
+B−1 
+
+> t
+
+is not scheduled externally, nor scripted in any way, but, rather, evolves with the learning process, driven by the method’s understanding of time-varying directional observability as empirically seen in the data stream. Loss in said observability therefore enters the dynamics as an actionable reduction in actuation authority, rather than as stochastic noise. This perspective allows us to draw a fundamental distinction between standard gradient descent and our proposed method. Standard SGD applies control inputs designed for a fully actuated system, even when only a subset of the parameter directions can be reliably influenced by the data. The resulting dynamics are effectively open-loop under partial observability. In contrast, our update law (19) continuously reshapes the control action to match the current actuation structure, as influenced by intermittent feature observability, ensuring that parameter motion remains coherent with what the data can actually support. From a broader perspective, our directional observability-aware learning enforces a basic control principle: when actuation is lost along some directions, the control law must adapt to avoid destabilizing the remaining degrees of freedom. The attenuation mechanism derived in Section 4.3.2 is precisely the manifestation of this principle at the level of parameter updates. 
+
+4.5 Practical approximations 
+
+Maintaining and inverting the full observability matrix Bt ∈ Rd×d may be impractical for large-scale models. Nevertheless, our framework admits several approximations that preserve its core stabilizing behavior. • Diagonal approximation: A simple and scalable option is to retain only the diagonal values of Bt, leading to elementwise, decoupled adaptation. While this approximation discards cross-coordinate coupling, it preserves the essential conditioning mechanism by scaling each coordinate of the current sensitivity against its recent squared-sensitivity history. Such an update can be reminiscent of RMSProp or Adam, but carries a fundamentally different interpretation: the diagonal entries estimate coordinatewise actuation induced by the model sensitivity, whereas RMSProp and Adam accumulate uncentered second moments of loss gradients. • Block-structured approximation: In many modern architectures, parameters are naturally orga-nized into groups whose effects on the model output are strongly coupled, even if the corresponding units do not interact directly in the forward computation. Typical examples include weight matrices associated with individual layers in multilayer perceptrons or attention heads in transformer archi-tectures. Within such groups, parameter perturbations influence the output through shared inter-mediate representations and common downstream signals. As a result, the corresponding columns of 10 the output-parameter Jacobian are repeatedly excited together by the data, leading to strong intra-group coupling in the observability matrix Bt. This structure can be exploited by approximating Bt
+
+with a block-diagonal matrix, where each block corresponds to a predefined parameter group. Each block then tracks the aggregate observability of its associated component, allowing the adaptive law to regulate learning at the level of layers or heads rather than individual parameters. Cross-group interactions, which are typically weaker in the learning geometry, are neglected for tractability. • Low-rank approximation: In settings where excitation concentrates along a small number of dom-inant directions, Bt may be approximated using low-rank factorizations. This approach can preserve the most informative excitation modes while treating the complementary directions through the ridge term. Any finite-window contraction guarantee then applies on the retained finite-dimensional sub-space under its corresponding effective-excitation condition; behavior in the complementary subspace requires a separate approximation or regularization argument. Across such approximations, the overarching conditioning principle remains unchanged: parameter motion is reshaped according to empirically observed actuation without reconstructing missing data. Their exact stability guarantees depend on the corresponding block/subspace excitation and coupling properties; empiri-cally, we evaluate whether these scalable realizations retain the coherence and excursion-suppression behavior motivated by the ideal controller. 
+
+4.6 Takeaway 
+
+Directional observability determines the uncertainty scale of gradient information. The inverse observability metric B−1 
+
+> t
+
+is therefore not a heuristic rescaling, but a principled conditioning mechanism that suppresses noise-dominated parameter motion, while preserving learning where the data provide stable excitation. This state-dependent adaptive control law maintains coherence of the learning dynamics under partial and intermittent observability, and directly enables the stability results developed in Section 5. 
+
+# 5 Stability analyses 
+
+We analyze the learning dynamics as a time-varying, closed-loop system governed by the directionally-aware adaptive law introduced in Section 4, in which missing data induces a structured loss of actuation over the parameter space. Our objective is to show boundedness and controlled contraction of the parameter error dynamics under such intermittent and possibly anisotropic observability. By wrapping around whatever model a masked SGD method was anyhow training, our resulting guarantees are largely model-agnostic, and are later instantiated explicitly for linear models, kernel methods, and gradient-based neural network cases. 
+
+5.1 General closed-loop error dynamics 
+
+Under the directionally aware adaptive update law, the parameter evolves according to: 
+
+wt+1 = wt − ηB−1 
+
+> t
+
+∇wℓt, (23) in parallel with the observability matrix Bt, updated, in turn, recursively following 
+
+St = βSt−1 + (1 − β)At, At := gtgT 
+
+> t
+
+,
+
+Bt = St + ϵI. (24) where gt = ∇w ˆyt(wt, ˜xt) denotes the instantaneous sensitivity induced by the observed (and possibly masked) input. Let w∗ denote a reference parameter (e.g., a minimizer of the fully-observed risk, when it exists), and define the parameter error 
+
+et := wt − w∗. (25) Under partial observability, gradients are computed through a reduced observation operator and, therefore, reflect only the information available at time t. As discussed in Section 4.3, we may write the instantaneous 11 gradient as 
+
+∇wℓt = E [∇wℓt | I t] + ξt, (26) where It denotes the information revealed by the observed data and ξt captures the component that is unpredictable from that information. We use this decomposition only to illuminate how partial observations affect the feedback channel; the deterministic stability result below does not assume that ξt is independent, bounded, or exogenous, and is formulated instead through a scalar closed-loop residual mismatch. By leveraging (23) and (26), we obtain an illuminating form of the closed loop error dynamics: 
+
+et+1 = et − ηB−1 
+
+> t
+
+E [∇wℓt | I t] − ηB−1 
+
+> t
+
+ξt. (27) This expression illuminates fundamental components: 1. A controlled descent term, shaped by the inverse observability metric B−1 
+
+> t
+
+, which governs motion along empirically supported parameter directions. 2. An unpredictable-feedback term, reshaped directionally by B−1 
+
+> t
+
+, representing the time-varying and anisotropic effect of information not resolved by the observed data. It is critical to note that missing data does not merely increase stochasticity, but, rather, induces a direc-tionally structured loss of actuation reflected both in the conditional gradient and in the evolution of Bt.Standard SGD applies its updates blindly, as if this loss of actuation were absent. In contrast, our present formulation explicitly closes the loop around the evolving actuation geometry, with the latter continuously shaped by the data stream. 
+
+5.2 Residual-to-state boundedness under intermittent observability 
+
+As the model output y is scalar, the gradient of the loss always factors as 
+
+∇wℓt = ∂ℓ t (ˆ yt, y t)
+
+∂ ˆyt
+
+∇w ˆy (wt, ˜xt) = stgt (28) where 
+
+st := ∂ℓ t (ˆ yt, y t)
+
+∂ ˆyt
+
+and gt := ∇w ˆyt (wt, ˜xt) . (29) The learning dynamics are therefore driven by a scalar feedback signal st, acting through a directionally structured actuation vector gt. Missing data affects learning through both means: it alters the available actuation directions gt, and corrupts the scalar feedback st by injecting unobservable contributions into the prediction error. Substituting factorization (28) into the update law (23) yields the closed-loop dynamics: 
+
+et+1 = et − ηB−1 
+
+> t
+
+gtst. (30) This representation makes explicit that learning proceeds through a single scalar feedback loop whose effect on the parameter state is shaped by the observability-aware metric B−1 
+
+> t
+
+.Next, we introduce assumptions that will enable our analysis of the closed loop error dynamics (30) under the update rule (23)-(24). 
+
+5.3 Effective sensitivity and prediction error representation 
+
+To relate scalar prediction errors to the parameter error et under the preconditioned learning dynamics, we distinguish between the residual seen by the loss and the effective error signal seen through the update geometry. Define 
+
+ψt := B−1 
+
+> t
+
+gt, χt := ψT 
+
+> t
+
+et = gT 
+
+> t
+
+B−1 
+
+> t
+
+et. (31) The vector ψt is the effective actuation direction through which the parameter state actually moves, whereas 
+
+χt is the associated update-geometry error signal. First, for bookkeeping reasons, we bound the instantaneous model sensitivity under masked input. 12 Assumption 1. (bounded instantaneous sensitivity) There exists G > 0 such that ∥gt∥ ≤ G for all t.
+
+Assumption 2. (sector-bounded scalar feedback) There exists a function ϕ : R → R such that 
+
+st = ϕ (˜ rt) , (32) 
+
+where ˜rt := ˆ yt (wt, ˜xt) − yt is the residual seen by the loss, and 
+
+mz 2 ≤ zϕ (z) ≤ M z 2, |ϕ(z)| ≤ M |z|, (33) 
+
+for some constants m, M > 0 and all z ∈ R.
+
+For squared loss, ϕ(z) = z, and m = M = 1. 
+
+Assumption 3. (a priori bounded closed-loop residual mismatch) The residual seen by the loss decomposes as 
+
+˜rt = χt + δt, (34) 
+
+where δt satisfies 
+
+|δt| ≤ δ < ∞. (35) The boundedness in (35) captures both the contribution of information unavailable to the learner and the mismatch between the finite prediction residual and the local, preconditioned update geometry. Unlike a classical external ISS input, δt need not be independent of et, and it need not vanish when every input component is observed. In the unpreconditioned linear case, it reduces, up to the sign induced by our residual convention, to the unobserved contribution isolated in Section 2. The result developed below is therefore a residual-to-state, ISS-type bound with respect to this bounded closed-loop mismatch. It specializes to conventional input-to-state stability only when δt is supplied or modeled as an independently specified exogenous input. The decomposition in (34) is an identity; the substantive contribution of Assumption 3 is the existence of the uniform bound δ. That bound must be certified independently of Proposition 1, for example through known output, target, and parameter-domain bounds; projection or saturation; an invariant operating region established by a separate argument; or a direct model-specific mismatch estimate. If only a state-dependent estimate such as |δt| ≤ cδ ∥et∥ + d is available, Proposition 1 does not by itself close that dependence; an additional small-gain argument is required. 
+
+Assumption 4. (raw windowed/eventual observability) There exists a window length T ∈ Z, with 
+
+T ≥ 1, and λg > 0, such that for all t ≥ T − 1: 
+
+> T−1
+
+∑
+
+> k=0
+
+gt−kgT 
+
+> t−k
+
+⪰ λg I. (36) Assumption 4 enables excitation to be intermittent, provided it recurs sufficiently over finite windows. 
+
+Lemma 1. (eigenvalue bounds for the discounted observability matrix) Under Assumption 1, the matrix Bt satisfies for all t:
+
+bI ⪯ Bt ⪯ bI, b := ϵ, b := ϵ + G2. (37) 
+
+Moreover, under Assumption 4, for all t ≥ T − 1 the lower bound can be sharpened to 
+
+Bt ⪰ (ϵ + (1 − β)βT −1λg
+
+) I. (38) 
+
+Consequently, 1
+
+b I ⪯ B−1 
+
+> t
+
+⪯ 1
+
+b I, ∥ψt∥ ≤ Gb . (39) 
+
+Proof. Refer to Appendix B.1. 13 For global statements, b = ϵ is always admissible. When the analysis is initialized after one complete observ-ability window, the sharper lower bound in (38) may be substituted to obtain less conservative constants. The raw sensitivity directions in Assumption 4 are not, in general, transformed by a common matrix over a full window. We therefore state separately the excitation property that the stability proof requires in the actual update geometry. 
+
+Assumption 5. (windowed observability in the update geometry) There exists μ > 0 such that for all t ≥ T − 1: T −1∑
+
+> k=0
+
+ψt−kψT 
+
+> t−k
+
+= 
+
+> T−1
+
+∑
+
+> k=0
+
+B−1
+
+> t−k
+
+gt−kgT
+
+> t−k
+
+B−1 
+
+> t−k
+
+⪰ μI. (40) Assumption 5 asserts that the directions through which the parameter state actually moves continue to span the analyzed parameter space over finite windows. Because each summand in (40) has rank one, the left-hand side has rank at most T . Consequently, the full-space conditions in Assumptions 4 and 5 necessarily require 
+
+T ≥ d in Rd, and no finite T can make either condition hold against the identity on a genuinely infinite-dimensional Hilbert space. Proposition 1 is therefore a full-state result for finite-dimensional parameter spaces, or for a finite-dimensional invariant active subspace U containing the analyzed error trajectory, with all operators and inequalities restricted to U. In that case, the condition may equivalently be written as  
+
+> T−1
+
+∑
+
+> k=0
+
+ψt−kψT 
+
+> t−k
+
+⪰ μΠU , (41) together with invariance of the error dynamics and e0 ∈ U . Without such invariance, a projected excitation inequality alone does not close the projected error dynamics, and Proposition 1 makes no claim for either the projected or orthogonal-complement trajectories without additional coupling bounds. The condition can be verified directly. The following result also provides a sufficient bridge from raw excitation when the inverse metric evolves coherently over the same window. 
+
+Lemma 2. (transfer of excitation through a slowly varying metric) Let Pt := B−1 
+
+> t
+
+and define the inverse-metric variation budget 
+
+νT := sup  
+
+> t≥T−1
+
+(T −1∑
+
+> k=0
+
+∥Pt−k − Pt∥2
+
+)1/2
+
+. (42) 
+
+Under Assumptions 1 and 4, and the uniform bounds of Lemma 1, if 
+
+Gν T <
+
+√λg
+
+b , (43) 
+
+then Assumption 5 holds with 
+
+μ =
+
+( √ λg
+
+b − Gν T
+
+)2
+
+> 0. (44) 
+
+Proof. Refer to Appendix B.2. The metric-coherence condition above is naturally supported by the EMA construction. Indeed, the resolvent identity and recursion (16) imply 
+
+∥Pj+1 − Pj ∥ ≤ 2(1 − β)G2
+
+b2 , (45) and therefore 
+
+νT ≤ 2(1 − β)G2
+
+b2
+
+√ T (T − 1)(2 T − 1) 6 . (46) This sufficient bound is conservative, but it makes the role of β explicit: raw observability is transferred to the effective update geometry when the preconditioner does not deform too violently over the same window. 14 Lemma 3. (one-step dissipation and bounded motion) Let Vt := ∥et∥2. Under Assumptions 1-3, if 
+
+0 < η ≤ mb 2
+
+2M 2G2 , (47) 
+
+then, for all t,
+
+Vt+1 ≤ Vt − α0 ˜r2 
+
+> t
+
++ γ0δ2 
+
+> t
+
+, (48) 
+
+Vt+1 ≤ Vt − αχ 2 
+
+> t
+
++ γδ 2 
+
+> t
+
+, (49) 
+
+∥et+1 − et∥ ≤ η GM b |˜rt|, (50) 
+
+where 
+
+α0 := ηm 
+
+2 , γ0 := ηM 2
+
+m , α := α0
+
+2 = ηm 
+
+4 , γ := α0 + γ0. (51) 
+
+Proof. Refer to Appendix B.3. 
+
+Lemma 4. (windowed coercivity in the update geometry) Suppose Assumption 5 and the conclusions of Lemma 3 hold. Then, for all t ≥ T − 1, 
+
+> T−1
+
+∑
+
+> k=0
+
+χ2 
+
+> t−k
+
+≥ θV t−T +1 − ζδ 2, (52) 
+
+where an admissible pair is 
+
+θ := μ
+
+2 − η2G4M 2T 2
+
+α0b4 = μ
+
+2 − 2ηG 4M 2T 2
+
+mb 4 , (53) 
+
+ζ := η2G4M 2γ0T 3
+
+α0b4 = 2η2G4M 4T 3
+
+m2b4 . (54) 
+
+In particular, θ > 0 whenever 
+
+η < μmb 4
+
+4G4M 2T 2 . (55) 
+
+Proof. Refer to Appendix B.4. 
+
+Proposition 1. (windowed residual-to-state bound under effective eventual observability) Sup-pose Assumptions 1-3 and 5 hold. Alternatively, Assumption 5 is ensured by Assumption 4 and condition (43), via Lemma 2. If 
+
+0 < η < min 
+
+{ mb 2
+
+2M 2G2 , μmb 4
+
+4G4M 2T 2 , 8
+
+mμ 
+
+}
+
+, (56) 
+
+then there exist constants q ∈ (0 , 1) and A, L > 0 such that, for all t ≥ 0,
+
+∥et∥ ≤ Aq ⌊t/T ⌋∥e0∥ + Lδ. (57) 
+
+One explicit admissible choice is 
+
+q = √1 − αθ, (58) 
+
+with A and L as provided in the proof. Proof. Refer to Appendix B.5. The displayed constants are sufficient and generally conservative . Their purpose is to certify the contrac-tion mechanism and expose its directional dependencies, rather than provide numerically tight trajectory estimates or literal tuning rules. In Section 6 we evaluate the practical behavior of the resulting adaptation outside this worst-case analytical envelope. 15 5.4 Special cases 
+
+Equipped with the full form and analysis of our directionally-aware learning adaptation mechanism, we explore next how it specializes in linear regression, kernel methods, and general gradient networks. 
+
+5.4.1 Linear regression 
+
+For the linear model ˆ yt = ⟨wt, ˜xt⟩, the sensitivity collapses to gt = ˜ xt, so At = ˜ xt ˜xT 
+
+> t
+
+. The empirical state 
+
+St therefore becomes the discounted covariance of the observed feature vectors, while Bt = St + ϵI supplies the regularized geometry used by the update. The directional update law (19) specializes to a natural-gradient-like form over the time-varying observed subspace. When excitation is approximately isotropic, 
+
+Bt ≈ (ϵ + γt)I and (19) recovers the scalar throttling structure of (4). In this case, Assumption 5 becomes  
+
+> T−1
+
+∑
+
+> k=0
+
+B−1 
+
+> t−k
+
+˜xt−k ˜xT
+
+> t−k
+
+B−1 
+
+> t−k
+
+⪰ μI. (59) Lemma 2 shows that this effective excitation follows from raw masked-feature excitation together with sufficiently coherent evolution of the inverse covariance geometry. Under these conditions, Proposition 1 takes the same qualitative form as the prototype bound (8), with explicit constants now depending on the effective excitation level μ, or, through (44), on the raw lower bound λg and the inverse-metric variation budget νT . Our general theory, therefore, remains a natural and formalized extension of the toy controller of Section 2, while making explicit the additional geometry introduced by directional adaptation. 
+
+5.4.2 Kernel methods 
+
+In the RKHS setting of Section 2.7, the model is ˆ yt = ⟨wt, ϕ ( ˜ xt)⟩H. The sensitivity gt = ϕ( ˜ xt) lives in the feature space, and At is the rank-one operator whose trace is k( ˜ xt, ˜xt). The same effective directions 
+
+ψt = B−1 
+
+> t
+
+ϕ( ˜ xt) determine the windowed excitation condition. For a finite-dimensional kernel realization—for example, a fixed dictionary, Nyström approximation, random-feature model, or another finite basis—Proposition 1 applies on that realized parameter space whenever the sector, bounded-residual-mismatch, and effective windowed-observability conditions hold. It also applies on a finite-dimensional invariant active subspace U ⊂ H containing the analyzed error trajectory, with all operators and excitation inequalities restricted to U. The constants are then driven by bounded kernel sensitivities and the effective Gramian lower bound μ on that finite-dimensional space, with Lemma 2 providing a sufficient raw-to-effective bridge on the same space. In a genuinely infinite-dimensional RKHS, however, the finite-window operator  
+
+> T−1
+
+∑
+
+> k=0
+
+ψt−k ⊗ ψt−k, (60) where u⊗u denotes the rank-one operator v 7 → u⟨u, v⟩H, has rank at most T and therefore cannot dominate 
+
+μI H for any μ > 0. We consequently make no claim of full-RKHS finite-window contraction. If the dynamics remain in a finite-dimensional invariant active subspace, Proposition 1 applies after restricting all quantities to that subspace. If excitation is known only after projection but the dynamics are not invariant, a separate coupling, approximation, regularization, or identifiability argument is required. We see this limitation as particularly important in kernel spaces, where missingness can silently impair excitation along entire Hilbert-space directions without any coordinate being explicitly frozen. 
+
+5.4.3 Gradient networks 
+
+For any differentiable model (e.g., multi-layer perceptron, autoencoder, transformer), the instantaneous sen-sitivity is the full Jacobian row Jt = ∂f (wt, ˜xt)/∂ w, gt = JT 
+
+> t
+
+. The matrix At = gtgT 
+
+> t
+
+now aggregates and 16 weighs excitation across all parameters that influence the current output. Even if the large scale of con-temporary architectures can give rise to computational and scalability considerations, modern architectures naturally group parameters into layers or attention heads whose Jacobian columns are excited together; a block-diagonal approximation for Bt, as mentioned in Section 4.5, therefore becomes both cheap and seman-tically meaningful. Each block tracks the aggregate observability of its layer/head and scales group updates against aggregate recent actuation. We make no claim of global optimality in the nonconvex landscape, and further elucidate our perspective in Section 5.6. Rather, Proposition 1 guarantees bounded and contracting parameter trajectories under its stated closed-loop sector, bounded-residual-mismatch, and effective-excitation conditions. In deep models, these conditions make explicit what must remain true for representation drift to be suppressed under masking: the residual mismatch must remain bounded and the preconditioned Jacobian directions must recurrently span the relevant parameter subspace. Our controller therefore supplies a closed-loop stability mechanism without replacing the descent signal indicated by the loss gradient – only the effective magnitude and geometry through which it acts. 
+
+5.5 Failure modes, limits, and scope boundaries 
+
+If observability in a subset of the parameter space never returns , learning around that regime stalls. We consider this a limit case that actually illustrates a feature, and not a failure or a limitation of our approach, as learning should not continue when not supported by empirical data. The finite-window observability conditions also carry an unavoidable dimensional scope. A window con-taining T scalar-output sensitivity directions can certify full-space contraction only on a parameter space of dimension at most T . In larger or infinite-dimensional spaces, the guarantee must be interpreted block-wise or on a finite-dimensional active subspace; directions outside that analyzed space are not covered by Proposition 1 unless additional structure controls them. When data and/or the respective gradients that enter the method are not truthful , canonical failures emerge. These are well studied in the field (e.g., Byzantine resilient learning) and fall outside of our nominal scope in this work. Nevertheless, our adaptation becomes relevant when a subset of the learning data, potentially, cannot be trusted (as determined by some other process), and hence needs to be treated as missing. Instead of dropping the entire iteration, our method allows learning to continue safely, with the data that is still available. Any learning perturbation and/or adaptation gives rise to learnability and identifiability questions: will the method learn the same thing with and without the perturbation/adaptation , or can the method learn at all (i.e., in a Vapnik-Chervonenkis sense)? Our guarantees are algebraic: they bound the Euclidean distance of the parameter trajectory from a reference, and ensure that this distance contracts under the conditions of Proposition 1. Whether small parameter-space distance implies semantic or functional proximity is a prop-erty of the model class and its parameter-to-output geometry, not of the training dynamics. In models with rich symmetries, degeneracies, or flat regions (e.g., permutation invariance in transformers, redundant pa-rameterizations in overparameterized networks), Euclidean proximity may carry limited functional meaning. This is a well-known and independently studied phenomenon that no training-time adaptation mechanism can (or, perhaps, should) resolve: it is more related to the architecture and representation design, not to the control of the learning process. Our contributions operate at the level of trajectory controllability –ensuring that the learner moves only where and as much as data justify– and are therefore compositional with, but categorically distinct from, any analysis of the regularity of the learned map. 
+
+5.6 Perspective on nonconvex settings 
+
+Many learning problems take place in nonconvex landscapes. Therein, stochastic gradient descent is under-stood to leverage noise to explore the parameter space effectively and converge to satisfactory, robust, and well-performing (from a utility perspective, perhaps regardless of global optimality with regards to empirical loss functions) solutions. Our goal here is not to alter gradient descent mechanics or interfere with its ability to explore nonconvex landscapes. Rather, we are driven by a largely orthogonal failure mode: when data are 17 0 5 10 15 0.0 0.2 0.4 0.6 0.8 1.0                                         
+
+> parameter error
+> moderate block larger lr
+> 0510 15
+> moderate block smaller lr
+> 0510 15
+> heavy block larger lr
+> 0510 15
+> heavy block smaller lr
+> 0510 15 0.00 0.05 0.10 0.15 0.20
+> trajectory smoothness
+> 0510 15 0510 15 0510 15 0510 15 0123
+> unmasked validation loss
+> 0510 15 0510 15 0510 15
+> thousands of steps
+> full SGD masked SGD scalar-aware directional-aware
+
+Figure 3: Numerical results from Experiment 6.1 : linear regression under missing blocks and individual features in d = 40 dimensions. In the plotted results we consider block missingness of two different severities (moderate / heavy), that we sketch in Figure 5, and step sizes η = {0.020 , 0.008 }. For the parameter error, we consider 15 different runs as well as their pointwise-in-time mean (drawn more heavily against the distribution), whereas for the rest of the plots we examine a single run for each algorithm (full / masked / scalar-adaptive / directionally-adaptive) to better illustrate their individual behavior. missing, and regardless of the classical remedy employed (imputation, masking, etc.), the gradient feedback is computed by a reduced or partially hypothesized observation operator, which can induce open-loop drift and incoherent parameter motion in directions unsupported by actual, empirically-available evidence. Seeing missing data as a potential “benefit” for SGD (i.e., akin to exploration-promoting noise) does not resolve this structural loss of actuation; in fact, it can exacerbate instability by injecting variance along poorly observed subspaces (especially as missing data patterns may be correlated in time and not spontaneously random). In either convex or nonconvex settings, and for whatever expected outcome an SGD method is used for (exact or empirical), our contribution is about trajectory sanity under partial actuation. We attenuate unjustified parameter motion when the gradient channel is information-poor or structurally censored. Even more so when either symptom persists and accumulates, as captured by the composition of Bt. Ultimately, our adaptive control formulation aims to render closed loop learning dynamics reliable and coherent under the finite-window residual-to-state conditions made explicit in Proposition 1, while also preventing parameter hallucinations, as we demonstrate next. 18 0 5 10 15 0.0 0.2 0.4 0.6 0.8 1.0                                         
+
+> parameter error
+> moderate iid larger lr
+> 0510 15
+> moderate iid smaller lr
+> 0510 15
+> heavy iid larger lr
+> 0510 15
+> heavy iid smaller lr
+> 0510 15 0.00 0.05 0.10 0.15 0.20
+> trajectory smoothness
+> 0510 15 0510 15 0510 15 0510 15 0123
+> unmasked validation loss
+> 0510 15 0510 15 0510 15
+> thousands of steps
+> full SGD masked SGD scalar-aware directional-aware
+
+Figure 4: Numerical results from Experiment 6.1 : linear regression under missing blocks and individual features in d = 40 dimensions. In the plotted results we consider iid missingness of two different severities (moderate / heavy), that we sketch in Figure 6, and step sizes η = {0.020 , 0.008 }. For the parameter error, we consider 15 different runs as well as their pointwise-in-time mean (drawn more heavily against the distribution), whereas for the rest of the plots we examine a single run for each algorithm (full / masked / scalar-adaptive / directionally-adaptive) to better illustrate their individual behavior. 
+
+# 6 Experiments 
+
+We consider three learning problems that allow us to illuminate the mechanics of our proposed adaptation and study its efficacy even in rather complex architectures. In line with our theoretical development, we consider scalar output problems. Moreover, in all experiments, our goal is to learn the mapping that operates on the complete (that is, unmasked, with nothing missing) feature space. 
+
+6.1 Linear regression under missing blocks and individual features 
+
+In our simplest experiment, we consider a synthetic linear regression problem in d = 40 dimensions, with data generated according to yt = ⟨w∗, xt⟩ + ϵt, where xt is Gaussian with block-structured covariance composed of 5 feature groups, within-block correlation 0.75, and diagonal jitter 0.25 I, while ϵt is zero-mean Gaussian noise with standard deviation 0 .02. The ground-truth parameter w∗ is group-sparse. At training time, the learner only observes the masked input ˜ xt = Mtxt, yet the target remains the complete-space predictor 
+
+w∗. We optimize the quadratic loss ℓt(w) = ( yt − ⟨ w, ˜xt⟩)2/2 for the masked learners, with the full-data baseline evaluated analogously on the unmasked input. We study both structured block missingness and iid feature missingness, each under moderate and heavy severity –the patterns of which we indicatively 19 (a) 500 instances of moderate block missingness (b) 500 instances of heavy block missingness 
+
+Figure 5: Representative realizations of the block missingness patterns used in Experiment 6.1 . We show the first 500 training instances under moderate and heavy block missingness. The horizontal axes show time; the vertical axes, the 40 features. Compared to iid masking, these patterns induce temporally persistent losses of observability, making the same partial actuation mechanism that we discussed in the description of Experiment 6.1 more pronounced and easier to visualize.  
+
+> (a) 500 instances of moderate iid missingness (b) 500 instances of heavy iid missingness
+
+Figure 6: Representative realizations of the iid missingness patterns used in Experiment 6.1 . We show the first 500 training instances under moderate and heavy iid missingness. The horizontal axes show time; the vertical axes, the 40 features. Although visually less persistent than the block case, iid masking still induces the same partial-actuation failure mode: at each iteration, some coordinates are updated while others are not, even though all coordinates remain coupled through the shared residual. Moreover, with increasing missingness severity, missing feature blocks in consecutive samples emerge naturally. illustrate in Figures 5 and 6, and compare four update laws: full SGD, masked SGD, scalar observability-aware adaptation (implemented via (3)-(4) with ϵ = 1), and directional observability-aware adaptation (implemented via (19) and (16), with At = ˜ xt ˜xT 
+
+> t
+
+as discussed in Section 5.4.1 for the linear regression case, and using the values ϵ = 0 .05 and β = 0 .99 in (16)). Although we demonstrate our methods here in an offline learning pipeline, the underlying failure mode is not restricted to temporally blocked missingness. Even under iid masking, partial actuation remains: at each step, some coordinates are updated while others are not, yet all coordinates remain coupled through the same scalar residual. In sufficiently shuffled offline datasets this effect may appear more averaged over time, especially in simple problems, but it is not removed. Structured block missingness simply makes the same mechanism more persistent and therefore more visible. We therefore study both iid and block patterns, with the latter also serving as a natural proxy for online or streaming settings, where shuffling is generally unavailable. In fact, the present linear regression experiment is sample-wise, i.e., with a batch size of 1, so the learner directly experiences the temporal ordering of the missingness process. While this example does not include any function approximation complexity, it is meant to expose, as trans-parently as possible, the dynamical consequences of data missingness on the learning trajectories. This linear example is particularly illuminating because the apparent simplicity of the model can hide a critical failure mode. If a coordinate is masked (i.e., in a real-world pipeline: missing, corrupt, or currently untrusted), then, under strict masking, that specific coordinate receives no instantaneous gradient update. However, re-gardless of whether masking is iid or blocked, the residual still depends on the unobserved part of the signal, so the observed coordinates should not move freely: the true but unavailable value of a masked feature may 20 have implied a different motion for both unobserved and observed parameters. In this sense, the coupling does not originate in the forward map (which is trivial in linear regression), but in the loss-induced error dynamics under partial actuation. Standard masked SGD ignores this distinction and continues to move the currently actuated coordinates as if the whole parameter vector were being updated consistently, which leads to incoherent motion, rough trajectories, large loss spikes, and increased parameter hallucinations. By contrast, our scalar controller restores global caution under reduced observability, while our directional con-troller further exploits anisotropy in the recent excitation history to attenuate unsupported motion without throttling all directions equally. The result is a setting in which the mechanics of the proposed methods, and the implications of our coherence and smoothness metrics, are unusually easy to see and study. This is precisely the partial-actuation mechanism isolated in Section 2: masking does not destabilize learning by moving hidden coordinates, but by allowing visible coordinates to move as if the hidden ones were also evolving consistently. We report our numerical results in Figure 3 (block missingness), Figure 4 (iid missingness), and Table 1. We plot the parameter error ∥wt −w∗∥ directly for 15 runs for each case (block/iid missingness, moderate/heavy missingness, larger/smaller learning rate η ∈ { 0.020 , 0.008 }) and method, and the pointwise-in-time mean. For one trajectory of the 15, we plot our Smoothness( t) metric and tabulate Coherence( t) evaluated over a rolling window with W = 50 steps and binned/classified accordingly to indicate the method’s occupa-tion time in a state of averaged severe misalignment (Coherence( t) ≤ − 0.04), cumulative misalignment 
+
+(Coherence( t) ≤ 0) and alignment (Coherence( t) > 0).                                                                                                                    
+
+> missingness severity learning rate method misalignment alignment
+> block iid moderate heavy η= 0 .020 η= 0 .008 used severe ( −∞ ,−0.04] (−∞ ,0] (0 ,∞)masked 25.7% 64.5% 35.5%
+> •••scalar 12.9% 44.4% 55.6% directional 3.6% 45.7% 54.3% masked 16.3% 50.5% 49.5%
+> •••scalar 12.9% 44.2% 55.8% directional 3.6% 44.4% 55.6% masked 26.3% 59.3% 40.7%
+> •••scalar 16.7% 44.8% 55.2% directional 7.7% 48.0% 52.0% masked 20.9% 51.5% 48.5%
+> •••scalar 16.9% 44.6% 55.4% directional 7.5% 47.3% 52.7% masked 18.6% 63.3% 36.7%
+> •••scalar 10.0% 47.4% 52.6% directional 4.0% 48.6% 51.4% masked 13.8% 55.1% 44.9%
+> •••scalar 8.9% 43.8% 56.2% directional 3.7% 47.6% 52.4% masked 10.9% 58.3% 41.7%
+> •••scalar 7.6% 48.9% 51.1% directional 4.4% 50.3% 49.7% masked 8.7% 52.3% 47.7%
+> •••scalar 6.7% 45.8% 54.2% directional 4.2% 49.6% 50.4%
+
+Table 1: As introduced in Section 3, our coherence metric aims to quantify how self-aligned a method’s trajectory is. Here we use our equation for Coherence( t) over a window of length W = 50, throughout the 15000 learning steps for all our runs (15 repetitions per indicated case) for Experiment 6.1 : linear regression under missing blocks and individual features . The percentages tabulated above indicate how much effort and time each method is spending while aligned or misaligned with itself and its recent past. We note that these values are averaged over the recent past. However, alongside Figures 3 and 4, they help illuminate how the masked method is more often inconsistent with itself, as features come and go in the data stream, in contrast to the directional method (more self-aligned yet eager to exploit opportunities to move parameters) and even more so the scalar method (maximally self-aligned in comparison, yet, overall slower, and occasionally exhibiting severe misalignment more often when compared to directional as it cannot attenuate individual parameters without stopping learning at large). We omit the fully observed baseline from the table, since its update directions after reaching its effective steady state are dominated by small residual fluctuations rather than any missingness-induced alignment behavior. 21 Overall, the message of Experiment 6.1 is unambiguous: observability-aware adaptation wins consistently over naive masking. Across both iid and block missingness, and across both larger and smaller learning rate settings, the scalar and directional methods achieve lower parameter error, tighter run-to-run spread, substantially smoother trajectories, and better coherence statistics than their masked counterparts. The larger/smaller learning rate comparison is included specifically to rule out the trivial explanation that these gains arise merely from slowing learning down. Although reducing the learning rate does improve the masked baseline somewhat, it does not reproduce observability-aware behavior. Table 1 reinforces this point quantitatively: both observability-aware methods reduce severe misalignment relative to masked SGD in every reported regime, while also spending more time in aligned updates. Our gains therefore do not come from “slower SGD” alone, but from regulating parameter motion according to the current and recent observability structure. 
+
+6.2 Learning to classify human activities under multiple concurrently missing sensing modalities and missing sensor measurements 
+
+Progressing from the bare-bones context of Experiment 6.1, which we leveraged to study in detail trajectory-level behaviors under masked SGD and our adaptation methodologies, we now consider a bona fide learning pipeline where multiple modalities and impactful learning outcomes can be more tangibly and organically conceptualized. We build our missing modalities and features context around the Human Activity Recognition 
+
+(HAR) dataset (Anguita et al., 2013; Reyes-Ortiz et al., 2013), released under the CC BY 4.0 license, which includes 3D acceleration and gyroscopic signals in the time and frequency domain from a smartphone sensor, labels for the human subject’s activity corresponding to the recorded features (i.e., WALKING, WALKING UPSTAIRS, WALKING DOWNSTAIRS, SITTING, STANDING, LAYING), and a hard split between training and evaluation data, with the latter obtained from different human subjects. To induce heavy partial observability, we group the HAR features into six coarse sensing families and, for each training sample, hide exactly 4 out of the 6 groups while additionally retaining each feature within the remaining visible groups independently with probability 0.8. The realized mask is persistent per datapoint within a run, so repeated encounters with the same sample expose the same missingness pattern. We train six one-versus-rest classifiers and compare two model classes: logistic regression and a shallow neural network of architecture 561 → 12 → 1. Full implementation details, including losses, parameter counts, and the numerically safeguarded full-order controller realization used here, are given in Appendix C.1. In Figure 7, we plot per-class F1 trajectories on the full unmasked test set, evaluated every 100 optimization steps. Several messages are visible. First, our directional method consistently improves over naive masking in both model classes, and does so in the metric that matters here: full-view classification performance under heavy training-time modality loss. Second, the scalar controller remains useful but also reveals its basic limitation in this richer setting: because it throttles isotropically, it is often too conservative and therefore slower, especially in the shallow network case. We nevertheless view it as an important stepping stone, since it expresses the same control principle in its simplest form and helps bridge the path from the prototypic controller of Section 2 to our directional machinery developed in Sections 4-5. Third, we deliberately refrain from making model-selection claims from this experiment alone: logistic regression may simply be better matched to this particular HAR representation, or the chosen shallow network may be too small to fully exploit the data. Our goal here is not to optimize architecture design, but to stress the learning dynamics under heavy concurrent modality and feature loss. Finally, the shallow network results contain an especially interesting effect: in several classes and over substantial early-training intervals, the directional controller even outpaces the fully observed SGD baseline. We interpret this cautiously but positively: once embedded in a nonlinear model, the observability-aware geometry appears to do more than merely repair missing-data training, and can act as a beneficial conditioner of the optimization dynamics themselves. In Table 2, we examine more closely the performance of the methods and the strong gains demonstrated by our directional observability-aware adaptation. 22 0.6 0.8 1.0          
+
+> per-class F1 (walking)
+> logistic regression
+> 0.6 0.8 1.0
+> shallow net
+> 0.6 0.8 1.0
+> per-class F1 (laying)
+> 0.6 0.8 1.0
+> 0.4 0.6 0.8 1.0
+> per-class F1 (standing)
+> 0.4 0.6 0.8 1.0
+> 0.00 0.25 0.50 0.75 1.00
+> per-class F1 (sitting)
+> 0.00 0.25 0.50 0.75 1.00
+> 0.00 0.25 0.50 0.75 1.00
+> per-class F1 (walking up)
+> 0.00 0.25 0.50 0.75 1.00
+> 01230.4 0.6 0.8 1.0
+> per-class F1 (walking down)
+> 01230.4 0.6 0.8 1.0
+> thousands of steps
+> full SGD masked SGD scalar-aware directional-aware
+
+Figure 7: Numerical results from Experiment 6.2 : classification of human activities under multiple con-currently missing sensing modalities and missing sensor measurements. We train one-versus-rest classifiers based on logistic regression (left column) and a shallow neural network (right column), and report per-class F1 trajectories on the full unmasked test set for the six activity classes. In all plotted runs, training is performed under heavy coarse missingness: 4 out of 6 sensing groups are hidden in each training sample, and additional within-group feature drops are imposed on the remaining visible measurements. For each method, we show 10 seed trajectories faintly and their pointwise-in-time mean more heavily. Across both model classes, the directional observability-aware learner consistently improves over masked SGD, while the scalar-aware learner remains visibly more cautious and therefore slower, as expected from an isotropic controller. Table 2 helps decongest nearby trajectories and highlight the directional method’s strong gains. 23 Figure 8: Representative realization of the heavy HAR missingness pattern used in Experiment 6.2 . The vertical axis is the canonical 561-feature HAR representation, whose ordering consists of contiguous signal-family ranges; under our coarse masking scheme, these fixed ranges are merged into six broader sensing families: body acceleration, gravity acceleration, body-acceleration jerk, body gyroscope, body-gyroscope jerk, and angle. For each training sample, the mask is first initialized by retaining each feature independently with probability 0.8, after which exactly 4 of the 6 coarse families are selected uniformly and fully hidden. Since each coarse family is itself a fixed union of several separated official signal-family ranges, the hidden regions appear as repeated structured horizontal bands rather than as a single contiguous slab; the additional fine-grained red/green texture comes from the within-visible Bernoulli thinning. The figure shows the first 500 training instances from one such fixed-mask realization. 
+
+6.3 Learning to predict sea ice concentration with remote sensing under missing sensing modalities and missing sensor measurements 
+
+In our search of a more complex model where intermittently or persistently missing sensing modalities arise naturally from real data acquisition and labeling constraints, we consider the AI4Arctic / ASIP Sea Ice Dataset, version 2 (ASID-v2) released by Saldo et al. (2020) under the CC BY 4.0 license, alongside the companion multisensor fusion study (Malmgren-Hansen et al., 2020). ASID-v2 contains Synthetic Aperture Radar (SAR) imagery obtained by the ESA Sentinel-1 satellite constellation, microwave radiometer mea-surements from the AMSR2 instrument onboard the JAXA GCOM-W satellite, and the corresponding ice charts manually produced by trained analysts at the Danish Meteorological Institute. As emphasized by the ASID-v2 contributors, sea ice charting is labor-intensive, depends on availability of multiple modalities of satellite data and human analysts, and is performed under operational constraints in which one ice chart is typically produced to correspond to one Sentinel-1 scene for the respective acquisition time. This makes the ASID-v2 dataset especially suitable for our context and learning objectives in this work: the supervision itself is expensive, the sensing modalities are heterogeneous and not equally reliable, and insisting that ev-ery labeled training instance must contain every sensing source in perfect form would discard a substantial amount of otherwise useful supervision. In such a setting, methods that can continue learning from partially observed examples are not merely algorithmically elegant; they directly relax a critical data requirement in a domain where obtaining labels and fully matched multisensor observations is costly. Our learning environment and pipeline are focused on learning to predict neighborhood-wide sea ice concen-tration using SAR and AMSR data patches, and learning to do so under significant training data missingness. We describe our model and pipeline, as well as how they differ from the original pixelwise sea ice mapping objective of Malmgren-Hansen et al. (2020) in Appendix C.2. We sketch our convolutional model in Figure 9. As our model includes 368,753 trainable parameters, we build our controller machinery using a block-diagonal approximation of At to maintain Bt according to (16), as we also describe in Appendix C.2. Figure 10 shows the validation sea ice concentration mean absolute error trajectories for the full, masked, and controlled learners across the three split rotations described in Appendix C.2. Even before turning to 24 logistic regression shallow net t = 100 t = 200 t = 500 t = 1000 t = 100 t = 200 t = 500 t = 1000 walking full 0.925 0.921 0.941 0.953 0.511 0.607 0.771 0.885 masked 0.817 0.907 0.925 0.926 0.484 0.496 0.537 0.607 directional 0.924 0.930 0.949 0.956 0.622 0.767 0.946 0.963 laying full 0.987 0.992 0.994 0.995 0.802 0.933 0.964 0.982 masked 0.933 0.958 0.973 0.982 0.540 0.636 0.641 0.762 directional 0.986 0.989 0.991 0.992 0.770 0.910 0.961 0.984 standing full 0.809 0.836 0.870 0.890 0.555 0.670 0.716 0.757 masked 0.789 0.793 0.801 0.817 0.301 0.385 0.478 0.718 directional 0.829 0.839 0.852 0.859 0.696 0.735 0.759 0.807 sitting full 0.660 0.745 0.820 0.860 0.050 0.043 0.169 0.425 masked 0.430 0.535 0.609 0.679 0.036 0.015 0.004 0.005 directional 0.727 0.757 0.792 0.808 0.012 0.034 0.388 0.636 walking up full 0.929 0.938 0.948 0.952 0.317 0.547 0.794 0.908 masked 0.796 0.869 0.902 0.917 0.118 0.171 0.298 0.601 directional 0.913 0.923 0.939 0.947 0.507 0.854 0.940 0.950 walking down full 0.861 0.875 0.918 0.941 0.398 0.473 0.693 0.816 masked 0.724 0.808 0.836 0.845 0.314 0.408 0.539 0.618 directional 0.849 0.860 0.892 0.905 0.589 0.731 0.891 0.921 
+
+Table 2: Mean per-class F1 scores at selected optimization steps for Experiment 6.2 , computed over the same runs used in Figure 7 and evaluated on the full unmasked test split . Rows correspond to activity classes and methods; columns report checkpointed means for logistic regression and the shallow neural network at t ∈ { 100 , 200 , 500 , 1000 }. We include this table to decongest the trajectory plots in Figure 7, especially on the logistic regression side. In that setting, our directional observability-aware method exceeds masked SGD in all 24 class-step entries, with an average gain of 0 .0765 F1 ( ≈ 7.65 percentage points), corresponding to about 9 .4% improvement in overall mean F1; it also exceeds full SGD in 7 of 24 entries, all at early or intermediate stages. The largest masked-to-directional improvement on the logistic-regression side occurs for sitting at t = 100, where the mean F1 rises from 0.430 to 0.727 (a gain of 0.297, or roughly 69% relative improvement). Other especially strong logistic-regression gains appear for walking down at t = 100 (0 .724 → 0.849) and for walking at t = 100 (0 .817 → 0.924). Moreover, the cases in which 
+
+directional training surpasses even full SGD are not isolated curiosities. On the logistic-regression side, they already appear in several early and intermediate checkpoints, most visibly for walking, and also for standing and sitting. In the shallow neural network case, the effect is markedly stronger: the directional method exceeds masked SGD in 23 of 24 class-step entries and exceeds full SGD in 19 of 24 entries. The lone shallow-net exception against masked occurs for sitting at the first checkpoint ( t = 100), but this does not alter the qualitative message: masked training then effectively collapses for that class (0 .015 , 0.004 , 0.005 at t = 200 , 500 , 1000), whereas the directional method recovers substantial performance (0 .034 , 0.388 , 0.636). This suggests that, once embedded in a nonlinear model, the directional controller may do more than merely compensate for missingness: by reshaping motion according to the observed actuation geometry, it can also provide a beneficial conditioning effect on the optimization dynamics themselves. explicit occupation-time summaries, a clear qualitative pattern is visible: the uncontrolled masked learner is the most excursion-prone, whereas the controlled learner enters useful validation regimes earlier, remains there more stably, and exhibits fewer severe rebounds. This behavior is consistent across all three rotations despite their materially different target compositions. Moreover, in several early portions of training, the controlled learner not only behaves more coherently than masked SGD, but also occasionally descends faster than the idealized full-information baseline, echoing the beneficial conditioning effect already observed in Experiment 6.2. In this experiment, we deliberately do not treat masked training loss as an indicator of learning quality. Under heavy modality-level and within-modality missingness, that loss is evaluated through a censored observation pattern and therefore need not reveal whether the learner is recovering the full underlying mapping. We instead judge the methods on the metric that matters for that question: MAE on the clean, fully present validation set. From that perspective, the primary and expected comparison is against masked SGD, and Table 3 shows that the controlled learner wins strongly in exactly that sense: in the strongest windows it outperforms masked SGD for most validation checkpoints, spends substantially more time in good regimes, spends substantially less time in bad-excursion regimes, and exhibits markedly calmer validation dynamics. Our conclusion is therefore not that the controlled learner must always beat the idealized full-25 mean val. MAE c<m c best good region gain bad excursion reduction mean |∆MAE |                                                                                           
+
+> rot. window (f / m / c) (occ.) (occ.) (c vs. m) (c vs. m) (m / c) A0-1k 14.08 / 22.80 / 8.65 100% 90% +40.0 pp +80.0 pp 12.25 / 2.52 A0-5k 9.97 / 12.13 / 7.59 90% 82% +34.0 pp +36.0 pp 4.47 / 1.39 A5k-20k 7.30 / 7.83 / 7.28 65% 33% +4.6 pp +7.9 pp 1.09 / 0.75 A10k-20k 6.96 / 7.70 / 7.27 59% 20% -4.0 pp +6.9 pp 0.95 / 0.70 B0-1k 11.19 / 21.03 / 6.10 100% 70% +10.0 pp +90.0 pp 11.62 / 2.09 B0-5k 6.68 / 10.99 / 8.20 58% 34% +10.0 pp +8.0 pp 4.46 / 3.87 B5k-20k 4.09 / 6.37 / 5.14 68% 17% +14.6 pp +5.3 pp 2.28 / 1.85 B10k-20k 3.71 / 5.61 / 4.81 65% 12% +16.8 pp +2.0 pp 1.88 / 1.57 C0-1k 19.12 / 23.36 / 15.96 90% 70% +0.0 pp +30.0 pp 6.00 / 1.68 C0-5k 15.03 / 15.63 / 12.10 84% 70% +28.0 pp +22.0 pp 3.05 / 1.70 C5k-20k 10.77 / 11.71 / 10.57 68% 44% +19.2 pp +7.9 pp 1.61 / 1.17 C10k-20k 10.39 / 11.19 / 10.40 62% 38% +16.8 pp +5.0 pp 1.40 / 1.19
+
+Table 3: Validation occupation-time and reliability statistics for Experiment 6.3 , computed from the clean full-feature validation MAE trajectories for rotations A/B/C that we plotted in Figure 10 over the training step windows 0–1000, 0–5000, 5000–20000, and 10000–20000. In f/m/c , we report the window-averaged validation MAE of f (full SGD), m (masked SGD), and c (our controlled learner); c<m occ. 
+
+is the fraction of checkpoints at which controlled outperforms masked on validation MAE, while c best occ. is the fraction of checkpoints at which controlled is best among {full, masked, controlled }; good region gain (c vs. m) is the controlled-minus-masked difference, in percentage points, in occupation time spent below a rotation-specific good-region threshold; bad-excursion reduction (c vs. m) is the masked-minus-controlled difference, again in percentage points, in occupation time spent above a rotation-specific bad-excursion threshold. These thresholds are defined within each rotation from pooled validation MAE values across methods: good = lower quartile and bad = 90th percentile, yielding (A: good ≤ 6.81, bad 
+
+≥ 9.30; B: good ≤ 3.70, bad ≥ 10 .24; C: good ≤ 10 .08, bad ≥ 14 .62). Finally, mean |∆MAE | (m/c) is the mean absolute checkpoint-to-checkpoint change in validation MAE for masked and controlled, with lower values indicating calmer and more reliable validation behavior. Since the rotations have materially different target compositions, absolute MAEs should be compared within , not across, rotations. 
+
+Figure 9: Two-branch convolutional regressor model employed in Experiment 6.3 : learning to predict sea ice concentration with remote sensing under missing sensing modalities and missing sensor measurements .information SGD run, but that under substantial modality-level and within-modality missingness it continues to learn the underlying mapping credibly and much more reliably than the uncontrolled masked alternative. When it also rivals or exceeds the fully observed reference over parts of training, we view that as a more remarkable, beyond-mandate effect, suggesting that the observability-aware geometry may be doing beneficial optimization work in addition to stabilizing missing-data learning. 26 7 Related work 
+
+Existing approaches to (supervised) learning with missing data fall into five main categories, each of which we briefly contrast with our directional observability-aware framework in Sections 7.1–7.5. In summary, prior related work either reconstructs missing data, does not focus on the dynamical consequences of masking (i.e., from a trajectory stability viewpoint), or optimizes different robustness notions. By recasting learning as a closed-loop adaptive system whose controllability varies with the data mask, our directional observability-aware adaptation fills a critical gap: it provides provable trajectory stability and demonstrable coherence without imputation, distributional assumptions, or external regularization, which span the failure modes that remain unaddressed by existing techniques. In addition, we relate our developments to foundational control and estimation concepts in 7.6–7.7. 5710 20 50                
+
+> full SGD masked SGD controlled (ours)
+> 35710 20 50
+> 0510 15 20 710 15 20 30 50
+> 0510 15 20 0510 15 20
+> rotation A rotation B rotation C mean absolute error (% sea ice concentration) thousands of steps
+
+Figure 10: Validation trajectories from Experiment 6.3 : learning to predict sea ice concentration with remote sensing under missing sensing modalities and missing sensor measurements , shown across three split rotations A/B/C for full SGD, masked SGD, and the controlled learner (ours). The controlled learner is consistently less excursion-prone than masked SGD, tends to enter useful error regimes earlier, and often remains there with fewer severe rebounds; Table 3 quantifies this pattern through validation occupation-time and reliability statistics. Note: In the masked SGD column, the black dots correspond to the data points of the controlled run on the same rotation to facilitate an easier comparison. Conversely, in the controlled column, the black dots correspond to the data points of the masked run for the same rotation. 27 7.1 Imputation / EM / matrix completion ( ∼ guess and fill the blanks, then learn) 
+
+These methods assume an underlying latent distribution and explicitly reconstruct missing entries (via generative models, expectation-maximization, or low-rank completion) before training (Emmanuel et al., 2021; Bertsimas et al., 2018; Prakash et al., 2024; Rizvi et al., 2025; Rácz & Gere, 2025; Du et al., 2024). While probabilistically elegant and sometimes statistically optimal under correct modeling assumptions, they focus exclusively on likelihood maximization and never examine the dynamic evolution and stability of the parameter vector during intermittent missingness. In contrast, our approach never hallucinates or imputes missing values. Instead, it regulates parameter motion in an evidence-driven way, treating missingness as a structured loss of actuation authority rather than a statistical inference problem. It is also important to point out that in the missingness regimes that we have been using to illustrate our approach, with a very strong majority of features and the information they carry completely missing, even for prolonged blocks, we operate in a categorically different regime from a relatively mild, “fill-a-few-blanks” setting for which imputation methods are designed. In the consistently scarce data that may remain available, even from one iteration or batch to the next, there may be insufficient reliable information left to perform any meaningful imputation, without resorting to subjective guessing or outright hallucination, either of which can inject additional noise and exacerbate the very parameter drift and coherence loss we seek to prevent. In the context of our experiments, missing 4 out of 6 semantically distinct modalities plus intra-modality drops in Experiment 6.2, or missing multiple entire SAR channels in Experiment 6.3 cannot be credibly remedied by imagining wearable signals or drawing hypothetical remote sensing patterns, respectively, just to learn a model of inevitably dubious characteristics and provenance. Our directional observability-aware controller sidesteps this issue entirely by never attempting to reconstruct anything missing, instead directly regulating parameter motion according to the empirically observed excitation. 
+
+7.2 Masked losses / partial supervision (standard deep learning ∼ keep the blanks and learn) 
+
+The standard practice in deep learning is to compute gradients solely on observed components (zeroing contributions from masked inputs or outputs), while leaving the optimizer unchanged (Ipsen et al., 2022; Casella et al., 2024; Niu et al., 2025). This strategy is simple and scalable, yet offers zero safeguards against parameter drift in unobserved and empirically unsupported subspaces; it rather assumes that SGD will self-regularize. Our method explicitly constrains, via a control-theoretic mechanism, the state evolution of the parameters, providing the missing closed-loop mechanism that attenuates incoherent motion. Intentional masking can be beneficial in self-supervised pretraining, as demonstrated by masked autoencoders (He et al., 2022), where random patch masking can lead to learning robust representations. Nevertheless, this is fundamentally different from organically missing data during training, where missingness induces oscillations, stalling, or parameter hallucination. Our directional observability-aware controller directly mitigates these dynamical failure modes, in contrast to engineered masking designed and empirically observed to improve representation quality. 
+
+7.3 Bayesian marginalization / uncertainty-aware models 
+
+Bayesian and ensemble techniques maintain explicit posterior uncertainty over parameters and marginalize over missing data (Gal & Ghahramani, 2016; Chen et al., 2025; Zeng et al., 2026; Kendall & Gal, 2017). Although conceptually clean, they remain computationally heavy, model-dependent, and largely open-loop: posteriors can still drift arbitrarily when excitation weakens or entirely disappears for prolonged periods. Our framework delivers distribution-free boundedness guarantees on the parameter error trajectory without requiring a prior, offering a lightweight control-theoretic alternative that enforces learning coherence and stability. 
+
+7.4 Robust optimization / DRO 
+
+These approaches optimize for the worst-case data distribution within an ambiguity set, yielding strong adversarial guarantees (Kuhn et al., 2025; Mohajerin Esfahani & Kuhn, 2018; Ghosal & Li, 2023). However, 28 they typically target distributional shifts or corrupted samples, not the structured loss of controllability induced by missing inputs or outputs. In contrast, we model missingness explicitly as a directional reduction in actuation authority, thereby protecting a fundamentally different axis of robustness – one that standard DRO formulations do not capture. 
+
+7.5 Online learning with partial feedback (bandits, etc.) 
+
+Bandit-style and partial-observation frameworks (including contextual bandits and online convex optimiza-tion with bandit feedback) provide regret bounds when only partial loss information is available (Shao et al., 2026; Alon et al., 2015; Raman et al., 2024; Lattimore & Szepesvári, 2020; Auer et al., 2002). These results are elegant and long-standing, yet, they focus on cumulative performance and external regret, not on the internal stability or boundedness of the parameter vector itself from one iteration to the next. Our contribu-tion complements this line of work by ensuring the learner’s state remains sane under partial observability, a dynamical guarantee that remains distinct from asymptotic average-case analyses. 
+
+7.6 Adaptive control and Lyapunov/ISS theory 
+
+The stability tools we employ draw from classical nonlinear control theory, where the input-to-state stabil-ity (ISS) framework and the associated Lyapunov-based analyses are ubiquitous (Khalil, 2002; Haddad & Chellaboina, 2008). More specifically, dissipation-mismatch inequalities and boundedness arguments that are routinely invoked in control-theoretic analyses form the foundations for our windowed residual-to-state bound (Proposition 1) and for the eigenvalue properties of our observability Gramian. Our key contribution is repurposing such control theoretic tools and workflows and aligning them with the specific setting of learn-ing under partial observability. We close the loop around a data-driven observability metric that evolves online, yielding provable trajectory bounds for gradient-based learning under the stated finite-dimensional or active-subspace excitation and bounded-residual-mismatch conditions when inputs are intermittently miss-ing. 
+
+7.7 Parameter estimation under intermittent measurements in networked control systems 
+
+A superficially related line of work studies parameter estimation and state observation under intermittent or packet-dropped measurements in networked control systems, where Gramian-type matrices are used to update observer gains against a known system model (Sinopoli et al., 2004; Schenato et al., 2007; Gupta et al., 2009). Although our observability matrix Bt shares a structural resemblance with these Gramians, their roles differ fundamentally. In adaptive observers, the system model is known a priori and the innovation term remains cleanly separated from the observability loss. In our framework, no such separation exists: the gradient ∇wℓt itself is an uncertain measurement whose conditional structure is induced by the same masked Jacobian channel that drives Bt. Consequently, the inverse B−1 
+
+> t
+
+performs a dual role: simultaneously reshaping the geometry of the admissible parameter motion and conditioning gradient information relative to recent excitation. This mechanism in our approach, which has no direct analog in the observer literature, is what enables the residual-to-state guarantees of Proposition 1 in a gradient-based learning setting and distinguishes our contribution from classical parameter estimation under measurement dropout. 
+
+# 8 Conclusion 
+
+Even though contemporary accomplishments in machine learning may suggest that models, somehow , learn, and learn well, the assumptions behind such perspectives can be an unattainable luxury in many workflows of practical significance which do not enjoy data consistency, repeated exposure to informative features, or forgiving data geometry. We position our work and contributions not as a performance optimization but at the workflow-enabling level, as our directional observability-aware learning adaptation can enable learning in pathologically sparse domains, which are abundant in the real world. Data may arrive intermittently, observations may be censored, delayed, or missing by design, and even interactions with real-world systems that yield such disappointing data may be expensive and otherwise scarce. Infrastructure, cyber-physical security, high-dimensional multimodal problems, financial or otherwise sensitive contexts routinely give rise 29 to such complications. Our learning approach, by leveraging concepts and machinery from dynamical and control systems, provides the necessary evidence-driven adaptation that can render learning in such envi-ronments coherent , dynamically stable , economical (in the sense of being able to credibly leverage partially available data streams without requiring persistent perfection and completeness) and ultimately viable .The explicit constants in Proposition 1 are intended as analytical certificates rather than literal plug-in tuning prescriptions. Their role is to close the correctness chain and expose the expected qualitative dependencies: stronger effective excitation improves the guaranteed contraction margin, slower variation of the observability metric strengthens the transfer from raw to effective excitation, and overly aggressive step sizes erode the finite-window coercivity margin. As is typical of Lyapunov and ISS analyses, repeated worst-case norm and Young-inequality bounds make the resulting numerical values conservative. Practical choices of η, β, and ϵ
+
+should therefore be informed by these directional trends and validated empirically, rather than selected by literal substitution into the worst-case constants. Although the present study focuses on supervised learning, the underlying mechanism operates at the level of gradient modulation under partial observability and is therefore not inherently tied to supervised objectives. This opens the door to extensions in streaming unsupervised and self-supervised settings, where temporally correlated missingness and local observability limitations are often even more central. Our individual tech-nical results and the approach in its entirety can mechanistically extend to the multivariate output case, beyond the scalar case that we considered here for simplicity and brevity. Given the broader evolution of the learning frontier and the results that we observed in our experiments, we believe that an interesting and natural future direction pertains to the systematic empirical integration and evaluation of our directionally-aware adaptation in impactful model architectures, such as autoencoders and transformers, the construction of which in the real world is inherently driven by overall imperfect data streams. 
+
+# Acknowledgements 
+
+This work was funded by the U.S. Department of Energy through contract DE-AC07-05ID14517 and, in part, by the U.S. Department of Homeland Security Science and Technology Directorate and the ADAC-ARCTIC Center of Excellence managed by the University of Alaska Anchorage. Neither the U.S. Government nor any agency thereof, nor Contractor, nor any of their employees, make any warranty, express or implied, or assume any legal liability or responsibility for the accuracy, completeness, or usefulness of any information, apparatus, product, or process disclosed. The views and opinions of authors expressed herein do not necessarily state or reflect those of the U.S. Government or any agency or Contractor thereof. 
+
+# Impact Statement 
+
+We show theoretically and empirically how observability-aware, control-theoretic adaptation can promote coherent and dynamically stable learning under severe and intermittent data missingness. 
+
+# References 
+
+Noga Alon, Nicolo Cesa-Bianchi, Ofer Dekel, and Tomer Koren. Online learning with feedback graphs: Beyond bandits. In Conference on Learning Theory , pp. 23–35. PMLR, 2015. Davide Anguita, Alessandro Ghio, Luca Oneto, Xavier Parra, Jorge Luis Reyes-Ortiz, et al. A public domain dataset for human activity recognition using smartphones. In Esann , volume 3, pp. 3–4, 2013. Peter Auer, Nicolo Cesa-Bianchi, and Paul Fischer. Finite-time analysis of the multiarmed bandit problem. 
+
+Machine learning , 47(2):235–256, 2002. Dimitris Bertsimas, Colin Pawlowski, and Ying Daisy Zhuo. From predictive methods to missing data imputation: an optimization approach. Journal of Machine Learning Research , 18(196):1–39, 2018. Monica Casella, Nicola Milano, Pasquale Dolce, and Davide Marocco. Transformers deep learning models for missing data imputation: an application of the ReMasker model on a psychometric scale. Frontiers in Psychology , 15:1449272, 2024. 30 Youliang Chen, Wencan Guan, and Rafig Azzam. Residual bayesian attention networks for uncertainty quantification in regression tasks. Scientific Reports , 15(1):38279, 2025. Tianyu Du, Luca Melis, and Ting Wang. Remasker: Imputing tabular data with masked autoencoding. In 
+
+12th International Conference on Learning Representations , 2024. Tlamelo Emmanuel, Thabiso Maupong, Dimane Mpoeleng, Thabo Semong, Banyatsang Mphago, and Oteng Tabona. A survey on missing data in machine learning. Journal of Big Data , 8(1):140, 2021. Yarin Gal and Zoubin Ghahramani. Dropout as a bayesian approximation: Representing model uncertainty in deep learning. In International Conference on Machine Learning , pp. 1050–1059. PMLR, 2016. Soumya Suvra Ghosal and Yixuan Li. Distributionally robust optimization with probabilistic group. In 
+
+Proceedings of the AAAI Conference on Artificial Intelligence , volume 37, pp. 11809–11817, 2023. Vijay Gupta, Amir F Dana, Joao P Hespanha, Richard M Murray, and Babak Hassibi. Data transmission over networks for estimation and control. IEEE Transactions on Automatic Control , 54(8):1807–1819, 2009. Wassim M Haddad and VijaySekhar Chellaboina. Nonlinear dynamical systems and control: a Lyapunov-based approach . Princeton University Press, 2008. Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr Dollár, and Ross Girshick. Masked autoencoders are scalable vision learners. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 16000–16009, 2022. Niels Bruun Ipsen, Pierre-Alexandre Mattei, and Jes Frellsen. How to deal with missing data in supervised deep learning? In 10th International Conference on Learning Representations , 2022. Alex Kendall and Yarin Gal. What uncertainties do we need in Bayesian deep learning for computer vision? 
+
+Advances in Neural Information Processing Systems , 30, 2017. Hassan K Khalil. Nonlinear systems . Prentice Hall, Upper Saddle River, NJ, 3 edition, 2002. Daniel Kuhn, Soroosh Shafiee, and Wolfram Wiesemann. Distributionally robust optimization. Acta Nu-merica , 34:579–804, 2025. Tor Lattimore and Csaba Szepesvári. Bandit algorithms . Cambridge University Press, 2020. David Malmgren-Hansen, Leif Toudal Pedersen, Allan Aasbjerg Nielsen, Matilde Brandt Kreiner, Roberto Saldo, Henning Skriver, John Lavelle, Jørgen Buus-Hinkler, and Klaus Harnvig Krane. A convolutional neural network architecture for Sentinel-1 and AMSR2 data fusion. IEEE Transactions on Geoscience and Remote Sensing , 59(3):1890–1902, 2020. Peyman Mohajerin Esfahani and Daniel Kuhn. Data-driven distributionally robust optimization using the wasserstein metric: Performance guarantees and tractable reformulations. Mathematical Programming ,171(1):115–166, 2018. Ben Niu, Yi Xiao, Qinge Xiao, Yang Liu, Tao Peng, and Zhile Yang. A self-supervised masked spatial distri-bution learning method for predicting machinery remaining useful life with missing data reconstruction. 
+
+Advanced Engineering Informatics , 64:102938, 2025. Preethi Prakash, Kelly Street, Shrikanth Narayanan, Bridget A Fernandez, Yufeng Shen, and Chang Shu. Benchmarking machine learning missing data imputation methods in large-scale mental health survey databases. Artificial Intelligence in Health , 2(1):81–92, 2024. Anita Rácz and Attila Gere. Comparison of missing value imputation tools for machine learning models based on product development cases studies. LWT - Food Science and Technology , 221:117585, 2025. 31 Ananth Raman, Vinod Raman, Unique Subedi, Idan Mehalel, and Ambuj Tewari. Multiclass online learn-ability under bandit feedback. In International Conference on Algorithmic Learning Theory , pp. 997–1012. PMLR, 2024. Jorge Reyes-Ortiz, Davide Anguita, Alessandro Ghio, Luca Oneto, and Xavier Parra. Hu-man Activity Recognition Using Smartphones. UCI Machine Learning Repository, 2013. DOI: https://doi.org/10.24432/C54S4K. Syed Tahir Hussain Rizvi, Muhammad Yasir Latif, Muhammad Saad Amin, Achraf Jabeur Telmoudi, and Nasir Ali Shah. Analysis of machine learning based imputation of missing data. Cybernetics and Systems ,56(6):818–832, 2025. Roberto Saldo, Matilde Brandt Kreiner, Jørgen Buus-Hinkler, Leif Toudal Pedersen, David Malmgren-Hansen, Allan Aasbjerg Nielsen, and Henning Skriver. AI4Arctic / ASIP Sea Ice Dataset - version 2, 10 2020. URL https://data.dtu.dk/articles/dataset/AI4Arctic_ASIP_Sea_Ice_Dataset_-_version_ 2/13011134 .Luca Schenato, Bruno Sinopoli, Massimo Franceschetti, Kameshwar Poolla, and S Shankar Sastry. Founda-tions of control and estimation over lossy networks. Proceedings of the IEEE , 95(1):163–187, 2007. Shihao Shao, Cong Fang, Zhouchen Lin, and Dacheng Tao. Partial feedback online learning. arXiv preprint arXiv:2601.21462 , 2026. Bruno Sinopoli, Luca Schenato, Massimo Franceschetti, Kameshwar Poolla, Michael I Jordan, and Shankar S Sastry. Kalman filtering with intermittent observations. IEEE Transactions on Automatic Control , 49(9): 1453–1464, 2004. Zi-Xuan Zeng, Yan-Ke Tan, E Deng, Yi-Qing Ni, Qi-Lin Zhang, and Bin Yang. Uncertainty-aware bayesian time series framework for probabilistic imputation. Advanced Engineering Informatics , 70:104153, 2026. 32 APPENDIX A Pedagogical numerical illustration of the partial-actuation failure mode 
+
+We present a minimal, d = 2, blackboard-style linear regression example that makes the learning instability under missing data concrete. In the linear regression case, the failure mode arises as the scalar residual couples coordinates, both observed and masked, indiscriminately, and moves the observed parameters regardless of the true values of the masked features and the update direction and strength that the full feature vector would have led to. We configure our example as follows: 
+
+features: xt ∈ R2 (full) , ˜xt =
+
+{[ x1,t 
+
+x2,t 
+
+]
+
+,
+
+[ 0
+
+x2,t 
+
+]
+
+,
+
+[ x1,t 
+
+0
+
+]} 
+
+(masked) true model: yt = ⟨w∗, xt⟩, where w∗ =
+
+[ w∗
+
+> 1
+
+w∗
+
+> 2
+
+]
+
+=
+
+[ 11
+
+]
+
+method: wt+1 = wt + η ˜xt (yt − ⟨ wt, ˜xt⟩)
+
+︸ ︷︷ ︸ 
+
+> residual rt
+
+learning rate: η = 0 .05 
+
+initialization: w0 =
+
+[ 00
+
+]
+
+progression: [step 0] x0 = [4 , 4] T, y 0 = 8 , feature 2 missing → ˜x0 = [4 , 0] T
+
+[step 1] x1 = [3 , 5] T, y 1 = 8 , feature 1 missing → ˜x1 = [0 , 5] T
+
+[step 2] x2 = [5 , 3] T, y 2 = 8 , feature 1 missing (again) → ˜x2 = [0 , 3] T
+
+To illustrate how the considered failure mode can emerge, we study the evolution of a full SGD method starting from w0 and operating on the above full-feature samples, a masked SGD method operating on the above masked samples, and a counterfactual step that picks up from wherever the masked SGD method is and applies a full feature visibility update as if it were the full SGD method. 
+
+STEP 0 full SGD masked SGD counterfactual 
+
+starting w w0 = [0 , 0] T w0 = [0 , 0] T w0 = [0 , 0] T
+
+sample x used x0 = [4 , 4] T ˜x0 = [4 , 0] T x0 = [4 , 4] T
+
+actual y 8 8 8predicted ˆ y 0 0 0residual r 8 8 8∆w [1 .6, 1.6] T [1 .6, 0] T [1 .6, 1.6] T
+
+new parameter w1 wf1 = [1 .6, 1.6] T wm1 = [1 .6, 0] T [1 .6, 1.6] T
+
+new parameter error e1 [0 .6, 0.6] T [0 .6, −1.0] T [0 .6, 0.6] T
+
+new parameter-error norm ∥e1∥ 0.849 1.166 0.849 All three methods start from [0 , 0] T, so the counterfactual update is identical to full SGD here. Coincidentally, their predicted ˆ y is identical. Full SGD, with both features, immediately corrects both components. Masked SGD correctly updates w1, but leaves w2,1 frozen at 0, one full unit below w∗ 
+
+> 2
+
+= 1. The divergence already emerges: w1,1 moderately overshot at 1 .6 while w2,1 is left entirely unactuated. However, this is the canonical behavior of masked SGD in the linear regression case: w2,1 expectedly stays put. A masked feature and the part(s) of the model it influences (which, in the case of linear regression, have a very direct, one-to-one correspondence) cannot help the convergence or stability of the method. Yet, as we will see next, a masked feature/component can yield a destabilizing failure that is realized by the motion of currently visible and actuated components. Moreover, effects such as the larger parameter error seen above in the masked method can accumulate and propagate in subsequent iterations. 33 STEP 1 full SGD masked SGD counterfactual 
+
+starting w wf1 = [1 .6, 1.6] T wm1 = [1 .6, 0] T wm1 = [1 .6, 0] T
+
+sample x used x1 = [3 , 5] T ˜x1 = [0 , 5] T x1 = [3 , 5] T
+
+actual y 8 8 8predicted ˆ y 12.8 0 4.8 residual r −4.8 +8 .0 +3 .2
+
+∆w [−0.72 , −1.2] T [0 , +2 .0] T [+0 .48 , +0 .80] T
+
+new parameter w2 wf2 = [0 .88 , 0.40] T wm2 = [1 .6, 2.0] T [2 .08 , 0.80] T
+
+new parameter error e2 [−0.12 , −0.60] T [0 .6, 1.0] T [1 .08 , −0.20] T
+
+new parameter-error norm ∥e2∥ 0.612 1.166 1.098 
+
+We notice above a significant difference between the masked residual (+8 .0) and the counterfactual residual 
+
+(+3 .2): the 4 .8 unit gap equals wmasked 1,1 · x1,1 = 1 .6 · 3 = 4 .8, which corresponds to the invisible prediction contribution from the previously overshot wmasked 1,1 flowing through the missing feature channel. This gap itself decomposes as: 4.8 = wm1,1 · x1,1 = w∗ 
+
+> 1
+
+· x1,1
+
+︸ ︷︷ ︸
+
+> =3
+
++ (wm1,1 − w∗
+
+> 1
+
+) · x1,1
+
+︸ ︷︷ ︸
+
+> =1 .8
+
+The term w∗ 
+
+> 1
+
+· x1,1 is exogenous and present even with a perfect model, whereas the term ( w1,1 − w∗ 
+
+> 1
+
+) · x1,1 is endogenous and represents the learner’s own past error in w1,1 re-entering, yet in a rather detrimental way through the hidden channel. The masked learner uses the inflated 8 units of residual to drive the update of the observable subspace, which corresponds to the component w2,1, whereas the unobservable subspace, 
+
+w1,1, stays put, by definition. The inflated residual is then driving w2,1 = 0 to w2,2 = 2 .0 in a single step, overshooting w∗ 
+
+> 2
+
+by a factor of two. A striking observation in this step is that the error norm ∥e2∥ = 1 .166 for masked remains exactly the same as ∥e1∥ at the conclusion of step 0. The error vector did not shrink; instead, it rotated from [0 .6, −1.0] to [0 .6, +1 .0] T. The magnitude of the error in w2 is unchanged at 1 .0, but its sign flipped: the learner moved from being 1 .0 unit below w∗ 
+
+> 2
+
+to being 1 .0 unit above it, with complete confidence. This rotation at constant norm is a rather clean signature of learning incoherence: one full step of gradient descent, in the simplest context of 2-dimensional linear regression, nothing was gained, yet the representation in the view of the learner, as described by w2, changes monumentally. 
+
+STEP 2 full SGD masked SGD counterfactual 
+
+starting w wf2 = [0 .88 , 0.40] T wm2 = [1 .6, 2.0] T wm2 = [1 .6, 2.0] T
+
+sample x used x2 = [5 , 3] T ˜x2 = [0 , 3] T x2 = [5 , 3] T
+
+actual y 8 8 8predicted ˆ y 5.6 6.0 14.0 residual r +2 .4 +2 .0 −6.0
+
+∆w [+0 .60 , +0 .36] T [0 , +0 .30] T [−1.50 , −0.90] T
+
+new parameter w3 wf3 = [1 .48 , 0.76] T wm3 = [1 .6, 2.30] T [0 .10 , 1.10] T
+
+new parameter error e3 [0 .48 , −0.24] T [0 .6, 1.30] T [−0.90 , 0.10] T
+
+new parameter-error norm ∥e3∥ 0.537 1.432 0.906 
+
+In the final step that we examine above, the error norm for masked SGD grows from 1 .166 to 1 .432. The masked update machinery constructs a severely inflated residual, which is misinforming and misleading the learner. The inflation is so high that the residual flips sign from what the counterfactual update would work with. As a result, the masked method moves in the opposite direction than what would help regulate the error. The contrast between the different residuals also illuminates another point: the masked method, seeing a relatively smaller residual yet of the same sign as that in the preceding step, may “think” that it is close to converging to the sought-after w∗, which could not be further from the truth. 34 A scalar observability-aware replay of the critical step. The scalar controller of Section 2.5 does not recover the missing contribution or correct the sign of the residual. It instead limits how strongly the learner may act on that residual. To make this distinction concrete, consider the same starting state and masked sample as in the final column above: 
+
+wm2 = [1 .6, 2.0] T, ˜x2 = [0 , 3] T, ˜r2 = 2 .
+
+With ϵ = 1, the scalar gain is 
+
+α2 = ηϵ + ∥ ˜x2∥2 = 0.05 1 + 9 = 0 .005 .
+
+The resulting update is therefore ∆wscalar 2 = α2 ˜x2 ˜r2 = [0 , 0.03] T,
+
+rather than the masked-SGD update [0 , 0.30] T. Thus, 
+
+wscalar 3 = [1 .6, 2.03] T ∥escalar 3 ∥ = 1 .191 ,
+
+compared with ∥emasked 3 ∥ = 1 .432. The scalar controller has not inferred the unavailable feature contribution: the proposed motion remains imperfect and the error norm still grows slightly from 1 .166. It has, however, prevented the misleading residual from producing a full-strength update, substantially limiting the resulting excursion. 
+
+Directional observability-aware learning. We do not replay the directional controller of Section 4 in this three-step illustration in R2: its distinguishing mechanism depends on a sufficiently rich history of heterogeneous sensitivity directions, as well as a nontrivial parameter space, whereas the axis-aligned masked samples used here produce only a short, diagonal actuation history. That mechanism is therefore studied over sustained learning runs in Section 6.1. 
+
+# B Proofs 
+
+B.1 Proof of Lemma 1 
+
+Unrolling the empirical EMA state in (16) gives 
+
+St = (1 − β)
+
+> t
+
+∑
+
+> j=0
+
+βj gt−j gT 
+
+> t−j
+
+. (61) Since ∥gt−j ∥ ≤ G, we have gt−j gT 
+
+> t−j
+
+⪯ G2I, and therefore 
+
+Bt = ϵI + St,
+
+⪯ ϵI + (1 − β)
+
+> t
+
+∑
+
+> j=0
+
+βj G2I ⪯ (ϵ + G2)I = bI. (62) Because St ⪰ 0, we also have 
+
+Bt ⪰ ϵI = bI. (63) For t ≥ T − 1, Assumption 4 yields the sharper lower bound 
+
+Bt ⪰ ϵI + (1 − β) 
+
+> T−1
+
+∑
+
+> j=0
+
+βj gt−j gT 
+
+> t−j
+
+,
+
+⪰ ϵI + (1 − β)βT −1 
+
+> T−1
+
+∑
+
+> j=0
+
+gt−j gT 
+
+> t−j
+
+,
+
+⪰ (ϵ + (1 − β)βT −1λg
+
+) I. (64) 35 The inverse bounds follow from order reversal under inversion. Finally, 
+
+∥ψt∥ = ∥B−1 
+
+> t
+
+gt∥ ≤ ∥ B−1 
+
+> t
+
+∥∥ gt∥ ≤ Gb , (65) which concludes the proof. 
+
+B.2 Proof of Lemma 2 
+
+Fix t ≥ T − 1 and define the raw and effective sensitivity matrices 
+
+Gt := [ gt−T +1 · · · gt] , Ψt := [ Pt−T +1 gt−T +1 · · · Ptgt] . (66) Assumption 4 gives 
+
+GtGT 
+
+> t
+
+⪰ λg I, (67) and therefore 
+
+σmin (Gt) ≥ √λg . (68) Write 
+
+Ψt = PtGt + Et, (69) where the kth column of Et is (Pt−T +k − Pt) gt−T +k, k = 1 , . . . , T. (70) From Lemma 1, 
+
+σmin (Pt) ≥ 1
+
+b , (71) so 
+
+σmin (PtGt) ≥
+
+√λg
+
+b . (72) Moreover, 
+
+∥Et∥ ≤ ∥ Et∥F,
+
+≤ G
+
+(T −1∑
+
+> k=0
+
+∥Pt−k − Pt∥2
+
+)1/2
+
+,
+
+≤ Gν T . (73) The singular-value perturbation inequality now yields 
+
+σmin (Ψt) ≥
+
+√λg
+
+b − Gν T . (74) Under condition (43), the right-hand side is positive. Hence  
+
+> T−1
+
+∑
+
+> k=0
+
+ψt−kψT 
+
+> t−k
+
+= ΨtΨT 
+
+> t
+
+,
+
+⪰ σ2min (Ψt)I, 
+
+⪰
+
+( √ λg
+
+b − Gν T
+
+)2
+
+I, (75) which establishes Assumption 5 with the stated μ.For completeness, we also derive the EMA variation bound used after the lemma. The resolvent identity gives 
+
+Pj+1 − Pj = Pj+1 (Bj − Bj+1 ) Pj . (76) 36 Also, 
+
+Sj+1 − Sj = (1 − β) ( Aj+1 − Sj ) . (77) Since ∥Aj+1 ∥ ≤ G2 and ∥Sj ∥ ≤ G2,
+
+∥Bj+1 − Bj ∥ = ∥Sj+1 − Sj ∥ ≤ 2(1 − β)G2. (78) Using ∥Pj ∥ ≤ 1/b ,
+
+∥Pj+1 − Pj ∥ ≤ 2(1 − β)G2
+
+b2 =: δP . (79) By telescoping, 
+
+∥Pt−k − Pt∥ ≤ kδ P , (80) and consequently 
+
+νT ≤ δP
+
+(T −1∑
+
+> k=0
+
+k2
+
+)1/2
+
+,
+
+= 2(1 − β)G2
+
+b2
+
+√ T (T − 1)(2 T − 1) 6 . (81) This concludes the proof. 
+
+B.3 Proof of Lemma 3 
+
+We begin by expanding Vt+1 using ψt = B−1 
+
+> t
+
+gt and χt = ψT 
+
+> t
+
+et:
+
+Vt+1 = ∥et − ηψtst∥2,
+
+= Vt − 2ηs tχt + η2s2 
+
+> t
+
+∥ψt∥2. (82) By Assumption 3, χt = ˜ rt − δt, and by Assumption 2, st = ϕ(˜ rt). Therefore, 
+
+−2ηs tχt = −2ηϕ (˜ rt)(˜ rt − δt),
+
+= −2η˜rtϕ(˜ rt) + 2 ηδ tϕ(˜ rt),
+
+≤ − 2ηm ˜r2 
+
+> t
+
++ 2 ηM |δt|| ˜rt|,
+
+≤ − ηm ˜r2 
+
+> t
+
++ ηM 2
+
+m δ2 
+
+> t
+
+, (83) where the last line follows from Young’s inequality. From Lemma 1, 
+
+∥ψt∥ ≤ Gb , (84) and the growth bound in Assumption 2 gives 
+
+η2s2 
+
+> t
+
+∥ψt∥2 ≤ η2M 2 G2
+
+b2 ˜r2 
+
+> t
+
+. (85) Introducing these bounds in (82) yields 
+
+Vt+1 ≤ Vt − η
+
+(
+
+m − ηM 2 G2
+
+b2
+
+)
+
+˜r2 
+
+> t
+
++ ηM 2
+
+m δ2 
+
+> t
+
+. (86) Under (47), 
+
+m − ηM 2 G2
+
+b2 ≥ m
+
+2 , (87) 37 so 
+
+Vt+1 ≤ Vt − α0 ˜r2 
+
+> t
+
++ γ0δ2 
+
+> t
+
+, (88) with α0 = ηm/ 2 and γ0 = ηM 2/m .Next, from ˜ rt = χt + δt and the inequality ( x + y)2 ≥ 12 x2 − y2,˜r2 
+
+> t
+
+≥ 12 χ2 
+
+> t
+
+− δ2 
+
+> t
+
+. (89) Thus, 
+
+Vt+1 ≤ Vt − α0
+
+2 χ2 
+
+> t
+
++ ( α0 + γ0)δ2 
+
+> t
+
+,
+
+= Vt − αχ 2 
+
+> t
+
++ γδ 2 
+
+> t
+
+. (90) Finally, 
+
+∥et+1 − et∥ = η∥ψt∥| st|,
+
+≤ η GM b |˜rt|, (91) which establishes all three claims. 
+
+B.4 Proof of Lemma 4 
+
+Fix t ≥ T − 1 and let s := t − T + 1. For every k = 0 , . . . , T − 1, 
+
+χt−k = ψT
+
+> t−k
+
+et−k,
+
+= ψT
+
+> t−k
+
+es + ψT 
+
+> t−k
+
+(et−k − es) . (92) Using ( x + y)2 ≥ 12 x2 − y2 and summing over the window,  
+
+> T−1
+
+∑
+
+> k=0
+
+χ2 
+
+> t−k
+
+≥ 12 
+
+> T−1
+
+∑
+
+> k=0
+
+(ψT
+
+> t−k
+
+es
+
+)2
+
+− 
+
+> T−1
+
+∑
+
+> k=0
+
+(ψT 
+
+> t−k
+
+(et−k − es))2 . (93) Assumption 5 gives T −1∑
+
+> k=0
+
+(ψT
+
+> t−k
+
+es
+
+)2 ≥ μ∥es∥2 = μV s. (94) Define ∆t := max   
+
+> 0≤k≤T−1
+
+∥et−k − es∥. (95) Since ∥ψt−k∥ ≤ G/b , T −1∑
+
+> k=0
+
+(ψT 
+
+> t−k
+
+(et−k − es))2 ≤ T G2
+
+b2 ∆2 
+
+> t
+
+. (96) The motion bound from Lemma 3 implies 
+
+∥et−k − es∥ ≤ 
+
+> t−1
+
+∑
+
+> j=s
+
+∥ej+1 − ej ∥,
+
+≤ η GM b
+
+> t
+
+∑
+
+> j=s
+
+|˜rj |. (97) 38 Therefore, by Cauchy–Schwarz, ∆2 
+
+> t
+
+≤ η2 G2M 2
+
+b2 T
+
+> t
+
+∑
+
+> j=s
+
+˜r2 
+
+> j
+
+. (98) Summing the sharper dissipation inequality (48) over j = s, . . . , t gives 
+
+Vt+1 − Vs ≤ − α0
+
+> t
+
+∑
+
+> j=s
+
+˜r2 
+
+> j
+
++ γ0
+
+> t
+
+∑
+
+> j=s
+
+δ2 
+
+> j
+
+. (99) Using Vt+1 ≥ 0 and ∑tj=s δ2 
+
+> j
+
+≤ T δ 2,
+
+> t
+
+∑
+
+> j=s
+
+˜r2 
+
+> j
+
+≤ Vs
+
+α0
+
++ γ0Tα0
+
+δ2. (100) Combining (98) and (100) yields ∆2 
+
+> t
+
+≤ η2 G2M 2Tb2
+
+( Vs
+
+α0
+
++ γ0Tα0
+
+δ2
+
+)
+
+. (101) Finally, introducing (94), (96), and (101) into (93) gives  
+
+> T−1
+
+∑
+
+> k=0
+
+χ2 
+
+> t−k
+
+≥ μ
+
+2 Vs − T G2
+
+b2 ∆2 
+
+> t
+
+,
+
+≥
+
+( μ
+
+2 − η2G4M 2T 2
+
+α0b4
+
+)
+
+Vs
+
+− η2G4M 2γ0T 3
+
+α0b4 δ2,
+
+= θV t−T +1 − ζδ 2. (102) The explicit condition (55) is equivalent to θ > 0, completing the proof. 
+
+B.5 Proof of Proposition 1 
+
+We develop the proof in three phases / steps. In Step 1, we look at the residual-to-state behavior of the error at the end of T -length windows. In Step 2, we examine and bound the growth of the error within such windows. In Step 3, we compile the final bound for ∥et∥.
+
+Step 1: window-to-window error behavior 
+
+From Lemma 3, 
+
+Vt+1 ≤ Vt − αχ 2 
+
+> t
+
++ γδ 2 
+
+> t
+
+. (103) Fix any integer n ≥ 0 and sum over t = nT, . . . , nT + T − 1: 
+
+V(n+1) T ≤ VnT − α 
+
+> T−1
+
+∑
+
+> k=0
+
+χ2  
+
+> nT +k
+
++ γ 
+
+> T−1
+
+∑
+
+> k=0
+
+δ2 
+
+> nT +k
+
+. (104) Using ∑ δ2  
+
+> nT +k
+
+≤ T δ 2 and Lemma 4 with t = nT + T − 1,  
+
+> T−1
+
+∑
+
+> k=0
+
+χ2  
+
+> nT +k
+
+≥ θV nT − ζδ 2. (105) Hence 
+
+V(n+1) T ≤ (1 − αθ )VnT + ( αζ + γT )δ2. (106) 39 Define 
+
+ρ := 1 − αθ. (107) Under (56), θ > 0 and 0 < αθ ≤ ηmμ 
+
+8 < 1, (108) so ρ ∈ (0 , 1). Iterating (106) gives 
+
+VnT ≤ ρnV0 + αζ + γT αθ δ2. (109) Taking square roots, 
+
+∥enT ∥ ≤ qn∥e0∥ + Cδ, (110) where 
+
+q := √ρ = √1 − αθ, C := 
+
+√ αζ + γT αθ . (111) 
+
+Step 2: within-window error behavior 
+
+Fix n ≥ 0 and take any t such that nT ≤ t ≤ (n + 1) T . Then 
+
+∥et∥ ≤ ∥ enT ∥ +
+
+> t−1
+
+∑
+
+> j=nT
+
+∥ej+1 − ej ∥. (112) Using (50), enlarging the sum to the full window, and applying Cauchy–Schwarz, 
+
+∥et∥ ≤ ∥ enT ∥ + η GM b 
+
+> (n+1) T−1
+
+∑
+
+> j=nT
+
+|˜rj |,
+
+≤ ∥ enT ∥ + η GM b
+
+√√√√T 
+
+> (n+1) T−1
+
+∑
+
+> j=nT
+
+˜r2 
+
+> j
+
+. (113) Summing (48) over the same window gives  
+
+> (n+1) T−1
+
+∑
+
+> j=nT
+
+˜r2 
+
+> j
+
+≤ VnT 
+
+α0
+
++ γ0Tα0
+
+δ2. (114) Introducing this bound in (113) and using √x + y ≤ √x + √y yields 
+
+∥et∥ ≤ A∥enT ∥ + Dδ, (115) where 
+
+A := 1 + η GM b
+
+√ Tα0
+
+, D := η GM b T
+
+√ γ0
+
+α0
+
+. (116) 
+
+Step 3: final residual-to-state bound 
+
+For any t ≥ 0, let n = ⌊t/T ⌋. Combining (110) and (115) gives 
+
+∥et∥ ≤ A
+
+(
+
+q⌊t/T ⌋∥e0∥ + Cδ 
+
+)
+
++ Dδ, 
+
+= Aq ⌊t/T ⌋∥e0∥ + Lδ, (117) where 
+
+L := AC + D. (118) Thus the constants q, A, L are explicit functions of the problem parameters, and the stated estimate estab-lishes a residual-to-state, ISS-type bound for all t. When δt is independently specified as an exogenous input, the same estimate has the conventional input-to-state-stability interpretation. 40 C Implementation details for numerical experiments 
+
+In this appendix, we describe the learning pipelines around Experiments 6.2 and 6.3, as well as the experiment-specific realizations of our observability-aware controllers. Sections 4-5 develop and prove the idealized control law used in our theory, whereas the implementations below use numerically stabilized and architecture-specific realizations that preserve the same observability-aware geometry, while promot-ing robustness and tractability in finite-precision training, especially in practically realistic and meaningful parameter spaces that range between O (10 3) ∼ O (10 6).
+
+C.1 Experiment 6.2 
+
+The Human Activity Recognition (HAR) dataset includes 561 input features and six activity labels: WALK-ING, WALKING UPSTAIRS, WALKING DOWNSTAIRS, SITTING, STANDING, and LAYING, with an explicit and intentional split between training and test sets, with the latter obtained from different human subjects. We load the data with this standard train/test split, remap labels to {1, . . . , 6}, and standardize the features with a StandardScaler fit on the training split, which we also apply unchanged to the test split. We formulate the classification task as six one-versus-rest (OVR) binary classification problems, one for each 
+
+k ∈ { 1, . . . 6}. For a sample xi ∈ R561 with multiclass label yi, we define the binary target for head k as 
+
+ybin  
+
+> i,k
+
+:= 1{yi = k}. At inference time, the multiclass prediction is obtained by taking the largest OVR logit across the six heads. Without this being required, for computational efficiency our implementation updates and evaluates the six binary heads in parallel, while the independent random seed runs presented in our evaluation are executed serially. 
+
+C.1.1 Missingness construction 
+
+To induce meaningful modality-level missingness in HAR, we hard-coded the stated HAR feature ordering and grouped the originally continuous features into six coarse sensing groups: body acceleration, gravity acceleration, body-acceleration jerk, body gyroscope, body-gyroscope jerk, and angle features. For each training example, we first sample a binary feature mask initialized by keeping each feature inde-pendently with probability 0.8. We then select exactly 4 out of the 6 coarse modality groups uniformly without replacement and set all features in those groups to zero. The resulting mask is applied once to the standardized datapoint and then reused whenever that datapoint is revisited during training. Thus, masks are persistent within a run and vary only with the random seed. Our evaluation reported in Section 6.2 uses a full (unmasked) test split as the validation set, allowing us to judge how each method learns the underlying mapping despite severe data missingness. 
+
+C.1.2 Models and losses 
+
+We consider two model classes: • Logistic regression. For head k, let ai,k := ⟨θk, xi⟩ + bk and pi,k := σ(ai,k ) = 1 / (1 + e−ai,k ), where θk ∈ R561 , bk ∈ R, and wk =
+
+[
+
+θk
+
+bk
+
+]
+
+∈ R562 is the model’s parameter vector for head k.The loss for head k is 
+
+ℓlogistic  
+
+> k
+
+= − 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(ybin  
+
+> i,k
+
+log pi,k + (1 − ybin 
+
+> i,k
+
+) log(1 − pi,k )) + λ
+
+2 ∥θk∥22, (119) where n is the minibatch size. The bias is not regularized. Our logistic regression model has 562 learnable parameters per class, totaling 6 × 562 = 3372 learnable parameters overall. • Shallow neural network. For head k, we use a single-hidden-layer MLP with width 12, and learnable unknowns: Θk ∈ R12 ×561 , b1,k ∈ R12 , vk ∈ R12 , and b2,k ∈ R. For sample i, the forward 41 map is: 
+
+ui,k = Θkxi + b1,k , (120a) 
+
+hi,k = tanh( ui,k ), (120b) 
+
+ai,k = ⟨vk, hi,k ⟩ + b2,k , (120c) 
+
+pi,k = σ(ai,k ) = 11 + e−ai,k , (120d) and the minibatch loss is: 
+
+ℓMLP  
+
+> k
+
+= − 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(ybin  
+
+> i,k
+
+log pi,k + (1 − ybin 
+
+> i,k
+
+) log(1 − pi,k )) + λ
+
+2
+
+(∥Θk∥2 
+
+> F
+
++ ∥vk∥22
+
+) . (121) Each per-class head contains 12 · 561 = 6732 input-to-hidden weights, 12 hidden biases, 12 output weights, and one output bias, for a total of 12 · 561 + 12 + 12 + 1 = 6757 learnable parameters per head. The weights are initialized from 0 .05 N (0 , 1) with class-dependent random seeds, while all biases start at zero. 
+
+C.1.3 Full order controller implementation 
+
+In Section 6.2 we compare four update laws: full SGD, masked SGD, scalar observability-aware adaptation, and directional observability-aware adaptation. For the full and masked baselines, the update is ordinary gradient descent with the common step size η = 0 .005. At every optimization step, we draw a minibatch of n = 256 training samples. For each one-versus rest head 
+
+k ∈ { 1, . . . , 6}, we form a full-order observability matrix, 
+
+Ak,t ∈ Rpk ×pk (122) where pk is the number of learnable parameters of that head: 
+
+pk = 562 for logistic regression , pk = 6757 for the shallow neural network . (123) In view of Experiment 6.3 and its significantly larger parameter space, we emphasize that here, in Experiment 6.2, the directional controller is implemented without any block or other approximation: each binary head maintains its own dense controller state. For each head k, the instantaneous full-order actuation matrix is constructed from the minibatch Jacobian rows. Specifically, if J(i) 
+
+> k,t
+
+∈ R1×pk denotes the Jacobian row of the scalar output of head k for minibatch sample i, then the controller uses 
+
+Ak,t = 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(
+
+J(i)
+
+> k,t
+
+)T
+
+J(i) 
+
+> k,t
+
+∈ Rpk ×pk . (124) Equivalently, if we stack the minibatch Jacobian rows into the matrix Gk,t ∈ Rn×pk , then Ak,t = 1 
+
+> n
+
+GT
+
+> k,t
+
+Gk,t .For the logistic regression head, with learnable parameters wk = [θT 
+
+> k
+
+bk
+
+]T ∈ R562 , let the minibatch inputs be augmented with a bias coordinate: 
+
+xi =
+
+[
+
+xi
+
+1
+
+]
+
+∈ R562 . (125) For sample i, the scalar output is pi,k = σ (θT 
+
+> k
+
+xi
+
+) ∈ R, and the corresponding Jacobian row of the scalar output with respect to the parameter vector wk is: 
+
+J(i) 
+
+> k,t
+
+= pi,k (1 − pi,k )xT 
+
+> i
+
+. (126) 42 Therefore, the minibatch Jacobian matrix is 
+
+Gk,t =
+
+
+
+p1,k (1 − p1,k )xT
+
+> 1
+
+...
+
+pn,k (1 − pn,k )xT
+
+> n
+
+ , (127) and the full-order controller matrix is: 
+
+Ak,t = 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(pi,k (1 − pi,k )) 2 xixT 
+
+> i
+
+. (128) The corresponding logistic loss gradient used in the update is: 
+
+∇ℓlogistic  
+
+> k,t
+
+= 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(pi,k − ybin 
+
+> i,k
+
+) xi + λ
+
+[
+
+θk
+
+0
+
+]
+
+. (129) For the shallow neural network head, the learnable parameter is the vector: 
+
+wk = vec ( Θk, b1,k , vk, b 2,k ) ∈ R6757 , (130) where Θk ∈ R12 ×561 , b1,k ∈ R12 , vk ∈ R12 , and b2,k ∈ R. For sample i, take the forward map to be given by (120a)-(120d). Let 
+
+si,k = pi,k (1 − pi,k ), di,k = (1 − h2
+
+> i,k
+
+) ⊙ vk ∈ R12 , (131) where the square and the Hadamard product are taken elementwise. Then the Jacobian row of the scalar output pi,k with respect to the packed parameter vector wk is: 
+
+J(i) 
+
+> k,t
+
+= pack (si,k di,k xT 
+
+> i
+
+, s i,k di,k , s i,k hi,k , s i,k 
+
+) ∈ R1×6757 . (132) Hence 
+
+Ak,t = 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(
+
+J(i)
+
+> k,t
+
+)T
+
+J(i) 
+
+> k,t
+
+= 1
+
+n GT
+
+> k,t
+
+Gk,t , (133) with Gk,t ∈ Rn×6757 formed by stacking the rows given by (132). The corresponding minibatch loss gradient is the packed vector: 
+
+∇ℓMLP  
+
+> k,t
+
+= pack 
+
+(
+
+1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(pi,k − ybin 
+
+> i,k
+
+) di,k xT 
+
+> i
+
++ λΘk, 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(pi,k − ybin 
+
+> i,k
+
+) di,k ,
+
+1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(pi,k − ybin 
+
+> i,k
+
+) hi,k + λvk, 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(pi,k − ybin 
+
+> i,k
+
+))
+
+. (134) Given Ak,t , the scalar-aware update for head k is: 
+
+γk,t = tr( Ak,t ), αk,t = min 
+
+( ηϵ + γk,t 
+
+, α max 
+
+)
+
+, wk+1 = wk − αk,t ∇ℓk,t , (135) where ℓk,t ∈
+
+{
+
+ℓlogistic  
+
+> k,t
+
+, ℓ MLP 
+
+> k,t
+
+}
+
+, according to the model employed. In the reported runs of the scalar-aware controller, we used ϵ = 1 and αmax = 1. Given Ak,t , to realize the directional-aware update for head k we use 
+
+Sk, 0 = 0 , Sk,t = βSk,t −1 + (1 − β)Ak,t , (136) 
+
+Rk,t = Sk,t + ϵI, (137) 
+
+qk,t = R−1 
+
+> k,t
+
+∇ℓk,t , (138) 43 where ℓk,t ∈
+
+{
+
+ℓlogistic  
+
+> k,t
+
+, ℓ MLP 
+
+> k,t
+
+}
+
+, according to the model employed. Then, we form the state-dependent gain 
+
+αk,t = min 
+
+( η
+
+1 + ⟨∇ ℓk,t , qk,t ⟩ , α max 
+
+)
+
+, (139) and perform the parameter update according to wk+1 = wk − αk,t qk,t .If ∥αk,t qk,t ∥ > 5, we scale it to have norm exactly 5. Each of the six OVR heads carries its own empirical controller state Sk,t , and the six heads are updated in parallel inside each training iteration. In the reported runs of the directional-aware controller, we used ϵ = 0 .05, β = 0 .99, and αmax = 1. 
+
+Numerical safeguards for high-dimensional parameter spaces 
+
+We emphasize one design choice shared with the ideal controller of Sections 4-5, followed by one practical departure used in this experiment. First, consistently with (16), the implementation does not recursively accumulate the ridge term inside the stored controller state. Instead, it maintains the unregularized EMA state Sk,t and adds ϵI only when forming the regularized preconditioning matrix Rk,t . This keeps the recent actuation history and the numerical regularization conceptually distinct. This separation is particularly important in a full order realization and especially in large spaces where such a full order realization is still practically feasible. In this particular experiment, each shallow network OVR head carries a dense 6757 × 6757 controller state. If the ridge term were accumulated recursively inside the stored EMA state, then it would no longer act merely as a small numerical floor: with β = 0 .99, the isotropic contribution would build up geometrically toward ϵ/ (1 − β)I,thereby injecting a large persistent isotropic background into a controller whose main purpose is to retain recent, data-driven directional actuation structure. In high-dimensional spaces, such information would be numerically dominated by the isotropic background. We therefore keep the EMA state purely empirical and add ϵI only when forming the matrix to be inverted. This preserves a fixed conditioning floor, while preventing the numerical regularization from overwhelming the anisotropy that the controller is meant to exploit. The practical departure is that the implementation above does not apply the raw preconditioned step 
+
+−ηR−1 
+
+> k,t
+
+∇ℓk,t . Rather, it rescales the preconditioned direction using the state-dependent factor αk,t , as given by (139), and then clips the resulting increment if necessary. This extra factor acts as a trust-region-like safe-guard: it preserves the observability-aware direction while shrinking updates whose preconditioned energy is large, thereby improving robustness under dense finite-batch full-order control. Given that qk,t = R−1 
+
+> k,t
+
+∇ℓk,t ,the denominator in αk,t is 1 + ⟨∇ ℓk,t , qk,t ⟩, that is, one plus the squared gradient norm measured in the inverse-observability geometry induced by R−1 
+
+> k,t
+
+. Thus, our safeguard is not altering the controller’s direction (as it enters as a scalar scaling mechanism applied uniformly to all controller components), but is regulating its magnitude precisely when the dense full-order machinery indicates that the proposed motion is too en-ergetic relative to the current observability structure. This is especially relevant in the present experiment, where each OVR head uses a dense controller of dimension 562 (in logistic regression) or 6757 (in the shallow network), and where Ak is built from finite-batch Jacobian outer products rather than from any population-level quantity. In this setting, the additional scalar scaling and final norm clipping provide a practical finite-precision and finite-sample safeguard, while respecting and preserving the directional geometry that the ideal controller is meant to exploit. 
+
+C.2 Experiment 6.3 
+
+Our pipeline around ASID-v2 differs from the original pixelwise sea ice mapping objective of Malmgren-Hansen et al. (2020) to perform dense sea ice prediction over an image patch, with a convolutional neural network designed to fuse high resolution Sentinel-1 imagery with much coarser AMSR2 measurements by injecting the low resolution information deeper in the network rather than naively resampling everything to the SAR grid. We instead formulate a patch-level scalar regression problem: given a localized multisensor patch, we aim to predict the mean sea ice concentration in that patch. This reformulation is deliberately simpler than full semantic segmentation, but it remains operationally meaningful. A regional estimate of sea ice concentration over a 10 km × 10 km area is already useful for situational awareness and downstream 44 decision support, and it gives us a clean setting in which to introduce and study the effect of missing modalities and missing measurements without conflating them with the many additional complications of dense per-pixel decoding. In particular, it lets us ask whether our learner can still move coherently towards a credible concentration estimate when one sensing stream disappears altogether or when only fragments of the remaining streams are available. 
+
+C.2.1 Convolutional model 
+
+Our predictor model is a compact two-branch convolutional regressor built around the strong resolution asymmetry of the underlying sensing problem. Each training example consists of a 250 × 250 SAR patch, corresponding to a 10 km × 10 km footprint at the dataset’s 40 m SAR spacing, and a co-located 5 ×
+
+5 AMSR patch, with the scalar target defined as the mean charted sea ice concentration over the same area (in %). The SAR branch receives 6 channels: the two NERSC-corrected SAR backscatter images, two validity-mask channels, incidence angle, and distance-to-land. The AMSR branch receives 15 channels: 14 brightness-temperature channels, alongside one AMSR validity-mask channel. The SAR stream is encoded by a deeper convolutional tower with three successive downsampling blocks, reflecting the fact that the SAR input carries the fine spatial texture and geometric detail of the scene. The AMSR stream is encoded by a shallower convolutional tower with no aggressive downsampling, reflecting the tiny native grid and its role as coarse radiometric context rather than fine image structure. Each branch is then globally pooled and projected to a learned feature vector, the two embeddings are concatenated, and a small multilayer regression head maps the fused representation to a single scalar prediction of patch-level sea ice concentration. When a whole modality is absent during training, the corresponding branch embedding is explicitly gated by its present/absent flag before fusion. In the reported configuration, the model has 368,753 trainable parameters; we use GroupNorm throughout, SGD with step size 0.005, batch size 8, and evaluate on unseen validation scenes every 100 training steps, up to 20,000 training total steps. Because the ASID-v2 labels are heavily skewed toward low-concentration and open-water conditions, we also use a weighted random sampler with concentration bins [0 , 5, 25 , 75 , 100] to avoid having the learner dominated by the rather frequently seen near-zero patches. 
+
+C.2.2 Data missingness 
+
+During training, we introduce synthetic feature data missingness, while keeping validation data clean and fully present. At each training example contained in the training set, an entire sensing modality is removed with probability 0.60; conditional on such a modality-level removal, SAR is the missing modality with probability 0.60, and AMSR with probability 0.40. In addition, partial within-modality missingness is triggered with probability 0.15, in which case 20% of the respective measurements are zeroed entrywise. Thus, the learner must operate in a regime where it often sees only one sensing family and, even then, may see an internally incomplete version of it. 
+
+C.2.3 Controller implementation and approximations 
+
+For a model with d = 368 ,753 trainable parameters, maintaining a full dense observability matrix Bt is impractical. We therefore use a block-diagonal approximation in which the controller state is maintained over contiguous parameter chunks of size 128. Within each learnable tensor, the parameters are flattened in their native tensor order and partitioned into consecutive chunks of 128 parameters. For each chunk, we maintain a local block of Bt by exponentially averaging the outer products of the chunk-restricted loss gradient ∇wℓt, which serves here as a practical surrogate for the ideal actuation object, with β = 0 .99; the resulting block states are regularized with ϵ = 0 .005 when solving for the preconditioned update (as in Experiment 6.2, we maintain an unregularized EMA state for each block and add the ϵI regularization only when forming the local matrix used for the preconditioned solve, rather than recursively accumulating the ridge term inside the stored EMA state). The chunk size of 128 is chosen as a deliberate engineering trade-off. Smaller neighborhoods (e.g., size 10) would generate tens of thousands of blocks, incurring prohibitive bookkeeping overhead, while collapsing the approximation toward a nearly diagonal (per-parameter) controller that captures almost no local directional 45 structure. Conversely, substantially larger chunks (e.g., size 1000) would produce matrices whose storage footprint and O(k3) inversion cost become impractical. At 128 parameters per block, the local matrices remain modest in size ( ≈16k elements), inexpensive to store and invert, and yet large enough to encode meaningful local actuation geometry. Although this block-diagonal approximation discards explicit cross-chunk couplings and the local neigh-borhoods are not necessarily semantically contiguous and directly adjacent in the model architecture, the controller nevertheless promotes coherent multimodal cooperation. Because the SAR and AMSR2 encoders are fused downstream through concatenated embeddings that feed a shared scalar regression head, as are noncontiguous parts within either encoder, parameters belonging to distant, seemingly unrelated chunks remain repeatedly co-actuated by the same downstream signals and common loss. Moreover, the actuation geometry encoded in Bt is itself shaped by the controller in a closed-loop fashion: since each update is pre-conditioned by the current B−1 
+
+> t
+
+, the controller participates in creating the very directional structure it later exploits. Consequently, even in a high-dimensional model where parameters can evolve in many directions, the directional observability-aware controller can still bias the network toward more coherent multimodal 
+
+and intra-model cooperation by reshaping updates according to the empirically observed actuation geome-try revealed through shared downstream fusion, rather than allowing uncontrolled masked SGD to establish arbitrary or inconsistent relationships. In this experiment we focus only on our directional controller, as we already observed the scalar controller’s isotropic throttling to be too indiscriminate for high-missingness and multimodal settings. 
+
+C.2.4 Dataset split rotations 
+
+We constructed patch datasets from a local subset of 25 ASID-v2 netCDF scenes by scanning the SAR grid, retaining informative patches, and pairing each retained SAR patch with its co-located AMSR crop and scalar ice concentration target. To assess sensitivity to train/validation composition, we created three cyclic split rotations (A, B, and C) of the same eligible scene pool, with rotation A serving as the baseline. These rotations produce materially different patch-level target distributions: rotation A has training patches with mean 27.22 (std 39.22) and validation patches with mean 27.13 (std 39.44); rotation B has training mean 33.23 (std 40.98) and validation mean 16.09 (std 33.17); rotation C has training mean 20.80 (std 36.39) and validation mean 48.73 (std 40.92). Absolute MAE values are therefore not directly comparable across rotations. Instead, the rotations test whether the directional controller consistently reaches useful error regimes early and suppresses large validation excursions under substantially varying train/validation target compositions. 46

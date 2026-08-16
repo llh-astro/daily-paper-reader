@@ -1,0 +1,784 @@
+Title: PatternFormer: Learning Multiple Solution Patterns in Reaction–Diffusion Systems
+
+URL Source: https://arxiv.org/pdf/2608.12286v1
+
+Published Time: Thu, 13 Aug 2026 01:11:59 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# PATTERN FORMER : L EARNING MULTIPLE SOLUTION PATTERNS IN REACTION –D IFFUSION SYSTEMS 
+
+Zhipeng Chang 
+
+Department of Mathematics Penn State University University Park, PA, USA 
+
+zfc5231@psu.edu 
+
+Wenpeng Yin 
+
+Department of Computer Science and Engineering Penn State University University Park, PA, USA 
+
+wenpeng@psu.edu 
+
+Wenrui Hao ∗
+
+Department of Mathematics Penn State University University Park, PA, USA 
+
+wxh64@psu.edu 
+
+## ABSTRACT 
+
+Many nonlinear models across physics, chemistry, and biology exhibit multiple solutions for the same parameters, and capturing this entire solution set is essential for understanding pattern-forming systems. Yet existing learned surrogates are fundamentally single-valued: neural operators map each parameter to a single output, and physics-informed neural networks converge to one branch. We de-velop PatternFormer (PF), a large language model-based framework for learning the multiple solu-tions of nonlinear partial differential equations. By transforming unordered coexisting solutions into canonical sequences, PF produces structured solution sets in a single autoregressive pass, terminat-ing automatically for finite families and enforcing physical residual constraints for unbounded ones. On nonlinear elliptic problems it recovers all solution branches in one inference step; on Gray–Scott it generates coexisting Turing patterns, including physically valid states absent from the reference data and beyond training. PF can also be sequentially fine-tuned across multistable systems, toward general foundation models for solution landscapes. 
+
+## Introduction 
+
+Pattern formation transforms initially uniform states into complex spatial structures and is a defining feature of nonlin-ear systems across physics 1, chemistry 2,3 , and biology 4,5 . A fundamental property of many pattern-forming systems is multistability: nonlinear interactions, symmetry, and bifurcations allow the same parameters to support multiple coexisting steady states 6,7 . Reaction–diffusion systems, where diffusion-driven (Turing) instability first revealed a mechanism for spontaneous pattern formation 4, provide a canonical setting for studying such phenomena, with the Gray–Scott model exhibiting particularly rich solution landscapes. In these systems, the scientific objective is often not to identify a single state, but to characterize the entire family of physically admissible states associated with a given parameter regime. Efficiently learning and exploring such solution landscapes remains a fundamental challenge. Conventional numerical approaches face substantial computational barriers in this setting. Resolving fine-scale pat-terns requires high-resolution spatial discretization 8, while discovering multiple coexisting solutions requires repeated simulations from carefully selected initial conditions 9, homotopy continuation methods 10,11 , or deflation techniques that systematically remove previously discovered solutions 12,13 , including recent machine-learning variants 14 . As the number of coexisting states grows and parameter spaces become higher dimensional, the computational cost increases rapidly. Machine learning offers the possibility of amortizing this cost across parameter spaces; however, existing approaches have primarily focused on learning single-valued mappings 15,16 and remain unable to directly represent the full set of coexisting solutions. Physics-informed neural networks (PINNs) minimize PDE residuals during training 17,18 , but on multistable systems they typically converge to one branch and fail to capture alternative solutions 19 , a difficulty compounded by opti-mization stiffness and spectral bias 20,21 . Extensions based on homotopy continuation 22 , generative latent-variable 
+
+> ∗
+
+*Corresponding author: Wenrui Hao (wxh64@psu.edu) arXiv:2608.12286v1 [math-ph] 12 Aug 2026 models 23 , and Newton-based neural operators with external search strategies 24,25 still address solutions individually rather than learning the entire coexisting set. Neural operators provide efficient and discretization-independent map-pings between function spaces 15,16,26,27 , but they are single-valued by construction and therefore cannot naturally represent a parameter-to-multiple-solution relationship. Generative operators can produce multiple outputs 28,29 , but in PDE settings these outputs typically represent uncertainty or stochastic variability rather than distinct steady states, do not determine solution multiplicity, and have not been developed for multistable pattern-forming systems. Thus, a general framework that directly learns a parameter-to-solution-set operator remains lacking. Large language models (LLMs) provide a promising foundation for such a framework. In other scientific domains, pretrained models have demonstrated the ability to generate diverse valid objects rather than a single deterministic answer. For example, mathematical discovery systems based on language-model search generate populations of can-didate programs satisfying desired properties 30 . In scientific machine learning, transformer-based models have shown the ability to perform in-context operator learning from limited examples 31,32 , with theoretical results establishing their capacity to learn PDE solution operators under sufficient task diversity 33 . These ideas have been extended to unsupervised operator learning 34 and generative in-context PDE prediction 35,36 . Moreover, pretrained transformers have demonstrated transfer beyond natural language domains, including scientific and physical applications 37 . The coexisting states of a parametric PDE form a low-dimensional solution manifold that deep networks approximate effi-ciently 38 , making an autoregressive transformer a natural hypothesis class for the finite family of coexisting solutions and consistent with related multi-operator PDE models 39 . However, existing approaches remain focused on single-valued prediction or treat variability as uncertainty, rather than learning the structured set of coexisting steady states arising from physical multistability. Here we introduce PatternFormer (PF), a general framework for learning set-valued solution operators . Instead of approximating a conventional mapping from parameters to a single solution, PF learns 
+
+G : p 7 → S (p) = {u1, . . . , u K(p)},
+
+where S(p) represents the complete set of coexisting steady states associated with the parameter p. The central idea is to reinterpret solution-set generation as autoregressive sequence generation. Because coexisting states form an unordered set, PF imposes a canonical ordering based on solution norms, transforming multiple steady states into a structured sequence that can be generated by a pretrained LLM. This allows a single forward pass to produce multiple physically distinct solutions rather than collapsing to a single branch. PF operates in a continuous latent space compatible with the pretrained LLM. Each solution field is compressed into a latent representation using an autoencoder and projected into the model embedding space through lightweight matching layers. Low-rank adaptation (LoRA) 40 then fine-tunes the pretrained model for scientific generation without requiring conventional language prompts or discrete tokenization. Physics-based residual regularization further con-strains generated states to satisfy the governing equations, enabling the discovery of physically valid solutions beyond the explicitly observed training examples. The number of coexisting solutions can vary substantially across parameter space, requiring different generation strate-gies depending on the available prior knowledge. When theoretical analysis provides information about solution mul-tiplicity, PF uses a classification mechanism to terminate generation after recovering the complete solution set. When the multiplicity is unknown, as in the Gray–Scott system, PF generates a prescribed number of candidate states, with additional solutions guided only by physics-residual constraints and subsequently validated through numerical refine-ment. This unified framework therefore addresses both finite-cardinality solution recovery and open-ended discovery of previously unseen patterns. We demonstrate PF on nonlinear elliptic boundary-value problems and the Gray–Scott reaction–diffusion system, spanning one- and two-dimensional domains and both single- and multi-parameter settings. PF recovers complete families of coexisting PDE solutions in a single deterministic pass, provides high-quality initializations for classi-cal solvers, and discovers diverse physically consistent Turing patterns beyond the training data. Beyond individual equations, the framework supports transfer across nonlinear systems through sequential adaptation, suggesting a path toward scientific foundation models capable of learning general solution landscapes rather than isolated input–output mappings. 
+
+## Results 
+
+PatternFormer: A Set-Valued Solution Learning Framework with a Pretrained LLM 
+
+Figure 1 summarizes the architecture, which realizes the one-to-many operator G : p 7 → S (p) = {u1, . . . , u K(p)}
+
+that single-valued neural operators cannot represent. A frozen convolutional autoencoder compresses each solution 2Ne u r al o pe r at o r : o ne t o o ne  Pat t e r nf o r me r : o ne t o many      
+
+> Phy s i c al Re s i du al l o s s
+> Process
+> Process
+> Process Qwen- 7B
+> (Frozen)
+> UNet
+> Decoder
+> LoRA
+> Di f f e r e nt So l u t i o ns
+> P_START
+> SOL
+> STOP
+> ||u ||-o r de r e d COnt e x t
+> Gr o u nd Tr u t h K s o l u t i o ns e mi t t e d
+> UNet
+> Encoder
+> s i ng l e -t o k e n c o ns t r u c t i o n
+> par ame t e r
+> Tar g e t par ame t e r
+> Pr e di c t i o n
+
+Figure 1: PatternFormer as a set-valued solution operator. A , Conventional neural operators learn a single-valued mapping from a parameter p to one solution u(p), whereas PatternFormer (PF) learns a set-valued mapping from p to the complete set S(p) of coexisting solutions. B, Context construction: each in-context example consists of a parameter and its complete solution set, with coexisting states ordered by solution norm and serialized into a sequence of tokens. 
+
+C, Target construction: for a query parameter p∗, solutions with available reference data are supervised directly, whereas additional slots beyond the known solution count are optimized using a physics-residual loss to discover further steady states. D, Solution generation: a frozen Qwen2.5-7B model with LoRA adaptation autoregressively generates latent representations z1, . . . , zK , which are decoded into distinct coexisting solutions through the output matching layer gout and the decoder. E, Tokenization in latent space: a frozen encoder maps a solution field u to a latent representation z, which is combined with the parameter p and projected by the input matching layer gin into the LLM embedding space. A parameter-only token is obtained by setting z = 0. F, Special tokens: learnable embeddings represent the start, solution, and termination markers as vs, v, and vp, respectively. field into a compact latent representation, which is combined with the governing parameter and projected into the embedding space of the pretrained Qwen2.5-7B model 41 through a lightweight input matching layer, bypassing dis-crete tokenization so the LLM models continuous scientific states directly. Because coexisting states have no intrinsic ordering, we impose a canonical ordering by solution norm and generate the set autoregressively, each prediction conditioned on the parameter and the previously generated states; an output matching layer and the decoder map each latent back to a field. To handle the parameter-dependent and often unknown cardinality K(p), a classification head predicts termination when an estimate of K(p) is available, and otherwise the model emits a fixed number of candidates whose physics residual is minimized. These directly generated states are already near equilibrium, so a conventional solver initialized from each converges rapidly to machine precision. 
+
+Learning complete solution landscapes of nonlinear elliptic PDEs 
+
+We first consider the nonlinear boundary-value problem 
+
+−∆u + N (u; p) = g(x) in Ω ⊂ Rd, Bu = 0 on ∂Ω, (1) 3where N is a polynomial nonlinearity parameterized by p, g is a source term, and B denotes a boundary operator. For this class of problems, analytical and numerical continuation methods provide a prior estimate of the number of coexisting solutions at each parameter. PF therefore generates the complete solution set for a given parameter and terminates autoregressive generation through its classification head once the predicted solution count is reached. Throughout, we consider only non-trivial solutions, excluding the trivial homogeneous state when present. We study three representative problems that differ in spatial dimension, nonlinear structure, and parameterization: 
+
+Example 1 (one-dimensional, single parameter) . d=1 on Ω = (0 , 1) , with N = u4 − p u 2, g = 0 , and boundary conditions u′(0) = 0 , u(1) = 0 .
+
+Example 2 (one-dimensional, two parameters) . d=1 on Ω = (0 , 1) with the same boundary conditions, N = a4u4 +
+
+a2u2, and g = 0 , parameterized by p = ( a4, a 2). Example 1 corresponds to the slice a4 = 1 , a2 = −p.
+
+Example 3 (two-dimensional) . d=2 on Ω = (0 , 1) 2, with N = −u2, g = −s sin( πx ) sin( πy ), homogeneous Dirich-let boundary conditions, and scalar parameter p = s.The training and evaluation data are generated using classical multiple-solution numerical solvers. Examples 1 and 3 use the companion-based multilevel finite-element method 9, whereas Example 2 uses homotopy continuation with solution maps 7. Detailed problem specifications, discretizations, parameter ranges, and data splits are provided in the Supplementary Information. Figure 2 presents results for Example 1. Across parameters with increasing solution multiplicity, from p=1 .62 with one coexisting solution to p=17 .81 with seven, PF generates the correct number of solution branches and accurately reconstructs their spatial profiles (Fig. 2A). The directly generated solutions achieve a median relative L2 error of 
+
+2.3 × 10 −2, which is reduced to 2.9 × 10 −8 after a short Newton refinement requiring a median of three iterations. This refinement converges for 99 .9% of test parameters and maintains consistent accuracy across solution multiplicities 
+
+k = 1 , 3, 5, 7 (Fig. 2B). Beyond individual solution reconstruction, PF captures the global organization of the solution landscape. The pre-dicted bifurcation diagram, represented by R 10 u dx versus p, reproduces the reference branch structure and the suc-cessive fold bifurcations near p ≈ 4 and p ≈ 16 (Fig. 2C). PF thus learns not only individual steady states but the complete family of coexisting branches and their bifurcation structure. Examples 2 and 3 exhibit the same behavior: PF recovers the complete solution set—including, for Example 2, the partition of the (a2, a 4) plane by the number of coexisting solutions—with direct predictions refining to solver precision at 99 .8% and 99 .6% convergence (per-problem errors, Newton statistics and residuals in Supplementary Fig. S1–S2 and Supplementary Section 7). Because PF operates in a latent representation independent of the spatial discretization, its predictions transfer across resolutions: a model trained on the N =1024 grid remains effective when interpolated to N =2048 and 4096 without retraining (Fig. 2D). Used as solver initialization, these predictions accelerate recovery of the full solution set by one to two orders of magnitude at fine resolutions (per-resolution speedups in Supplementary Fig. S1–S2 and Supplemen-tary Section 7). PF thus turns multi-solution PDE computation from a repeated search into a single-pass generative prediction that lands within the attraction basins of distinct solution branches. 
+
+Discovering coexisting Turing patterns in the Gray–Scott system 
+
+Gray–Scott provides a more challenging test in which the number of coexisting steady states is not known a priori. The steady states satisfy 
+
+DA ∇2A + SA 2 − (μ + ρ) A = 0 , DS ∇2S − SA 2 + ρ(1 − S) = 0 (2) on [0 , 1] 2 with Neumann boundary conditions, where A and S denote the activator and substrate fields, (ρ, μ ) are the feed and kill rates, and DA, D S are the diffusion coefficients. Unlike the nonlinear elliptic problems above, no complete solution enumeration is available for this system. Training and evaluation patterns are therefore generated using a quasi-Newton tensor-product solver with parameter continuation 42 (Methods; Supplementary Section 4). Here the goal is not to recover a predetermined solution count, but to generate diverse, physically valid steady states at each parameter. At diffusion coefficients DA=6 .25 × 10 −5 and DS =1 .25 × 10 −4, Figure 3 evaluates PF on held-out parameters and on regions beyond the training domain. Across the (ρ, μ ) plane, PF generates distinct coexisting steady states, with representative patterns summarized in Fig. 3A. Remarkably, parameters outside the training region (orange cells) also produce valid patterns, demonstrating extrapolation beyond the observed parameter range. 40 1
+
+x
+
+2
+
+1
+
+0
+
+> u(x)
+> rel-L2=2.4e-02
+
+p = 1.62 (k=1) 
+
+0 1
+
+x
+
+2
+
+02 rel-L2=3.9e-02 
+
+p = 6.80 (k=3) 
+
+0 1
+
+x
+
+5
+
+0
+
+> rel-L2=6.8e-02
+
+p = 16.00 (k=5) 
+
+0 1
+
+x
+
+5
+
+0
+
+> rel-L2=3.1e-02
+
+p = 16.38 (k=7) 
+
+0 1
+
+x
+
+5
+
+0
+
+> rel-L2=3.7e-02
+
+p = 17.81 (k=7) Exact (GT) Ours (Qwen) 
+
+k=1 k=3 k=5 k=7 10 2
+
+10 1
+
+> Relative L2 error
+
+Before Newton refine k=1 k=3 k=5 k=7 02468 
+
+> Newton steps
+> 3.07 3.23 4.19 3.55
+
+Newton refine steps k=1 k=3 k=5 k=7 10 8
+
+10 6
+
+10 4
+
+10 2
+
+10 0 
+
+> Relative L2 error
+> missing branch
+> p16.1 16.2, 17.8 17.9
+> 0.8% of test params
+
+After Newton refine 
+
+k=1 k=3 k=5 k=7 10 12 
+
+10 11 
+
+10 10 
+
+> Residual  F
+
+Newton refine residual 
+
+0 2 4 6 8 10 12 14 16 18 
+
+p
+
+1
+
+0123
+
+> 10 u dx
+
+Cground truth (data) PatternFormer (Newton-refined)      
+
+> 1024 2048 4096 1024 2048 4096
+
+grid resolution N       
+
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> wall-clock time (s)
+> 1.3s 3.5s 11.6s 9.3s 14.7s 30.5s 12.1s 1.4m 11.1m 37.7s 3.5m 25.7m
+> 9x 25x 57x 4x 14x 51x
+> p = 7 (3 solutions) p = 18 (7 solutions)
+> Ours (Qwen + Newton refine) Traditional (multi-scale)
+
+## D
+
+# ABFigure 2: Learning complete solution landscapes of nonlinear elliptic PDEs. A , Representative predictions of PF for Example 1 at five parameter values p with increasing solution multiplicity k. Direct model outputs (dashed) are compared with reference solutions (solid). B, Relative L2 errors before and after refinement, number of Newton iter-ations, and final residual ∥F ∥, grouped by solution multiplicity k. C, Recovered bifurcation structure, represented by 
+
+R 10 u dx versus p. PF reproduces the seven nontrivial solution branches (colour) and their fold bifurcations, matching the reference solution landscape (grey). D, Computational efficiency for recovering the full solution set at grid resolu-tions N for p = 7 and p = 18 . PF-initialized refinement (blue) is compared with a multiscale numerical solver (red). Box plots show the median and interquartile range; whiskers indicate 1.5×IQR. 50.034 0.049 0.056 0.078 0.100 0.122    
+
+> 0.054
+> 0.059
+> 0.064
+> 0.069
+> OOD extrapolation 144 points tested 9 gave non-trivial solutions (1 9 each, 43 total)
+> (,) = (0.057, 0.061)
+> cover data new solution
+
+0.0 0.1 0.2 0.3 0.4 0.050 0.075 0.100 
+
+0.06 0.07  
+
+> mean 0.9 max 5
+> traditional (random init)
+
+0.050 0.075 0.100 
+
+0.06 0.07  
+
+> mean 1.9 max 15
+> STOP
+
+0.050 0.075 0.100 
+
+0.06 0.07  
+
+> mean 2.9 max 14
+> fixed-K
+
+0.050 0.075 0.100 
+
+0.06 0.07  
+
+> mean 8.4 max 63
+> fixed-K + noise
+
+0510 15 
+
+> # solutions
+
+1 2 3 4 5 6
+
+> # forward passes
+
+12 18 24 30 36 42 48 54 60     
+
+> # solutions
+> (,) = (0.057, 0.061)
+> = 0.05
+> = 0.1
+> = 0.2
+> det only (10)
+> trad. (random) STOP fixed-K fixed-K +noise
+
+0.0 2.5 5.0 7.5 
+
+> # solutions / param
+> 0.91 1.86 2.90 8.39 in dataset (matched) new (beyond-GT)
+
+A BCD EFigure 3: Open-ended discovery of coexisting Turing patterns in the Gray–Scott system. Statistics are computed over held-out test parameters at DA=6 .25 × 10 −5 and DS =1 .25 × 10 −4. A, Pattern multiplicity landscape over the 
+
+(ρ, μ ) parameter plane. Each cell shows the largest number of distinct steady patterns discovered by PF; orange cells indicate out-of-distribution parameter regions, whereas grey cells contain only the homogeneous state. B, Distinct coexisting patterns generated at the representative parameter marked by the cyan cell in A. Combining deterministic and noise-augmented generations, PF discovers 63 distinct steady states, including 2 patterns matching the reference data (cyan) and 61 previously unseen patterns (orange). Each pattern satisfies the discretized Gray–Scott equations with an FDM residual below 10 −9. C, Comparison of the number of recovered solutions per parameter for four approaches: a traditional random-start solver, a stop-token design, the fixed-K PF generator, and fixed-K generation with noise augmentation. D, Effect of latent perturbations on open-ended discovery: cumulative number of distinct solutions found as a function of forward passes for different noise levels σ at the representative parameter. E, Mean number of discovered solutions per parameter, separated into patterns matching the reference dataset and previously unseen solutions. 6To explore open-ended pattern discovery, we aggregate multiple noise-perturbed forward passes after refinement and deduplication (fields distinct when their pairwise relative L2 exceeds 0.15 ; all satisfy the discretized Gray–Scott equa-tions to a finite-difference residual below 10 −9, rather than being numerical artifacts). At a representative high-multiplicity parameter, PF discovers 63 distinct coexisting patterns (Fig. 3B), two present in the reference dataset and 
+
+61 previously unseen. The model is thus not limited to memorizing the observed set; the physics-residual objective en-ables exploration of additional physically consistent patterns, even at parameters where reference solutions are already available (Supplementary Fig. S8). Figure 3C,E compare the number of discovered solutions per parameter across four approaches. The deterministic fixed-K generator recovers 2.90 distinct solutions per parameter in a single forward pass, exceeding both a random-start quasi-Newton solver 42 (0.91 ) and the stop-token design ( 1.86 ). Adding latent perturbations turns generation into a controllable exploration mechanism: the number of recovered states grows with the number of forward passes, reaching approximately 63 at a representative parameter after six passes (Fig. 3D) and raising the test-set average to 
+
+8.39 per parameter (Fig. 3E), with the additional discoveries consisting primarily of previously unseen patterns. A second diffusion regime ( DA=2 .5 × 10 −4, DS =5 × 10 −4) exhibits the same behavior (Supplementary Fig. S7). 
+
+Extrapolation beyond the training region 
+
+We next examine whether PF can generalize beyond the parameter regions encountered during training. Each trained model is fixed and queried at extrapolated parameters, where it directly generates candidate coexisting solutions in a single forward pass. The generated fields are subsequently refined by Newton’s method at the queried parameter. Reference solution sets at these extrapolated parameters are independently computed using classical numerical solvers based on parameter continuation or multi-start searches (Supplementary Section 10). We evaluate extrapolation per-formance by measuring solution coverage, defined as the fraction of reference branches recovered by the model, and by assessing whether the generated candidates contain spurious solutions. For the three problems with theoretically characterized solution counts (Examples 1–3), PF produces no observed false-positive branches: generated states consistently converge under Newton refinement to valid solutions of the governing equations. Direct generation alone recovers the complete solution set near the boundary of the training region, while the achievable extrapolation range depends on the problem and the direction of parameter extension (Fig. 4A,B and Supplementary Fig. S5). Direct generation is not the only way to exploit PF beyond its training domain. Using its predicted solution set at the nearest in-distribution parameter as a learned initialization for Newton refinement, a single-jump strategy recovers all seven branches of Example 1 at p = 20 in about four iterations per branch (Fig. 4A,D). Chaining this initialization through intermediate parameters (a stepped march ) transports the full branch structure much further—to p = 100 for Example 1 (more than five times the largest training parameter) and across every direction of the (a2, a 4) plane for Ex-ample 2 (Fig. 4C; Supplementary Fig. S5–S6, with algorithmic details in Supplementary Section 10). Representative extrapolated solutions for the two-dimensional and 1D two-parameter problems are shown in Fig. 4E,F. PF also exhibits direct extrapolation in the Gray–Scott system, where the objective is open-ended pattern discovery rather than branch coverage. Outside the training rectangle in the (ρ, μ ) plane, PF generates non-trivial coexisting patterns in 9 of 144 tested out-of-distribution parameter cells, with each such cell containing 1–9 distinct patterns (Fig. 3A, orange cells). The remaining cells correspond to parameter regimes where no steady patterns were identified by the reference solver. Thus, extrapolation does not lead to spurious solutions: generated states outside the training domain remain consistent with the governing equations and the observed pattern-forming regimes. 
+
+Separating solution discovery from numerical refinement 
+
+A central question is whether PF discovers the solution landscape or whether the subsequent numerical refinement performs the essential search. Three observations from the same experiments distinguish these roles (Fig. 5). First, the direct model outputs already recover the complete set of coexisting branches, with only small deviations from the reference solutions that preserve the correct branch identity and spatial structure (Fig. 5A–C); the median direct relative L2 errors ( 6 × 10 −3 to 2 × 10 −2) reflect local approximation error rather than missing or incorrect solutions. Second, refinement improves precision but does not alter the discovered set: each prediction converges to the nearby PF-identified branch in three to four Newton iterations, reducing the error by several orders of magnitude without branch switching. Third, varying the requested accuracy shows that only a small fraction of predictions need refine-ment at moderate tolerances, refinement becoming important only near high numerical precision (Fig. 5D). PF thus performs the essential discovery of coexisting steady states, while numerical refinement is an optional mechanism for solver-level accuracy. 718.01 18.1 18.5 19 20                           
+
+> extrapolated p(train 18)
+> 0.0 0.5 1.0
+> coverage fraction
+> A
+> all coexisting seed + single jump direct
+> 2000 2500 3000
+> extrapolated s(train 1600)
+> 0.0 0.5 1.0
+> coverage fraction
+> B
+> all coexisting seed + single jump direct
+> 25 20 15 10 50
+> a2
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> a4
+> C
+> train
+> 100% coverage 12345
+> # branches recovered
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> x
+> 6
+> 4
+> 2
+> 024
+> u(x)
+> D
+> Exact (GT) seed + single jump
+> sol 1 sol 2 sol 3 sol 4
+> E
+> 100
+> 50
+> 050 100
+> u(x,y)
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> x
+> 8
+> 6
+> 4
+> 2
+> 0246
+> F
+> Exact (GT) direct
+
+Figure 4: Extrapolation beyond the training parameter range. A,B , Recovery of reference solution branches as parameters move beyond the training domain for Example 1 ( A, training region p ≤ 18 ) and Example 3 ( B, training region s ≤ 1600 ). Direct PF generation at the extrapolated parameter (orange) is compared with Newton refinement initialized from the boundary solution set (blue); dashed lines indicate complete branch recovery. For Example 3, both approaches maintain full coverage. C, Extrapolation across the (a2, a 4) parameter plane for Example 2. Each dot is a tested parameter, coloured by the number of coexisting branches recovered by the PF-seeded continuation; recovery is complete at every parameter (100% coverage), far beyond the training box (dashed). Direct-generation and single-step results are in Supplementary Fig. S5. D, Recovery of all seven solution branches for Example 1 at 
+
+p = 20 , comparing PF-initialized refinement (dashed) with reference solutions (solid). E, Representative coexisting steady states recovered for Example 3 at an extrapolated parameter value. F, Direct PF predictions for Example 2 at an extrapolated parameter point (dashed) compared with reference solutions (solid). 
+
+Pretraining and warm-starting enhance solution multiplicity recovery 
+
+Having established PatternFormer’s ability to recover complex solution landscapes, we investigate the sources of this capability by comparing three deterministic training strategies under identical architectures, data and compute: (i) random initialization of the frozen LLM weights with LoRA adaptation 40 , (ii) fine-tuning from the pretrained Qwen2.5-7B model, and (iii) warm-starting from an earlier stop-token PatternFormer checkpoint. This isolates the contributions of general LLM pretraining and of task-specific warm-starting from an already adapted scientific model. We first evaluate the effect of LLM pretraining on Example 1 (Fig. 6A–D). Although this problem can be learned effectively with LoRA adaptation alone, the pretrained model converges faster and provides more accurate predictions at representative parameters. The benefit becomes more pronounced when transferring across equations. For Exam-ple 3, warm-starting from the Example 2 checkpoint consistently reduces the validation loss compared with training a fresh adapter from the pretrained Qwen initialization (Fig. 6E). It also improves the test direct relative L2 error, from a median of 1.1 × 10 −2 to 6 × 10 −3 (Fig. 6F), with substantially reduced pointwise error on representative solutions (Fig. 6G,H). We further evaluate the three initialization strategies on the more challenging Gray–Scott system with DA=2 .5 ×
+
+10 −4 and DS =5 × 10 −4. Under deterministic generation, the random-weight model (LoRA on randomly initialized backbone weights) recovers 1.44 distinct steady states per parameter, the pretrained model recovers 3.23 , and the warm-started model reaches 5.18 (Fig. 6I). Reference-set coverage increases correspondingly from 0.07 to 0.22 and 
+
+0.34 ; coverage here is a relative check, since the Gray–Scott reference set is only a lower bound on an effectively 80.0 0.2 0.4 0.6 0.8 1.0 
+
+x         
+
+> 6
+> 4
+> 2
+> 024
+> direct rel-L22e-02 3e-08
+> Example 1
+> p= 16 ( k= 7)
+> exact direct after Newton
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+x           
+
+> 7.5
+> 5.0
+> 2.5
+> 0.0 2.5 5.0
+> direct rel-L22e-02 3e-08
+> Example 2
+> a4= 0.40, a2=14.0 ( k= 5)
+> exact
+> rel-L25e-03
+> direct
+> 2e-03
+> after Newton
+> 10 3
+> 10 2
+> 10 1
+
+required accuracy (rel-L2 tolerance) tighter    
+
+> 020 40 60 80 100
+> % needing refinement
+> network alone suffices
+> Example 1 Example 2 Example 3
+> Example 3, s= 1000 ( k= 4)
+
+A CB DFigure 5: PatternFormer discovers solution branches; refinement improves numerical precision. A,B , For Ex-ample 1 ( A) and Example 2 ( B), direct PF predictions (orange dashed) and Newton-refined solutions (blue dotted) compared with reference solution branches (black solid). The direct predictions already recover the complete branch structure, with annotated median relative L2 errors before and after refinement. C, Example 3 at s = 1000 : refer-ence, direct, and refined solutions for a representative branch, with per-field relative L2 errors shown. D, Accuracy-dependent refinement requirement: fraction of predictions requiring refinement as a function of the target relative L2
+
+tolerance. Refinement becomes necessary primarily when higher numerical precision is demanded. unbounded family (Supplementary Section 4), so the distinct verified count is the primary measure. The solution-count maps over the (ρ, μ ) plane show the same progressive improvement (Fig. 6J–L). Together, these experiments reveal two complementary sources of performance. General LLM pretraining provides a useful initialization for learning scientific solution representations, while warm-starting from an already adapted PatternFormer model transfers problem-specific structure and further improves recovery of coexisting states. These findings suggest that scientific foundation models can accumulate transferable knowledge across related physical sys-tems. 
+
+## Discussion 
+
+PatternFormer introduces a new paradigm for scientific machine learning: learning the space of possible solutions 
+
+rather than predicting a single solution. Many physical systems, from nonlinear reaction–diffusion models in biology 43 
+
+to pattern-forming reaction networks 44,45 , are intrinsically multistable, yet existing neural operators are predominantly designed for single-valued mappings and therefore cannot directly represent the coexistence of multiple valid states. By formulating a parameter-to-solution-set map as an autoregressive generation problem, PF transforms multistable PDE solving from branch-by-branch discovery into direct solution-landscape generation. This shift enables a single model to recover complete families of coexisting steady states in one forward pass. 90 100 200 
+
+epoch (stage 1 | stage 2)         
+
+> 10 2
+> 10 1
+> 10 0
+> validation MSE
+> pretrained LLM untrained LLM 10 2
+> 10 1
+> test direct rel-L2
+> 0.00 0.25 0.50 0.75 1.00
+
+x  
+
+> 6
+> 4
+> 2
+> 024
+> u
+> zoom
+> 0200 400
+
+epoch (stage 1 | stage 2)     
+
+> 10 1
+> 10 0
+> 10 1
+> validation MSE  warm-start pretrained LLM
+> warm-start pretrained LLM
+> 10 2
+> test direct rel-L2
+> 0.0 0.5 1.0
+
+x  
+
+> 0.0 0.5 1.0
+> y
+> rel L2= 2.6e-03
+
+warm-start   
+
+> 0.0 0.5 1.0
+
+x  
+
+> 0.0 0.5 1.0
+> y
+> rel L2= 4.4e-02
+
+pretrained LLM       
+
+> untrained LLM pretrained LLM warm-start 0246
+> # distinct solutions / param
+> 1.44 3.23 5.18 # solutions coverage
+> 0.0 0.1 0.2 0.3 0.4
+> coverage
+> 0.07 0.22 0.34
+> 0.05 0.10
+> 0.06 0.07
+> mean 1.4 max 8
+> untrained LLM
+> 0.05 0.10
+> mean 3.2 max 10
+> pretrained LLM
+> 0.05 0.10
+> mean 5.2 max 17
+> warm-start
+> 0.0 2.5 5.0 7.5 10.0 12.5 15.0
+> # solutions
+> 0.0 0.5 1.0 1.5 2.0
+> |upred  uGT |
+
+A B C DE F G HI J K L
+
+exact pretrained LLM untrained LLM Figure 6: Pretraining and cross-equation warm-starting improve recovery of coexisting solutions. A–D , Ex-ample 1: deterministic PatternFormer fine-tuned from pretrained Qwen2.5-7B compared with the same architecture initialized from random weights. A, Validation MSE during the two training stages. B, Test direct relative L2 error. 
+
+C,D , Recovery of seven coexisting branches at a representative parameter, with exact solutions shown in grey and predictions from pretrained and random-weight models compared. E–H , Cross-equation warm-starting from Exam-ple 2 to Example 3. Warm-started training (green) is compared with a fresh adapter trained from the pretrained Qwen initialization (blue). E, Validation MSE during training. F, Test direct relative L2 error. G,H , Pointwise error for a representative branch, showing reduced prediction error with warm-starting. I–L , Gray–Scott evaluated on held-out parameters with untrained, pretrained, and warm-started initializations. I, Mean number of distinct solutions per pa-rameter (left axis) and reference-set coverage (right axis). J–L , Solution-count maps over the (ρ, μ ) plane for the three initializations. 10 Across nonlinear elliptic boundary-value problems and the open-ended Gray–Scott Turing system, PF demonstrates this capability in two regimes: deterministic recovery of the complete branch set when the multiplicity is known, and open-ended generation of diverse physically consistent patterns—including states absent from the training data—when it is not. Machine learning is now applied across the sciences, from biomolecular property prediction 46 to differential-equation solving, and these results suggest that foundation-model approaches can move beyond learning input–output functions toward learning structured scientific landscapes. In this work, we realize this framework by adapting a pretrained general-purpose LLM (Qwen2.5-7B) with LoRA. Starting from this foundation model, PF is progressively adapted across nonlinear elliptic equations and the Gray– Scott system, spanning different dimensions, parameter spaces, and nonlinear structures. The same framework trans-fers across these problems through warm-starting rather than independent training, showing that PF is a reusable strat-egy rather than a task-specific network. Future extensions to broader PDE families may enable increasingly general solution-landscape models. Two directions offer natural opportunities for further improvement, each with a concrete path forward. First, purely feed-forward generation degrades far beyond the training parameter range; PF mitigates this by seeding homotopy continuation from its own predictions, which transports the complete solution set to distant parameters. Second, each model is trained on a single fixed spatial discretization; extending PF to heterogeneous meshes and data structures, toward discretization-agnostic generalization, is a natural next step. 
+
+## Methods 
+
+Set-valued operator formulation 
+
+For a parametric steady reaction–diffusion problem with parameter p ∈ P , the governing equations may admit multiple coexisting steady solutions, 
+
+S(p) = {u1, . . . , u K(p)}, uk ∈ H1(Ω) ,
+
+where the cardinality K(p) varies across parameter space. Conventional neural operators approximate single-valued mappings, 
+
+p 7 → u(p),
+
+and therefore cannot directly represent a parameter-to-solution-set relationship. We instead learn the set-valued oper-ator 
+
+G : P → 2H1(Ω) , p 7 → S (p),
+
+which returns the collection of coexisting steady states associated with a given parameter. Because autoregressive models operate on ordered sequences rather than unordered sets, we convert each solution set into a canonical sequence. We introduce a monotone scalar functional Φ( u) to define a deterministic ordering: the signed integral 
+
+Φ( u) = 
+
+Z 10
+
+u dx
+
+for the one-dimensional problems and the spatial mean of the activator field, 
+
+Φ( A, S ) = ⟨A⟩,
+
+for the Gray–Scott system. Rare ties are resolved using the field energy as a secondary criterion. The ordering permutation is therefore 
+
+I(p) = argsort  Φ( u1), . . . , Φ( uK(p)),
+
+which converts the original unordered set into the canonical sequence 
+
+ uI1 , u I2 , . . . , u IK(p)
+
+,
+
+satisfying 
+
+Φ( uI1 ) ≤ · · · ≤ Φ( uIK(p) ).
+
+This representation transforms set-valued operator learning into sequence generation. Similar canonical ordering strategies have been used in machine learning to convert unordered objects into ordered representations, including set-to-sequence learning 47 , set prediction 48 , and object generation through language-model formulations 49 . Here we adapt this principle to the coexisting steady-state solution sets of multistable PDEs. 11 Ground-truth data generation 
+
+All reference solution sets are generated using classical multiple-solution solvers. Examples 1 and 3 are computed using the companion-based multilevel finite-element method 9, Example 2 is generated using homotopy continuation with solution maps 7, and Gray–Scott patterns are obtained using an efficient GPU-based quasi-Newton tensor-product solver 42 .For every problem, each stored solution is refined by Newton iteration until the residual satisfies 
+
+∥F (u)∥ < 10 −9
+
+on the discretization used for subsequent evaluation. Trivial homogeneous states are excluded when counting coexist-ing nontrivial solutions. For the square-domain problems (Example 3 and Gray–Scott), the domain possesses the dihedral symmetry group D4.Solutions related by rotations or reflections correspond to the same physical pattern. We therefore reduce each solution set to a single representative from each D4 symmetry orbit before training and evaluation. Details of the individual numerical pipelines are provided in the Supplementary Information. 
+
+Model architecture 
+
+PatternFormer is constructed by adapting a pretrained decoder-only large language model to operate on continuous scientific representations rather than text tokens. We use the open-source pretrained Qwen2.5-7B model 41 , with hidden dimension 3584 , and adapt it using low-rank adaptation (LoRA) 40 with rank r = 16 applied to the attention projections. All original LLM weights remain frozen. The model receives parameters and solution representations as continuous vectors through six components (Fig. 1): 1. A frozen convolutional autoencoder with encoder E and decoder D, which maps a solution field to a latent representation 
+
+z = E(u) ∈ R256 
+
+and reconstructs the field through 
+
+u = D(z).
+
+2. A learnable set of structural embeddings consisting of a block-start embedding vs, a solution-separator em-bedding v, and a stop embedding vp. Each embedding has dimension 3584 , matching the input space of Qwen2.5-7B. 3. An input matching layer 
+
+gin ,
+
+implemented as a two-layer multilayer perceptron (MLP) with GELU activations, which maps the concate-nated parameter–latent vector 
+
+[z; p]
+
+into the LLM embedding space. 4. The pretrained Qwen2.5-7B transformer, which processes these continuous embeddings through its causal attention mechanism. 5. An output matching layer 
+
+gout ,
+
+which maps transformer hidden states back to the latent dimension. 6. A dual prediction head consisting of a latent regression head for generating solution representations and a marker classifier used for adaptive termination when the solution multiplicity is known. The text tokenizer and word embeddings are not used. The pretrained transformer therefore serves as a sequence-generation backbone for continuous scientific representations rather than as a language model operating on discrete tokens. In principle, the same framework can be transferred to other pretrained decoder architectures by retraining only the lightweight matching layers, structural embeddings, and adaptation modules. 12 Sequence construction and training 
+
+For a parameter p with ordered solutions u(1) ≺ · · · ≺ u(K), PF constructs a continuous sequence block 
+
+B(p) =  vs, g in (0, p ), v, ˜z1, v, ˜z2, . . . , v, ˜zK , vp
+
+,
+
+where vs and vp denote the start and termination markers, v denotes a solution marker, and 
+
+˜zk = gin ([ zk, p ]) , zk = E(u(k)).
+
+The parameter is represented by the special case z = 0, allowing the same projection mechanism to encode both parameters and solutions. During training, the target parameter p∗ is preceded by a set of in-context examples, 
+
+B(p1), . . . , B (pM ), B (p∗), (3) where each context block contains the complete ordered solution set associated with its parameter. These examples provide the transformer with demonstrations of the solution landscape. For the elliptic PDE examples, the context parameters are sampled randomly from the training set, whereas for the more complex Gray–Scott system they are selected locally around the target parameter. During the final fine-tuning stage, the context is removed so that the model learns to generate directly from the parameter alone. PF is trained autoregressively with teacher forcing. Given previously generated solution slots, the transformer predicts the latent representation of the next solution, 
+
+ˆzk = Gθ (p, ˆz1, . . . , ˆzk−1).
+
+All predictions are decoded into fields ˆuk = D(ˆ zk) and optimized using a combination of data supervision and a physics residual. For a predicted field ˆuk, we define the residual loss 
+
+R(ˆ uk; p) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+(−∆h ˆuk(xi) + N (ˆ uk(xi); p) − g(xi)) 2 .
+
+Rather than minimizing this residual without constraint, which would favor trivial low-residual states in some systems, we use a hinged residual penalty, 
+
+λpde ReLU( R(ˆ uk; p) − ϵ),
+
+which encourages physically valid states while preventing the loss from driving all outputs toward a trivial solution. The threshold ϵ is chosen between the residual of valid steady states and the residual of non-solution fields (See Supplementary Section 5 for more details). 
+
+Stop-token formulation. For problems where the number of coexisting solutions can be determined theoretically, PF learns the solution count through a termination signal. After the final ground-truth solution, a stop marker is appended and the model is trained to identify this point. The objective is 
+
+Lstop =
+
+> K(p)
+
+X
+
+> k=1
+
+λmse ∥ˆuk − uk∥2 + λpde ReLU( R(ˆ uk; p) − ϵ) + λce Lmarker , (4) where Lmarker is the cross-entropy loss for predicting solution and termination markers. This formulation allows PF to generate exactly the required number of solutions without specifying the output dimen-sion in advance. 
+
+Fixed-budget design for Gray–Scott. On Gray–Scott, whose coexisting set is effectively unbounded, this same head collapses to premature termination and emits only a few solutions, so there we fix the budget instead. The target block now holds a fixed number K of solution slots ( K=24 ), with no stop marker and the classification head disabled (λce =0 ). Its first Kt slots (the head), where Kt = K(p) is the number of solutions provided for that parameter in the dataset, are teacher-forced on those reference solutions, while the remaining slots (the tail) free-run on the model’s own predictions (Fig. 1D): 
+
+B(p⋆) = vs, p ⋆, v ˜z1, . . . , v ˜zKt
+
+| {z }
+
+> teacher-forced head (data loss)
+
+v ˆzKt+1 , . . . , v ˆzK
+
+| {z }
+
+> free-run tail (physics residual)
+
+. (5) 13 Algorithm 1 Training of the set-valued operator. 
+
+Data. A classical multi-solution solver returns the ordered coexisting set S(p)= {u(1) ≺ · · · ≺ u(Kt)} at each p;the frozen autoencoder gives latents zk = E(u(k)).
+
+Training (Qwen2.5-7B frozen; only LoRA, the projectors and the heads optimized).  
+
+> 1:
+
+for each epoch do  
+
+> 2:
+
+Draw a target parameter p⋆ by multiplicity-weighted sampling (probability increasing with Kt).  
+
+> 3:
+
+Form the input B(p1), . . . , B (pM ), B (p⋆) of Eq. 3, the context blocks B(p1), . . . , B (pM ) dropped in the no-context phase.  
+
+> 4:
+
+if stop-token design ( K(p) known a priori) then  
+
+> 5:
+
+Target block: Kt slots then a stop marker; minimize Lstop (Eq. 4).  
+
+> 6:
+
+else if fixed-budget design (open-ended count, e.g. Gray–Scott) then  
+
+> 7:
+
+Target block: K slots with the head/tail split of Eq. 5; minimize L (Eq. 6).  
+
+> 8:
+
+end if  
+
+> 9:
+
+Update LoRA, the projectors and the heads with AdamW.  
+
+> 10:
+
+end for 
+
+The loss accordingly applies field- and latent-space reconstruction losses on the head and the hinged physics residual throughout, 
+
+L =
+
+> K
+
+X
+
+> k=1
+
+  λmse ∥ˆuk − uk∥2 + λlat ∥ˆzk − zk∥2 1[k ≤ Kt]
+
+| {z }
+
+> data loss: field + latent MSE (head slots)
+
++ λpde ReLU  R(ˆ uk; p) − ϵ| {z }
+
+> physics residual (all slots)
+
+
+
+, (6) so the hinged residual drives the tail to valid solutions beyond the data. Scheduled sampling counters exposure bias. Because the number of coexisting solutions is heavily skewed across parameters (most carry few, the high-multiplicity ones are rare), in both cases we draw each parameter for an epoch with a probability that increases with its solution count Kt (multiplicity-weighted sampling, the exact weighting given in Supplementary Section 5), so the rare high-multiplicity parameters are not neglected. Each model is trained in three phases. We first pretrain the autoencoder on reconstruction alone and then freeze it (a UNet in one dimension, an MLP for the finite-element problem, and a convolutional network for Gray–Scott). We then train the full model with the in-context blocks present (the with-context phase). We finally fine-tune it with the context removed (the no-context phase), resumed from the with-context checkpoint, so that at test time the model generates from the target parameter alone. 
+
+Inference and post-processing 
+
+Where training teacher-forces the head on the ground truth, evaluation has none, so the whole block is filled by autoregressive generation. Conditioned on the query parameter p⋆, the model emits the solution latents in a single pass, 
+
+ˆzk = Gθ
+
+ p⋆, ˆz1, . . . , ˆzk−1
+
+, k = 1 , . . . , K, (7) each new solution conditioned on the parameter and on every solution already generated. This causal dependence is what a causal attention mask enforces: with qi, k j the query and key at positions i, j , the masked self-attention logit is 
+
+ℓij =
+
+(q⊤ 
+
+> i
+
+kj /√d, j ≤ i, 
+
+−∞ , j > i, (8) so the slot that generates ˆzk attends only to the parameter and to ˆz1, . . . , ˆzk−1, never to later slots. The markers are fixed scaffolding, so the model never emits a discrete token, only continuous latents. Each predicted latent is decoded to a field ˆuk = D(ˆ zk), re-encoded by E and fed back as the next input, which keeps the trajectory on the autoencoder’s latent manifold. A single such pass is deterministic and already returns a set of coexisting fields. Sharper accuracy is then optional and external. Every field ˆuk seeds the same classical solver used to generate the data, run to a residual ∥F ∥ < 10 −9, after which the converged fields are deduplicated up to the problem’s discrete symmetry (relative L2 below 0.15 ) and the distinct ones counted. Relaxing the demanded tolerance removes this step entirely, since the raw outputs already clear the bar (Fig. 5). 14 On the open-ended Gray–Scott set we can trade compute for additional steady states. We reuse the same autoregressive recursion (Eq. 7) but add fresh Gaussian noise to each latent before it is fed back, so pass t generates 
+
+ˆz(t) 
+
+> k
+
+= Gθ
+
+ p⋆, ˆz(t)1 , . . . , ˆz(t)
+
+> k−1
+
+ + σ ξ (t) 
+
+> k
+
+, ξ(t) 
+
+> k
+
+∼ N (0 , I). (9) Because each perturbed latent re-enters the context for the next step, the noise propagates along the autoregres-sive chain and steers the whole pass onto a neighbouring but self-consistent set of fields, which refinement then projects onto genuine steady states. Different noise draws explore different neighbours, so the deduplicated union 
+
+STt=1 {ˆu(t) 
+
+> k
+
+}Kk=1 over T passes accumulates distinct steady states. Every added pass is one more forward evaluation (Fig. 3D). 
+
+Cross-PDE warm-starting 
+
+Rather than training each model independently, we investigate whether the representation learned by PF transfers across different multistable systems. Each new PDE is initialized from a previously adapted PF model and further fine-tuned on the new equation. The one-dimensional single-parameter problem (Example 1) is initialized from the general pretrained Qwen2.5-7B model. The subsequent one-dimensional two-parameter problem (Example 2) is initialized from this adapted model, and the two-dimensional elliptic problem (Example 3) is initialized from the Example 2 model. During transfer, the LoRA parameters, output projection and prediction heads are reused, while the input projection is reinitialized when the parameter dimension changes. For Gray–Scott, we compare initialization from the general pretrained model with initialization from an earlier Gray– Scott model using the stop-token formulation. This isolates the benefit of transferring a PDE-adapted representation when the generation strategy itself changes. To distinguish transfer learning from simply training a larger model, we also perform controlled comparisons in which the architecture, training data, optimization procedure and computational budget are identical, but the initialization is either random, pretrained-only, or warm-started from a previously adapted PF model. These experiments quantify the contribution of pretraining and PDE-specific adaptation to the recovered solution diversity. 
+
+Evaluation metrics 
+
+For Examples 1–3 we report the relative L2 error before and after Newton refinement, the number of Newton iterations and final residual, solution-count accuracy against the known multiplicity K(p), and wall-clock cost. For Gray–Scott, which lacks a complete reference set, a pattern is accepted when ∥F ∥ < 10 −9, and we report the number of distinct converged states per parameter and the states generated beyond the reference data. All timing comparisons are made at equal accuracy ( ∥F ∥ < 10 −9). Full metric definitions and the timing protocol are given in Supplementary Section 7, and the optimizer and hyperparameters in Supplementary Section 3. 
+
+## Reporting summary 
+
+Further information on research design is available in the Nature Portfolio Reporting Summary linked to this article. 
+
+## Data availability 
+
+The data analysed in this study consist of numerically generated PDE solution sets rather than empirical measurements. All solvers, configuration files and fixed random seeds needed to regenerate them are included in the public code repository (see Code availability), so every dataset can be reproduced in full. 
+
+## Code availability 
+
+The complete source code for data generation, training, inference and evaluation—including all configuration files, fixed random seeds, and the scripts that regenerate every figure and reported statistic—is publicly available at https: //github.com/changzhipeng1-prog/PatternFormer under an open-source (MIT) licence. 15 References 
+
+[1] M. C. Cross and P. C. Hohenberg. Pattern formation outside of equilibrium. Reviews of Modern Physics , 65(3): 851–1112, 1993. [2] P. Gray and S. K. Scott. Autocatalytic reactions in the isothermal, continuous stirred tank reactor: oscillations and instabilities in the system A + 2 B → 3B, B → C. Chemical Engineering Science , 39(6):1087–1097, 1984. [3] John E. Pearson. Complex patterns in a simple system. Science , 261(5118):189–192, 1993. [4] Alan M. Turing. The chemical basis of morphogenesis. Philosophical Transactions of the Royal Society of London B , 237(641):37–72, 1952. [5] A. Gierer and H. Meinhardt. A theory of biological pattern formation. Kybernetik , 12(1):30–39, 1972. [6] Shuonan Wu, Bing Yu, Yuhai Tu, and Lei Zhang. Solution landscape of reaction-diffusion systems reveals a nonlinear mechanism and spatial robustness of pattern formation. Fundamental Research , 2025. [7] Wenrui Hao and Chuan Xue. Spatial pattern formation in reaction–diffusion models: a computational approach. 
+
+Journal of Mathematical Biology , 80(2):521–543, 2020. [8] Maria Chiara D’Autilia, Ivonne Sgura, and Valeria Simoncini. Matrix-oriented discretization methods for reaction–diffusion PDEs: comparisons and applications. Computers and Mathematics with Applications , 79: 2067–2085, 2020. [9] Wenrui Hao, Sun Lee, and Young Ju Lee. Companion-based multi-level finite element method for computing multiple solutions of nonlinear differential equations. Computers and Mathematics with Applications , 168:162– 173, 2024. [10] Wenrui Hao, Jonathan D Hauenstein, Chi-Wang Shu, Andrew J Sommese, Zhiliang Xu, and Yong-Tao Zhang. A homotopy method based on weno schemes for solving steady state problems of hyperbolic conservation laws. 
+
+Journal of Computational Physics , 250:332–346, 2013. [11] Wenrui Hao, Jonathan D Hauenstein, Bei Hu, and Andrew J Sommese. A bootstrapping approach for computing multiple solutions of differential equations. Journal of Computational and Applied Mathematics , 258:181–190, 2014. [12] P. E. Farrell, Á. Birkisson, and S. W. Funke. Deflation techniques for finding distinct solutions of nonlinear partial differential equations. SIAM Journal on Scientific Computing , 37(4):A2026–A2045, 2015. [13] E. G. Charalampidis, P. G. Kevrekidis, and P. E. Farrell. Computing stationary solutions of the two-dimensional Gross–Pitaevskii equation with deflated continuation. Communications in Nonlinear Science and Numerical Simulation , 54:482–499, 2018. doi: 10.1016/j.cnsns.2017.05.024. [14] Wei Zhu, Hong-Kun Zhang, and P. G. Kevrekidis. Machine learning of independent conservation laws through neural deflation. Physical Review E , 108(2):L022301, 2023. [15] L. Lu, P. Jin, G. Pang, Z. Zhang, and G. E. Karniadakis. Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators. Nature Machine Intelligence , 3:218–229, 2021. [16] Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, and A. Anandkumar. Fourier neural operator for parametric partial differential equations. International Conference on Learning Representations (ICLR) , 2021. [17] M. Raissi, P. Perdikaris, and G. E. Karniadakis. Physics-informed neural networks: a deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Compu-tational Physics , 378:686–707, 2019. [18] F. Giampaolo, M. De Rosa, P. Qi, S. Izzo, and S. Cuomo. Physics-informed neural networks approach for 1D and 2D Gray-Scott systems. Advanced Modeling and Simulation in Engineering Sciences , 9:5, 2022. [19] Zongren Zou, Zhicheng Wang, and George Em Karniadakis. Learning and discovering multiple solutions using physics-informed neural networks with random initialization and deep ensemble. Proceedings of the Royal Society A , 481(2325):20250205, 2025. [20] Sifan Wang, Xinling Yu, and Paris Perdikaris. When and why PINNs fail to train: a neural tangent kernel perspective. Journal of Computational Physics , 449:110768, 2022. [21] Weiqi Ji, Weilun Qiu, Zhiyu Shi, Shaowu Pan, and Sili Deng. Stiff-PINN: physics-informed neural network for stiff chemical kinetics. The Journal of Physical Chemistry A , 125(36):8098–8106, 2021. [22] Haoyang Zheng, Yao Huang, Ziyang Huang, Wenrui Hao, and Guang Lin. HomPINNs: homotopy physics-informed neural networks for solving the inverse problems of nonlinear differential equations with multiple solutions. Journal of Computational Physics , 500:112751, 2024. 16 [23] Arturs Berzins, Andreas Radler, Eric Volkmann, Sebastian Sanokowski, Sepp Hochreiter, and Johannes Brand-stetter. Geometry-informed neural networks. Proceedings of the International Conference on Machine Learning (ICML) , 2025. [24] Wenrui Hao, Xinliang Liu, and Yahong Yang. Newton informed neural operator for computing multiple solutions of nonlinear partial differential equations. Advances in Neural Information Processing Systems (NeurIPS) , 2024. [25] Yimeng Zhang, Alexander Cloninger, Bo Li, and Xiaochuan Tian. A neural network kernel decomposition for learning multiple steady states in parameterized dynamical systems. Preprint at arXiv:2312.10315 , 2024. [26] Y. Wang and W. Hao. Learning the evolution operator for nonlinear PDEs. Preprint at arXiv:2502.05571 , 2025. [27] C. Rao, P. Ren, Q. Wang, O. Buyukozturk, H. Sun, and Y. Liu. Encoding physics to learn reaction–diffusion processes. Nature Machine Intelligence , 5:765–779, 2023. [28] Katsiaryna Haitsiukevich, Onur Poyraz, Pekka Marttinen, and Alexander Ilin. Diffusion models as probabilis-tic neural operators for recovering unobserved states of dynamical systems. IEEE International Workshop on Machine Learning for Signal Processing (MLSP) , 2024. [29] Ilan Price, Alvaro Sanchez-Gonzalez, Ferran Alet, Tom R. Andersson, Andrew El-Kadi, Dominic Masters, Timo Ewalds, Jacklynn Stott, Shakir Mohamed, Peter Battaglia, Remi Lam, and Matthew Willson. Probabilistic weather forecasting with machine learning. Nature , 637:84–90, 2025. [30] Bernardino Romera-Paredes, Mohammadamin Barekatain, Alexander Novikov, Matej Balog, M. Pawan Kumar, Emilien Dupont, Francisco J. R. Ruiz, Jordan S. Ellenberg, Pengming Wang, Omar Fawzi, Pushmeet Kohli, and Alhussein Fawzi. Mathematical discoveries from program search with large language models. Nature , 625: 468–475, 2024. [31] L. Yang, S. Liu, T. Meng, and S. J. Osher. In-context operator learning with data prompts for differential equation problems. Proceedings of the National Academy of Sciences , 120(39):e2310142120, 2023. [32] L. Yang, T. Meng, S. Liu, and S. J. Osher. Prompting in-context operator learning with sensor data, equations, and natural language. Preprint at arXiv:2308.05061 , 2023. [33] Frank Cole, Yulong Lu, Wuzhe Xu, and Tianhao Zhang. In-context learning of linear systems: generalization theory and applications to operator learning. Preprint at arXiv:2409.12293 , 2024. [34] Han Huang and Rongjie Lai. Unsupervised solution operator learning for mean-field games via sampling-invariant parametrizations. Journal of Computational Physics , 2025. [35] Louis Serrano, Armand Kassaï Koupaï, Thomas X. Wang, Pierre Erbacher, and Patrick Gallinari. Zebra: in-context generative pretraining for solving parametric PDEs. Proceedings of the International Conference on Machine Learning (ICML) , 2025. [36] Armand Kassaï Koupaï, Lise Le Boudec, Louis Serrano, and Patrick Gallinari. ENMA: tokenwise autoregression for generative neural PDE operators. Preprint at arXiv:2506.06158 , 2025. [37] Kevin Lu, Aditya Grover, Pieter Abbeel, and Igor Mordatch. Pretrained transformers as universal computation engines. AAAI Conference on Artificial Intelligence , 2022. [38] Minshuo Chen, Haoming Jiang, Wenjing Liao, and Tuo Zhao. Efficient approximation of deep ReLU networks for functions on low dimensional manifolds. In Advances in Neural Information Processing Systems (NeurIPS) ,volume 32, 2019. [39] Jingmin Sun, Yuxuan Liu, Zecheng Zhang, and Hayden Schaeffer. Towards a foundation model for partial differential equations: Multi-operator learning and extrapolation. Physical Review E , 111(3):035304, 2025. [40] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen. LoRA: low-rank adaptation of large language models. International Conference on Learning Representations (ICLR) , 2022. [41] An Yang et al. Qwen2.5 technical report. Preprint at arXiv:2412.15115 , 2025. [42] Wenrui Hao, Sun Lee, and Xiangxiong Zhang. An efficient quasi-Newton method with tensor product imple-mentation for solving quasi-linear elliptic equations and systems. Journal of Scientific Computing , 103:89, 2025. [43] Tracy L. Stepien, Erica M. Rutter, and Yang Kuang. A data-motivated density-dependent diffusion model of in vitro glioblastoma growth. Mathematical Biosciences and Engineering , 12(6):1157–1172, 2015. [44] Arkadz Kirshtein, Shaya Akbarinejad, Wenrui Hao, Trang Le, Sumeyye Su, Rachel A. Aronow, and Leili Shahri-yari. Data driven mathematical model of colon cancer progression. Journal of Clinical Medicine , 9(12):3947, 2020. [45] Jae Kyoung Kim, Grzegorz A. Rempala, and Hye-Won Kang. Reduction for stochastic biochemical reaction networks with multiscale conservations. Multiscale Modeling & Simulation , 15(4):1376–1403, 2017. 17 [46] Menglun Wang, Zixuan Cang, and Guo-Wei Wei. A topology-based network tree for the prediction of protein– protein binding affinity changes following mutation. Nature Machine Intelligence , 2(2):116–123, 2020. [47] Oriol Vinyals, Samy Bengio, and Manjunath Kudlur. Order matters: sequence to sequence for sets. International Conference on Learning Representations (ICLR) , 2016. [48] Nicolas Carion, Francisco Massa, Gabriel Synnaeve, Nicolas Usunier, Alexander Kirillov, and Sergey Zagoruyko. End-to-end object detection with transformers. European Conference on Computer Vision (ECCV) ,2020. [49] Ting Chen, Saurabh Saxena, Lala Li, David J. Fleet, and Geoffrey Hinton. Pix2seq: a language modeling framework for object detection. International Conference on Learning Representations (ICLR) , 2022. 
+
+## Acknowledgments 
+
+Z.C. and W.H. were supported by National Institute of General Medical Sciences through grant 1R35GM146894. W.H. and W.Y. were supported by NSF DMS-2533995. W.H. was also supported by the Huck Chair in AI Mathematical Modeling from Penn State University’s Huck Institutes of the Life Sciences. 
+
+## Author contributions 
+
+W.H. conceived the study. W.H. and Z.C. developed the methodology and designed the experiments. Z.C. implemented the code, performed the experiments, analysed the results and prepared the figures. Z.C. wrote the initial draft. W.H., W.Y. and Z.C. reviewed and edited the manuscript. 
+
+## Competing interests 
+
+The authors declare no competing interests. 
+
+## Additional information 
+
+Correspondence and requests for materials should be addressed to Wenrui Hao (wxh64@psu.edu). 18

@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-07-18 ~ 2026-08-16</span>
+      <span class="dpr-home-dashboard-kicker">2026-08-16</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 40 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 42 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>29</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>11</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>13</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-08-16 15:54:51 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-08-16 20:44:43 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>过去一个月精读29篇、速读11篇，重点聚焦磁纳米盘超混沌与自适应谱学习架构。</p>
-<p>最值得看：磁纳米盘铁磁共振驱动下的超混沌行为（10分），以及模糊谱区域分解的Koopman表示学习（9分）。</p>
-<p>建议从这两篇高分开山之作切入，再结合机器学习预测散射与储层计算等速读文章扩展视野。</p>
+<p>今日精读29篇、速读13篇，共42篇论文，其中两篇获满分推荐。最值得关注：熵强化学习驱动的贝叶斯符号回归，以及年轻木星类似天体AF Lep b富硫大气揭示显著固体吸积。若时间有限，可先看速读中湍流通道的机器学习概率分布与可解释量子压缩流体建模。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -76,9 +74,9 @@
     <strong class="dpr-home-dashboard-count">29 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Hyperchaos in a Magnetic Nanodisk Driven by Ferromagnetic Resonance">Hyperchaos in a Magnetic Nanodisk Driven by Ferromagnetic Resonance</span></li><li><span class="dpr-home-dashboard-paper-title" title="fSRD: Fuzzy Spectral Region Decomposition -- Automated Multi Operator Koopman Representations via an Adaptive Spectral Learning Architecture">fSRD: Fuzzy Spectral Region Decomposition -- Automated Multi Operator Koopman Representations via an Adaptive Spectral Learning Architecture</span></li><li><span class="dpr-home-dashboard-paper-title" title="Attractor Geometry Determines the Identifiability Limits of System Discovery">Attractor Geometry Determines the Identifiability Limits of System Discovery</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Bayesian Symbolic Regression with Entropic Reinforcement Learning">Bayesian Symbolic Regression with Entropic Reinforcement Learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="A Sulfur-Rich Atmosphere for the Young Jupiter Analog AF Lep b Reveals Significant Solid Accretion">A Sulfur-Rich Atmosphere for the Young Jupiter Analog AF Lep b Reveals Significant Solid Accretion</span></li><li><span class="dpr-home-dashboard-paper-title" title="Atmospheric Diversity of Giant Planet Analogs from 3-5um with SPHEREx">Atmospheric Diversity of Giant Planet Analogs from 3-5um with SPHEREx</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>29</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>24</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>4</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">11 篇</strong>
+    <strong class="dpr-home-dashboard-count">13 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Predicting the unpredictable: binary--single scattering with machine learning">Predicting the unpredictable: binary--single scattering with machine learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="Organization of computation in reservoir computing">Organization of computation in reservoir computing</span></li><li><span class="dpr-home-dashboard-paper-title" title="Physics-constrained machine learning for decoding multi-nanobubble configurations in graphene">Physics-constrained machine learning for decoding multi-nanobubble configurations in graphene</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="A machine-learned probability distribution in the phase space of turbulent channel flow for synthetic turbulence and flow reconstruction">A machine-learned probability distribution in the phase space of turbulent channel flow for synthetic turbulence and flow reconstruction</span></li><li><span class="dpr-home-dashboard-paper-title" title="Explainable quantum-compressed machine learning for complex fluid flows">Explainable quantum-compressed machine learning for complex fluid flows</span></li><li><span class="dpr-home-dashboard-paper-title" title="Learning Population-Level Dynamics through a Latent Fokker--Planck Model and Discrepancy Transport Maps">Learning Population-Level Dynamics through a Latent Fokker--Planck Model and Discrepancy Transport Maps</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>11</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>10</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>2</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>1</strong></span></div>
 </section>
 </div>
 

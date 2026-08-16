@@ -1,0 +1,577 @@
+Title: Tools to Explain Neural Networks for Power System Dynamics
+
+URL Source: https://arxiv.org/pdf/2608.08048v1
+
+Published Time: Tue, 11 Aug 2026 00:53:38 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+> 1
+
+# Tools to Explain Neural Networks for Power System Dynamics 
+
+Petros Ellinas, Johanna Vorwerk, and Spyros Chatzivasileiadis Department of Wind and Energy Systems, Technical University of Denmark, Lyngby, Denmark Email: {petrel, vorjo, spchatz }@dtu.dk 
+
+Abstract —This paper presents, for the first time in power systems literature to our knowledge, analytical tools to explain the training performance of machine learning surrogate mod-els for power system dynamics. Power system simulations are increasingly challenged by stiff and multi-timescale dynamics arising from converter-interfaced resources and fast control loops. Machine learning surrogates emerge as promising tools to handle this complexity and accelerate dynamic simulations. However, their performance remains difficult to interpret, which limits their adoption. Building on the small-signal eigenvalue analysis in power systems, this paper uses the Neural Tangent Kernel (NTK) method. NTK delivers a modal interpretation of the learning performance, identifying error modes that decay rapidly versus others that converge slowly. This connection explains how physical stiffness and timescale separation in power system dynamic models appear as optimization stiffness during Neural Network (NN) training. Based on this analysis, we develop adaptive loss-weighting strategies to improve and explain why structure-aware neural architectures, such as ActNet, perform better than vanilla NNs. We assess the proposed approach on physics-informed machine learning surrogate models of Syn-chronous Machines (SMs) and power electronic converters. The methods introduced in this paper can deliver the necessary analytical tools to interpret and improve the performance of machine learning surrogates, paving the way for the systematic, physics-aware design of NN architectures and training strategies. By moving beyond trial-and-error development, these tools reveal training dynamics and failure modes, support more reliable design decisions, and strengthen confidence in machine-learning surrogates for engineering applications. 
+
+Index Terms —Neural Tangent Kernel, Physics-Informed Neu-ral Networks, Scientific Machine Learning, Power System Dy-namics, Stiff and Multi-Timescale Systems 
+
+I. I NTRODUCTION 
+
+The rapid growth of renewable generation and the elec-trification of heating and transport have increased the need for fast and reliable dynamic analysis of large-scale nonlinear power systems. Operators must assess system security across many contingencies and operating points. Each time-domain simulation, however, is computationally demanding because the governing Differential-Algebraic Equations (DAEs) are nonlinear and multi-timescale: fast electromagnetic and control modes coexist with slow electromechanical modes. While all have been present in power systems dominated by SMs, converter-interfaced generation convolutes timescale separa-tion and requires considering multiscale DAEs in dynamic simulations [1], [2]. This need to consider a wide variety of time scales enhances stiffness, which forces explicit solvers 
+
+> This work is supported by the European Research Council (ERC) Starting Grant VeriPhIED, Grant Agreement No. 949899.
+
+to take very small time steps and causes implicit solvers to face increasingly ill-conditioned algebraic systems. When these simulations must be repeated thousands of times to cover the wide range of credible scenarios, classical methods quickly become too slow for real-time or near-real-time decision support. Many acceleration strategies have been proposed, including model reduction, network equivalencing, high-performance computing implementations, and specialized techniques to accelerate electromagnetic transient (EMT) simulations [3]. More recently, Machine Learning (ML) approaches have been explored to approximate the dynamics of specific power-system components, either by directly approximating system trajectories [4], [5] or by learning surrogate models of the underlying dynamics [6]. These efforts broadly follow two complementary directions: (i) stand-alone surrogates that di-rectly map operating conditions and time to system trajecto-ries for rapid open-loop screening [4], [5], and (ii) learned surrogates embedded within a numerical DAE solver [6]. Both approaches exploit Neural Network (NN) interpolation and generalization capabilities across operating conditions, enabling extremely fast evaluation after training. Along this line of research, Physics-Informed Machine Learning (PIML) approaches have emerged that improve re-liability and data efficiency by incorporating the physical structure directly into training and penalizing violations of the governing DAEs and initial conditions at collocation points [7]. The ML model maps initial states, control inputs, and time to system trajectories, while minimizing the DAE residual to constrain the surrogate to the physically admissible solution manifold. When used in an open-loop setting, e.g., in a single-machine infinite bus, this enables the evaluation of several time points in parallel, rather than sequential time stepping, which drastically increases computation speed. Here, it is interesting to highlight the analogy between physics-based power-system dynamic models formulated as DAEs and surrogate models based on NNs. In the ML-based surrogate modeling of dynamical systems, NN training deter-mines the learnable parameters, i.e. weights and biases, by solving an optimization problem so that the model reproduces the time evolution of the states exactly as described by a physics-based system of DAEs. In this sense, the role of the explicit time integration of the DAE system is replaced by an optimization-based training procedure. As a result, classical notions of numerical stability of the solver reappear as questions of convergence, conditioning, and robustness of the underlying optimization process. arXiv:2608.08048v1 [cs.CE] 8 Aug 2026 2
+
+Despite their advantages, ML surrogates are still treated with caution in power-system applications because their in-ternal behavior is often opaque, and it is unclear how design choices and training objectives affect accuracy and reliability. In safety-critical contexts, this opacity is also increasingly at odds with emerging expectations for transparency and auditability [8]. In this work, we view transparency not only as the interpretability of model internals but also as the ability to predict and explain reliability and failure modes, as we usually do from the structure of the underlying DAEs. This motivates a structural question: How does physical stiffness in the governing DAEs affect the numerical stability and reliability of the NN training optimization problem, and how can its failure modes be predicted? In this paper, we study ML surrogates for power-system components and address four central questions: (i) How do different neural architectures learn stiff and multi-scale dynamics? (ii) How do modeling choices affect accuracy and reliability? (iii) (iii) how reliability and failure modes, meaning when and why training becomes inaccurate or fails to converge, can be predicted and explained? and (iv) how these choices influence generalization beyond the training conditions? We treat the surrogate architecture, the choice of activation functions, and the design of the loss function as deliberate modeling choices meant to adapt to the mathematical structure of the governing DAEs, rather than heuristic design decisions. To answer these questions, we focus on individual components, both because much of the recent literature studies component-level ML surrogates [5] and be-cause low-order models keep the NTK analysis interpretable, allowing the underlying mechanisms and failure modes to be isolated. The proposed analysis is not restricted to low-order systems and can also be applied to ML surrogates of higher-order dynamic models. To study how NN architectures interact with stiffness and the multi-timescale behavior of power system dynamics, we use the Neural Tangent Kernel (NTK) method [9] to analyze the training dynamics. More generally, NTK provides a tool for analyzing the convergence of individual objectives in multi-objective NN training, where different loss components may drive parameter updates with different strengths and converge at different rates. In the PIML surrogate setting considered here, these loss components correspond to the initial-condition and physics-residual terms. Analogous to eigenvalues in small-signal stability analysis, the NTK provides a spectral decompo-sition of training dynamics: NTK eigenvalues determine how different loss-function error modes decay, just as Jacobian eigenvalues characterize the post-disturbance evolution and decay of physical modes. This connects physical stiffness in the DAEs with optimization stiffness in training and guides the use of adaptive loss-weighting strategies that rebalance modes and improve convergence in mildly stiff regimes. The main contributions of this work include:  
+
+> •
+
+A diagnostic tool for multi-objective learning. Using the NTK method, we propose a comprehensive analysis tool for multi-objective training, including PIML models. We present an analogy to small-signal stability analysis to provide an intuitive interpretation of the training dy-namics. It identifies when training is well-posed or ill-conditioned by explaining how different loss components and embedded physical properties affect learnability and convergence. Furthermore, the NTK analysis guides the use of adaptive loss weighting to promote balanced convergence across loss terms.  
+
+> •
+
+We compare NN architectures for stiff and multi-timescale dynamics, including ActNet. Based on ob-served performance and our NTK analysis, we provide practical guidelines for selecting architectures and acti-vation functions according to the structural properties of the approximated dynamics.  
+
+> •
+
+We evaluate the proposed methods on SM and inverter models (ranging from 2nd order to 11th order models), highlighting both their strengths and limitations across dynamical regimes. Sections II–V present the DAE formulation, the PIML surrogate setup, the structure-aware neural architectures, the NTK training analysis, and the case-study results; the paper closes with conclusions on trustworthy surrogate modeling for power-system dynamics. II. D IFFERENTIAL –A LGEBRAIC SYSTEMS FOR POWER 
+
+SYSTEMS 
+
+DAEs model power-system dynamics, which combine dif-ferential equations with algebraic constraints: 
+
+M dx(t)
+
+dt − f  x(t), u(t), t  = 0 , x(t0) = x0. (1) Here x(t) ∈ Rn collects both dynamic states, e.g., genera-tor rotor angles, speeds, and controller states, and algebraic variables, e.g., bus voltages. The input u(t) represents distur-bances or control actions. The mass matrix M contains ones on differential rows and zeros on algebraic rows. Rows with 
+
+Mii = 0 impose instantaneous algebraic constraints, such as network power balance, which are enforced at each time step using a root-finding method, typically Newton–Raphson. To simulate the DAEs, time-stepping schemes advance the solution either explicitly or implicitly. Explicit methods com-pute xk+1 directly from known quantities and are inexpensive per step, but require small time steps in the presence of fast dynamics. Implicit methods allow larger time steps and are therefore common in transient-stability programs, but require solving a nonlinear system F (xk, xk+1 ) = 0 [10]. Power-system models are stiff because fast electrical or control states and slower electromechanical states are coupled within the same DAE system, even though their time scales may differ by several orders of magnitude. As a result, explicit solvers must use time steps small enough to remain stable for the fastest dynamics, even when the main quantities of interest evolve much more slowly. Implicit solvers alleviate this restriction, but at the cost of solving more challenging nonlinear systems. A more detailed discussion of stiffness and numerical-solver stability is provided in the companion doc-ument [11]. These challenges motivate surrogate approaches that approximate system evolution without a full nonlinear solve at every step. III. PIML FOR DIFFERENTIAL –A LGEBRAIC SYSTEMS 
+
+This section introduces the neural solution operator, its physics-informed training objective, and the structure-aware architectures considered in this work. 3
+
+A. Neural Networks 
+
+NNs are a fundamental class of ML models composed of 
+
+L layers of interconnected neurons. Formally, a NN defines a parametric mapping NN w : Rn0 → RnL , which transforms an input vector z ∈ Rn0 into an output y ∈ RnL through a sequence of layer-wise transformations Φl:
+
+NN w(z) = ΦL−1(ΦL−2(. . . Φ0(z))) (2) Each layer applies an affine transformation followed by a nonlinear activation. Because the training data only constrain the model at sampled points, the architecture affects how the NN behaves between those points and which solution it learns during training. Concretely, each layer Φl is defined as Φl(zl−1) =
+
+ϕl
+
+ Wl zl−1 + bl
+
+, where Wl is the weight matrix, bl is the bias vector, zl−1 is the input to layer l, and ϕl is a nonlinear basis function, usually called an activation function. By stacking such layers, NNs construct hierarchical repre-sentations and efficiently approximate complex functions. For compact notation, we collect all trainable weights and biases in w := {Wl, bl}L−1 
+
+> l=0
+
+.Ultimately, training a NN consists of determining, iter-atively, the parameters w that minimize a task-dependent objective or loss function L(NN w), thereby selecting a func-tion from the set of functions representable by the chosen architecture. In the context of DAE systems, this objective must reflect the governing physical constraints. 
+
+B. Physics-Informed Machine Learning 
+
+Building on the NN representation above, we now formulate a physics-informed solution operator for dynamic power-system components. The solution operator, also called the flow map, maps a con-sistent initial condition and prescribed disturbances or control inputs to the system state at a future time. To approximate the solution operator (x0, u(·), t 0, t ) 7 → x(t0 + t) without explicit time stepping at inference, we use a NN: 
+
+NN w(x0, u(·), t 0, t ) ≈ x(t0 + t) (3) Rather than relying on labeled trajectories, we train NN w
+
+by enforcing the DAE residual and the initial condition as soft constraints. Let {ti}Nt 
+
+> i=1
+
+denote the set of Nt temporal collocation points, and let {x0,j , uj (·)}Nic  
+
+> j=1
+
+denote the set of Nic training scenarios, where x0,j is the initial state and 
+
+uj (·) is the corresponding input trajectory of scenario j. The network parameters w are obtained by minimizing 
+
+L = ρdae 
+
+1
+
+NtNic 
+
+> Nt
+
+X
+
+> i=1
+> Nic
+
+X
+
+> j=1
+
+∥M∂tNN i,j − fi,j ∥22
+
++ ρic 
+
+1
+
+Nic 
+
+> Nic
+
+X
+
+> j=1
+
+∥NN 0,j − x0,j ∥22 (4) 
+
+x0
+
+t
+
+Φ( t, x 0)         
+
+> Single Time-Domain Trajectory
+> Fig. 1. Flowmap view of a continuous DAE. The surface represents the flowmap manifold. The curve shows the system’s continuous trajectory. Discrete solver steps move along this curve, approximating the underlying flow map.
+
+where 
+
+NN i,j := NN w (x0,j , uj (·), 0, t i) ,
+
+NN 0,j := NN w (x0,j , uj (·), 0, 0) ,fi,j := f (NN i,j , uj (ti), t i) ,∂tNN i,j := ∂∂t NN w (x0,j , uj (·), 0, t )
+
+> t=ti
+
+The coefficients ρdae and ρic weight the DAE-residual and initial-condition losses, respectively, while ∥ · ∥ 2 denotes the Euclidean norm. Since NN w(x0, u(·), t 0, t ) depends on the continuous vari-ables x0, u(·), and t, the problem formulation becomes 
+
+M ∂NN w(x0, u(·), t 0, t )
+
+∂t −f (NN w(x0, u(·), t 0, t ), u(t), t ) = 0 ,
+
+(5) which defines a partial differential equation over the full input domain. Training therefore requires representative sampling of 
+
+(x0, u, t 0, t ) so that the learned operator produces consistent trajectories across different initial conditions and inputs. When trajectory-simulated samples are available, a supervised data loss can be added to anchor the solution and ease the physics-informed optimization. In this work, we restrict attention to operators that take a single instantaneous input value u(t) and set t0 = 0 without loss of generality. Although the formulation is developed for general index-1 DAE systems, PIML methods have predominantly been applied to Ordinary Differential Equations (ODEs), since DAEs introduce algebraic constraints that tightly couple state variables and complicate both training and numerical stability. 
+
+Geometric Interpretation of Integration: General DAE sys-tems define a flow map whose trajectories lie on a manifold. Time-stepping algorithms approximate the continuous evolu-tion, starting from an initial condition, by moving along this manifold through a sequence of linear steps, according to the local dynamics at the current point, as shown in Fig. 1. In contrast, the PIML approaches aim to approximate the flowmap itself as a global function, replacing step-by-step advancement with direct evaluation of the learned operator. Note that these PIML operators are often understood to be reduced order models. However, they do not project onto a lower-dimensional state. Instead, they can be understood as noisy replicas of the true system. 4  
+
+> x0
+> s1
+> s2
+> s3
+> ˆxN N
+> cij
+> Fig. 2. ActNet layer structure. Each input variable is passed through trainable sinusoidal channels and mixed through coefficients cij , allowing the layer to represent timescales within a feedforward architecture.
+
+C. Embedding Physical Knowledge into ML Models 
+
+Physics-informed losses enforce the governing equations during training, but they do not, on their own, determine how the ML models interpolate between the training points to represent the underlying dynamics; that also depends on the architecture. In power-system applications, where oscillatory and multi-timescale behavior is often known a priori, it is therefore natural to embed such structure directly into the model design [12]. A representative example is the Kolmogorov-Arnold Neu-ral Network (KAN) [5], [13], [14], which replaces fixed activation functions such as tanh with learnable univariate spline functions. This makes the model more adaptable during training and can help it capture the geometry of the flow-map manifold [5]. However, spline evaluation and basis expansion make KANs significantly more expensive at inference time. In power-system studies, where a surrogate may need to be eval-uated repeatedly for many operating points or contingencies, this computational burden can become limiting. The choice of activation function is central to this trade-off. Smooth monotone activations such as tanh train stably, whereas sinusoidal activations better match oscillatory behav-ior at the cost of more sensitive optimization. Although other periodic activations, e.g. [15], may also be useful for power-system dynamics, their systematic evaluation is outside the scope of this work. These considerations are directly relevant in power sys-tems, where rotor-angle states are periodic and many tran-sient responses contain oscillatory electromechanical or fast controller-driven modes. As a result, the activation choice affects not only training stability but also whether the surrogate reliably captures the system’s dominant physical behavior. These considerations motivate the use of architectures that retain the expressive benefits of learnable activation functions while remaining computationally lightweight. 
+
+1) ActNet Layers: Figure 2 illustrates the main idea of ActNet. Each input is processed by several trainable sinusoidal channels, which can represent different oscillation frequencies. The resulting channel responses are weighted and combined to form the layer output, allowing slow and fast oscillatory components to be represented simultaneously. Besides KANs, ActNet provides a lightweight alternative that embeds oscillatory structure in its activation functions. It represents the solution using trainable sinusoidal channels that can capture slow and fast oscillatory components within the same architecture. Here, a channel denotes one trainable sinusoidal basis function. For each channel i = 1 , . . . , m ,ActNet defines the univariate adaptive warp 
+
+ϕi(t) = sin( ωit + pi) − μi
+
+σi + ε , (6) where ωi and pi are trainable frequency and phase parameters, and μi, σ i normalize the output for numerical stability. Since 
+
+ϕi depends on trainable frequency and phase parameters, Act-Net can be interpreted as using learnable sinusoidal activation functions. Given an input vector x = ( x1, . . . , x n), ActNet forms the mixed response of channel i as 
+
+si(x) = 
+
+> n
+
+X
+
+> j=1
+
+cij ϕi(xj ), (7) and aggregates the channel responses as 
+
+NN w(x) = 
+
+> m
+
+X
+
+> i=1
+
+si(x). (8) Here, cij determines how strongly input variable xj con-tributes to the i-th sinusoidal channel. The parameter ωi
+
+determines the frequency of the i-th sinusoidal channel, while 
+
+cij weights the contribution of input xj to that channel. For ActNet, w := {ωi, p i}mi=1 ∪ { cij }m,n i=1 ,j =1 .
+
+This structure aligns the architecture with the multi-timescale nature of power-system dynamics. Channels with smaller ωi can represent slowly varying components, while channels with larger ωi can represent faster oscillatory com-ponents. This is useful for component models in which elec-tromechanical, electrical, and fast-control interactions shape the dynamic response. Compared to spline-based KAN ar-chitectures, ActNet remains computationally lighter while re-taining a structure-aware representation for stiff and multi-timescale dynamics. The resulting layer structure is shown in Fig. 2. IV. N EURAL TANGENT KERNEL AND TRAINING 
+
+DYNAMICS 
+
+The input–output mapping of a general NN is highly nonlin-ear and nonconvex in its parameters. Therefore, understanding how the trainable parameters w evolve and why training succeeds or fails requires tools beyond classical approximation theory. In this work, we adopt the NTK as a principled framework for analyzing how NNs adapt their parameters during training. The NTK for NNs is analogous to small-signal stability analysis of dynamic models. When a nonlinear dynamical system ˙x = F (x) is linearized around an operating point 
+
+x∗, the resulting state-space matrix A = ∂F/∂ x|x∗ describes the local behavior of small perturbations around that oper-ating point. Its eigenvalues determine whether modes decay, oscillate, or grow, and at what rates. This modal interpretation provides the conceptual basis for comparing physical-system modes with training-error modes. NTK theory provides a similar modal view of NN training. During training, gradient descent updates the trainable parame-ters w, which changes the NN output and reduces the training error. The NTK describes how sensitive the NN outputs at 5
+
+different training samples are to the parameter updates of w,showing whether errors at different inputs or loss function terms reduce together or evolve independently during gradient descent. Under the infinite-width NTK approximation, the NN can be linearized around its initialization and the NTK is treated as approximately fixed during training. In this regime, the NTK plays the role of a training-domain state-space matrix: its eigenvectors define independent training-error, i.e, loss function, modes, and its eigenvalues determine their decay rates. This allows us to interpret NN training using the same modal intuition used for power-system small-signal dynamics. During training by gradient descent on a loss L(NN w), the parameters follow the continuous gradient-flow dynamics 
+
+dw
+
+dτ = − ∇ wL(NN w), (9) where ∇wL denotes the gradient of the loss with respect to the trainable parameter vector w, and τ denotes continuous training time, i.e., the continuous-time analogue of training iterations or epochs. Consider the mean-squared error loss 
+
+L(NN w) = 12
+
+> N
+
+X
+
+> i=1
+
+ NN w(xi) − yi
+
+2,
+
+where yi denotes the target output at the training point xi.The induced learning dynamics of the network output satisfy 
+
+ddτ NN w(x) = −
+
+> N
+
+X
+
+> i=1
+
+ NN w(xi) − yi
+
+
+
+× ⟨∇ wNN w(xi), ∇wNN w(x)⟩ .
+
+(10) The inner product 
+
+Θ(xi, xj ) = ⟨∇ wNN w(xi), ∇wNN w(xj )⟩ (11) is the NTK. Collecting the predictions on the training set into the vector 
+
+U(τ ) =  NN w(τ )(x1), . . . , NN w(τ )(xN )⊤, the training error is e(τ ) = U(τ ) − y. Each eigenvector of the NTK describes a distinct way in which prediction errors are distributed across the training samples, and the total training error can be understood as a weighted sum of these error modes. The weights of this weighted sum indicate how strongly each mode contributes to the current error, while the eigenvalue 
+
+ai associated with each mode i determines how quickly that contribution is reduced during training: large eigenvalues indi-cate fast learning, whereas small eigenvalues indicate slowly corrected or nearly unchanged errors. This is analogous to expressing a physical disturbance as a combination of dynamic modes in small-signal analysis. In these modal coordinates, the training dynamics decouple into independent scalar equations 
+
+da i
+
+dτ = −λi ai (12) so each error component evolves independently as ai(τ ) = 
+
+ai(0) e−λiτ . Thus, the eigenvectors define independent error directions , while the eigenvalues λi directly determine the decay rate of each training-loss error mode: large eigenvalues 
+
+Power System Stability View         
+
+> unstable operation
+> ℜ(λA)
+> ℑ(λA)
+> dx(t)
+> dt =A x (t) + B u (t)
+> Physical mode x:
+> xi∝e−λA,i t=e−(σi±jω i)t
+> fast decaying mode oscillatory, decaying mode unstable mode oscillatory, unstable mode
+
+NTK View  
+
+> increasing error
+
+λk—0      
+
+> Training loss mode: Lk(τ)≈ L k(0) e−ηλ k τ
+> fast error decay moderate error decay frozen error increasing error Fig. 3. Analogy between small-signal stability analysis and NTK training dynamics. Top: eigenvalues of the state-space matrix determine the behavior of physical perturbation modes. Bottom: NTK eigenvalues determine the decay rates of training-error modes. Large NTK eigenvalues correspond to fast error decay, while small eigenvalues correspond to slow or nearly frozen modes.
+
+lead to fast convergence, and small eigenvalues produce slow decay of the corresponding residual errors. Under the infinite-width NTK approximation, the NTK is treated as approximately constant during training, Θ(xi, xj ) ≈
+
+Θ0(xi, xj ) [9], [16]. This means that, although the NN output changes, the sensitivity of the output to the trainable parameters changes only weakly. Under the fixed-NTK ap-proximation, the output dynamics reduce to: 
+
+dU
+
+dτ = − Θ0(U − y), (13) so each training mode decays at a rate determined by the eigenvalues of the initial NTK. Please note that this is an approximation. In particular, when the parameters change substantially throughout training, the NTK values may also vary. Fig. 3 summarizes the resulting parallel between power-system dynamic modes and training-error modes. In small-signal analysis, the eigenvalues of the linearized state-space matrix determine how dynamic modes behave after a sys-tem perturbation. The location of an eigenmode determines whether an oscillation occurs, at what rate, and whether it decays or grows. Similarly, the eigenvalues of the NTK determine how different training-error directions over the sampled points decay during the training process. An uneven NTK spectrum indicates optimization stiffness: some loss 6
+
+function error modes are corrected rapidly, while others remain nearly frozen. These slow NTK modes can limit the accuracy of the surrogate, especially for fast or oscillatory parts of the physical response. In contrast, an even NTK spectrum indicates that all errors decay at a similar rate and are learned with comparable speed and accuracy. Consequently, an ideal NTK profile would mean that NTK eigenmodes are similar across error components. 
+
+A. NTK for PIML Models 
+
+PIML training involves multiple loss terms that enforce data, initial conditions, and physics constraints. The coupling between the initial-conditions loss 
+
+Lb(L(NN w(τ ))) and physics loss Lp(NN w(τ ))) from (4) can be analyzed through the block NTK matrix K, so that their interaction is approximated by 
+
+ ˙Lb(NN w(τ ))) ˙Lp(NN w(τ ))) 
+
+
+
+= −
+
+Kbb Kbp 
+
+Kpb Kpp 
+
+| {z }
+
+> K
+
+Lb(NN w(τ ))) 
+
+Lp(NN w(τ ))) 
+
+
+
+, (14) where each block is a Gram matrix of inner products between parameter gradients of the corresponding loss terms. For example, if i indexes samples in the initial conditions loss and j indexes samples in the physics loss: 
+
+(Kbp )ij =
+
+* ∂Lb(NN w(τ )(xbi )) 
+
+∂w , ∂Lp(NN w(τ )(xpj )) 
+
+∂w
+
++
+
+.
+
+Here, K extends the NTK interpretation to the multi-objective setting. Its diagonal blocks quantify how strongly each loss function term drives w updates, while the off-diagonal blocks quantify the interaction between different loss terms. For each diagonal block, large leading eigenvalues correspond to training-error directions that respond strongly to changes in 
+
+w and therefore decay rapidly under gradient descent. A long tail of small eigenvalues indicates error directions that respond weakly to parameter updates, so they decay slowly and may limit convergence. Since the trace of the matrix, Tr( Kii )
+
+equals the sum of the eigenvalues of the i-th block, it measures the overall strength with which the loss term i affects the training update. Large differences in Tr( Kii ) therefore indicate imbalanced training, where some objectives dominate while others evolve slowly. 
+
+B. NTK Eigenvalues for Adaptive Weights During Training 
+
+Since the NTK eigenmodes provide insights into how fast each loss component is learned during training, they can be used to update the training weights during gradient descent. Guided by the NTK analysis, we formulate an adaptive weighting scheme that promotes uniform convergence across the individual loss objectives. Each loss term is assigned a weight ρi, chosen inversely to the trace of its corresponding self-block: 
+
+ρi =
+
+P 
+
+> j
+
+Tr( Kjj )Tr( Kii ) , (15) where Kii is the diagonal block associated with the i-th loss. A large trace indicates that the loss strongly drives the parameter update, while a small trace indicates a weak contribution. The inverse-trace weighting acts as a training preconditioner: dominant objectives are down-weighted and weaker objectives are up-weighted, promoting more balanced convergence across loss terms. V. C ASE STUDIES 
+
+In this section, we evaluate vanilla PINNs, KANs, and ActNet on power system time-domain simulation tasks with increasing stiffness and timescale separation. We first report standard accuracy and runtime metrics, and then use the NTK analysis to interpret the results in terms of training-error modes and loss-term imbalance. The goal is to connect physical stiffness in the underlying power-system dynamic model with optimization stiffness in PIML training, and to assess how different architectures represent oscillatory, stiff, and multi-timescale dynamics. We analyze three sets of power system test cases to illustrate three qualitatively different regimes: 1) Mildly Stiff Dynamics (Synchronous Generator Mod-els): We first use classic SM models as baseline test cases to compare vanilla PINNs, KANs, and ActNet in terms of accuracy and runtime in a regime where stiffness is limited. 2) Stiff System with Moderate Time-Scale Separation (Modified Single Machine Infinite Bus (SMIB)): Next, we modify a classic SMIB system to introduce a fast electrical mode and examine whether the architectures can simultaneously learn slow and fast dynamics. The performed NTK analysis provides insights into the per-formance of the NNs. 3) Strongly Multiscale and Stiff Dynamics (Inverter Model): Finally, we attempt to learn an 11th-order inverter model with nested control loops that induce both stiffness and pronounced timescale separation. Again, we demonstrate how the NTK analysis offers valuable insights into the model performance. Note that to the best of our knowledge, there are no reports in the literature of accurately learning such a stiff DAE system with NNs. The test system, implementation details, training config-uration, and resulting performance are analyzed per sce-nario below, emphasizing how stiffness and multi-timescale structure influence learnability across architectures. Code and supplementary material are available at [11]. 
+
+A. Regime 1: Classic Synchronous-Machine Models 1) Test Case: We first compare the accuracy and runtime of the three architectures on the 2nd (2D), 4th (4D), and 6th-order (6D) SM models formulated in [11]. These models provide a controlled setting in which the dynamical complexity increases with model order. To keep the training problem tractable, the experiments were carried out on a restricted set of initial conditions around the nominal operating region, including in the training 200 simulated trajectories, including an extra term in the loss function [5]. 
+
+2) Implementation and Training: We compare three physics-informed architectures: (i) a vanilla PINN, (ii) a KAN, and (iii) ActNet. For each SM order (2D, 4D, and 6D), one network is trained for each architecture, resulting in nine 7         
+
+> 2D4D6D
+> 0123
+> ·10 −6
+> MSE
+> 2D4D6D
+> 0510 15 20 25 30
+> Time for 1000 Trajectories in ms
+> PINN KAN Actnet GPU Solver CPU Solver Fig. 4. Accuracy and runtime comparison for the different architectures on the three SM test cases. Runtime is compared for evaluating 1000 trajectories and benchmarked against classic DAE GPU and CPU solvers.
+
+trained models in total. The same architecture settings are used across all SM implementations per NN type to isolate the effect of model order and architecture type. Specifically, the vanilla PINN uses 3 hidden layers with 64 neurons per layer. ActNet uses the same depth and width as the vanilla PINN, with m = 4 trainable sinusoidal channels. The KAN uses a single hidden layer with 20 neurons, providing a compact spline-based alternative. All models are trained with the same physics-informed objective for a fair comparison. Training uses the SOAP optimizer [17] with learning rate 
+
+10 −4. As numerical baselines, we report runtimes from a CPU-based Runge-Kutta 5 (RK5) solver implemented in Julia and from a GPU-based solver implemented through 
+
+DiffEqGPU.jl . All GPU-runtime measurements are re-ported on the same NVIDIA T4 GPU. Each runtime corre-sponds to a full trajectory calculation over a horizon of T = 1 s 
+
+for 1000 scenarios. 
+
+3) Results: Figure 4 summarizes the MSE and runtime of the three models on the 2D, 4D, and 6D SM test cases, while also detailing the runtimes of both a GPU-based numerical solver and a CPU-based numerical solver. KAN and ActNet reduce the trajectory error relative to the vanilla PINN in the 2D and 4D test cases, with the largest reduction observed in the 4D case. At the same time, all three architectures achieve errors of the same order in the 6D case. Note that ActNet achieves these gains with a parameter count comparable to the vanilla PINN, suggesting that the improvement comes from the design of the activation functions rather than from a simple increase in model size. The main difference between KAN and ActNet appears in inference cost. On the NVIDIA T4 GPU, the vanilla PINN is the fastest model, followed by ActNet, whereas KAN is substantially slower. Across all three test cases, ActNet is about 17 × faster than KAN. Comparing runtimes, ActNet is slightly faster than the GPU-based solver in the 2D case and up to about 9× faster in the 6D case, while being nearly 30 × faster than the CPU-based solver benchmark. KAN, on the other hand, is slower than the GPU solver. This slowdown of KAN is structural: spline evaluation and basis expansion reduce the degree of vectorization available to KAN, while ActNet remains a fully feedforward architecture. Overall, this baseline comparison shows that architectures with adaptive activation structures, namely KAN and ActNet, improve accuracy over the vanilla PINN. Among them, ActNet provides the best accuracy-runtime trade-off as it offers a computationally lightweight feedforward structure while using learnable sinusoidal activations. 
+
+B. Regime 2: Capturing Slow and Fast Dynamics 
+
+We next introduce stiffness into a classic 2nd-order SMIB model to examine if a single NN architecture can capture both slow and fast modes. We therefore augment the 2D
+
+SMIB model with terminal-voltage dynamics, obtaining a 3D
+
+system with an additional fast electrical mode and the resulting stiffness. The GPU solver evaluates in approximately 12 ms for 1000 scenarios, making it a promising candidate for PIML-based speedup. 
+
+1) The Modified SMIB System: To introduce one fast elec-trical mode into the 2nd-order SMIB dynamics, the terminal voltage V (t) is introduced as a dynamic state, resulting in the following 3rd-order ODE system: 
+
+1 0 00 H 00 0 τ
+
+ ddt 
+
+ δωV
+
+ =
+
+ ωPm − EV sin( δ) + PL(t) − Dω Vref − V + k sin( δ)
+
+
+
+Here, δ is the rotor angle relative to the synchronous reference, 
+
+ω is the speed deviation, and V is the terminal-voltage magnitude; k controls the voltage-oscillation amplitude, while 
+
+δ sets its phase. Note that all symbol definitions and parameter values are provided in the supplementary material. A small time constant τ introduces a fast electrical mode that creates stiffness in the ODE system and introduces a clear timescale separation: Linearizing around (δ, ω, V ) = (0 , 0, 1) 
+
+highlights that the voltage state V contributes the fast electrical eigenvalue, while the rotor states δ and ω yield the slow electromechanical eigenvalue −D/ (2 H). From these modal time constants, the corresponding stiffness ratio is: r ≈
+
+2H/ (Dτ ) ≈ 2 × 10 3, indicating a difference of three orders of magnitude between the fast and slow dynamics. Importantly, this stiffness is essentially one-dimensional, arising from a single dominant fast electrical mode. 
+
+2) Implementation and Training: We train three models: a vanilla PINN with tanh activations, a KAN, and an ActNet, from a single initial condition to isolate architectural and training effects from generalization across initial conditions. All models use the physics-informed loss in (4) and are trained for 5000 epochs using Adam [18]. We observe that the proposed adaptive weighting in (15) accelerates convergence and yields a lower final loss than unweighted training. The vanilla PINN has two hidden layers of 32 neurons, the KAN has one hidden layer of 9 splines with grid size G = 7 and spline order k = 3 , and the ActNet has two hidden layers of 5 neurons with m = 2 trainable sinusoidal channels. These architectures were selected through a small grid search and then fixed for a fair comparison. 
+
+3) Results: Figure 5 showcases one time-domain trajectory of the SM frequency for the classic time-domain solver and the three NN architectures. While the PINN fails to capture the faster oscillation around the main trajectory, both ActNet and PI-KAN successfully reproduce it. Note that the KAN appears more accurate. 8
+
+TABLE I FINAL LOSS VALUES FOR ACT NET , KAN, AND THE VANILLA PINN ON THE MODIFIED SMIB TEST CASE .                                                        
+
+> Loss Term ActNet KAN PINN
+> Lδ4.27 ×10 −59.91 ×10 −53.93 ×10 −2
+> Lω1.01 ×10 −52.95 ×10 −22.25 ×10 −1
+> LV3.89 ×10 −34.44 ×10 −24.05 ×10 −1
+> Lic 8.54 ×10 −83.24 ×10 −54.49 ×10 −2
+> Ltot 3.94 ×10 −37.41 ×10 −27.14 ×10 −1
+> 00.511.522.533.5400.05 0.10.15 0.20.25
+
+time in s 
+
+> ω in rad/s
+
+Radeau Solver PINN PI-KAN ActNet Fig. 5. Predicted trajectories for the modified SMIB test case, comparing the vanilla PINN, KAN, and ActNet. 
+
+These findings are supported by the final physics-loss components across all evaluation trajectories presented in Table I. Here, Lδ , Lω , and LV denote the mean-squared residuals of the δ-, ω-, and V -equations, respectively; Lic 
+
+denotes the initial-condition residual, and Ltot the total loss. ActNet depicts the smallest total loss, more than one order of magnitude below KAN and nearly three below the vanilla PINN, with the largest gain in the residual associated with the oscillatory speed response. We next use the NTK spectra to analyze these differences, which occur despite applying the NTK-weighted training scheme. Generally, the NTK spectrum indicates how differ-ent training-error modes respond to parameter updates: large leading eigenvalues correspond to modes that are learned quickly, while small tail eigenvalues correspond to modes that converge slowly. We therefore look for two features: how rapidly the spectrum decays, and whether the dominant eigenvalues are balanced across the residual losses. A sharp decay suggests that only a few modes are learned efficiently. In contrast, a milder decay with larger tail eigenvalues indicates that a broader range of modes remains trainable, including modes associated with faster or more oscillatory response components. Figure 6 depicts the NTK spectra computed on 100 time-collocation points for the residual terms Lδ , Lω , and LV at the start of the training. The nearly flat Lic spectrum indicates similar correction rates because the same initial condition is enforced for all collocation samples at t = 0, without temporal-derivative terms. The vanilla PINN displays a very heavy tail, with eigenvalues decaying from about 10 10 to val-ues close to zero. In contrast, KAN and ActNet show a milder decay with larger tail eigenvalues. The dominant eigenvalues are also more balanced across residual terms. In the vanilla PINN, Lδ dominates near 10 10 , while Lω and LV remain near 10 1 to 10 2. For KAN and ActNet, the largest eigenvalues 
+
+> 10 −17
+> 10 −4
+> 10 9
+
+PINN 
+
+Loss Term : Lδ Lω LV Lic 
+
+> 10 −17
+> 10 −4
+> 10 9
+
+KAN           
+
+> Eigenvalue Magnitude
+> 010 20 30 40 50 60 70 80 90 100 10 −17
+> 10 −4
+> 10 9
+
+Actnet 
+
+Eigenvalue rank 
+
+Fig. 6. Unweighted NTK eigenvalue spectra of the Lδ , Lω , LV , and Lic 
+
+loss blocks for the three architectures. The horizontal axis gives the eigenvalue rank after sorting by decreasing magnitude. 
+
+> 10 −17
+> 10 −4
+> 10 9
+
+PINN 
+
+Eigenvalue rank 
+
+Loss Term : Lδ Lω LV Lic 
+
+> 10 −17
+> 10 −4
+> 10 9
+
+KAN           
+
+> Eigenvalue Magnitude
+> 010 20 30 40 50 60 70 80 90 100 10 −17
+> 10 −4
+> 10 9
+
+Actnet 
+
+Eigenvalue rank 
+
+Fig. 7. NTK eigenvalue spectra after applying the adaptive weights ρi.The horizontal axis gives the eigenvalue rank after sorting by decreasing magnitude.           
+
+> 010 20 30 40 50 60 70 80 90 100 10 −17
+> 10 −10
+> 10 −3
+> 10 4
+
+Eigenvalue rank Eigv. for  KLδ
+
+No. of Iterations : 0 1000 2000 3000 Fig. 8. ActNet NTK eigenvalue spectra at selected training checkpoints. Each curve represents the complete spectrum at the indicated iteration, with the horizontal axis denoting the eigenvalue rank. 
+
+cluster around 10 8 to 10 9, with LV slightly largest, producing a more even distribution of gradient contributions. This more balanced distribution, together with the larger tail eigenvalues, is consistent with the time-domain results: KAN and ActNet learn the fast oscillatory component more effectively, whereas the vanilla PINN fails to capture it accurately. Figure 7 shows the NTK spectra, at epoch 0, after applying 9
+
+the adaptive weighting rule formulated in (15), which scales each loss term according to the inverse trace of its NTK block. This reduces disparities in the effective contribution of the residual terms and promotes more similar convergence rates across the state-equation residuals. Figure 8 compares the complete ActNet NTK spectra at initialization and after 1000, 3000, and 5000 training iterations. The horizontal axis gives the eigenvalue rank in decreasing order, while the legend identifies the training checkpoint. Their strong overlap suggests that the NTK remains approximately fixed during training. 
+
+C. Regime 3: Inverter Model Benchmark 
+
+The final case study considers an 11-state PQ-controlled, grid-following inverter model. The GPU solver evaluates 1000 scenarios in approximately 27 ms , making this benchmark relevant for acceleration. Although its stiffness ratio, rinv ≈
+
+1.7×10 2, is smaller than that of the modified SMIB, rSMIB ≈
+
+2 × 10 3, the inverter contains several interacting current-control, power-control, PLL, and filtering modes with different timescales [11]. We therefore examine whether this distributed multi-timescale structure creates optimization difficulties that are not captured by the stiffness ratio alone. 
+
+1) Inverter Model and Training: The inverter model in-cludes a PLL, outer PQ control, inner current control, current dynamics, and measurement filters, as detailed in [11]. We train a vanilla PINN, ActNet, and KAN from a single initial condition for 10 ,000 epochs with a learning rate of 10 −4, using the physics-informed objective in (4). The PINN and ActNet use three hidden layers, while the KAN uses two hidden layers of 20 neurons each. For the NTK comparison in Fig. 9, we ad-ditionally evaluate PINNs with widths 64, 128, 256, and 512. The PLL and outer-control states evolve substantially more slowly than the current dynamics, producing large differences in residual and gradient scales. We denote the residual loss of state z by Lz and use a prediction horizon of 0.1 s , unless stated otherwise. 
+
+2) NTK-Based Diagnosis: We diagnose the training diffi-culty at three levels: the per-residual NTK spectra identify slowly learned error modes, the residual gradients reveal imbalance between loss terms, and a short-horizon ablation separates optimization difficulty from the ability of the NN to fit the trajectory. Figure 9 compares the slow PLL residual Lξpll , the fast cur-rent residuals Lid and Liq , and the intermediate filter residual 
+
+LQfilt . All architectures exhibit long tails of small eigenvalues, meaning that many error modes are only weakly corrected by parameter updates. Increasing the PINN width raises some eigenvalues but does not remove these slowly learned modes, while ActNet and KAN show the same qualitative limitation. Thus, increasing model size or changing among the tested architectures does not by itself resolve the training difficulty. Figure 10 examines the imbalance between residual losses. The current residuals Lid and Liq produce the largest gra-dients and therefore receive the smallest adaptive weights, while weaker residuals receive larger weights. This weighting rebalances the influence of the complete loss terms, but each weight scales all modes of a loss together and therefore does not remove its small-eigenvalue tail.             
+
+> 10 −17
+> 10 −13
+> 10 −9
+> 10 −5
+> 10 −1
+> 10 3
+> 10 7
+> Lξpll
+> Eigenvalues
+> PINN Width :512 256 128 64
+> Advanced ML :ActNet KAN
+> Liq
+> 020 40 60 80 100 10 −16
+> 10 −12
+> 10 −8
+> 10 −4
+> 10 0
+> 10 4Lid
+
+Eigenvalue rank Eigenvalues      
+
+> 020 40 60 80 100
+> LQf ilt
+
+Eigenvalue rank       
+
+> Fig. 9. NTK eigenvalue spectra of the diagonal loss blocks Ki,i for selected inverter residuals and different architectures. The residuals represent slow PLL dynamics, fast current dynamics, and intermediate filtering dynamics. The horizontal axis denotes the eigenvalue rank after sorting by decreasing magnitude.
+> Lθpll
+> Lξpll
+> Lid
+> Liq
+> Lξid
+> Lξiq
+> LξP
+> LξQ
+> LPf ilt
+> LQf ilt
+> LVf ilt
+> 10 −1
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> 10 7
+> 10 8
+> 10 9
+> 10 10
+> 10 11
+> Max |∂L i/∂θ |Weights NTK Fig. 10. Maximum residual gradients with respect to the NN final-layer weights and the corresponding NTK-based weights from (15). The adaptive weights reduce the dominance of residuals with large gradients.
+
+3) Short-Horizon Ablation: To determine whether the re-maining error arises from limited trajectory representation or from the physics-informed optimization, we train a simplified one-layer NN over 10 −4 s using five configurations: data loss only; physics loss with and without NTK weighting; and combined data and physics losses with and without NTK weighting. Figure 11 shows that the data-only model achieves a much lower trajectory error, indicating that, over this short horizon, fitting direct state observations is easier than satisfying the derivative-based physics residuals. The NN can therefore rep-resent the local trajectory, while the physics-informed objec-tive creates the main optimization difficulty. NTK weighting improves the combined data-and-physics case relative to un-weighted training, although it remains less accurate than di-rect supervised fitting. Nevertheless, physics-informed training 10 10 0       
+
+> 10 2
+> 10 4
+> 10 6
+> Iterations Physics Loss
+> Soap only dataloss with NTK weights with data with NTK weights without data without NTK weights without data without NTK weights without data
+> 02000 4000 6000 8000 10000 10 −2
+> 10 −1
+> Iterations
+> L2 Distance from solution
+
+Fig. 11. Short-horizon ablation comparing supervised and physics-informed training. The data-only model provides a supervised reference, while NTK weighting improves the combined data-and-physics objective relative to its unweighted counterpart. 
+
+provides an explicit and physically interpretable objective and avoids reliance on labeled trajectories generated by numerical simulation; the result therefore motivates improving its opti-mization rather than replacing it with supervised training. Overall, the inverter is difficult to learn because its stiffness is distributed across several interacting fast and slow modes. This produces both slowly learned modes within individual residuals and strong imbalance between residual losses, mak-ing the inverter harder to learn than the modified SMIB despite its smaller stiffness ratio. These findings suggest future work on architectures with separate representations for fast current dynamics and slower control and filtering states, together with state-wise normalization and mode-aware weighting. Devel-oping and validating such NTK-guided architectures is left for future work, with the goal of replacing trial-and-error model selection by systematic, physics-aware architecture and training design. VI. C ONCLUSION 
+
+This paper applies the Neural Tangent Kernel (NTK) method to assess, interpret, and improve the training of neural surrogate models for power-system dynamics. As physics-informed machine learning is increasingly used to model aggregate power-system behavior, accelerate simulations of complex components such as inverters, and support black-box converter surrogates, understanding how architecture and hy-perparameters affect performance becomes essential. We show that classical notions of numerical stability in differential-algebraic systems reappear as convergence, conditioning, and robustness issues in NN training. Through its analogy with small-signal eigenvalue analysis, NTK provides a modal in-terpretation of learning dynamics, showing how states with widely different timescales are learned and guiding adaptive loss weighting. Focusing on individual power-system components, we stud-ied physics-informed learning of stiff dynamics using vanilla PINNs, KANs, and ActNets. On SM models, KANs and ActNets captured fast and slow states more evenly than vanilla PINNs, with ActNet providing the best accuracy–runtime trade-off. For the 11-state inverter model, the results show that learnability depends less on the overall stiffness range than on the distribution of stiff directions. Although the inverter has a smaller stiffness ratio than the modified SMIB benchmark, its electrical, control, and synchronization dynamics create a highly anisotropic eigenvalue distribution that the NTK inher-its. This makes training accurate physics-informed surrogates difficult, and neither NTK-based adaptive weighting nor the tested NN architectures fully resolve the issue. Future work should use NTK-guided architecture design, loss weighting, and optimization strategies to address stiff multi-timescale power-system dynamics and produce fast, accurate neural surrogates. REFERENCES [1] J. D. Lara, R. Henriquez-Auba, D. Ramasubramanian, S. Dhople, D. S. Callaway, and S. Sanders, “Revisiting power systems time-domain simulation methods and models,” IEEE Transactions on Power Systems ,vol. 39, no. 2, pp. 2421–2437, 2024. [2] U. Markovic, O. Stanojev, P. Aristidou, E. Vrettos, D. Callaway, and G. Hug, “Understanding small-signal stability of low-inertia systems,” 
+
+IEEE Transactions on Power Systems , vol. 36, no. 5, pp. 3997–4017, 2021. [3] S. Subedi, M. Rauniyar, S. Ishaq, T. M. Hansen, R. Tonkoski, M. Shirazi, R. Wies, and P. Cicilio, “Review of methods to accelerate electro-magnetic transient simulation of power systems,” IEEE Access , vol. 9, pp. 89714–89731, 2021. [4] J. Stiasny and S. Chatzivasileiadis, “Physics-informed neural networks for time-domain simulations: Accuracy, computational cost, and flexi-bility,” Electric Power Systems Research , vol. 224, p. 109748, 2023. [5] P. Ellinas, I. Karampinis, I. V. Nadal, R. Nellikkath, J. Vorwerk, and S. Chatzivasileiadis, “Physics-informed machine learning for power sys-tem dynamics: A framework incorporating trustworthiness,” Sustainable Energy, Grids and Networks , vol. 43, p. 101818, 2025. [6] M. Bossart, J. D. Lara, C. Roberts, R. Henriquez-Auba, D. S. Callaway, and B.-M. S. Hodge, “Acceleration of power system dynamic simula-tions using a deep equilibrium layer and neural ode surrogate,” IEEE Transactions on Energy Conversion , vol. 40, no. 4, pp. 2710–2722, 2025. [7] G. S. Misyris, A. Venzke, and S. Chatzivasileiadis, “Physics-informed neural networks for power systems,” in 2020 IEEE Power & Energy Society General Meeting (PESGM) , pp. 1–5, 2020. [8] “Regulation - EU - 2024/1689 - EN - EUR-Lex — eur-lex.europa.eu.” https://eur-lex.europa.eu/eli/reg/2024/1689/oj/eng. [Accessed 24-01-2025]. [9] A. Jacot, F. Gabriel, and C. Hongler, “Neural tangent kernel: Conver-gence and generalization in neural networks,” 2020. [10] E. Hairer and G. Wanner, Solving Ordinary Differential Equations II: Stiff and Differential-Algebraic Problems , vol. 14 of Springer Series in Computational Mathematics . Berlin, Heidelberg: Springer, 2 ed., 1996. [11] “GitHub - elpetros99/tools explaining power: Appendix for the pa-per ”Tools to Explain Neural Networks for Power System Dynam-ics” — github.com.” https://github.com/elpetros99/tools \ explaining \
+
+power.git. [Accessed 10-04-2026]. [12] S. Wang, Y. Teng, and P. Perdikaris, “Understanding and mitigating gradient pathologies in physics-informed neural networks,” 2020. [13] Z. Liu, Y. Wang, S. Vaidya, F. Ruehle, J. Halverson, M. Soljacic, T. Y. Hou, and M. Tegmark, “KAN: Kolmogorov–arnold networks,” in 
+
+International Conference on Learning Representations (ICLR) , 2025. [14] Z. Liu, Y. Wang, S. Vaidya, F. Ruehle, J. Halverson, M. Soljaˇ ci´ c, T. Y. Hou, and M. Tegmark, “Kan: Kolmogorov-arnold networks,” in The Thirteenth International Conference on Learning Representations , 2025. [15] L. Ziyin, T. Hartwig, and M. Ueda, “Neural networks fail to learn periodic functions and how to fix it,” in Advances in Neural Information Processing Systems (H. Larochelle, M. Ranzato, R. Hadsell, M. Balcan, and H. Lin, eds.), vol. 33, pp. 1583–1594, Curran Associates, Inc., 2020. [16] S. Wang, X. Yu, and P. Perdikaris, “When and why PINNs fail to train: A neural tangent kernel perspective,” Journal of Computational Physics ,vol. 449, p. 110768, 2022. [17] N. Vyas, D. Morwani, R. Zhao, M. Kwun, I. Shapira, D. Brandfonbrener, L. Janson, and S. Kakade, “Soap: Improving and stabilizing shampoo using adam,” 2025. [18] D. P. Kingma and J. Ba, “Adam: A method for stochastic optimization,” in 3rd International Conference on Learning Representations (ICLR) ,2015.
