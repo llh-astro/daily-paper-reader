@@ -1,58 +1,108 @@
-<div class="dpr-home-notice-card">
-  <h3 class="dpr-home-notice-title">🚀 Start Here</h3>
-  <ul class="dpr-home-notice-list">
-    <li><a href="#/tutorial/README">使用教程</a></li>
-  </ul>
+<div class="dpr-home-notice-card dpr-home-panel">
+  <div class="dpr-home-notice-header dpr-home-panel-header">
+    <h3 class="dpr-home-notice-title">公告与更新</h3>
+    <a class="dpr-home-notice-tutorial" href="#/tutorial/README">使用教程 <span aria-hidden="true">›</span></a>
+  </div>
+  <div class="dpr-home-notice-entry">
+    <time class="dpr-home-notice-date" datetime="2026-07-20">07.20</time>
+    <div>
+      <strong class="dpr-home-notice-entry-title">反馈功能上线</strong>
+      <span class="dpr-home-notice-entry-summary">新增反馈功能，欢迎大家踊跃反馈各种建议，我们会第一时间查看并协调处理。</span>
+    </div>
+  </div>
+  <div class="dpr-home-notice-entry">
+    <time class="dpr-home-notice-date" datetime="2026-07-19">07.19</time>
+    <div>
+      <strong class="dpr-home-notice-entry-title">首页新增社区统计</strong>
+      <span class="dpr-home-notice-entry-summary">现在可以看到今天看论文的人数和项目加入人数。</span>
+    </div>
+  </div>
+  <div class="dpr-home-site-stats" data-dpr-site-stats hidden aria-live="polite">
+    <span>今天有 <strong class="dpr-home-site-stat-value" data-dpr-daily-readers>--</strong> 人在看论文</span>
+    <span class="dpr-home-site-stat-separator" aria-hidden="true">·</span>
+    <span>昨天有 <strong class="dpr-home-site-stat-value" data-dpr-yesterday-readers>--</strong> 人在看论文</span>
+    <span class="dpr-home-site-stat-separator" aria-hidden="true">·</span>
+    <span>已有 <strong class="dpr-home-site-stat-value" data-dpr-fork-count>--</strong> 人加入 Daily Paper Reader</span>
+    <span class="dpr-home-history">
+      <button type="button" class="dpr-home-history-trigger" data-dpr-history-trigger aria-label="查看最近 14 天阅读趋势"><span aria-hidden="true">🔍</span></button>
+      <span class="dpr-home-history-popover" data-dpr-history-popover role="tooltip">
+        <span class="dpr-home-history-header">近 14 天阅读趋势</span>
+        <span class="dpr-home-history-meta">
+          <span data-dpr-history-range>--</span>
+          <span>峰值 <strong data-dpr-history-peak>--</strong></span>
+        </span>
+        <span class="dpr-home-history-chart" data-dpr-history-chart></span>
+      </span>
+    </span>
+  </div>
 </div>
 
-## 每次日报
-- 最新运行日期：2026-08-09
-- 运行时间：2026-08-09 21:02:48 UTC
-- 运行状态：成功
-- 本次总论文数：9
-- 精读区：4
-- 速读区：5
+<div class="dpr-home-dashboard-grid">
+<section class="dpr-home-dashboard-card dpr-home-report-card">
+  <div class="dpr-home-dashboard-header">
+    <div>
+      <span class="dpr-home-dashboard-kicker">2026-07-18 ~ 2026-08-16</span>
+      <h3 class="dpr-home-dashboard-title">今日汇总</h3>
+    </div>
+    <strong class="dpr-home-dashboard-count">共 40 篇</strong>
+  </div>
+  <dl class="dpr-home-dashboard-stats">
+    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>29</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>11</dd></div>
+  </dl>
+  <p class="dpr-home-dashboard-body">最近更新：2026-08-16 15:54:51 UTC<br>状态：成功</p>
+</section>
+<section class="dpr-home-dashboard-card dpr-home-brief-card">
+  <div class="dpr-home-dashboard-header">
+    <div>
+      <span class="dpr-home-dashboard-kicker">合并后生成</span>
+      <h3 class="dpr-home-dashboard-title">今日简报</h3>
+    </div>
+    <strong class="dpr-home-dashboard-count">AI</strong>
+  </div>
+  <div class="dpr-home-dashboard-body">
+<p>过去一个月精读29篇、速读11篇，重点聚焦磁纳米盘超混沌与自适应谱学习架构。</p>
+<p>最值得看：磁纳米盘铁磁共振驱动下的超混沌行为（10分），以及模糊谱区域分解的Koopman表示学习（9分）。</p>
+<p>建议从这两篇高分开山之作切入，再结合机器学习预测散射与储层计算等速读文章扩展视野。</p>
+  </div>
+</section>
+<section class="dpr-home-dashboard-card dpr-home-deep-card">
+  <div class="dpr-home-dashboard-header">
+    <div>
+      <span class="dpr-home-dashboard-kicker">今日累计</span>
+      <h3 class="dpr-home-dashboard-title">精读推荐</h3>
+    </div>
+    <strong class="dpr-home-dashboard-count">29 篇</strong>
+  </div>
+  <div class="dpr-home-dashboard-body">
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Hyperchaos in a Magnetic Nanodisk Driven by Ferromagnetic Resonance">Hyperchaos in a Magnetic Nanodisk Driven by Ferromagnetic Resonance</span></li><li><span class="dpr-home-dashboard-paper-title" title="fSRD: Fuzzy Spectral Region Decomposition -- Automated Multi Operator Koopman Representations via an Adaptive Spectral Learning Architecture">fSRD: Fuzzy Spectral Region Decomposition -- Automated Multi Operator Koopman Representations via an Adaptive Spectral Learning Architecture</span></li><li><span class="dpr-home-dashboard-paper-title" title="Attractor Geometry Determines the Identifiability Limits of System Discovery">Attractor Geometry Determines the Identifiability Limits of System Discovery</span></li></ul>
+  </div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>29</strong></span></div>
+</section>
+<section class="dpr-home-dashboard-card dpr-home-skim-card">
+  <div class="dpr-home-dashboard-header">
+    <div>
+      <span class="dpr-home-dashboard-kicker">今日累计</span>
+      <h3 class="dpr-home-dashboard-title">速读推荐</h3>
+    </div>
+    <strong class="dpr-home-dashboard-count">11 篇</strong>
+  </div>
+  <div class="dpr-home-dashboard-body">
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Predicting the unpredictable: binary--single scattering with machine learning">Predicting the unpredictable: binary--single scattering with machine learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="Organization of computation in reservoir computing">Organization of computation in reservoir computing</span></li><li><span class="dpr-home-dashboard-paper-title" title="Physics-constrained machine learning for decoding multi-nanobubble configurations in graphene">Physics-constrained machine learning for decoding multi-nanobubble configurations in graphene</span></li></ul>
+  </div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>11</strong></span></div>
+</section>
+</div>
 
-### 今日简报（AI）
-今日精读4篇、速读5篇，聚焦系外行星观测与恒星形成；最值得关注Pollux高分辨率光谱偏振仪和金牛座分子云年轻星盘巡测。建议优先阅读精读列表中两项高分工作，后续可留意系外行星直接成像与恒星参数测量工具进展。
-- 详情：[/202608/09/README](/202608/09/README)
-
-### 精读区论文标签
-1. [Pollux: high-resolution precision spectroscopy and polarimetry for the Habitable Worlds Observatory](/202608/09/2608.00522v2-pollux-high-resolution-precision-spectroscopy-and-polarimetry-for-the-habitable-worlds-observatory)  
-   标签：评分：9.0/10、query:exoplanets
-   evidence：为系外行星大气表征与宜居性研究的高分辨率光谱偏振仪
-2. [SMA 200-400 GHz Survey for 10 faint Class II Disks in the Taurus Molecular Cloud](/202608/09/2608.05445v1-sma-200-400-ghz-survey-for-10-faint-class-ii-disks-in-the-taurus-molecular-cloud)  
-   标签：评分：9.0/10、query:exoplanets
-   evidence：对暗弱Class II原行星盘的SMA观测，测量谱指数和光深，直接关联原行星盘结构与行星形成。
-3. [Inventories of Rich Carbon-Chain Chemistry in Prestellar and Starless Cores in the Perseus Molecular Cloud](/202608/09/2608.05264v1-inventories-of-rich-carbon-chain-chemistry-in-prestellar-and-starless-cores-in-the-perseus-molecular-cloud)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：前恒星核碳链化学，原行星盘前体物质
-4. [The TASSIE Program. II: Three Close-In Companions Orbiting Sun-Like Stars](/202608/09/2608.05500v1-the-tassie-program-ii-three-close-in-companions-orbiting-sun-like-stars)  
-   标签：评分：8.0/10、query:exoplanets
-   evidence：对类太阳恒星周围近邻巨行星的地面确认与表征
-
-### 速读区论文标签
-1. [webSME: An online tool to infer stellar parameters and abundances](/202608/09/2608.00787v1-websme-an-online-tool-to-infer-stellar-parameters-and-abundances)  
-   标签：评分：6.0/10、query:exoplanets
-   evidence：提供的恒星参数与丰度推断工具可用于系外行星大气表征
-2. [The Space Coronagraph Optical Bench (SCoOB): X. Dark zone maintenance](/202608/09/2608.02962v1-the-space-coronagraph-optical-bench-scoob-x-dark-zone-maintenance)  
-   标签：评分：6.0/10、query:exoplanets
-   evidence：空间日冕仪试验台，支撑系外行星高对比度成像与暗区维护
-3. [Pixel-Level Calibration for Space-Based High Precision Astrometry Using Young's Fringes](/202608/09/2608.03356v1-pixel-level-calibration-for-space-based-high-precision-astrometry-using-youngs-fringes)  
-   标签：评分：6.0/10、query:exoplanets
-   evidence：面向类地系外行星探测的高精度天体测量像素校准技术
-4. [MarsCast: Transfer Learning of AI Weather Foundation Models to Planetary Atmospheres](/202608/09/2608.05054v1-marscast-transfer-learning-of-ai-weather-foundation-models-to-planetary-atmospheres)  
-   标签：评分：6.0/10、query:exoplanets
-   evidence：将AI天气模型迁移学习到行星大气，可应用于系外行星大气建模
-5. [Beyond Point Masses. VI. Spin-Orbit Evolution of the Centaur Binary Typhon-Echidna](/202608/09/2608.05509v1-beyond-point-masses-vi-spin-orbit-evolution-of-the-centaur-binary-typhon-echidna)  
-   标签：评分：6.0/10、query:exoplanets
-   evidence：研究双星小天体的自旋-轨道演化与非开普勒轨道进动，与行星系统轨道动力学和稳定性相关
-
-
-<div class="dpr-home-promo-card">
-  <h3 class="dpr-home-promo-title">💬 社区与支持</h3>
-  <ul class="dpr-home-promo-list">
-    <li>欢迎 Star / Fork / Issue / PR</li>
-    <li>QQ群：583867967（欢迎交流，已有：1151人）</li>
-  </ul>
+<div class="dpr-home-promo-card dpr-home-panel">
+  <div class="dpr-home-panel-header">
+    <h3 class="dpr-home-promo-title">社区与支持</h3>
+  </div>
+  <p class="dpr-home-promo-copy">欢迎通过 Star、Fork、Issue 或 PR 一起完善 Daily Paper Reader。</p>
+  <div class="dpr-home-promo-meta">
+    <span>QQ群 <strong>583867967</strong></span>
+    <span class="dpr-home-promo-separator" aria-hidden="true">·</span>
+    <span>已有 <strong>1,491</strong> 人参与交流</span>
+  </div>
 </div>

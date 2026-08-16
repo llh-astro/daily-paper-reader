@@ -1,0 +1,1749 @@
+Title: LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems
+
+URL Source: https://arxiv.org/pdf/2608.01582v1
+
+Published Time: Tue, 04 Aug 2026 02:05:13 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+Shida Liu * 1 Abhishek Gupta * 2 Sumit Sinha * 1 L. Mahadevan 3
+
+# Abstract 
+
+Symmetry is central to modern machine learn-ing and physics: invariances and equivariances improve sample efficiency, robustness, and out-of-distribution generalization, while symmetry principles guide scientific modeling. Yet for stochastic dynamical systems the relevant con-tinuous symmetries are rarely known, and sym-metry discovery for SDEs has remained essen-tially unexplored. We introduce LieStoNet , an end-to-end, template-free framework for discover-ing Lie-point symmetries of SDEs directly from spatiotemporal trajectories, without prespecify-ing symmetry groups, templates, or canonical coordinates. Building on the seminal SDE Lie-symmetry theory of Gaeta and Quintero (1999), which formalizes Lie-point SDE symmetries and their relation to Fokker-Planck symmetries, Lie-StoNet learns neural surrogates for drift and diffu-sion from increments, then learns projectable gen-erators by enforcing the SDE determining equa-tions, separately regularizing for closure under Lie brackets, adherence to the Lie algebra ax-ioms (bilinearity, antisymmetry, Jacobi), and a non-redundant independent basis. The surrogate also defines an associated Fokker-Planck equa-tion, enabling optional discovery of its Lie-point symmetries in parallel. Across multiple canonical SDEs with known analytic symmetries, LieStoNet recovers generators consistent with the ground-truth symmetry algebra, providing interpretable symmetry discovery for noisy dynamics. Code is available at this link. 
+
+> *
+
+Equal contribution 1School of Engineering and Applied Sciences (SEAS), Harvard University, Cambridge, MA, USA. 
+
+> 2
+
+Tracelink, Wilmington, MA, USA. 3SEAS, Physics and OEB, Harvard University, Cambridge, MA, USA. Correspondence to: Sumit Sinha <ssinha@g.harvard.edu >, L. Mahadevan <lma-hadev@g.harvard.edu >.
+
+Proceedings of the 43 rd International Conference on Machine Learning , Seoul, South Korea. PMLR 306, 2026. Copyright 2026 by the author(s). 
+
+# 1. Introduction 
+
+Symmetry is a foundational idea in science: it captures the notion that certain transformations of a system leave its behavior unchanged. In physics, symmetry principles have repeatedly guided the construction of successful the-ories and helped explain why diverse phenomena can be described by the same underlying laws (Gross, 1995; Gross and Wilczek, 1973). In machine learning, symmetry plays a similarly structural role. When a task is known to be insensitive to specific transformations (e.g., rotations, trans-lations, permutations), incorporating the corresponding in-variance or equivariance into models can substantially im-prove sample efficiency, robustness, and out-of-distribution generalization. This has motivated a broad line of work on symmetry-respecting architectures and learning pipelines, including group-equivariant convolutional networks (Cohen and Welling, 2016; Cohen et al., 2019), rotation/translation-equivariant attention and geometric deep learning methods (Fuchs et al., 2020; Thomas et al., 2018; Satorras et al., 2021; Kondor et al., 2018), and equivariant generative mod-els for scientific simulation (Kanwar et al., 2020; Boyda et al., 2021). More broadly, symmetry is a key ingredient in physics-guided learning for dynamical systems (Wang and Yu, 2021), and can complement approaches that learn conserved quantities or structured dynamics to enhance in-terpretability and generalization (Greydanus et al., 2019; Alet et al., 2021). Despite these advances, the most impactful symmetries are often unknown in the settings where we would most like to exploit them. Real-world data may come from partially observed systems, complex coordinate representations, or measurements that mix latent variables, so the relevant trans-formations are not obvious. This motivates symmetry dis-covery : learning the symmetry structure directly from data, rather than prescribing it by hand. Recent work has ad-vanced symmetry discovery for deterministic dynamical systems, ranging from methods that infer invariances from learned representations/predictors to approaches that explic-itly learn continuous transformations or generators, with downstream use in scientific modeling such as governing-equation and variable discovery (Benton et al., 2020; Liu and Tegmark, 2022; Yang et al., 2024a; Forestano et al., 1arXiv:2608.01582v1 [cond-mat.stat-mech] 3 Aug 2026 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+2023; Ko et al., 2024; Shaw et al., 2024; Yang et al., 2024b; Mohapatra et al., 2025). Collectively, these results position symmetry discovery as a practical route to interpretable, data-efficient learning in deterministic settings. In this paper we move to the stochastic regime. Many sys-tems of interest are inherently stochastic - due to unresolved degrees of freedom, environmental variability, or deliberate modeling of uncertainty - and stochastic differential equa-tions (SDEs) provide a standard, flexible language for such dynamics. SDEs arise broadly across machine learning and the sciences, from diffusion-based generative modeling and Langevin-type sampling to canonical stochastic mod-els in quantitative finance, molecular/biophysical dynamics, neuroscience, and climate/geophysical systems. Yet, while symmetry discovery for deterministic equations has rapidly evolved, symmetry discovery for SDEs remains essentially unexplored: to the best of our knowledge, there is no ex-isting symmetry-discovery pipeline for SDEs at all . We close this gap with LieStoNet , an end-to-end framework that learns continuous SDE symmetries directly from tra-jectory data without prespecifying the symmetry group. In particular, “symmetry” may mean preserving sample-path behavior, preserving the evolution of probability distribu-tions, or preserving derived deterministic descriptions of the system. A central derived description is the Fokker–Planck equation, which governs how the state’s probability density evolves over time. Because it is deterministic, the Fokker– Planck viewpoint is attractive for analysis and validation, but it does not automatically settle what it means to be a symmetry of the underlying stochastic dynamics. A princi-pled approach must therefore ground the learning objective in the correct stochastic definition while still leveraging the Fokker–Planck perspective when useful. 
+
+Lie-point symmetry theory for SDEs. Our approach is grounded in the Lie-point (continuous) symmetry theory for SDEs of Gaeta and Rodr´ ıguez Quintero (Gaeta and Quintero, 1999). This theory formalizes when a smooth, continuously-parameterized transformation maps an SDE to an equivalent SDE while respecting its stochastic structure, and it clari-fies how SDE symmetries relate to (yet need not coincide with) symmetries of the associated Fokker–Planck equation. While it provides the correct conceptual target, it is not it-self a data-driven discovery method. Our goal is to translate these principles into LieStoNet, a modern ML pipeline that discovers such symmetries directly from trajectory data. 
+
+Contributions. We summarize our main contributions as follows: • SDE symmetry discovery. We introduce LieStoNet, to the best of our knowledge the first end-to-end ML framework for discovering continuous (Lie-point) sym-metries of stochastic dynamical systems, addressing a gap in the symmetry-discovery literature that has largely focused on deterministic equations. • Template-free discovery pipeline. LieStoNet does not prespecify a symmetry group, canonical coordi-nates, symbolic library, or generator template. Instead, it learns symmetry structure directly from spatiotem-poral data while enforcing the stochastic symmetry conditions of Gaeta and Quintero (1999). The method is not assumption-free: it operates within the class of projectable Lie-point SDE symmetries, while broader stochastic symmetry classes, including random Lie-point symmetries, have also been studied (Gaeta and Spadaro, 2017). The neural parameterization and op-timization procedure also introduce inductive biases. We therefore use “template-free” to mean free of pre-specified symmetry templates within this projectable SDE symmetry class. • Connecting SDE and Fokker–Planck viewpoints. 
+
+By learning a neural surrogate of the underlying SDE, our framework also induces a surrogate Fokker–Planck description for probability density evolution. We show symmetry discovery is possible in this associated deter-ministic view as well; nevertheless, since the Fokker– Planck equation does not capture all subtleties of stochastic symmetry, we emphasize discovery and vali-dation at the SDE level. 
+
+Related works. Our work is most closely connected to recent machine-learning approaches that aim to discover symmetries from observations, particularly in determinis-tic settings. This includes methods that infer symmetries through invariance patterns in learned representations or predictors (Benton et al., 2020; Liu and Tegmark, 2022; Yang et al., 2024a), adversarial and generative formulations (Yang et al., 2023), explicit generator-style learning of con-tinuous symmetries (Forestano et al., 2023; Ko et al., 2024; Shaw et al., 2024), and data-driven Lie-point symmetry detection for deterministic continuous dynamical systems (Gabel et al., 2024). Related deterministic work has also used known Lie-point symmetries for data augmentation and equivariance in neural PDE solvers (Brandstetter et al., 2022). Other recent approaches go beyond restricted trans-formation classes (Shaw et al., 2024; Hu et al., 2025; Shaw et al., 2025). There is also growing interest in discovering discrete symmetry groups (Calvo-Barl´ es et al., 2024; 2025) and in identifying local or approximate symmetries in high-dimensional systems (Bhat et al., 2025). Finally, symmetry has been used as a structural prior for downstream scientific modeling tasks, including governing-equation and variable discovery as well as scientific representation learning (Yang et al., 2024b; Mohapatra et al., 2025; Wang et al., 2020). 2LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems Paper Generator type Lie algebra? IIC? Dynamics type                                                                                      
+
+> Ko et al. (Ko et al., 2024) VF ■M□□□STO □DET ■
+> Forestano et al. (Forestano et al., 2023) VF □M■■□STO □DET ■
+> LieGAN (Yang et al., 2023) VF □M■■□STO □DET ■
+> Augerino (Benton et al., 2020) VF □M■□□STO □DET ■
+> LaLiGAN (Yang et al., 2024a) VF □M■■□STO □DET ■
+> Shaw et al. (Shaw et al., 2024) VF ■M□□□STO □DET ■
+> LieNLSD (Hu et al., 2025) VF ■M□□■STO □DET ■
+> LieStoNet (Ours) VF ■M□■■STO ■DET □
+> Table 1. Comparison with related symmetry discovery works. ■denotes yes and □denotes no. “VF” = vector-field generator; “M” = matrix/linear parameterization. “STO” = stochastic; “DET” = deterministic. Columns indicate whether methods explicitly use Lie-algebra structure and an infinitesimal invariance condition (IIC). VF parameterizations can represent nonlinear, state-dependent symmetry transformations, whereas M parameterizations are typically limited to linear/affine actions. Lie-algebra regularization enforces coherent composition/closure among generators, stabilizes training, and promotes recovery of a complete basis spanning the symmetry space rather than a bag of unrelated invariances. IIC constraints provide a principled local criterion that can be enforced densely and differentiably, yielding more reliable and data-efficient symmetry learning than finite, sample-based checks alone.
+
+# 2. Mathematical Preliminaries 
+
+In this section, we briefly review the mathematical prelimi-naries; see Appendix A for details. 
+
+2.1. Stochastic Differential Equations and Lie Algebraic Symmetries 
+
+We use the Itˆ o convention to model stochastic dynamics. An Itˆ o stochastic differential equation describes the evolution of a state xt through two components: a drift term f , which captures the deterministic tendency of the dynamics, and a diffusion term σ, which captures random fluctuations driven by a Wiener process. In this work, symmetries of such systems are understood as transformations of time and state variables that preserve the stochastic model. Because SDE sample paths are random, this preservation is interpreted distributionally: a symmetry maps the process to another process with equivalent induced stochastic dynamics in the transformed coordinates. To describe continuous families of such transformations, we work infinitesimally. A smooth one-parameter transformation has an infinitesimal generator, written schematically as a vector field X = ( τ, ξ ), whose components describe the first-order changes in time and state. The full finite transformation can be recovered by integrating this vector field, and Itˆ o’s formula determines how the drift and diffusion coefficients transform under the resulting change of variables. The infinitesimal symmetry generators naturally form a Lie algebra. A Lie algebra is a vector space equipped with a bi-linear bracket operation that records how infinitesimal trans-formations fail to commute; the bracket is antisymmetric and satisfies the Jacobi identity. For vector-field generators, this bracket is the usual commutator [X, Y ] = XY − Y X ,which measures the difference between applying two in-finitesimal transformations in opposite orders. The set of SDE symmetry generators is closed under linear combina-tions and under this bracket, so learning several generators amounts to learning a symmetry subspace together with its composition structure. For example, the span of the trans-lation generator ∂x and the scaling generator x∂ x is closed because their bracket is again a generator in the same span, namely [x∂ x, ∂ x] = −∂x. In what follows, our symme-try generators are represented as vector fields, and the Lie bracket provides the natural notion of closure under compo-sition; the resulting Lie algebra is the main object we aim to discover and evaluate. 
+
+2.2. Determining Equations for Projectable Generators 
+
+For clarity we present the one-dimensional setting (higher dimensions similar), however the theory and our implemen-tations extend to high-dimensional examples as well. A
+
+projectable generator is a Lie-point symmetry generator whose time component depends only on time, not on the state. We therefore restrict symmetry generators to the form 
+
+X = τ (t) ∂t + ξ(t, x ) ∂x. (1) This excludes state-dependent time reparameterizations while retaining the continuous symmetries considered in this work. In deterministic ODE/PDE symmetry theory, a standard route to validating X is the infinitesimal invariance con-dition (IIC): invariance under the generator’s flow implies local differential constraints on (τ, ξ ) (Olver, 1993). In the SDE setting, the analogous IIC must account for both drift and diffusion and the stochastic structure, yielding the SDE determining equations below. 
+
+dXt = f (t, X t) d t + σ(t, X t) d Wt. (2) 
+
+Theorem 2.1 (SDE determining equations for projectable Lie-point symmetries (Gaeta and Quintero, 1999)) . Con-sider the Itˆ o SDE (2) and a projectable generator X as in 
+
+(1) . Then X generates a (Lie-point) symmetry of (2) if and 
+
+3LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+only if (τ, ξ ) satisfy, for all (t, x ),
+
+ξt + f ξ x − ξf x − ∂t(f τ ) + 12 σ2ξxx = 0 ,σξ x − ξσ x − τ σ t − 12 στ t = 0 .
+
+Here subscripts denote partial derivatives (e.g., ξt = ∂tξ,
+
+ξxx = ∂xx ξ), and ∂t(f τ ) = ftτ + f τ t.
+
+We compute using these determining equations, the full sym-metry Lie-algebras for four different SDEs in appendices J, K, L, M. 
+
+2.3. Fokker–Planck Symmetries Associated FP equation. The SDE (2) induces a deter-ministic evolution equation for the one-point density u(t, x )
+
+of xt, namely the (forward) Fokker–Planck equation 
+
+ut = −∂x
+
+ f (t, x ) u + 12 ∂xx 
+
+ σ2(t, x )u. (3) Because (3) is deterministic and linear in u, it admits a well-developed Lie-point symmetry theory. 
+
+FP symmetry generators. A general Lie-point generator acting on (t, x, u ) has the form 
+
+Y = τ (t, x, u )∂t + ξ(t, x, u )∂x + ϕ(t, x, u )∂u. (4) One can prove that the linearity of FP implies that, the u-component of the generator must be affine in u: ϕ(t, x, u ) = 
+
+α(t, x )+ β(t, x ) u (the α-part corresponds to linear superpo-sition) (see (Gaeta and Quintero, 1999)). The FP analogue of the IIC yields a system of determining equations for 
+
+(τ, ξ, α, β ).
+
+Theorem 2.2 (FP determining equations for projectable Lie– point symmetries (Gaeta and Quintero, 1999)) . Consider the (one-dimensional) Fokker–Planck equation associated with the Itˆ o SDE (2) , written in the linear form 
+
+ut + A(t, x )uxx + B(t, x )ux + C(t, x )u = 0 , (5) 
+
+where, for (3) ,
+
+A(t, x ) = − 12 σ2(t, x ), B (t, x ) = f (t, x ) − ∂x
+
+ σ2(t, x ),C(t, x ) = ∂xf (t, x ) − 12 ∂xx 
+
+ σ2(t, x ).
+
+Let Y be a projectable Lie-point generator acting on (t, x, u )
+
+with u-component affine in u:
+
+Y = τ (t)∂t + ξ(t, x )∂x +  α(t, x ) + β(t, x )u∂u. (6) 
+
+Then Y is a Lie-point symmetry of (5) if and only if: 1. α(t, x ) is any (fixed) solution of (5) (the linear superpo-sition symmetry); and 2. (τ, ξ, β ) satisfy the determining equations 
+
+∂t
+
+ τ A  + ξ∂ xA − 2A∂ xξ = 0 ,∂t
+
+ τ B  − ∂tξ + B ∂ xξ − ξ∂ xB + 2 A∂ xβ − A∂ xx ξ = 0 ,∂t
+
+ τ C  + ∂tβ + A∂ xx β + B∂ xβ + ξ∂ xC = 0 .
+
+This theorem supplies an infinite family of symmetries: 
+
+α(t, x )∂u for any solution α of the FP-equation. These are considered as trivial symmetries and are often quotiented-out when defining the Lie algebra gF P of Fokker-Planck symmetries. We present more details in the Appendix D. The analytic symmetry algebra generators for the FP equa-tion associated with the Brownian motion dx t = σ0dW t are presented in appendix N. 
+
+SDE symmetries as a nested subalgebra of FP symme-tries. Additionally, SDE symmetries can be extended to FP symmetries which induces an injection of Lie algebras 
+
+gIto ,→ gF P thus allowing us to think of SDE symmetries as a Lie-subalgebra of FP-symmetries. We provide more details along with a proof in Appendix E. 
+
+# 3. Symmetry Discovery Pipeline 
+
+On top of the above mathematical preliminaries, we present 
+
+LieStoNet , an end-to-end pipeline for discovering a basis of infinitesimal generators that spans the Lie algebra of Lie-point symmetries of an unknown Itˆ o SDE. We assume access only to discrete samples of trajectories (spatiotempo-ral data). In our experiments, these samples are produced by simulating analytic SDEs, after which we discard the governing equations and treat the data as observational data. 
+
+Fokker–Planck (FP) symmetries are deterministic , so we only showcase FP-route symmetry discovery in Example 1 as a brief companion result, and otherwise keep the focus on stochastic (SDE-level) symmetry discovery to avoid ex-panding the scope. Ex. Analytic Equations 1 dx t = 1 dW t
+
+2 dx t = xt dt + 1 dW t
+
+3 dx t = yt dt, dy t = −1 · yt dt + √2dW 
+
+4 dx t = (1 /x )dt + dW 1, dy t = dt + dW 2 
+
+> Table 2. Analytic equations for each example. The analytic ground-truth generators are derived in the appendices.
+
+3.1. Stage 1: Neural SDE Surrogate from Increments Data and surrogate. We observe trajectories 
+
+{x(k)(tn)}Kk=1 on a grid t0 < t1 < · · · < tN with 4LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems  
+
+> Figure 1. Pipeline for LieStoNet
+
+∆t = tn+1 − tn, and define increments 
+
+∆x(k) 
+
+> n
+
+:= x(k)(tn+1 ) − x(k)(tn).
+
+We fit a differentiable surrogate SDE 
+
+dxt = fθ (t, x t) d t + σθ (t, x t) d Wt, (7) where fθ and σθ > 0 are parameterized by neural networks (details in the appendix P.0.1). The role of this surrogate is to provide smooth coefficient functions so that all derivatives required by the symmetry constraints in Theorem 2.1 and Appendix C can be computed via autodiff. 
+
+Increment likelihood (local MLE). Euler–Maruyama motivates the conditional approximation 
+
+∆x | (tn, x n) ≈ N  fθ (tn, x n)∆ t, σ 2 
+
+> θ
+
+(tn, x n)∆ t,
+
+leading to the per-sample negative log-likelihood (up to an additive constant) 
+
+ℓθ =
+
+ ∆x − fθ ∆t2
+
+2 σ2 
+
+> θ
+
+∆t + 12 log  σ2 
+
+> θ
+
+∆t. (8) We minimize LSDE (θ) = E[ℓθ ] + λreg ∥θ∥2 and then freeze 
+
+θ. In the remainder we write f := fθ and σ := σθ .
+
+3.2. Stage 2: Generator Parameterization Projectable generators. We learn m projectable Lie-point generators of the form in Eq. (9) 
+
+Xi = τi(t) ∂t + ξi(t, x ) ∂x, i = 1 , . . . , m, (9) where τi and ξi are represented by multi-head MLPs produc-ing (τ1, . . . , τ m) and (ξ1, . . . , ξ m). This enforces ∂xτi ≡ 0
+
+by construction while allowing nonlinear, state-dependent symmetries through ξi(t, x ).
+
+Training points. After fitting and freezing the Stage-1 surrogate (fθ , σ θ ), we generate a point cloud Ω for Stage-2 by simulating trajectories from the learned surrogate SDE and collecting the resulting space-time states (tn, x n). All losses below are then computed as Monte Carlo averages over samples from Ω (and, when needed, over adjacent trajectory-time pairs). 
+
+3.3. Learning Objectives 
+
+LieStoNet trains {Xi}mi=1 using two families of losses. We first define SDE-validity losses that enforce Lie-point sym-metry constraints for the surrogate SDE, then define Lie-algebra structure losses that regularize the learned gener-ators to form a finite-dimensional Lie algebra under the Lie bracket. See Appendix C for detailed mathematical formulations. 
+
+Lie-algebra structural losses 
+
+• L1 (Lie-bracket closure + constancy, fixed). Encour-ages [Xi, X j ] to lie in span {Xk} (via projection) and the resulting structure coefficients ckij to be approxi-mately constant over (t, x ).• L2 (Jacobi identity). Penalizes Jacobi violations so nested commutators compose consistently, i.e., the learned bracket behaves as a Lie bracket. 5LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems Algorithm of LieStoNet Input: Trajectories / spatiotemporal samples D; generator-count schedule m = 1 , 2, ... 
+
+Output: Symmetry Lie-algebra dimension m, generators {Xk }Kk=1 , diagnostics 
+
+Surrogate Learning Train a differentiable surrogates fθ , σθ on D.
+
+Generator Learning (fixed m) Parameterize Xi for i = 1 , ..., m . Optimize the composite objective: P7 
+
+> i=1
+
+wiLi.
+
+Dimension Selection Increase m and repeat generator learning; choose ˆm at the first minimum of the closure loss 
+
+L1(m) within the dimension bound. 
+
+Report For the discovered dimension m = ˆ m, compute span alignment with principal angles against analytic ground-truth generators (when available), evaluate/plot after-push residuals, and release 
+
+{Xi}.
+
+Table 3. Overview of LieStoNet . The method learns vector-field generators by enforcing infinitesimal invariance and Lie-algebra closure constraints using learned drift and diffusion neural surrogates. 
+
+(a) Ex1 (b) Ex2 (c) Ex3 (d) Ex4 
+
+Figure 2. Post-training Lie bracket closure loss L1 vs. number of generators m across four experiments. Colors denote independent runs with identical settings (different random seeds), showing the minimum is consistently attained at the ground-truth m rather than a one-off. 
+
+• L3 (Skew-symmetry). Enforces antisymmetry of the bracket: swapping generator order flips the commuta-tor sign. • L4 (Bilinearity). Enforces linearity of the bracket in each argument so it distributes correctly over linear combinations. • L5 (Functional independence). Penalizes near-linear dependence of the learned fields over the domain to avoid redundant generators and ensure a truly m-dimensional span. 
+
+SDE-validity losses 
+
+• L6 (SDE determining-equation loss). Enforces the Itˆ o symmetry determining conditions (Theorem 2.1), making each learned generator compatible with the SDE drift and diffusion and thus a valid infinitesimal SDE symmetry. • L7 (Prolonged pushforward residual; SDE-only, 
+
+τ /ξ ). Adds a finite-ε check by flowing (t, x ) along the generator and comparing the pushed-forward surrogate coefficients to the surrogate coefficients evaluated at the pushed point, providing nonlocal validation beyond the infinitesimal conditions. 
+
+FP losses (When learning FP symmetries, we replace the SDE-validity losses with FP-specific losses while keeping the same algebraic losses.) • L8 (Fokker–Planck determining-equation loss). En-forces Lie-point determining conditions for the in-duced Fokker–Planck PDE using generators Xi =
+
+τi(t)∂t + ξi(t, x )∂x + βi(t, x ) u ∂ u, by minimizing the batch-averaged magnitude of the three FP determining-equation (2.2) residuals so each generator is a valid infinitesimal FP symmetry. • L9 (Fokker–Planck after-flow / pushforward-on-u
+
+loss). Adds a finite-ε check by flowing (t, x, u ) along the prolonged generator (including ˙u = βi(t, x )u) and penalizing disagreement between the flowed value uε
+
+and the FP surrogate evaluated at the flowed point 
+
+ˆu(tε, x ε), i.e., approximately mapping FP solutions to FP solutions. 
+
+Total objective. Let w = ( w1, . . . , w 7) denote nonnega-tive weights. We train generator parameters ψ by minimiz-ing 
+
+Lgen (ψ) = 
+
+> 7
+
+X
+
+> j=1
+
+wj Lj + wwd ∥ψ∥2 (10) where wwd represents the weight on weight decay of the generator parameters. Note that for the FP symmetry case, 
+
+L6, L 7 are replaced by L8, L 9. See Appendix P for training details. 6LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+3.4. Determining the Lie algebra Dimension m
+
+In practice, we follow the above symmetry generator train-ing while sweeping through different candidates for the number of learned generators ( m = 1 , 2, . . . ) and record the post-training Lie bracket closure loss ( L1). The value of m
+
+which minimizes L1 is selected as the recovered dimension of the symmetry Lie algebra. This sweep is finite in the SDE settings considered here because the admissible symmetry search space is a priori bounded: scalar Itˆ o SDEs admit Lie algebras of dimen-sion at most 3, while n-dimensional systems with full-rank diffusion have maximal dimension n + 2 (Kozlov, 2010a; 2011; 2010b). In contrast, deterministic differential equa-tions may have arbitrarily large or infinite-dimensional sym-metry algebras, with much larger finite bounds when they exist, e.g., n2 + 4 n + 3 for certain second-order ODE sys-tems (Gonz´ alez-L´ opez, 1988). Thus the Itˆ o structure, dif-fusion determining equations, and noise irregularity make LieStoNet’s dimension sweep a finite search over a theoreti-cally justified range: one sweeps admissible m and selects the minimizer of the post-training closure loss L1. For gen-uinely high-dimensional systems, LieStoNet can also be applied after deriving a reduced effective SDE, e.g., via projection or Mori–Zwanzig-type coarse-graining. 
+
+# 4. Experiments: Evaluation Protocol 
+
+Element-wise comparison of learned symmetries is ill-posed because infinitely many bases can span the same Lie alge-bra; the basis-invariant object is therefore the span of the generators. 
+
+4.1. Span Alignment via Principal Angles (basis-invariant) 
+
+Concretely, we evaluate each set of generators over a shared 
+
+(t, x ) region and view them as vectors in a common feature space; this yields a learned subspace and a ground-truth subspace. We then quantify how well these subspaces align using principal angles , which measure the smallest angular discrepancies between two subspaces: angles near 0◦ indi-cate that the learned generators span (up to basis change) the same symmetry directions as the analytic ones, while larger angles indicate missing or spurious directions. This metric is (i) basis-invariant, (ii) global over the evaluation region, and (iii) useful for diagnosing dimension mismatch (extra generators typically introduce directions that increase the worst-case misalignment) (see Appendix B). 
+
+4.2. Results 
+
+As shown in Figure 2, the post-training closure objective 
+
+L1 consistently attains its minimum at the analytic Lie-      
+
+> (a) Ex1
+> (b) Ex2
+> (c) Ex3
+> (d) Ex4
+> Figure 3. Distribution of combination-wise maximum principal angles. Number of learned generators ( m) vs. principal angles. The blue boxes denote the interquartile range; the orange horizontal lines inside the box denote the median; the green up triangles and the blue down triangles denote the maximum and minimum of maximum principal angles, respectively; the orange dots denote the mean.
+
+7LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+algebra dimension, so LieStoNet recovers the symmetry dimension without receiving it as input. We then compare learned and analytic generator spans using principal angles. For m ≤ 3, we compare the learned m-dimensional span with each analytic m-generator subspace; for m > 3, we compare each learned 3-generator subspace with the full analytic 3-dimensional span. Figure 3 reports the resulting maximum-angle distributions. Since L1 selects the correct dimension, the principal angles at that dimension mainly reflect surrogate and optimization accuracy. The smallest maximum angles occur at the selected dimension, indicating recovery of the symmetry-algebra span rather than spurious low-residual generators. Tables 4 and 5 report the selected-dimension SDE and Fokker–Planck angles. Ex. Ang 1 Ang 2 Ang 3 1 6.261 ◦ 2.487 ◦ 2.313 ◦
+
+2 19 .370 ◦ 11 .051 ◦ 0.571 ◦
+
+3 7.643 ◦ 1.329 ◦ 0.276 ◦
+
+4 14 .292 ◦ 6.241 ◦ 2.505 ◦ 
+
+> Table 4. Principal angles of SDE symmetry for all examples at the ground-truth dimension.
+
+Ang 1 Ang 2 Ang 3 Ang 4 Ang 5 Ang 6 
+
+8.417 ◦ 7.424 ◦ 1.829 ◦ 1.091 ◦ 0.752 ◦ 0.303 ◦ 
+
+> Table 5. Principal angles of Fokker-Planck equation symmetry for example 1 at the ground-truth dimension.
+
+In Appendix F, we additionally verify that the learned SDE generators embed into the learned Fokker–Planck generator span when both are projected to the common (τ, ξ )-space. 
+
+Higher-dimensional symmetry algebra. We test recov-ery of larger algebras on the ten-dimensional Brownian SDE 
+
+dXit = d W it , i = 1 , . . . , 10 ,
+
+a high-dimensional analogue of Example 1 with a12-dimensional projectable symmetry algebra. Its generators mirror Appendix J, with translations 
+
+∂i and scaling 2t∂ t + P 
+
+> i
+
+xi∂i. LieStoNet recov-ers a 12-dimensional algebra with principal angles 
+
+0.73 ◦, 0.79 ◦, 0.82 ◦, 0.93 ◦, 0.98 ◦, 1.14 ◦, 1.17 ◦, 1.38 ◦,
+
+1.63 ◦, 2.08 ◦, 10 .21 ◦, 16 .55 ◦, supporting extension beyond the low-dimensional 3-generator benchmarks. 
+
+Surrogate sensitivity and computational overhead. Be-cause LieStoNet computes symmetry losses through a learned SDE surrogate, we also evaluate sensitivity to sur-rogate perturbations; recovery degrades smoothly under controlled structured and random perturbations. We addi-tionally report per-loss runtime measurements and polyno-mial scaling estimates for the algebraic and SDE-validity losses. These analyses are provided in Appendices H and I. 
+
+Ablation of generator losses. We further test whether the algebraic and SDE-validity losses are all practically useful by ablating L1, . . . , L 7 one at a time. Removing any sin-gle loss worsens the maximum principal angle between the learned and analytic symmetry-algebra spans; the largest degradations occur when removing the closure loss L1 or the SDE determining-equation loss L6. Removing the finite-step after-push loss L7 also substantially worsens recovery, suggesting that finite-flow consistency provides useful sta-bilization beyond local infinitesimal invariance. The full ablation results, weight-sensitivity sweep, and qualitative generator plots are reported in Appendices O, Q, and G. 
+
+# 5. Additional Experiment Results 
+
+5.1. After-Push Residual (finite-ϵ symmetry check). 
+
+The defining property of an SDE symmetry is that the in-duced transformation maps the SDE dXt = f (t, X t)d t +
+
+σ(t, X t)d Wt to the same SDE form (equivalently, it pre-serves the drift–diffusion coefficients under the change of variables). To test this definition beyond the infinitesimal regime, we perform a finite-ϵ “after-push” check for each learned generator Xi = τi∂t + ξi∂x (or its 2D analogue). We first sample 500 trajectories from the analytic SDE, then push every space–time point (t, x) along the generator flow 
+
+Φϵ = exp( ϵX i) to obtain (˜ t, ˜x). If Xi is a true symmetry direction, then the pushed trajectory should still be governed by the same coefficients, so the drift and diffusion inferred from the pushed data should match the analytic drift and diffusion evaluated at (˜ t, ˜x). Operationally, we therefore fit a neural SDE surrogate on the pushed trajectories and mea-sure the residual between its learned ( ˆf , ˆσ) and the analytic 
+
+(f, σ ) on a fixed evaluation box, reported separately for drift (Dft.) and diffusion (Dfu.) in Table 6. The residuals remain small across all examples and generators for ϵ ∈ { 1, 3, 5},providing empirical evidence that the learned generators in-duce finite transformations that approximately map the SDE to itself, consistent with the definition of an SDE symmetry. 
+
+5.2. Real-World Stochastic Data: High-Frequency BTC/USDT 
+
+To test whether LieStoNet transfers beyond synthetic SDEs with known analytic symmetries, we apply the same pipeline without architectural or algorithmic modifications to high-frequency BTC/USDT trade data from Binance. The dataset contains approximately 1.8 million ticks over 24 hours, ag-gregated to 500 ms resolution, filtered, and split into 575 overlapping sub-trajectories. Since no ground-truth sym-metry algebra is available for this empirical system, we use the same closure-based dimension-selection criterion and finite-flow validation diagnostics used in the synthetic experiments. 8LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+Ex. Gen 1 Gen 2 Gen 3 Dft. Dfu. Dft. Dfu. Dft. Dfu. 1 9.6 4.6 8.0 5.6 2.3 5.1
+
+2 1.9 2.7 1.1 6.0 5.7 4.4
+
+3 7.6 1.4 1.3 9.7 2.7 0.2
+
+4 1.9 6.2 6.41 1.0 2.5 9.2
+
+Ex. Gen 1 Gen 2 Gen 3 Dft. Dfu. Dft. Dfu. Dft. Dfu. 1 8.2 8.9 9.7 6.4 8.8 8.5
+
+2 9.1 0.6 7.3 8.8 1.0 8.4
+
+3 7.5 8.1 9.6 0.9 6.3 6.2
+
+4 0.8 8.0 7.9 8.7 9.5 8.4
+
+Ex. Gen 1 Gen 2 Gen 3 Dft. Dfu. Dft. Dfu. Dft. Dfu. 1 0.2 2.9 1.4 0.7 2.1 0.4
+
+2 3.0 0.1 0.6 2.5 1.8 2.8
+
+3 1.1 2.3 2.7 0.3 0.9 1.6
+
+4 2.4 0.8 1.9 3.0 0.0 2.6                 
+
+> Table 6. After-push residuals for ϵ= 1 ,3,5from top to bottom; units are 10 −4for ϵ= 1 and ϵ= 3 , and 10 −3for ϵ= 5 .
+
+Sweeping m = 1 , 2, 3, the first nontrivial minimum of the post-training closure loss occurs at m⋆ = 2 , with a pro-nounced increase from m = 2 to m = 3 . This suggests a stable two-dimensional learned symmetry algebra. We then validate the two learned generators using two complemen-tary tests. First, the after-push residual measures whether trajectories pushed along the learned generator flow remain consistent with the learned SDE drift and diffusion. Sec-ond, the distributional invariance test evaluates whether the standardized Euler–Maruyama residual distribution is pre-served after pushing trajectories. Both tests indicate that the learned transformations preserve the empirical stochastic dynamics substantially better than random-push controls, as shown in Tables 7 and 8.                                                                    
+
+> ϵGenerator 1 Generator 2 Dft. Dfu. Dft. Dfu. 11.4×10 −32.3×10 −71.0×10 −22.6×10 −4
+> 37.9×10 −29.9×10 −25.0×10 −21.7×10 −1
+> 51.3×10 −12.7×10 −15.0×10 −22.8×10 −1
+> Table 7. After-push residuals on BTC/USDT data. Drift and diffusion residuals are reported after pushing trajectories along each learned generator for step length ϵ. Smaller values indicate better finite-flow preservation of the learned stochastic dynamics.
+> ϵGen. 1 Gen. 2 Random control 0.05 0.008 0.027 9.7 0.10 0.027 0.111 191.6 0.20 0.091 0.827 232.0 0.30 0.324 4.65 166.0 0.50 6.41 17.6 112.0
+> Table 8. Distributional invariance on BTC/USDT data. We report ∆NLL = NLL pushed −NLL orig . The learned-generator pushes preserve the residual distribution far better than random-push controls over the tested step sizes.
+
+# 6. Conclusion 
+
+We introduced LieStoNet , an end-to-end pipeline for dis-covering projectable Lie-point symmetries of SDEs from trajectory data. LieStoNet learns a neural SDE surrogate and then learns symmetry generators by enforcing SDE determining equations, Lie-algebraic structure, indepen-dence, and finite-flow validation losses. Across analytic SDE benchmarks, it recovers the correct symmetry dimen-sion and strong span-level alignment with the ground-truth algebra. Ablations, after-push checks, BTC/USDT exper-iments, surrogate-sensitivity tests, runtime measurements, and a higher-dimensional SDE further support the proposed objectives. 
+
+Limitations and outlook. LieStoNet depends on the fi-delity and coverage of the learned drift/diffusion surrogate, though perturbation experiments suggest smooth degrada-tion under controlled surrogate errors. The method also restricts attention to projectable Lie-point generators. Scal-ing to complex high-dimensional empirical systems will require more efficient parameterizations, better surrogate calibration, and validation under partial observation and measurement noise. Future work includes extending beyond projectable symmetries and using discovered symmetries to build symmetry-constrained stochastic surrogates. 
+
+# Impact Statement 
+
+This paper presents work whose goal is to advance the field of machine learning. There are many potential societal consequences of our work, none of which we feel must be specifically highlighted here. 
+
+# References 
+
+Ferran Alet, Dylan Doblar, Allan Zhou, Josh Tenenbaum, Kenji Kawaguchi, and Chelsea Finn. Noether networks: meta-learning useful conserved quantities. Advances in Neural Information Processing Systems , 34:16384– 16397, 2021. Gregory Benton, Marc Finzi, Pavel Izmailov, and Andrew G 9LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+Wilson. Learning invariances in neural networks from training data. Advances in neural information processing systems , 33:17605–17616, 2020. Manu Bhat, Jonghyun Park, Jianke Yang, Nima Dehmamy, Robin Walters, and Rose Yu. Atlasd: Automatic local symmetry discovery. In Proceedings of the 42nd Inter-national Conference on Machine Learning , volume 267 of Proceedings of Machine Learning Research , pages 4153–4171. PMLR, 2025. Denis Boyda, Gurtej Kanwar, S´ ebastien Racani` ere, Danilo Jimenez Rezende, Michael S Albergo, Kyle Cran-mer, Daniel C Hackett, and Phiala E Shanahan. Sampling using su (n) gauge equivariant flows. Physical Review D ,103(7):074504, 2021. Johannes Brandstetter, Max Welling, and Daniel E. Wor-rall. Lie point symmetry data augmentation for neural pde solvers. In Proceedings of the 39th International Conference on Machine Learning (ICML) , volume 162 of Proceedings of Machine Learning Research , pages 2241–2256. PMLR, 2022. Pablo Calvo-Barl´ es, Sergio G Rodrigo, Eduardo S´ anchez-Burillo, and Luis Mart´ ın-Moreno. Finding discrete sym-metry groups via machine learning. Physical Review E ,110(4):045304, 2024. Pablo Calvo-Barl´ es, Sergio G. Rodrigo, and Luis Mart´ ın-Moreno. Machine learning for detection of equivariant finite symmetry groups in dynamical systems. Machine Learning: Science and Technology , 6(2):025058, 2025. doi: 10.1088/2632-2153/ade04d. Taco Cohen and Max Welling. Group equivariant convolu-tional networks. In International conference on machine learning , pages 2990–2999. PMLR, 2016. Taco S Cohen, Mario Geiger, and Maurice Weiler. A gen-eral theory of equivariant cnns on homogeneous spaces. 
+
+Advances in neural information processing systems , 32, 2019. Roy T Forestano, Konstantin T Matchev, Katia Matcheva, Alexander Roman, Eyup B Unlu, and Sarunas Verner. Deep learning symmetries and their lie groups, algebras, and subalgebras from first principles. Machine Learning: Science and Technology , 4(2):025027, 2023. Fabian Fuchs, Daniel Worrall, Volker Fischer, and Max Welling. Se (3)-transformers: 3d roto-translation equiv-ariant attention networks. Advances in neural information processing systems , 33:1970–1981, 2020. Alex Gabel, Rick Quax, and Efstratios Gavves. Data-driven lie point symmetry detection for continuous dynamical systems. Machine Learning: Science and Technology , 5 (1):015037, 2024. doi: 10.1088/2632-2153/ad2629. Giuseppe Gaeta and Niurka Rodr´ ıguez Quintero. Lie-point symmetries and stochastic differential equations. Journal of Physics A: Mathematical and General , 32(48):8485– 8505, 1999. Giuseppe Gaeta and Francesco Spadaro. Random lie-point symmetries of stochastic differential equations. Journal of Mathematical Physics , 58(5):053503, 2017. doi: 10. 1063/1.4982639. Arturo Gonz´ alez-L´ opez. Symmetries of linear systems of second-order ordinary differential equations. Journal of Mathematical Physics , 29(5):1097–1105, 1988. doi: 10.1063/1.527948. Samuel Greydanus, Misko Dzamba, and Jason Yosinski. Hamiltonian neural networks. Advances in neural infor-mation processing systems , 32, 2019. David J Gross. Symmetry in physics: Wigner’s legacy. 
+
+Physics Today , 48(12):46–50, 1995. David J Gross and Frank Wilczek. Asymptotically free gauge theories. i. Physical Review D , 8(10):3633, 1973. Lexiang Hu, Yikang Li, and Zhouchen Lin. Explicit dis-covery of nonlinear symmetries from dynamic data. In 
+
+Proceedings of the 42nd International Conference on Ma-chine Learning , volume 267 of Proceedings of Machine Learning Research , pages 24509–24534. PMLR, 2025. Gurtej Kanwar, Michael S Albergo, Denis Boyda, Kyle Cranmer, Daniel C Hackett, S´ ebastien Racaniere, Danilo Jimenez Rezende, and Phiala E Shanahan. Equiv-ariant flow-based sampling for lattice gauge theory. Phys-ical Review Letters , 125(12):121601, 2020. Gyeonghoon Ko, Hyunsu Kim, and Juho Lee. Learning infinitesimal generators of continuous symmetries from data. Advances in Neural Information Processing Sys-tems , 37:85973–86003, 2024. Risi Kondor, Zhen Lin, and Shubhendu Trivedi. Clebsch– gordan nets: a fully fourier space spherical convolutional neural network. Advances in Neural Information Process-ing Systems , 31, 2018. Roman Kozlov. The group classification of a scalar stochas-tic differential equation. Journal of Physics A: Math-ematical and Theoretical , 43(5):055202, 2010a. doi: 10.1088/1751-8113/43/5/055202. Roman Kozlov. Symmetries of systems of stochastic differ-ential equations with diffusion matrices of full rank. Jour-nal of Physics A: Mathematical and Theoretical , 43(24): 245201, 2010b. doi: 10.1088/1751-8113/43/24/245201. 10 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+Roman Kozlov. On maximal lie point symmetry groups admitted by scalar stochastic differential equations. Jour-nal of Physics A: Mathematical and Theoretical , 44(20): 205202, 2011. doi: 10.1088/1751-8113/44/20/205202. Ziming Liu and Max Tegmark. Machine learning hidden symmetries. Physical Review Letters , 128(18):180201, 2022. Jeet Mohapatra, Nima Dehmamy, Csaba Both, Subhro Das, and Tommi Jaakkola. Symmetry-driven discovery of dy-namical variables in molecular simulations. In Proceed-ings of the 42nd International Conference on Machine Learning , volume 267 of Proceedings of Machine Learn-ing Research , pages 44594–44614. PMLR, 2025. Peter J Olver. Applications of Lie groups to differential equations , volume 107. Springer Science & Business Media, 1993. Vıctor Garcia Satorras, Emiel Hoogeboom, and Max Welling. E (n) equivariant graph neural networks. In In-ternational conference on machine learning , pages 9323– 9332. PMLR, 2021. Ben Shaw, Abram Magner, and Kevin Moon. Symmetry dis-covery beyond affine transformations. Advances in Neu-ral Information Processing Systems , 37:112889–112918, 2024. Ben Shaw, Sasidhar Kunapuli, Abram Magner, and Kevin R Moon. Lie group symmetry discovery and enforcement using vector fields. arXiv preprint arXiv:2505.08219 ,2025. Nathaniel Thomas, Tess Smidt, Steven Kearnes, Lusann Yang, Li Li, Kai Kohlhoff, and Patrick Riley. Ten-sor field networks: Rotation-and translation-equivariant neural networks for 3d point clouds. arXiv preprint arXiv:1802.08219 , 2018. Rui Wang and Rose Yu. Physics-guided deep learn-ing for dynamical systems: A survey. arXiv preprint arXiv:2107.01272 , 2021. Rui Wang, Robin Walters, and Rose Yu. Incorporating symmetry into deep dynamics models for improved gen-eralization. arXiv preprint arXiv:2002.03061 , 2020. Jianke Yang, Robin Walters, Nima Dehmamy, and Rose Yu. Generative adversarial symmetry discovery. In Proceed-ings of the 40th International Conference on Machine Learning , volume 202 of Proceedings of Machine Learn-ing Research , pages 39488–39508. PMLR, 2023. Jianke Yang, Nima Dehmamy, Robin Walters, and Rose Yu. Latent space symmetry discovery. In Proceedings of the 41st International Conference on Machine Learning , vol-ume 235 of Proceedings of Machine Learning Research ,pages 56047–56070. PMLR, 2024a. Jianke Yang, Wang Rao, Nima Dehmamy, Robin Walters, and Rose Yu. Symmetry-informed governing equation discovery. Advances in Neural Information Processing Systems , 37:65297–65327, 2024b. 
+
+# A. Mathematical Preliminaries 
+
+A.1. Stochastic Differential Equations 
+
+We use the Itˆ o convention for SDEs. An n-dimensional Itˆ oSDE is written as 
+
+dxt = f (t, xt) d t + σ(t, xt) d Wt, (11) where xt ∈ Rn, f : R×Rn → Rn is the drift , σ : R×Rn →
+
+Rn×n is the diffusion , and Wt is an n-dimensional standard Wiener process capturing the random fluctuations. 
+
+A.2. Lie algebras: Definitions and Motivation 
+
+A Lie algebra is a vector space equipped with a product that captures composition of infinitesimal transformations . For-mally, it is a real vector space g whose elements X, Y, Z ∈ g
+
+admit a bilinear operation [·, ·] : g × g → g (the Lie bracket )satisfying antisymmetry [X, Y ] = −[Y, X ] and the Jacobi identity [X, [Y, Z ]] + [ Y, [Z, X ]] + [ Z, [X, Y ]] = 0 along with bilinearity in each argument. 
+
+A.3. Infinitesimal SDE Symmetry Generators as Lie Algebras 
+
+A symmetry of a dynamical system - deterministic or stochastic - is a transformation of variables that preserves the model’s behavior. Symmetries compose: applying one symmetry after another yields another symmetry, and for smooth, continuous families this structure forms (at least locally) a Lie group . Many common symmetries are pa-rameterized continuously (e.g., time shifts or state scalings), and for such families it is most convenient to work infinites-imally: what an arbitrarily small transformation does. The set of all infinitesimal symmetry directions forms a Lie al-gebra .Concretely, consider a smooth one-parameter change of variables (t, x ) 7 → (t′, x ′) = Φ ε(t, x ) with Φ0 equal to the identity and ε being the pseudo-time component (how far is the trajectory being pushed along the generator). Its infinitesimal generator is the vector field 
+
+X = τ (t, x ) ∂t + ξ(t, x ) ∂x, (12) (shorthanded as (τ, ξ )) which acts to first order as t 7 → t +
+
+ε τ (t, x ) and x 7 → x + ε ξ (t, x ). Conversely, given a vector 11 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+field τ, ξ , one can recover Φϵ = exp( ϵX ) by integrating: 
+
+ddε (t(ε), x (ε)) = ( τ (t(ε), x (ε)) , ξ (t(ε), x (ε))) 
+
+with (t(0) , x (0)) = ( t, x ).For an Itˆ o SDE, Itˆ o’s formula specifies how such a coordi-nate change transforms the drift and diffusion coefficients 
+
+(μ, σ ). We call Φε a (Lie-point) symmetry if this trans-formation maps the SDE to the same SDE. In contrast to deterministic systems—where symmetries literally map so-lution trajectories to solution trajectories - SDE paths are random, so the natural invariance notion is distributional : a symmetry preserves the law of the process, meaning it maps sample paths to sample paths whose induced stochastic dy-namics are equivalent in the transformed coordinates. Finally, symmetry generators inherit an algebraic structure. They are closed under the Lie bracket 
+
+[X, Y ] := XY − Y X, 
+
+i.e. with X = ( τX , ξ X ) and Y = ( τY , ξ Y ),
+
+[X, Y ] =  X(τY ) − Y (τX )∂t +  X(ξY ) − Y (ξX )∂x,
+
+which captures how infinitesimal symmetries compose. This closure endows the symmetry generators with the structure of a Lie algebra. Learning multiple generators {Xi} there-fore amounts to learning a symmetry subspace : any linear combination is another valid infinitesimal symmetry direc-tion, while the bracket encodes their composition structure. This Lie algebra is the chief object we aim to discover and evaluate in this work. For instance, the two-dimensional space 
+
+g = {a ∂ x + b x∂ x : a, b ∈ R}
+
+is closed under the Lie bracket, and a direct calculation using Lie bracket’s formula gives: 
+
+[x∂ x, ∂ x] · f = x∂ x∂xf − ∂x(x∂ xf ) = −∂xf
+
+So, [x∂ x, ∂ x] = −∂x which again lies inside g, showing its closure. In what follows, our symmetry generators are rep-resented as such vector fields; the Lie bracket provides the natural notion of “closure” under composition of infinitesi-mal symmetries, and the resulting Lie algebra structure is the object we aim to learn. 
+
+# B. Details of Span Alignment via Principal Angles 
+
+This appendix states the mathematical procedure used to compare the span of learned symmetry generators to the 
+
+span of analytic (ground-truth) generators. Because a sym-metry algebra is only identifiable up to an arbitrary change of basis (any invertible mixing of a valid generator set spans the same subspace), we evaluate agreement at the subspace level via principal angles. 
+
+Vectorizing generators on a common domain. Fix an evaluation domain Ω ⊂ R × Rd in the variables (t, x), and choose a finite set of points Ωeval = {(tp, xp)}Bp=1 ⊂ Ω
+
+where B is the number of evaluation points. For a learned projectable generator 
+
+Xi = τi(t) ∂t + ξi(t, x) · ∇ x, i = 1 , . . . , m, 
+
+define its vectorized representation on Ωeval by stacking its components: 
+
+vi :=  τi(tp), ξ i(tp, xp)Bp=1 ∈ RB(1+ d). (13) Collect these columns into 
+
+V = [ v1, . . . , v m] ∈ RB(1+ d)×m.
+
+Similarly, given analytic generators {Wj }rj=1 with compo-nents (˜ τj , ˜ξj ), define 
+
+wj :=  ˜τj (tp), ˜ξj (tp, xp)Bp=1 ∈ RB(1+ d),W = [ w1, . . . , w r ] ∈ RB(1+ d)×r.
+
+By construction, span( V ) and span( W ) represent the learned and ground-truth symmetry subspaces over Ωeval .
+
+Principal angles between subspaces. Let QV and QW
+
+be orthonormal bases for span( V ) and span( W ), e.g. from reduced QR factorizations. The principal angles θ1 ≤ · · · ≤ 
+
+θmin( m,r ) ∈ [0 , π/ 2] between the two subspaces are defined by 
+
+cos( θℓ) = σℓ
+
+ Q⊤ 
+
+> V
+
+QW
+
+ , ℓ = 1 , . . . , min( m, r ),
+
+where σℓ(·) denotes the ℓth singular value in descending or-der. Small principal angles indicate that the learned genera-tors span (up to basis change) the same symmetry directions as the analytic generators on Ωeval .
+
+Dimension-mismatch protocol (subset comparisons). 
+
+When the learned generator count m differs from the ana-lytic dimension r, we compute principal angles by compar-ing subspaces of equal dimension: • If m > r , we evaluate principal angles between span( VS )
+
+and span( W ) for all subsets S ⊂ { 1, . . . , m } with |S| =
+
+r, where VS denotes the submatrix of V with columns indexed by S.• If m < r , we evaluate principal angles between span( V )
+
+and span( WT ) for all subsets T ⊂ { 1, . . . , r } with |T | =
+
+m, where WT denotes the corresponding submatrix of 
+
+W .12 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+For each subset comparison, we report the full set of prin-cipal angles and often summarize alignment by the maxi-mum principal angle within that subset. This yields a basis-invariant diagnostic of how closely the learned span matches the analytic symmetry span across candidate dimensions. 
+
+# C. Loss Functions 
+
+C.1. Lie-Algebra Structure Losses (L1) Lie-bracket closure + constancy (fixed). For each pair (i, j ), we fit coefficients ckij (t, x ) such that 
+
+[Xi, X j ]( t, x ) ≈ Pmk=1 ckij (t, x ) Xk(t, x ), and penalize the projection residual: 
+
+L1 := E(t,x )∈Ω
+
+ X
+
+> 1≤i<j ≤m
+
+[Xi, X j ] −
+
+> m
+
+X
+
+> k=1
+
+ckij Xk
+
+> 2
+
+
+
++E(t,x )∈Ω
+
+ X
+
+> 1≤i<j ≤mm
+
+X
+
+> k=1
+
+∥∇ t,x ckij (t, x )∥2
+
+
+
+(L2) Jacobi identity loss. Using the fitted coefficients ckij ,we penalize violations of the Jacobi identity: 
+
+L2 := X 
+
+> triples (i,j,k )
+
+X
+
+> cyclic( i,j,k )
+> m
+
+X
+
+> ℓ=1
+
+cℓij cpℓk 
+
+> 2
+
+(L3) Skew-symmetry (antisymmetry) loss. We enforce 
+
+[Xi, X j ] = −[Xj , X i]:
+
+L3 := E(t,x )∈Ω
+
+ X
+
+> 1≤i<j ≤m
+
+[Xi, X j ] + [ Xj , X i] 2
+
+
+
+(L4) Bilinearity loss. Sampling a, b ∼ U [−1, 1] and in-dices (i, j, k ), we penalize violations of bilinearity: 
+
+L4 := E
+
+h
+
+[aX i + bX j , X k] − a[Xi, X k] − b[Xj , X k] 2i
+
++E
+
+h
+
+[Xk, aX i + bX j ] − a[Xk, X i] − b[Xk, X j ] 2i
+
+(L5) Functional independence loss. On Ωspan =
+
+{(tp, x p)}Pp=1 , define vi := ( τi(tp), ξ i(tp, x p)) Pp=1 ∈ R2P
+
+and V = [v1, . . . , v m] ∈ R2P ×m, with Gram matrix 
+
+G := V ⊤V . We penalize near-singularity via 
+
+L5 := − log det( G + ϵI ),
+
+with ϵ > 0.
+
+C.2. SDE-Validity Losses (L6) SDE determining-equation loss (IIC). We enforce the determining equations in Theorem 2.1. For each genera-tor Xi and each (t, x ) ∈ Ω, define residuals 
+
+r(i)1 (t, x ) = ξt + f ξ x − ξ f x − ∂t(f τ ) + 12 σ2 ξxx ,r(i)2 (t, x ) = σ ξ x − ξ σ x − τ σ t − 12 σ τ t,
+
+where all quantities are evaluated at (t, x ), subscripts denote partial derivatives, and ∂t(f τ ) = ftτ + f τ t. We use the squared residual loss: 
+
+L6 := 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+E(t,x )∈Ω
+
+h
+
+|r(i)1 (t, x )|2 + |r(i)2 (t, x )|2 i
+
+(L7) Prolonged pushforward residual. The determining-equation loss is local. We add a finite-ε consistency loss that checks whether the learned generator approximately pushes the surrogate coefficients (f, σ ) to the surrogate coefficients evaluated at the pushed point. Fix a small ε > 0. For generator Xi, let (t, x ) 7 → (˜ t, ˜x) be the point transformation obtained by integrating 
+
+dt
+
+dε = τi(t), dx
+
+dε = ξi(t, x ).
+
+Along this flow, we propagate coefficient fields (μ, ς ) using the prolonged system in our implementation: 
+
+dς
+
+dε = ς
+
+
+
+∂xξi − 12 ∂tτi
+
+
+
+dμ
+
+dε = ∂tξi + μ ∂ xξi + 12 ς2 ∂xx ξi − μ ∂ tτi,
+
+initialized at μ(0) = f (t, x ) and ς(0) = σ(t, x ). After one 
+
+ε-step, let μpred , ς pred be the propagated coefficients, and define direct evaluations at the pushed point 
+
+μeval := f (˜ t, ˜x), ςeval := σ(˜ t, ˜x).
+
+We penalize discrepancies and include a soft barrier dis-couraging negative pushed time increments along pushed trajectories: 
+
+L7 := 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+E(μpred − μeval )2 + ( ςpred − ςeval )2
+
++ λ∆t
+
+1
+
+m
+
+> m
+
+X
+
+> i=1
+
+Esoftplus( −∆˜ t) .
+
+The expectations are over sampled trajectory points (coeffi-cient terms) and adjacent time pairs (for ∆˜ t). We integrate the above prolonged system numerically. 13 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+C.3. FP-Validity Losses (L8) Fokker-Planck Determining Equations This loss enforces the determining equations for Lie point symmetries of the 1D Fokker-Planck equation, given by ut = Au xx +
+
+Bu x + Cu , where A = − 12 σ2, B = f − (A)x, and C =
+
+fx − (A)xx . For each generator Xi = τi(t)∂t + ξi(t, x )∂x +
+
+ϕi(t, x, u )∂u, with ϕi(t, x, u ) = βi(t, x )u, the following three equations must hold: 
+
+Ri, 1 = ( ˙ τiA + τiAt) + ξiAx − 2Aξ i,x ≈ 0
+
+Ri, 2 = ( ˙ τiB + τiBt) − ( ˙ξi + Bξ i,x − ξiBx) + 2 Aβ i,x 
+
+− Aξ i,xx ≈ 0
+
+Ri, 3 = ( ˙ τiC + τiCt) + ˙βi + Aβ i,xx + Bβ i,x + ξiCx ≈ 0
+
+where ˙(·) denotes ∂t(·), and subscripts t, x, xx denote par-tial derivatives. The loss function L8 is the mean-squared (or mean-absolute) sum of these residuals over a batch of 
+
+(t, x ) points: 
+
+L8 := 1
+
+m|B| 
+
+> m
+
+X
+
+> i=1
+
+X
+
+> (t,x )∈B
+
+(R2 
+
+> i, 1
+
++ R2 
+
+> i, 2
+
++ R2
+
+> i, 3
+
+)
+
+(L9) Fokker-Planck After-Flow (Pushforward on u)
+
+This loss ensures that the learned generators approximately preserve the solution of the Fokker-Planck equation. For a given solution u(t, x ) of the FP equation, flowing (t, x, u )
+
+along the prolonged generator Xi = τi∂t + ξi∂x + βiu∂ u
+
+for a small step ε should result in another valid solution. Let 
+
+(t0, x 0, u 0) be an initial point (where u0 = ˆ u(t0, x 0) is the learned FP surrogate solution). We numerically integrate the system: 
+
+dt dα = τi(t)
+
+dx dα = ξi(t, x )
+
+du dα = βi(t, x )u
+
+from α = 0 to α = ε, yielding (tε, x ε, u ε). The loss penalizes the difference between the flowed solution uε
+
+and the learned FP surrogate evaluated at the flowed point, 
+
+ˆu(tε, x ε):
+
+L9 := 1
+
+m|B| 
+
+> m
+
+X
+
+> i=1
+
+X
+
+> (t0,x 0)∈B
+
+(ˆ u(tε, x ε) − uε)2
+
+where B is a batch of collocation points. The integration uses Heun’s method, and the residuals can be either squared (L2) or absolute (L1). 
+
+# D. Fokker–Planck Symmetries 
+
+This appendix records (i) the standard FP symmetry struc-ture used to motivate optional FP-route losses, and (ii) proofs that the relevant sets of generators form Lie alge-bras. 
+
+D.1. FP Equation Associated with an Itˆ o SDE 
+
+For an Itˆ o SDE in Rn
+
+dxi = f i(t, x ) d t + σik(t, x ) d wk,
+
+the forward FP equation for a one-point density u(x, t ) can be written as 
+
+ut + Aij (t, x )uij + Bi(t, x )ui + C(t, x )u = 0 , (14) with coefficients (one common convention) 
+
+Aij := − 12 (σσ T)ij , B i := f i − ∂j (σσ T)ij ,C := ∂if i − 12 ∂2 
+
+> ij
+
+(σσ T)ij .
+
+D.2. Projectable FP Symmetries Act Affinely in u
+
+Because the FP equation is linear in u, any Lie-point sym-metry must act affinely in u:
+
+X = τ (t)∂t + ξi(t, x )∂xi + ( α(t, x ) + β(t, x )u)∂u.
+
+The “ α-part” corresponds to the linear superposition sym-metry: Xα = α∂ u for any solution α of the FP equation. 
+
+D.3. Lie Algebra Structure Proofs Theorem D.1 (FP symmetries form a Lie algebra) . Let gFP 
+
+denote the set of Lie-point symmetry generators of the FP equation. Then gFP is a Lie algebra under the commutator 
+
+[X1, X 2] = X1X2 − X2X1.Proof. The infinitesimal invariance condition is linear in X,so gFP is a vector space. Closure under brackets follows from the standard fact that prolongation commutes with Lie brackets: pr (2) [X1, X 2] = [pr (2) X1, pr (2) X2], together with the invariance identity pr (2) X(∆ FP ) = λX ∆FP for some scalar function λX on jet space. Applying the commu-tator to ∆FP yields pr (2) [X1, X 2](∆ FP ) = λ[X1,X 2]∆FP ,hence [X1, X 2] ∈ gFP .
+
+# E. SDE symmetries as a Lie-subalgebra of FP Symmetries 
+
+Classical results relate SDE symmetries to a subalgebra of FP symmetries; in particular, the projectable SDE symmetry algebra gIto embeds into FP symmetries by adding an ap-propriate vertical component in u, and one obtains a nested structure gIto ⊂ gFP . We now prove this containment more formally. 14 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+E.1. Quotienting Out the Superposition Ideal and the SDE–FP Isomorphism 
+
+Let gIto be the Lie algebra of projectable Itˆ o symmetry generators 
+
+X = τ (t) ∂t + ξi(t, x ) ∂xi ,
+
+whose coefficients satisfy the Itˆ o determining equations (3.4) 
+
+in (Gaeta and Quintero, 1999). Let gFP be the Lie algebra of projectable Lie point symme-try generators of the associated FP equation, and let 
+
+I := Xα = α(t, x ) ∂u : α solves the FP equation .
+
+By [Thm. 3](Gaeta and Quintero, 1999), these Xα are pre-cisely the “trivial” symmetries coming from linear superpo-sition, and the general projectable FP symmetry has 
+
+ϕ = α + βu. 
+
+In particular, I is an (infinite-dimensional) Lie ideal in gFP ,so the quotient 
+
+gess FP := gFP /I
+
+is a Lie algebra. Define the SDE-induced essential symmetry subalgebra as the image in the quotient of the ansatz 
+
+τ ∂ t + ξi∂xi − (div ξ) u ∂ u,
+
+which is exactly the “probabilistically compatible” form singled out in (Gaeta and Quintero, 1999) (see Remark 11 and equation (5.10)). Concretely, 
+
+gess SDE := 
+
+nτ ∂ t + ξi∂xi − (div ξ) u ∂ u
+
+ ∈ gess FP :(τ, ξ ) satisfy (3.4) 
+
+o
+
+.
+
+Theorem E.1 (Lie-algebra isomorphism modulo I). Define 
+
+Φ : gIto → gess FP as: 
+
+Φ τ ∂ t + ξi∂xi
+
+ := τ ∂ t + ξi∂xi − (div ξ) u ∂ u
+
+
+
+Then Φ is a Lie-algebra isomorphism 
+
+gIto 
+
+> ∼=
+
+−−→ gess SDE ⊆ gess FP .
+
+Proof (1) Well-defined. Let X = τ ∂ t + ξi∂xi ∈ gIto . By [Thm. 4](Gaeta and Quintero, 1999), X extends to an FP symmetry 
+
+X + ϕ ∂ u, ϕ = α + βu, 
+
+with β = − div ξ + c0. Imposing preservation of normal-ization, [Appendix B](Gaeta and Quintero, 1999) forces 
+
+c0 = 0 and β = − div ξ. Thus 
+
+τ ∂ t + ξi∂xi − (div ξ) u∂ u
+
+is an FP symmetry, and its class modulo I defines Φ( X) ∈
+
+gess FP .
+
+(2) Linearity. Immediate from linearity of the divergence operator and of the quotient map. 
+
+(3) Homomorphism property. Let 
+
+Xa = τa∂t + ξia∂xi , Xb = τb∂t + ξib∂xi ,
+
+and set 
+
+Ya := Xa − (div ξa)u∂ u, Yb := Xb − (div ξb)u∂ u.
+
+A direct computation of commutators on (t, x, u ) yields 
+
+[Ya, Y b] = [ Xa, X b] −  Xa(div ξb) − Xb(div ξa)u∂ u.
+
+Writing 
+
+[Xa, X b] = τc∂t + ξic∂xi ,
+
+one has 
+
+div ξc = Xa(div ξb) − Xb(div ξa),
+
+and therefore 
+
+[Ya, Y b] = τc∂t + ξic∂xi − (div ξc)u∂ u.
+
+Passing to classes in the quotient gives 
+
+[Φ( Xa), Φ( Xb)] = Φ([ Xa, X b]) ,
+
+so Φ preserves Lie brackets. 
+
+(4) Injective. If Φ( X) = 0 , then the representative 
+
+Y = τ ∂ t + ξi∂xi − (div ξ)u∂ u
+
+lies in I. But every element of I has vanishing ∂t and ∂xi
+
+components, hence τ = ξ ≡ 0 and X = 0 .
+
+(5) Image and isomorphism. By definition, gess SDE con-sists exactly of the classes Φ( X) with (τ, ξ ) satisfying (3.4). Thus 
+
+Im(Φ) = gess SDE ,
+
+and Φ is a Lie-algebra isomorphism onto this subalgebra. □
+
+Remark (essential FP symmetries vs. superposition) 
+
+Because the FP equation is linear, its Lie point symmetry algebra contains the infinite-dimensional family of solution-translation symmetries 
+
+Xα = α(t, x )∂u,
+
+where α is any solution of the FP equation. In [Thm. 3](Gaeta and Quintero, 1999) these appear as the 
+
+α-term in ϕ = α + βu and are explicitly identified as the symmetries implied by linear superposition. Quotienting by the ideal 
+
+I = {Xα}
+
+15 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+removes precisely these trivial directions and yields the es-sential FP symmetry algebra gess FP = gFP /I. In this quotient, the map Φ identifies each genuine Itˆ o symmetry (τ, ξ ) with the unique normalization-compatible FP symmetry class whose u-component is fixed by β = − div ξ (cf. (Gaeta and Quintero, 1999), Remark 11, equation (5.10), and Ap-pendix B). 
+
+# F. SDE–Fokker–Planck Subalgebra Validation 
+
+The theoretical relation in Appendix E implies that pro-jectable SDE symmetry generators embed into the Fokker– Planck symmetry algebra. Thus, learned SDE generators should form a subalgebra of the learned Fokker–Planck generators when both are projected to the common (τ, ξ )-space, discarding the u-component of the Fokker–Planck generators. To test this relation empirically, we train both SDE and Fokker–Planck generators for Example 1 and compare the span of the learned SDE generators with the projected (τ, ξ )-span of the learned Fokker–Planck generators using princi-pal angles. The resulting angles are 2.00 ◦, 13 .63 ◦, 18 .81 ◦.
+
+These small angles confirm that the learned SDE generators are recovered as a subalgebra of the learned Fokker–Planck generators, providing a direct quantitative validation of the SDE–Fokker–Planck connection beyond qualitative com-parison. 
+
+# G. Plots and Heat Maps of Learned SDE Symmetry Generators 
+
+In this section, we present plots and heatmaps of the learned symmetry generators. As discussed in the main text and in the principal-angle evaluation methodology, the discov-ered functions are generally close to linear combinations of the ground-truth symmetries associated with each SDE. Consequently, they may not admit direct interpretation in terms of functional form or scale relative to the underlying ground-truth symmetry functions. These visualizations are included primarily for completeness and to provide qualita-tive insight into the types of functions ultimately learned by LieStoNet.        
+
+> (a) τi(t)(Example 1).
+> (b) ξi(t, x )(Example 1).
+> Figure 4. Learned generator components for Example 1. Part (a): temporal component τi(t). Part (b): spatial component ξi(t, x )
+> visualized as heat maps.
+
+16 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+(a) τi(t) (Example 2). 
+
+(b) ξi(t, x ) (Example 2). 
+
+Figure 5. Learned generator components for Example 2. Part (a): 
+
+τi(t). Part (b): ξi(t, x ) heat maps. 
+
+(a) τi(t) (Example 3). 
+
+(b) ξi(t, x ) (Example 3). 
+
+Figure 6. Learned generator components for Example 3. Part (a): 
+
+τi(t). Part (b): ξi(t, x ) heat maps. 
+
+17 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+(a) τi(t) (Example 4). 
+
+(b) ξi(t, x ) (Example 4). 
+
+Figure 7. Learned generator components for Example 4. Part (a): 
+
+τi(t). Part (b): ξi(t, x ) heat maps. 
+
+# H. Sensitivity to Surrogate Approximation Error 
+
+LieStoNet computes the symmetry losses using the learned neural SDE surrogate ( ˆf , ˆσ), so surrogate misspecification can affect the recovered generators. Let (f, σ ) denote the true drift and diffusion, G⋆ a true symmetry generator, 
+
+ˆG a learned generator, and Df,σ (·) the SDE determining-equation operator. A standard perturbation argument gives 
+
+∥Df,σ ( ˆG)∥ ≤ ∥ D ˆf , ˆσ ( ˆG)∥+C( ˆG)
+
+
+
+∥ ˆf −f ∥C1 +∥ˆσ−σ∥C1
+
+
+
+,
+
+where C( ˆG) depends on the size and smoothness of the learned generator. Thus, the determining-equation residual under the true SDE is controlled by two terms: the resid-ual minimized during training under the surrogate, and the 
+
+C1 approximation error of the surrogate itself. Under a local stability condition for the determining operator, this implies that symmetry recovery degrades continuously with surrogate error (for C⋆ being the local stability constant): 
+
+inf  
+
+> A∈GL (k)
+
+∥ ˆG − AG ⋆∥ ≤ C⋆
+
+∥D ˆf , ˆσ ( ˆG)∥+
+
+∥ ˆf − f ∥C1 + ∥ˆσ − σ∥C1
+
+
+
+.
+
+Empirically, we perturb the surrogate in Example 1 using structured sine perturbations and random MLP perturbations. The maximum principal angle and determining-equation loss increase smoothly with perturbation amplitude, rather than exhibiting abrupt instability. 
+
+δ Sine perturbation Random MLP perturbation 
+
+θ L6 θ L6
+
+0 1.8◦ 3.7 × 10 −2 2.1◦ 4.2 × 10 −2
+
+0.02 3.1◦ 5.8 × 10 −2 2.2◦ 4.5 × 10 −2
+
+0.1 12 .2◦ 9.6 × 10 −2 2.8◦ 1.1 × 10 −1
+
+0.5 35 .9◦ 1.2 × 10 −1 14 .8◦ 2.1 × 10 −1
+
+Table 9. Sensitivity to surrogate perturbations. Here δ is pertur-bation amplitude, θ is the maximum principal angle, and L6 is the SDE determining-equation loss. Recovery degrades smoothly as the surrogate is perturbed. 
+
+# I. Computational Overhead of Loss Terms 
+
+The main computational cost in Stage 2 comes from re-peated automatic differentiation of the generator networks, especially for losses involving Jacobians and Hessians. Let 
+
+D(1)  
+
+> g
+
+and D(2)  
+
+> g
+
+denote the cost of evaluating first- and second-order derivatives of one generator network, B the number of sampled space–time points in a minibatch, m
+
+the number of learned generators, n the state dimension, and N the number of subsampled trajectory time points. The algebraic and SDE-validity losses scale polynomially in these quantities: 
+
+L1, L 3 = O
+
+
+
+B(mD (1)  
+
+> g
+
++ m2)
+
+
+
+,L2 = O
+
+
+
+B(mD (2)  
+
+> g
+
++ m3)
+
+
+
+,L4 = O
+
+
+
+B(mD (1)  
+
+> g
+
++ m3)
+
+
+
+,L6 = O(BmD (2)  
+
+> g
+
+),L7 = O(2 nN mD (2)  
+
+> g
+
+).
+
+Thus the cost grows polynomially rather than combinatori-ally in the number of generators. We also measure per-loss wall-clock time for one representa-tive setting, m = 3 , B = 2048 , on an NVIDIA H100 GPU. 18 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+The finite-step after-push loss L7 is the most expensive term, while the algebraic losses together account for roughly half of the measured total. This overhead is empirically use-ful: the ablation in Appendix O shows that removing the algebraic losses substantially worsens symmetry recovery. 
+
+Loss L1 L2 L3 L4 L5 L6 L7
+
+Time (ms) 0.43 0.76 0.38 0.52 0.47 0.47 2.15 
+
+Table 10. Per-loss wall-clock time. Measured for m = 3 , B =2048 , on an NVIDIA H100 GPU. 
+
+# J. Complete Lie Point Symmetry Derivation for Example 1: dx = σ0dW (t)
+
+We recall from Theorem 2.1 that a symmetry generator for an SDE must satisfy the determining equations 
+
+ξt + f ξ x − ξf x − ∂t(f τ ) + 12 σ2ξxx = 0 ,σξ x − ξσ x − τ σ t − 12 στ t = 0 .
+
+With f = 0 , σ = σ0 the determining equations become 
+
+ξt + 12 σ20 ξxx = 0 and ξx = 12 τt. Since τ is only a function of t, the second one implies that ξ is linear in x, substituting which into the first one gives ξt = 0 . Thus, ξ(t, x ) = 
+
+c1x + c2. Substituting this in ξx = 12 τt and solving gives 
+
+τ (t) = 2 c1t + c3. Thus, a general symmetry has the form 
+
+X0 = τ (t)∂t + ξ(x)∂x = (2 c1t + c3)∂t + ( c1x + c2)∂x.
+
+We find that there are three independent constants of in-tegration implying that the symmetry Lie algebra is three dimensional. Choosing one constant as non-zero while oth-ers being zero gives a simple basis for these generators producing: 
+
+c3 = 1 : v1 = ∂t
+
+c2 = 1 : v2 = ∂x
+
+c1 = 1 : v3 = 2 t∂ t + x∂ x
+
+# K. Complete Lie Point symmetry derivation for example 2: dx = xdt + dW (t)
+
+In this case, with f = x, σ = 1 , the second determining equation gives ξx = 12 τt. Differentiating w.r.t. x and then integrating gives ξ(t, x ) = a(t)x+b(t) implying τt = 2 a(t).We now plug these into the first equation resulting in 
+
+a′(t)x +  b′(t) − b(t) − xτ t = 0 
+
+Since this is a linear expression in x that’s identically 0, the coefficients must be 0 separately, producing a′ = τt, b′ = b.Combined with τt = 2 a(t) this gives a(t) = c1e2t, b (t) = 
+
+c2et. Substituting these into our previous expressions for 
+
+ξ, τ we get that a general symmetry has the form: 
+
+X =  c1e2t + c3
+
+∂t +  c1e2tx + c2et∂x
+
+Similarly as before, choosing values for the constants with one non-zero constant at a time gives the following three generators as a basis: 
+
+c3 = 1 : v1 = ∂t
+
+c2 = 1 : v2 = et∂x
+
+c1 = 1 : v3 = e2t(∂t + x∂ x)
+
+# L. Complete Lie Point Symmetry Derivation for Example 3: dx = ydt ,
+
+# dy = −k2ydt + √2k2dW (t)
+
+This is a two dimensional example with drift and diffusion given by: 
+
+f =
+
+ y
+
+−k2y
+
+
+
+, σ =
+
+0 00 √2k2
+
+
+
+The general symmetry looks like 
+
+X0 = τ (t)∂t + ξ1(t, x, y )∂x + ξ2(t, x, y )∂y
+
+with the determining equations as 
+
+∂tξi + f j ∂j ξi − ξj ∂j f i − ∂t(f iτ ) + 12 (σσ T )jk ∂2
+
+> jk
+
+ξi = 0 ,
+
+(σj k∂j )ξi − (ξj ∂j )σik − τ ∂ tσik − 12 σik, τ t = 0 .
+
+We first use the second equation to constrain ξ1, ξ 2. Since 
+
+σ22 is the only non-zero component, the non-trivial con-straints come from k = 2 .• For ( i = 1 , k = 2 ): (σj 2∂j ξ1 = 0 ⇒ ∂y ξ1 = 0) .Thus, ξ1 = a(x, t ) (no y-dependence). • For ( i = 2 , k = 2 ): (σj 2∂j ξ2 − 12 σ22τt = 0 ⇒
+
+∂y ξ2 = 12 τt). Hence ξ2 = 12 τty + g(x, t ).
+
+We now use the first determining equation. Note that σσ T =diag(0 , 2k2), so the diffusion term is 12 (σσ T )jk ∂2
+
+> jk
+
+ξi =
+
+k2∂2 
+
+> yy
+
+ξi; but ξ1 is independent of y, and ξ2 is at most linear in y, so ∂2 
+
+> yy
+
+ξi = 0 and the diffusion term drops out for the first equation for both i = 1 , 2. The first determining equation then gives • For i = 1 , with f 1 = y, f 2 = −k2y, one gets at +
+
+ya x − ξ2 − yτ t = 0 . Substitute ξ2 = 12 τty + g(x, t )
+
+to get at − g + y
+
+
+
+ax − 32 τt
+
+
+
+= 0 . Thus 
+
+ax = 32 τt, g = at.
+
+19 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+• For i = 2 the first determining equation on substituting the drift and diffusion gives 
+
+  12 τtt y + gt
+
+ +  yg x − 12 k2τty
+
++k2   12 τty + g + k2yτ t = 0 
+
+which on simplifying is 
+
+y
+
+ 12 τtt + gx + k2τt
+
+
+
++  gt + k2g = 0 .
+
+Since a linear expression in y being identically 0 implies that the coefficients are each 0, we get 
+
+gt + k2g = 0 and 12 τtt + gx + k2τt = 0 . In the sec-ond equation, we use the fact that gx = atx = 32 τtt ,giving us 2τtt + k2τt = 0 .Integrating ax = 32 τt with respect to x gives a(x, t ) =  
+
+> 32
+
+τtx + h(t) for some h. Then g = at = 32 τtt x + h′(t).Substituting this in gt + k2g = 0 gives 
+
+32 x(τttt + k2τtt ) + h′′ + k2h = 0 .
+
+The coefficient of x must be 0 for this expression to be identically 0, thus τttt + k2τtt = 0 . Along with the previ-ously found relation 2τtt + k2τt = 0 , this yields τtt = 0 
+
+thus implying τt = 0 i.e. τ (t) = c1. Using τt = c1 in 
+
+ax = 32 τt implies a(x, t ) = a(t) is independent of x. Thus, 
+
+g(x, t ) = at is also independent of x. Solving gt + kg = 0 
+
+yields g(t) = c2r−k2t. Substituting this and integrating 
+
+g = at gives a(t) = c3 − c2 
+
+> k2
+
+e−k2t. Thus, a general symme-try looks like: 
+
+X = c1∂t +
+
+
+
+c3 − c2
+
+k2 e−k2t
+
+∂x + c2e−k2t∂y .
+
+Choosing one constant non-zero at a time while others as zero gives the following set as generators: 
+
+c1 = 1 : v1 = ∂t
+
+c3 = 1 : v2 = ∂x
+
+c2 = 1 : v3 = e−k2t(k−2∂x − ∂y )
+
+# M. Complete Lie Point Symmetry Derivation for Example 4: dx = ( a1/x )dt + dW 1;
+
+# dy = a2dt + dW 2
+
+f =
+
+a1/x a2
+
+
+
+, σ =
+
+1 00 1
+
+
+
+Once again, the general symmetry looks like 
+
+X0 = τ (t)∂t + ξ1(t, x, y )∂x + ξ2(t, x, y )∂y
+
+with the determining equations as 
+
+∂tξi + f j ∂j ξi − ξj ∂j f i − ∂t(f iτ ) + 12 (σσ T )jk ∂2
+
+> jk
+
+ξi = 0 ,
+
+(σj k∂j )ξi − (ξj ∂j )σik − τ ∂ tσik − 12 σik, τ t = 0 .σ is constant so that (ξ · ∇ )σ = 0 = ∂tσ. Again, we use the second equation to get the form of ξ, which gives us 
+
+∂kξi − 12 δikτt = 0 . For different i, k we have: 
+
+i = 1 , k = 1 : ξ1 
+
+> x
+
+= 12 τt
+
+i = 1 , k = 2 : ξ1 
+
+> y
+
+= 0 
+
+i = 2 , k = 1 : ξ2 
+
+> x
+
+= 0 
+
+i = 2 , k = 2 : ξ2 
+
+> y
+
+= 12 τt
+
+Integrating these gives 
+
+ξ1(t, x, y ) = 12 τt(t)x + g1(t)
+
+ξ2(t, x, y ) = 12 τt(t)y + g2(t)
+
+Thus, ξ are at most linear in x, y and second spatial deriva-tives all vanish. The first determining equation for i = 1 on plugging the expressions for ξ1, ξ 2, along with the drift and diffusion functions gives the following. • For i = 1 this gives  
+
+> 12
+
+τtt x + g′
+
+> 1
+
+(t) + a1g1(t)
+
+x2 = 0 .
+
+For this equality to hold, the coefficients of various powers of x should separately be 0. Thus we get τtt =0 = g1(t). Hence, 
+
+τ (t) = c1t + c2, ξ1(x, y, t ) = c1
+
+2 x. 
+
+• For i = 2 the determining equation gives 
+
+12 τtt y + g′ 
+
+> 2
+
+− a2
+
+2 τt = 0 .
+
+Equating coefficients in y gives τtt = 0 (consistent with earlier) and g′ 
+
+> 2
+
+= a2 
+
+> 2
+
+τt = a2 
+
+> 2
+
+c1. On integrating the last equation we get g2(t) = a2 
+
+> 2
+
+c1t + c3.The general symmetry thus looks like 
+
+X = ( c1t + c2)∂t + c1
+
+2 x∂ x +
+
+ c1
+
+2 (y + a2t) + c3
+
+
+
+∂y .
+
+Choosing one constant as non-zero at a time gives the fol-lowing basis of generators: 
+
+c2 = 1 : v1 = ∂t
+
+c3 = 1 : v2 = ∂y
+
+c1 = 1 : v3 = 2 t∂ t + x∂ x + ( y + a2t)∂y
+
+20 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+# N. Complete Derivation for Fokker-Planck Symmetries for Example 1: dx = σ0dw (t)
+
+For the 1-d brownian motion dx = σ0dw (t), the associated FP equation is ut = σ20 
+
+> 2
+
+uxx . Following the notation from (5) , this means A = − σ20 
+
+> 2
+
+, B = 0 , C = 0 . The three FP determining equations from theorem 2.2 boil down to: 
+
+ξx = 12 τt, −ξt + 2 Aβ x − Aξ xx = 0 , βt + Aβ xx = 0 .
+
+The first equation easily solves to ξ(t, x ) = 12 τt(t)x + k(t)
+
+where k(t) is any function of t. Substituting this result into the second equation gives 
+
+βx = 12A
+
+ 12 τtt x + k′
+
+
+
+= τtt 
+
+4A x + k′
+
+2A
+
+which upon integrating with respect to x gives: 
+
+β(t, x ) = τtt 
+
+8A x2 + k′
+
+2A x + m(t)
+
+for some m(t). Substituting this into the third equation gives 
+
+βt + Aβ xx =
+
+ τttt 
+
+8A x2 + k′′ 
+
+2A x + m′(t)
+
+
+
++ A · τtt 
+
+4A = 0 
+
+This is a quadratic in x which is identically 0. Thus, each coefficient in the quadratic must vanish separately, giving us 
+
+τttt = 0 , k′′ = 0 , m′(t) + 14 τtt = 0 .
+
+Integrating these gives: 
+
+τ (t) = at 2 + bt + c, k(t) = dt + e, m(t) = − a
+
+2 t + f . 
+
+Substituting these into expressions for β and ξ from earlier, we get: 
+
+τ = at 2 + bt + cξ = 12 τtx + dt + eβ = τtt 
+
+8A x2 + d
+
+2A x − a
+
+2 t + f. 
+
+Thus, there are six independent parameters/constants 
+
+a, b, c, d, e, f resulting in a six dimensional vector space for the set of symmetries. We may choose any 6 linearly independent vectors for (a, b, c, d, e, f ) to get a vector-space basis for the Lie algebra. We choose the 6 vectors where each of the parameters except for one parameter is zero. Us-ing these choices in the general expression for a symmetry, 
+
+V = τ ∂ t + ξ∂ x + βu∂ u, gives us the following six familiar set of symmetry generators: 
+
+c = 1 : v1 = ∂t
+
+e = 1 : v2 = ∂x
+
+f = 1 : v3 = u∂ u
+
+d = 1 : v4 = t∂ x − xσ20
+
+u∂ u
+
+b = 1 : v5 = t∂ t + x
+
+2 ∂x
+
+a = 1 : v6 = t2∂t + tx∂ x − 12
+
+
+
+t + x2
+
+σ20
+
+
+
+u∂ u
+
+# O. Ablation Study for Generator-Training Losses 
+
+We ablate the generator-training losses L1, . . . , L 7 by re-moving one loss at a time while keeping all other experimen-tal settings fixed. The results are shown in table 12. In both examples, removing any single loss term worsens recovery, as measured by the maximum principal angle between the learned and analytic symmetry-algebra spans. This supports the practical role of each loss in addition to its theoretical motivation. The degradation is consistent with the intended function of the losses. Removing L1, which enforces Lie-bracket closure, or L6, which enforces the SDE determining equa-tions, causes the largest deterioration. Removing L2 and L3,corresponding to algebraic identities, has a milder effect in Example 2 but a stronger effect in Example 1. Removing L7,the finite-step after-push loss, also degrades performance, indicating that the local infinitesimal constraints in L6 alone are not sufficient for robust recovery in practice. 
+
+# P. Implementation Details for Learning SDE Symmetries 
+
+This section documents the exact experimen-tal/implementation choices used in the accompanying notebooks for SDE symmetry learning (all Fokker–Planck symmetry components are intentionally omitted). Across all examples, the pipeline has two stages: 1. Neural SDE surrogate (Stage 1). Fit a neural surro-gate for the drift and diffusion from increment data using an increment-likelihood objective. 2. Generator learning (Stage 2). Fit neural symmetry generators (τ, ξ ) (and an auxiliary β head for code-compatibility that is unused for the SDE-only write-up) by minimizing a weighted sum of algebraic consistency terms (closure/Jacobi/etc.) and the Ito determining equations / pushforward constraints computed using the learned surrogate coefficients. 21 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems Example State (T, ∆t) N ntraj (Stage 1) B = ntraj N Stage-1 surrogate 
+
+1 (Brownian) 1D (5 .0, 0.01) 500 2048 1,024,000 MLP [2 , 64 , 64 , 2] , tanh , ˆσ =softplus + 10 −3
+
+2 ( dx = x dt + σdW ) 1D (5 .0, 0.01) 500 512 256,000 MLP [2 , 64 , 64 , 2] , tanh , i.i.d. incre-ment dataset over |x| ≤ 2
+
+3 (2D linear) 2D (2 .0, 0.01) 200 2048 409,600 MLP [3 , 64 , 64 , 4] , tanh , diagonal ˆσ ∈
+
+R2
+
+4 (2D, PSD diffusion) 2D (2 .0, 0.01) 200 2048 409,600 Drift MLP + Cholesky MLP, swish ,
+
+Σ = LL ⊤
+
+Table 11. Stage-1 (surrogate) dataset sizes and architectures. Here N = ⌊T / ∆t⌋ and B counts increment samples (one per time step per trajectory). Full w/o L1 w/o L2 w/o L3 w/o L4 w/o L5 w/o L6 w/o L7
+
+Example 1 6.26 ◦ 55 .56 ◦ 25 .89 ◦ 35 .05 ◦ 36 .60 ◦ 39 .77 ◦ 86 .78 ◦ 44 .54 ◦
+
+Example 2 19 .37 ◦ 72 .37 ◦ 25 .81 ◦ 26 .56 ◦ 37 .86 ◦ 42 .62 ◦ 86 .39 ◦ 57 .00 ◦
+
+Table 12. Ablation of generator-training losses. Entries are maximum principal angles between learned and analytic symmetry-algebra spans; smaller is better. “Full” uses all losses L1, . . . , L 7, while each ablated column removes exactly one loss. 
+
+All notebooks run in jax with jax enable x64=True 
+
+and use float64 throughout for stability. P.0.1. S TAGE 1: N EURAL SDE SURROGATE TRAINING 
+
+Increment dataset construction. Let tn = n∆t with 
+
+∆t = dt and n = 0 , . . . , N − 1, where N = ⌊T / ∆t⌋. The Stage-1 dataset consists of pairs  zn, ∆Xn
+
+ where ∆Xn =
+
+Xn+1 − Xn and 
+
+zn =
+
+
+
+(tn, x n) (1D examples) 
+
+(tn, x n, y n) (2D time-dependent example) 
+
+(xn, y n) (2D time-homogeneous example) For simulated path data (Examples 1, 3, 4), the notebook forms all increments from the full trajectory bank, yielding 
+
+B = ntraj · N training samples. Example 2 is special: Stage 1 is built as an i.i.d. increment dataset by sampling (t, x )
+
+values and drawing ∆x directly from the Euler increment distribution for the target SDE; a pseudo-“trajectory” tensor is only created for downstream API compatibility. 
+
+Input normalization. In all Stage-1 surrogates, inputs are z-scored: 
+
+˜z = ( z − μz )/(σz + 10 −8),
+
+where (μz , σ z ) are empirical mean/std over the full Stage-1 input cloud. 
+
+Surrogate parameterizations and likelihood. 
+
+• Examples 1 & 2 (1D). A single MLP maps ˜z = (˜ t, ˜x)
+
+to two outputs ( ˆf , g ), with diffusion enforced positive via 
+
+ˆσ(˜ z) = softplus( g(˜ z)) + σmin .
+
+The increment model is ∆x ∼ N ( ˆf ∆t, ˆσ2 ∆t)
+
+and the loss is the per-sample Gaussian negative log-likelihood (dropping constants) averaged over mini-batches. • Example 3 (2D, diagonal diffusion). A single MLP maps ˜z = (˜ t, ˜x, ˜y) to ( ˆfx, ˆfy , g x, g y ) and sets ˆσi =softplus( gi) + σmin . The likelihood is a factorized diagonal Gaussian for ∆( x, y ).• Example 4 (2D, PSD diffusion via Cholesky). Two MLPs are trained: a drift network ˆf (x, y ) and a diffusion-Cholesky network returning (ℓraw 11 , ℓ 21 , ℓ raw 22 ),with 
+
+ℓ11 = softplus( ℓraw 11 ) + σfloor 
+
+ℓ22 = softplus( ℓraw 22 ) + σfloor ,L =
+
+ℓ11 0
+
+ℓ21 ℓ22 
+
+
+
+; Σ = LL ⊤.
+
+The increment model is multivariate Gaussian ∆X ∼N ( ˆf ∆t, Σ ∆ t).
+
+Regularization and optimizers. 
+
+• Examples 1/2/3: The Stage-1 objective adds explicit L2 weight decay as weight decay * l2 tree(params) (even though the optimizer is plain Adam). Optimization uses optax.adam(lr) 
+
+with minibatches sampled without replacement from the full increment dataset each step. • Example 4: Drift and diffusion-Cholesky net-works are optimized with separate adamw optimiz-ers (weight decay = 0 ) and global-norm gradient clip-ping. Training alternates multiple drift steps and fewer 22 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems 
+
+diffusion steps per outer iteration. Additional diffu-sion regularizers are used: (i) a JVP-based smoothness penalty on L(x, y ), (ii) a minibatch variance stabilizer on diag( L), and (iii) a whitening/calibration penalty encouraging z = L−1∆t (∆ X − ˆf ∆t) ∼ N (0 , I ).P.0.2. S TAGE 2: S YMMETRY GENERATOR PARAMETERIZATION AND TRAINING 
+
+Training point cloud for Stage 2. All generator losses are evaluated on minibatches of a point cloud in the extended space (t, x ) or (t, x, y ):
+
+T = {(tn, x n)} or {(tn, x n, y n)}.
+
+The source of this cloud differs by example: • Examples 1 & 2: simulate the learned surrogate by Euler–Maruyama using CFGGen with ntraj =256 , and flatten all (N +1) states, giving Bgen =
+
+ntraj (N +1) points. • Example 3: simulate the learned surrogate with 
+
+ntraj = 256 but additionally (i) enforce do-main control in x ∈ [xmin , x max ] via clipping at evaluation time and reflection after stepping, (ii) optionally oversample candidate trajectories (traj balance oversample=12 ) and greedily select a subset whose histogram occupancy over x-bins is closer to uniform, and (iii) build T as a fixed-size mixture of trajectory points and uniform box sam-ples with fraction tx mix uniform frac=0.7 (to-tal point count kept constant). • Example 4: constructs TX gen directly from the avail-able (t, XY ) tensor by flattening all observed path states, yielding Bgen = ntraj (N +1) points with the full data trajectory bank. Its minibatch sampler mixes half empirical points and half uniform box samples in bounds inferred from TX gen , with an x-floor to avoid instability near x = 0 .
+
+Generator neural architectures. Each generator i =1, . . . , m is represented by neural fields: 
+
+τi(t) ∈ R, ξi(t, x ) ∈ R (1D) or ξi(t, x, y ) ∈ R2 (2D) .
+
+In code, each generator uses separate MLPs for τ and ξ.A third head β is also instantiated for compatibility with shared utilities but is not used in the SDE-only description here. • Examples 1 & 2: tanh MLPs with fixed widths: 
+
+τ : [1 , 32 , 32 , 1] ; ξ: [2 , 64 , 64 , 1] in 1D (Ex. 1) and 
+
+[3 , 64 , 64 , 2] in 2D (Ex. 4). m = 3 (Ex. 1) and m = 3 
+
+(Ex. 4). • Example 3: deeper swish networks with 
+
+depth tau=3 , depth xi=3 , width 64, and 
+
+m = 3 generators. • Example 4: tanh MLPs with τ as [1 , 32 , 32 , 1] and ξ
+
+as [3 , 64 , 64 , 2] , with m = 3 .
+
+Stage-2 loss terms and weighting. The generator objec-tive is a weighted sum of seven losses L1, . . . , L 7 computed on minibatches from T . The code uses: • Structural/algebraic terms: closure (L1), Ja-cobi ( L2), skew-symmetry ( L3), bilinearity ( L4), and an independence/scaling term (L5) with 
+
+s5 mode="sigma" and s5 tau=0.8 (Examples 1–4). • SDE-specific constraints: the Ito determining equa-tions ( L6) computed using surrogate coefficient func-tions μ(·) and σ(·) derived from the learned Stage-1 network(s), and a pushforward consistency term ( L7)comparing transformed coefficients under the learned generator-induced flow, using a small finite ϵ step (e.g. s7 eps=1e-2 ) and typically a single step (e.g. 
+
+s7 steps=1 in the fixed-weight notebooks). Weighting: • Examples 1–3 (fixed weights): LossWeights sets 
+
+(w1:7 ) = (1 .0, 0.1, 0.1, 0.1, ⋆, 1.0, 0.1) ,
+
+with ⋆ = 0 .1 in Examples 1 and 3, and ⋆ = 0 .5
+
+in Example 2. Generator L2 decay is applied with 
+
+weight decay=1e-6 .• Example 4 (scheduled weights): w6 = 10 , w7 = 2 ,and w5 = 2 are kept large throughout, while w1–w4
+
+are ramped on only in the final 40% of training after 60% progress via a piecewise-linear schedule. 
+
+Stage-2 optimization. 
+
+• Examples 1–3: optax.clip by global norm (1.0) + optax.adam . The nominal 
+
+GenTrainConfig.lr is overridden to 10 −4
+
+in Examples 1 and 3; Example 4 uses 10 −4 directly. Minibatches are sampled uniformly without replace-ment from the prepared TX gen array after filtering non-finite rows. • Example 4: optax.clip by global norm +
+
+optax.adamw with a learning-rate schedule: 5% lin-ear warmup from 0 to lr , followed by cosine decay down to alpha=0.1 of lr . The sampler mixes half empirical TX gen points and half uniform box points each step. 23 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems Example Steps Batch Optimizer LR(s) Weight decay Extra regularizers 
+
+1 10,000 4096 Adam 3×10 −3 10 −6 (explicit L2) —2 2,000 4096 Adam 3×10 −3 10 −6 (explicit L2) —3 10,000 4096 Adam 3×10 −3 10 −6 (explicit L2) —4 20,000 outer 8192 AdamW + clip (sep-arate for drift/diff) 
+
+2×10 −3 (drift), 10 −3 (diff) 0 JVP-smooth (10 −3), var (5×10 −4), whiten ( 5×10 −3)
+
+Table 13. Stage-1 (surrogate) optimization settings. Example 4 alternates drift steps per iter=3 and 
+
+diff steps per iter=1 inside each outer step. 
+
+Example m Stage-2 cloud source 
+
+ntraj (gen) Bgen τ net ξ net Activation 
+
+1 3 surrogate sim, flat-ten (t, x )
+
+256 256(500+1) = 128 ,256 [1 , 32 , 32 , 1] [2 , 64 , 64 , 1] tanh 
+
+2 3 surrogate sim + re-flection + mixture cloud 256 kept at 128 ,256 depth 3, width 64 depth 3, width 64 swish 
+
+3 3 surrogate sim, flat-ten (t, x, y )
+
+256 256(200+1) = 51 ,456 [1 , 32 , 32 , 1] [3 , 64 , 64 , 2] tanh 
+
+4 3 data flatten (t, x, y ) 2048 2048(200+1) = 411 ,648 [1 , 32 , 32 , 1] [3 , 64 , 64 , 2] tanh 
+
+Table 14. Stage-2 (generator) architectures and the point clouds used for training the SDE symmetry generators. Bgen counts (t, state )
+
+points used for generator losses. 
+
+# Q. Sensitivity of the Maximum Principal Angle to Weight Choices 
+
+Table 16 reports the maximum principal angle as the weights 
+
+(w6, w 7) are varied. Overall, the response is markedly non-monotone in both weights, indicating a strong interaction between the two penalty terms. Across the sweep, the max-imum principal angle ranges from 14 .71 ◦ (at (w6, w 7) = (1 .0, 0.7) ) to 55 .31 ◦ (at (w6, w 7) = (0 .2, 0.9) ). For fixed 
+
+w6, changing w7 can induce substantial variation: for ex-ample, at w6 = 0 .2 the angle increases from 21 .35 ◦ at 
+
+w7 = 0 .1 to 42 .28 ◦ at w7 = 0 .5 and further to 55 .31 ◦ at 
+
+w7 = 0 .9, whereas at w6 = 0 .6 the angle peaks at 37 .00 ◦
+
+for w7 = 0 .3 and then decreases to 21 .13 ◦ for w7 = 0 .9.Similarly, for fixed w7, decreasing w6 does not uniformly increase or decrease the angle (e.g., at w7 = 0 .1 the values span 22 .64 ◦ at w6 = 1 .0 up to 39 .21 ◦ at w6 = 0 .4 and down to 21 .35 ◦ at w6 = 0 .2). These trends suggest that the maximum principal angle is sensitive to the relative bal-ance between the two weights rather than to either weight in isolation, motivating the use of a small grid search over 
+
+(w6, w 7) when selecting a stable operating point. 24 LieStoNet: Learning Lie Symmetries from Spatiotemporal Data for Stochastic Dynamical Systems Example Steps Batch LR Optimizer Weights (w1, . . . , w 7) Sampling notes 
+
+1 3000 2048 10 −4 clip(1.0)+Adam (1,0.1,0.1,0.1,0.1,1,0.1) uniform minibatches from 
+
+TX gen 
+
+2 3000 1024 10 −4 clip(1.0)+Adam (1,0.1,0.1,0.1,0.5,1,0.1) x-reflection in sim; 70% uni-form box points; optional traj balancing 3 3000 1024 10 −4 clip(1.0)+Adam (1,0.1,0.1,0.1,0.1,1,0.1) uniform minibatches from 
+
+TX gen ; print every=10 
+
+4 6000 256 2×10 −4 (scheduled) clip(1.0)+AdamW scheduled: w6=10 , w 7=2 , w 5=2 , ramp w1:4 half empirical TX gen + half uniform box; warmup+cosine LR 
+
+Table 15. Stage-2 (generator) optimization and weighting differences across examples. 
+
+Table 16. Maximum principal angle as a function of weights w6 and w7.                                                    
+
+> w6w7Max. principal angle (deg) 1.0 0.1 22.64 1.0 0.3 26.78 1.0 0.5 23.38 1.0 0.7 14.71 1.0 0.9 19.90 0.8 0.1 35.92 0.8 0.3 24.36 0.8 0.5 20.86 0.8 0.7 18.81 0.8 0.9 31.71 0.6 0.1 22.40 0.6 0.3 37.00 0.6 0.5 34.19 0.6 0.7 29.91 0.6 0.9 21.13 0.4 0.1 39.21 0.4 0.3 27.91 0.4 0.5 25.48 0.4 0.7 37.23 0.4 0.9 23.49 0.2 0.1 21.35 0.2 0.3 25.10 0.2 0.5 42.28 0.2 0.7 20.48 0.2 0.9 55.31
+
+25

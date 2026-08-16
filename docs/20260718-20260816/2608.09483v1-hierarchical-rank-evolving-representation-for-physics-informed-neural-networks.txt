@@ -1,0 +1,994 @@
+Title: Hierarchical rank-evolving representation for physics-informed neural networks
+
+URL Source: https://arxiv.org/pdf/2608.09483v1
+
+Published Time: Tue, 11 Aug 2026 02:42:47 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# Hierarchical rank-evolving representation for physics-informed neural networks 
+
+## Ruoyang Su a, Xi-Le Zhao a,∗, Kun Li b and Liang Li a
+
+> a
+
+University of Electronic Science and Technology of China, No.2006, Xiyuan Ave, West Hi-Tech Zone, Chengdu, 611731, Sichuan, P.R.China 
+
+> b
+
+Southwestern University of Finance and Economics, 555, Liutai Avenue, Wenjiang District, Chengdu, 611130, Sichuan, P.R.China 
+
+A R T I C L E I N F O 
+
+Keywords :multivariate function representation rank-evolving mechanism tensor network decomposition physics-informed neural network 
+
+A B S T R A C T 
+
+Recently, tensor-based physics-informed neural networks (T-PINNs) have received increasing attention. However, existing T-PINNs still face a fundamental challenge: they mainly rely on pre-specified low-rank tensor decompositions with manually tuned ranks, which limits their ability to capture the underlying structures of multivariate solution functions and hinders their practical deployment. To address this challenge, we propose a hierarchical rank-evolving (abbreviated as HRE) representation for multivariate functions, which endows us to faithfully capture the underlying structure of the targeted multivariate function accompanying with automatic rank determination. Concretely, in the hierarchical design of HRE representation, the target multi-variate function is decomposed as a small-scale inner tensor with a set of univariate functions along each mode, where a customized tensor network decomposition can be readily deployed to capture the underlying structure of the small-scale inner tensor. In HRE representation, the crucial hyperparameters, ranks, can be adaptively revealed during the decomposition, freeing us from manual rank tuning and making HRE practically applicable to real-world problems. Besides, we build the HRE-PINNs correspondingly. Extensive numerical experiments, including high-dimensional static problems (Helmholtz equation and Poisson equation), nonlinear time-dependent problems (Klein-Gordon equation), and complex fluid-dynamics problems (flow mix-ing equation and Navier-Stokes equation), demonstrate that HRE-PINNs consistently outperform existing state-of-the-art approaches in terms of accuracy. 
+
+## 1. Introduction 
+
+Partial differential equations (PDEs) constitute the core mathematical tool for characterizing physical phenomena spanning numerous scientific and engineering fields, such as fluid dynamics [1, 2], solid mechanics [3, 4], electro-magnetics [5, 6], and quantum physics [7, 8]. Obtaining accurate and efficient solutions to PDEs, especially high-dimensional and strongly nonlinear ones, has long been a central challenge in computational science. Traditional numerical methods, such as the finite difference method [9], finite element method [10, 11], and spectral methods [12], have achieved great success in low-to-moderate dimensional problems, but they inherently suffer from the curse of dimensionality [13, 14, 15]: the computational cost and memory footprint grow exponentially with the increase of the problem’s dimension, making them computationally prohibitive for high-dimensional PDEs, such as those arising in many-body quantum mechanics, kinetic theory, and parametric uncertainty quantification. Over the past few years, physics-informed neural networks (PINNs) [16, 17, 18, 19, 20] have emerged as a powerful mesh-free alternative for solving forward and inverse PDE problems. At their core, PINNs leverage the universal approximation capability of deep neural networks [21] to represent the solution function, and embed the governing physical laws, initial conditions, and boundary conditions directly into the loss function via automatic differentiation. This paradigm offers several transformative advantages over classical numerical methods: it eliminates the need for mesh generation [22, 23], naturally handles irregular geometries [24, 25] with sparse or noisy observational data [26, 27], and provides a continuous representation of the solution function across the entire spatio-temporal domain [28]. Thanks to these merits, PINNs have been successfully applied to a wide spectrum of PDE systems [29, 30], and have spurred a multitude of variants to address its practical limitations [31, 32, 33]. 
+
+> ∗
+
+Corresponding author 
+
+202511110508@std.uestc.edu.cn (R. Su); xlzhao122003@163.com (X. Zhao); likun@swufe.edu.cn (K. Li); 
+
+plum.liliang@gmail.com (L. Li) 
+
+https://zhaoxile.github.io/ (X. Zhao); https://scholar.google.com/citations?user=7d_uncYAAAAJ&hl=zh-CN (K. Li) 
+
+> ORCID
+
+(s): 0000-0002-6540-946X (X. Zhao); 0000-0002-3847-0310 (L. Li) 
+
+R. Su et al.: Preprint submitted to Elsevier Page 1 of 17 arXiv:2608.09483v1 [cs.LG] 10 Aug 2026 Hierarchical rank-evolving representation for physics-informed neural networks 
+
+Despite these advances, the curse of dimensionality remains a fundamental bottleneck that limits the application of standard PINNs to high-dimensional PDEs [34, 35, 36]. The standard PINN uses a single multi-layer perceptron (MLP) that takes the 𝑑 -dimensional coordinate vector as input and outputs the corresponding value of the solution function [16]. For a 𝑑 -dimensional domain discretized with 𝑁 points along each axis, the number of collocation points required for accurate residual evaluation scales as 𝑂 (𝑁 𝑑 ), leading to an exponential growth in the number of forward and backward passes through the network, as well as the computational cost of Jacobian and Hessian calculations via automatic differentiation [37, 38]. Even with modern GPU acceleration, standard PINNs struggle to handle PDEs with more than 4 dimensions, as the memory overhead and training time become intractable. Moreover, the single MLP architecture of standard PINNs fails to explicitly exploit the complex underlying structures in the solution functions of many physical PDEs, resulting in inefficient representation and slow convergence for high-dimensional problems. To mitigate the curse of dimensionality in PINNs, a promising line of research has emerged that integrates the classical variable separation technique with low-rank tensor decompositions [39, 37, 40, 41, 38, 42], extending discrete tensor algebra to the continuous function representation. The core idea of these methods is to factorize the high-dimensional solution function into a composition of univariate functions, thereby reducing the computational complexity from exponential to linear with respect to the problem dimension. For instance, the separable PINN framework [37] employs separate univariate MLPs for each coordinate axis, and constructs the solution via a function canonical-polyadic (CP) decomposition, achieving dramatic speedups for 3D and 4D PDEs by reducing the number of network forward passes from 𝑂 (𝑁 𝑑 ) to 𝑂 (𝑁𝑑 ). Mandl et al. [43] further extended this separable function decomposition paradigm to physics-informed deep neural operators (DeepONets), developing the Sep-PI-DeepONet framework that breaks the dimensionality barrier for operator learning in high-dimensional parametric PDEs. Beyond CP decomposition, Other related works [38] have also explored Tucker decomposition, tensor train (TT) decomposition and tensor ring (TR) decomposition for PINNs, further demonstrating the great potential of multivariate function decompositions in addressing the curse of dimensionality. While these existing multivariate function decomposition methods have achieved notable success in reducing the computational complexity of PINNs, they suffer from critical limitations that hinder their performance on complex high-dimensional PDEs. Most existing works rely on primitive and fixed structures, such as CP decomposition, Tucker decomposition, TT decomposition, or TR decomposition, which fail to capture the complex structure inherent in the solution functions of many physical PDEs, leading to insufficient representation capability for high-precision approximation. Furthermore, these approaches lack an effective mechanism for automatically determining the suitable rank, which relies heavily on manual presetting and introduces extra hyperparameter tuning costs. In this paper, we address these limitations by proposing a hierarchical rank-evolving (abbreviated as HRE) representation for multivariate functions, which endows us to faithfully capture the underlying structure of the targeted multivariate function accompanying with automatic rank determination. Concretely, in the hierarchical design of HRE representation, the target multivariate function is decomposed as a small-scale inner tensor with a set of univariate functions along each mode, where a customized tensor network decomposition can be readily deployed to capture the underlying structure of the small-scale inner tensor. In HRE representation, the crucial hyperparameters, ranks, can be adaptively revealed during the decomposition, freeing us from manual rank tuning and making HRE practically applicable to real-world problems. We build the HRE-PINNs correspondingly, and validate HRE-PINNs on a suite of benchmark PDEs, including high-dimensional static problems (3D Helmholtz equation and 5D Poisson equation), nonlinear time-dependent problems ((2+1)D Klein-Gordon equation), and complex fluid-dynamics problems ((2+1)D flow mixing equation and Navier-Stokes equation). Numerical results demonstrate that HRE-PINNs consistently outperform state-of-the-art PINNs and their variants in terms of accuracy. The contributions of this paper are as follows: 1. We propose a hierarchical rank-evolving (abbreviated as HRE) representation for multivariate functions, which endows us to faithfully capture the underlying structure of the targeted multivariate function accompanying with automatic rank determination. 2. As crucial hyperparameters of HRE representation, ranks, can be adaptively revealed during the decomposition, freeing us from manual rank tuning and making HRE practically applicable to real-world problems. 3. We build the HRE-PINNs correspondingly, and conduct extensive numerical experiments on various benchmark PDEs. The results demonstrate that HRE-PINNs consistently outperform existing state-of-the-art approaches in terms of accuracy.   
+
+> R. Su et al.: Preprint submitted to Elsevier Page 2 of 17
+
+Hierarchical rank-evolving representation for physics-informed neural networks 
+
+## 2. Related work 
+
+2.1. Tensor network decomposition 
+
+Recently, tensor network decompositions have emerged and shown great ability to process high-order tensors. In tensor train (TT) decomposition [44], an 𝑁 th-order tensor  ∈ ℝ𝐼 1×𝐼 2×⋯×𝐼 𝑁 is decomposed into a matrix 
+
+𝑼 1 ∈ ℝ𝐼 1×𝐽 1 , 𝑁 − 2 third-order tensors  𝑛 ∈ ℝ𝐽 𝑛 −1 ×𝐼 𝑛 ×𝐽 𝑛 (𝑛 = 2 , 3, ⋯ , 𝑁 − 1 ) and another matrix 𝑼 𝑁 ∈ ℝ𝐽 𝑁 −1 ×𝐼 𝑁 
+
+multiplied sequentially: 
+
+ (𝑖 1, 𝑖 2, 𝑖 3, ⋯ 𝑖 𝑁 ) = 
+
+> 𝐽 1
+
+∑
+
+> 𝑗 1=1
+> 𝐽 2
+
+∑
+
+> 𝑗 2=1
+> 𝐽 3
+
+∑
+
+> 𝑗 3=1
+
+⋯
+
+> 𝐽 𝑁 −1
+
+∑
+
+> 𝑗 𝑁 −1 =1
+
+𝑼 1(𝑖 1, 𝑗 1) 2(𝑗 1, 𝑖 2, 𝑗 2) 3(𝑗 2, 𝑖 3, 𝑗 3) ⋯ 𝑼 𝑁 (𝑗 𝑁 −1 , 𝑖 𝑁 ).
+
+In tensor ring (TR) decomposition [45], an 𝑁 th-order tensor  ∈ ℝ𝐼 1×𝐼 2×⋯×𝐼 𝑁 is decomposed into 𝑁 third-order tensors  𝑛 ∈ ℝ𝐽 𝑛 −1 ×𝐼 𝑛 ×𝐽 𝑛 (𝑛 = 1 , 2, ⋯ , 𝑁 , 𝐽 0 = 𝐽 𝑁 ) multiplied circularly: 
+
+ (𝑖 1, 𝑖 2, ⋯ 𝑖 𝑁 ) = 
+
+> 𝐽 0
+
+∑
+
+> 𝑗 0=1
+> 𝐽 1
+
+∑
+
+> 𝑗 1=1
+
+⋯
+
+> 𝐽 𝑁 −1
+
+∑
+
+> 𝑗 𝑁 −1 =1
+
+ 1(𝑗 0, 𝑖 1, 𝑗 1) 2(𝑗 1, 𝑖 2, 𝑗 2) ⋯  𝑁 (𝑗 𝑁 −1 , 𝑖 𝑁 , 𝑗 0).
+
+TT decomposition and TR decomposition only establish operations between adjacent two factors and are highly sensitive to the permutation of tensor modes, resulting in an inadequate and inflexible representation. To address the limitations of TT decomposition and TR decomposition, fully-connected tensor network (FCTN) decomposition [46, 47] was proposed, in which an 𝑁 th-order tensor  ∈ ℝ𝐼 1×𝐼 2×⋯×𝐼 𝑁 is decomposed into a set of 𝑁 th-order factors 
+
+ 𝑛 ∈ ℝ𝐽 1,𝑛 ×𝐽 2,𝑛 ×⋯×𝐽 𝑛 −1 ,𝑛 ×𝐼 𝑛 ×𝐽 𝑛,𝑛 +1 ×⋯×𝐽 𝑛,𝑁 with multi-linear operations between any two factors: 
+
+ (𝑖 1, 𝑖 2, ⋯ , 𝑖 𝑁 ) = 
+
+> 𝐽 1,2
+
+∑
+
+> 𝑗 1,2
+> 𝐽 1,3
+
+∑
+
+> 𝑗 1,3
+
+⋯
+
+> 𝐽 1,𝑁
+
+∑
+
+> 𝑗 1,𝑁
+> 𝐽 2,3
+
+∑
+
+> 𝑗 2,3
+
+⋯
+
+> 𝐽 2,𝑁
+
+∑
+
+> 𝑗 2,𝑁
+
+⋯
+
+> 𝐽 𝑁 −1 ,𝑁
+
+∑
+
+> 𝑗 𝑁 −1 ,𝑁
+
+ 1(𝑖 1, 𝑗 1,2, 𝑗 1,3, ⋯ , 𝑗 1,𝑁 ) 2(𝑗 1,2, 𝑖 2, 𝑗 2,3, ⋯ , 𝑗 2,𝑁 ) ⋯
+
+ 𝑛 (𝑗 1,𝑛 , 𝑗 2,𝑛 , ⋯ , 𝑗 𝑛 −1 ,𝑛 , 𝑖 𝑛 , 𝑗 𝑛,𝑛 +1 , ⋯ , 𝑗 𝑛,𝑁 ) ⋯  𝑁 (𝑗 1,𝑁 , 𝑗 2,𝑁 , ⋯ , 𝑗 𝑁 −1 ,𝑁 , 𝑖 𝑁 ).
+
+One primary advantage of FCTN decomposition is its ability to directly capture the intrinsic all-mode correlations of the target tensor, while TT decomposition and TR decomposition only establish the connections between adjacent two factors. Figure 1 illustrates the underlying structures of the aforementioned tensor network decompositions. 
+
+Figure 1: Underlying structures of tensor network decompositions. 
+
+However, the underlying structures of the aforementioned tensor network decompositions are all fixed, and finding the optimal structure has always been a challenging problem. To address this issue, SVD-inspired tensor network (SVDinsTN) decomposition [48] was proposed to efficiently search for a customized structure to achieve a compact representation. By inserting a diagonal matrix for each edge of the fully-connected tensor network, SVDinsTN can optimize tensor network factors and diagonal matrices simultaneously, evolving a compact tensor network structure. 
+
+2.2. Physics-informed neural network 
+
+Suppose that 𝛺 ⊆ ℝ𝑑 is a spatial domain with boundary 𝜕𝛺 . Consider the general formulation of PDEs: 
+
+{
+
+ℒ 𝑢 (𝒙 ) = 𝑓 (𝒙 ), 𝒙 ∈ 𝛺, 
+
+ℬ𝑢 (𝒙 ) = 𝑏 (𝒙 ), 𝒙 ∈ 𝜕𝛺, (1) 
+
+R. Su et al.: Preprint submitted to Elsevier Page 3 of 17 Hierarchical rank-evolving representation for physics-informed neural networks 
+
+where ℒ denotes the partial differential operator, ℬ denotes the boundary operator, 𝑓 (𝒙 ) is the source term, and 𝑏 (𝒙 )
+
+is the boundary condition. Physics-informed neural networks (PINNs) are a class of neural networks that embed the physical constraints governed by PDEs directly into the loss function, thereby biasing the optimization process toward physically consistent solutions. PINNs aim to approximate the unknown solution function 𝑢 (𝒙 ) in (1) using a parameterized neural network ̃𝑢 𝜃 (𝒙 ), where 𝜃 denotes the set of trainable parameters. The total loss function is constructed as 
+
+𝐿 (𝜃 ) = 𝐿 R(𝜃 ) + 𝜆𝐿 B(𝜃 ),
+
+where the residual loss 
+
+𝐿 R(𝜃 ) = 1
+
+𝑁 R
+
+> 𝑁 R
+
+∑
+
+> 𝑚 =1
+
+|||ℒ̃𝑢 𝜃 (𝒙 (𝑚 )R ) − 𝑓 (𝒙 (𝑚 )R )|||
+
+> 2
+
+,
+
+{
+
+𝒙 (𝑚 )B
+
+}𝑁 R 
+
+> 𝑚 =1
+
+⊆ 𝛺 
+
+penalizes violations of the governing equation, and the boundary loss 
+
+𝐿 B(𝜃 ) = 1
+
+𝑁 B
+
+> 𝑁 B
+
+∑
+
+> 𝑚 =1
+
+|||ℬ̃𝑢 𝜃 (𝒙 (𝑚 )B ) − 𝑏 (𝒙 (𝑚 )B )|||
+
+> 2
+
+,
+
+{
+
+𝒙 (𝑚 )B
+
+}𝑁 B 
+
+> 𝑚 =1
+
+⊆ 𝜕𝛺 
+
+enforces satisfaction of the boundary condition. By introducing physical priors into the learning objective, PINNs exhibit several distinctive advantages: they require no labeled data for training, enabling purely physics-constrained solution of PDEs [49]; they avoid the meshing requirements of traditional numerical methods, making them highly flexible for irregular and high-dimensional domains [50, 51]; and they seamlessly integrate data and physics, offering a robust paradigm for forward and inverse problems in scientific computing [52]. 
+
+## 3. Methodology 
+
+3.1. Notations and preliminaries 
+
+In this paper, we follow the notational convention where 𝑎 , 𝒂 , 𝑨 , and  stand for scalars, vectors, matrices and tensors correspondingly. For an 𝑁 th-order tensor  ∈ ℝ𝐼 1×𝐼 2×⋯×𝐼 𝑁 , (𝑖 1, 𝑖 2, ⋯ , 𝑖 𝑁 ) gives its (𝑖 1, 𝑖 2, ⋯ , 𝑖 𝑁 )th element. 
+
+Definition 1 (Function Tucker decomposition [38, 53]). For a multivariate function 𝑓 ∶ ℝ𝑁 → ℝ, the function Tucker decomposition is defined as 
+
+𝑓 (𝑥 1, 𝑥 2, ⋯ , 𝑥 𝑁 ) = 
+
+> 𝐼 1
+
+∑
+
+> 𝑖 1=1
+> 𝐼 2
+
+∑
+
+> 𝑖 2=1
+
+⋯
+
+> 𝐼 𝑁
+
+∑ 
+
+> 𝑖 𝑁 =1
+
+(𝑖 1, 𝑖 2, ⋯ , 𝑖 𝑁 ) ⋅ 𝒈 1(𝑥 1)( 𝑖 1) ⋅ 𝒈 2(𝑥 2)( 𝑖 2) ⋅ ⋯ ⋅ 𝒈 𝑁 (𝑥 𝑁 )( 𝑖 𝑁 ),
+
+where  ∈ ℝ𝐼 1×𝐼 2×⋯×𝐼 𝑁 is the core tensor, 𝒈 𝑛 ∶ ℝ → ℝ𝐼 𝑛 is a vector-valued function, and 𝒈 𝑛 (𝑥 𝑛 )( 𝑖 𝑛 ) ∈ ℝ denotes the 
+
+𝑛 th element of the vector 𝒈 𝑛 (𝑥 𝑛 ) ∈ ℝ𝐼 𝑛 (𝑛 = 1 , 2, ⋯ , 𝑁 ). 
+
+3.2. Hierarchical rank-evolving representation for multivariate functions 
+
+Tensor-based PINNs have been widely adopted to mitigate the curse of dimensionality. Typical approaches include function canonical-polyadic (CP) decomposition, Tucker decomposition, tensor train (TT) decomposition, and tensor ring (TR) decomposition [37, 38]. These methods factorize a high-dimensional solution function into a combination of univariate functions, reducing the computational complexity from exponential to linear. However, they rely on primitive low-rank tensor decompositions with fixed underlying structures, which are often insufficient to capture the complex correlations inherent in the solution functions of many physical PDEs. Moreover, these approaches lack an automatic mechanism for determining the optimal ranks, requiring manual presetting that introduces extra hyperparameter tuning costs. To address these limitations, we propose a hierarchical rank-evolving (abbreviated as HRE) representation for mul-tivariate functions, which endows us to faithfully capture the underlying structure of the targeted multivariate function   
+
+> R. Su et al.: Preprint submitted to Elsevier Page 4 of 17
+
+Hierarchical rank-evolving representation for physics-informed neural networks 
+
+accompanying with automatic rank determination. Concretely, in the hierarchical design of HRE representation, the target multivariate function is decomposed as a small-scale inner tensor with a set of univariate functions along each mode, where a customized tensor network decomposition can be readily deployed to capture the underlying structure of the small-scale inner tensor. 
+
+Definition 2 (Hierarchical rank-evolving representation). For a multivariate function 𝑓 ∶ ℝ𝑁 → ℝ, the hierarchi-cal rank-evolving (abbreviated as HRE) representation is defined as 
+
+𝑓 (𝑥 1, 𝑥 2, ⋯ , 𝑥 𝑁 ) = 
+
+> 𝐼 1
+
+∑
+
+> 𝑖 1=1
+> 𝐼 2
+
+∑
+
+> 𝑖 2=1
+
+⋯
+
+> 𝐼 𝑁
+
+∑ 
+
+> 𝑖 𝑁 =1
+
+(𝑖 1, 𝑖 2, ⋯ , 𝑖 𝑁 ) ⋅ 𝒓 (out) 1 (𝑖 1) ⋅ 𝒈 1(𝑥 1)( 𝑖 1) ⋅ 𝒓 (out) 2 (𝑖 2) ⋅ 𝒈 2(𝑥 2)( 𝑖 2)
+
+⋅ ⋯ ⋅ 𝒓 (out)  
+
+> 𝑁
+
+(𝑖 𝑁 ) ⋅ 𝒈 𝑁 (𝑥 𝑁 )( 𝑖 𝑁 ),
+
+where the core tensor 
+
+(𝑖 1, 𝑖 2, ⋯ , 𝑖 𝑁 ) = 
+
+> 𝐽 1,2
+
+∑
+
+> 𝑗 1,2
+> 𝐽 1,3
+
+∑
+
+> 𝑗 1,3
+
+⋯
+
+> 𝐽 1,𝑁
+
+∑
+
+> 𝑗 1,𝑁
+> 𝐽 2,3
+
+∑
+
+> 𝑗 2,3
+
+⋯
+
+> 𝐽 2,𝑁
+
+∑
+
+> 𝑗 2,𝑁
+
+⋯
+
+> 𝐽 𝑁 −1 ,𝑁
+
+∑
+
+> 𝑗 𝑁 −1 ,𝑁
+
+𝒓 (in) 1,2 (𝑗 1,2)𝒓 (in) 1,3 (𝑗 1,3) ⋯ 𝒓 (in) 1,𝑁 (𝑗 1,𝑁 )𝒓 (in) 2,3 (𝑗 2,3) ⋯ 𝒓 (in) 2,𝑁 (𝑗 2,𝑁 ) ⋯ 𝒓 (in)  
+
+> 𝑁 −1 ,𝑁
+
+(𝑗 𝑁 −1 ,𝑁 )
+
+1(𝑖 1, 𝑗 1,2, 𝑗 1,3, ⋯ , 𝑗 1,𝑁 )2(𝑗 1,2, 𝑖 2, 𝑗 2,3, ⋯ , 𝑗 2,𝑁 ) ⋯
+
+𝑛 (𝑗 1,𝑛 , 𝑗 2,𝑛 , ⋯ , 𝑗 𝑛 −1 ,𝑛 , 𝑖 𝑛 , 𝑗 𝑛,𝑛 +1 , ⋯ , 𝑗 𝑛,𝑁 ) ⋯ 𝑁 (𝑗 1,𝑁 , 𝑗 2,𝑁 , ⋯ , 𝑗 𝑁 −1 ,𝑁 , 𝑖 𝑁 ),
+
+Here, 𝒈 𝑛 ∶ ℝ → ℝ𝐼 𝑛 is a vector-valued function, 𝒈 𝑛 (𝑥 𝑛 )( 𝑖 𝑛 ) ∈ ℝ denotes the 𝑛 th element of the vector 𝒈 𝑛 (𝑥 𝑛 ) ∈ ℝ𝐼 𝑛 ,
+
+𝒓 (out)  
+
+> 𝑛
+
+∈ ℝ𝐼 𝑛 , 𝑛 ∈ ℝ𝐽 1,𝑛 ×𝐽 2,𝑛 ×⋯×𝐽 𝑛 −1 ,𝑛 ×𝐼 𝑛 ×𝐽 𝑛,𝑛 +1 ×⋯×𝐽 𝑛,𝑁 (𝑛 = 1 , 2, ⋯ , 𝑁 ), and 𝒓 (in)  
+
+> 𝑘,𝑙
+
+∈ ℝ𝐽 𝑘,𝑙 (1 ⩽ 𝑘 ⩽ 𝑙 ⩽ 𝑁 ). For simplicity, we denote this decomposition as 
+
+𝑓 (𝑥 1, 𝑥 2, ⋯ , 𝑥 𝑁 ) = HRE 
+
+(
+
+{𝑛 }𝑁 𝑛 =1 , {𝒈 𝑛 (𝑥 𝑛 )} 𝑁 𝑛 =1 , {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 , {𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 
+
+)
+
+.
+
+The outer representation provides a variable-separable form: for any input (𝑥 1, 𝑥 2, ⋯ , 𝑥 𝑁 ), the function value is obtained by evaluating each 𝒈 𝑛 (𝑥 𝑛 ) and then contracting with the core tensor . This reduces the evaluation cost from exponential to linear. The inner customized tensor network decomposition further capture arbitrary all-mode correlations through its flexible structure. More importantly, the learnable rank-evolving vectors {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 
+
+(controlling the inner ranks) and {𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 (controlling the outer ranks) are designed to be sparse. By incorporating 
+
+𝓁 1 regularization on these rank-evolving vectors into the loss function, we can effectively prune redundant edges. This process automatically determines the suitable ranks as well as the compact underlying structure of the inner tensor network, eliminating manual hyperparameter tuning. The rank-evolving capability of HRE representation stems from the learnable rank-evolving vectors {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 
+
+and {𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 . In the outer representation, each 𝒓 (out)  
+
+> 𝑛
+
+multiplies the output of the univariate network 𝒈 𝑛 (𝑥 𝑛 ) before contraction with the core tensor . Thus, if an element of 𝒓 (out)  
+
+> 𝑛
+
+becomes zero, the corresponding component 𝒈 𝑛 (𝑥 𝑛 )( 𝑖 𝑛 )
+
+is equivalently removed, reducing the outer rank. Similarly, in the inner representation, each vector 𝒓 (in)  
+
+> 𝑘,𝑙
+
+∈ ℝ𝐽 𝑘,𝑙 
+
+modulates the connection between the 𝑘 th and 𝑙 th factors. When an element of 𝒓 (in)  
+
+> 𝑘,𝑙
+
+shrinks to zero, the corresponding rank is reduced. If a rank-evolving vector 𝒓 (in)  
+
+> 𝑘,𝑙
+
+becomes 𝟎 , the corresponding edge is pruned, which simplifies the underling structure. The HRE representation thus unifies the expressive power of flexible tensor networks decomposition with rank-evolving mechanism, offering a powerful and adaptive tool for representing high-dimensional functions. When employed in PINNs to approximate the solution function of a PDE, we replace the standard neural network with HRE representation, and train all parameters jointly under the physics-informed loss augmented with sparsity regularization. The details are described next. 
+
+R. Su et al.: Preprint submitted to Elsevier Page 5 of 17 Hierarchical rank-evolving representation for physics-informed neural networks 
+
+Figure 2: Flowchart of HRE-PINNs. In the hierarchical design of HRE representation, the target multivariate function is decomposed as a small-scale inner tensor with a set of univariate functions along each mode, where a customized tensor network decomposition can be readily deployed to capture the underlying structure of the small-scale inner tensor. We build the HRE-PINNs correspondingly, with a hybrid loss function that incorporates three components: the PDE residual loss, the boundary condition loss, and a sparsity regularization term on the rank-evolving vectors. 
+
+3.3. Hierarchical rank-evolving representation-based physics-informed neural networks 
+
+We employ the hierarchical rank-evolving (HRE) representation to approximate the solution function of the general partial differential equation system given in (1), and build the hierarchical rank-evolving representation-based physics-informed neural networks (abbreviated as HRE-PINNs). In this framework, the unknown solution function 𝑢 (𝒙 ) is approximated by ̃𝑢 (𝒙 ) = HRE 
+
+(
+
+{𝑛 }𝑁 𝑛 =1 , {𝒈 𝑛 (𝑥 𝑛 )} 𝑁 𝑛 =1 , {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 , {𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 
+
+)
+
+, 𝒙 = ( 𝑥 1, 𝑥 2, ⋯ , 𝑥 𝑁 ) ∈ ℝ𝑁 , (2) where each univariate vector-valued function 𝒈 𝑛 ∶ ℝ → ℝ𝐼 𝑛 is implemented by a neural network with parameters 𝜃 𝑛 .Figure 2 illustrates the flowchart of HRE-PINNs. To automatically determine the suitable ranks and underlying structure, we augment the physics-informed loss with 
+
+𝓁 1-norm regularization on both {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 and {𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 . During training, the regularization drives redundant components toward zero, while the PDE residual and boundary losses ensure that only those components essential for accurate solution approximation survive. As a result, the effective ranks are not predetermined but emerge from the optimization process: the number of non-zero entries in each 𝒓 (in)  
+
+> 𝑘,𝑙
+
+and 𝒓 (out)  
+
+> 𝑛
+
+after training directly gives the suitable rank. This mechanism eliminates the need for manual rank tuning, prevents over- or under-fitting, and reveal the underlying structure of the target solution, which is a key advantage over existing tensor-based PINNs with fixed underlying structure. Moreover, the sparsity of 𝒓 (in)  
+
+> 𝑘,𝑙
+
+simultaneously reveals a compact inner tensor network structure that best captures the all-mode correlations of the core tensor. Compared with previous tensor-based PINNs, the rank-evolving mechanism eliminates manual tuning of ranks and topological structures, improving both accuracy and training stability for high-dimensional PDEs. In practice, most high-dimensional physical systems exhibit inherent low-rank and compact underlying structures, which render the rank-evolving vectors {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 and {𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 naturally sparse. Accordingly, we construct a hybrid loss function that incorporates three components: the PDE residual loss, the boundary condition loss, and a sparsity regularization term on the rank-evolving vectors: 
+
+𝐿 
+
+(
+
+{𝑛 }𝑁 𝑛 =1 , {𝜃 𝑛 }𝑁 𝑛 =1 , {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 , {𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 
+
+)
+
+= 1
+
+𝑁 R
+
+> 𝑁 R
+
+∑
+
+> 𝑚 =1
+
+|||ℒ̃𝑢 (𝒙 (𝑚 )R ) − 𝑓 (𝒙 (𝑚 )R )|||
+
+> 2
+
++ 𝜂 1
+
+𝑁 B
+
+> 𝑁 B
+
+∑
+
+> 𝑚 =1
+
+|||ℬ̃𝑢 (𝒙 (𝑚 )B ) − 𝑏 (𝒙 (𝑚 )B )|||
+
+> 2
+
++ 𝜆 ∑
+
+> 1⩽𝑘 ⩽𝑙 ⩽𝑁
+
+‖𝒓 (in)  
+
+> 𝑘,𝑙
+
+‖1 + 𝜇 
+
+> 𝑁
+
+∑
+
+> 𝑛 =1
+
+‖𝒓 (out)  
+
+> 𝑛
+
+‖1,
+
+(3) 
+
+R. Su et al.: Preprint submitted to Elsevier Page 6 of 17 Hierarchical rank-evolving representation for physics-informed neural networks 
+
+Algorithm 1: Hierarchical rank-evolving representation-based physics-informed neural networks 
+
+Input: Target PDE ℒ 𝑢 = 𝑓 , boundary condition ℬ𝑢 = 𝑏 , collocation points 
+
+{
+
+𝒙 (𝑚 )R
+
+}𝑁 R 
+
+> 𝑚 =1
+
+⊆ 𝛺 and 
+
+{
+
+𝒙 (𝑚 )B
+
+}𝑁 B 
+
+> 𝑚 =1
+
+⊆ 𝜕𝛺 , hyper-parameters 𝜆 and 𝜇 , maximum epochs number 𝑀 e.
+
+Output: Predicted solution function ̃𝑢 . 
+
+> 1
+
+Initialize inner tensor network decomposition factors {𝑛 }𝑁 𝑛 =1 , rank-evolving vectors {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 and 
+
+{𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 , and univariate neural networks {𝒈 𝑛 }𝑁 𝑛 =1 with trainable parameters {𝜃 𝑛 }𝑁 𝑛 =1 ; 
+
+> 2
+
+for 𝑖 = 1 ∶ 𝑀 e do  
+
+> 3
+
+Compute the HRE representation ̃𝑢 (𝒙 ) for all collocation points via (2);  
+
+> 4
+
+Compute the regularization term ∑1⩽𝑘 ⩽𝑙 ⩽𝑁 ‖𝒓 (in)  
+
+> 𝑘,𝑙
+
+‖1 and ∑𝑁 𝑛 =1 ‖𝒓 (out)  
+
+> 𝑛
+
+‖1; 
+
+> 5
+
+Calculate the total loss 𝐿 following (3);  
+
+> 6
+
+Update {𝑛 }𝑁 𝑛 =1 , {𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 , {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 and {𝜃 𝑛 }𝑁 𝑛 =1 using the Adam optimizer [54];  
+
+> 7
+
+end  
+
+> 8
+
+Generate the predicted solution function ̃𝑢 with the optimal parameters; where 
+
+{
+
+𝒙 (𝑚 )R
+
+}𝑁 R 
+
+> 𝑚 =1
+
+⊆ 𝛺 ,
+
+{
+
+𝒙 (𝑚 )B
+
+}𝑁 B 
+
+> 𝑚 =1
+
+⊆ 𝜕𝛺 are collocation point sets inside the domain 𝛺 and on the boundary 𝜕𝛺 ,respectively. The first term penalizes violations of the governing PDE, the second term enforces the satisfaction of boundary and initial conditions, and the third and fourth regularization terms promote the sparsity of rank-evolving vectors {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 and {𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 , which facilitates adaptive discovery of the suitable rank and the compact topological structure. All trainable parameters in the overall framework, including {𝑛 }𝑁 𝑛 =1 , {𝜃 𝑛 }𝑁 𝑛 =1 , {𝒓 (in)  
+
+> 𝑘,𝑙
+
+}1⩽𝑘 ⩽𝑙 ⩽𝑁 ,and {𝒓 (out)  
+
+> 𝑛
+
+}𝑁 𝑛 =1 , are jointly optimized via the Adam optimizer [54]. 
+
+## 4. Experiments 
+
+To comprehensively evaluate the HRE-PINN, we select several representative PDEs spanning three categories: high-dimensional static problems (3D Helmholtz equation and 5D Poisson equation), nonlinear time-dependent problems ((2+1)D Klein-Gordon equation), and complex fluid-dynamics problems ((2+1)D flow mixing equation and (2+1)D Navier-Stokes equation). All experiments are implemented in JAX with automatic differentiation for PDE residual calculation. The performance is evaluated by three metrics: the root mean square error, relative 𝐿 2 error and relative 𝐿 ∞ error between the exact solution and the predicted solution. To comprehensively assess the approximation capability and generalization performance of our proposed HRE-PINN framework, we carry out a series of numerical tests covering diverse PDE scenarios with increasing com-plexity. The test suite encompasses high-dimensional stationary elliptic PDEs, nonlinear time-dependent hyperbolic systems, as well as challenging fluid-dynamics benchmarks featuring sharp interfaces and turbulent vortex interactions. These test cases are ordered by their inherent difficulty level, so that we can systematically reveal the advantages brought by the hierarchical rank-evolving representation across different physical settings. We compare HRE-PINN against several state-of-the-art tensor-based PINN baselines, including SPINN, TT-PINN and Tucker-PINN. For fair comparison, all competing approaches are configured following the original publications. These baseline methods are implemented under the JAX-based experimental environment, keeping consistent network capacities, collocation point budgets and optimizer settings. The whole computational pipeline relies on JAX’s built-in automatic differentiation module to compute PDE residual terms required for physics-informed training. To achieve objective assessment, three metrics are adopted to measure the discrepancy between predicted fields and reference solutions: root mean square error (RMSE), relative 𝐿 2 error and relative 𝐿 ∞ error. Lower values of these metrics correspond to more accurate PDE solution approximations. During model training, we monitor these metrics every 1 000 epochs. The model checkpoint yielding the best prediction accuracy on test samples is retained to produce the final results.   
+
+> R. Su et al.: Preprint submitted to Elsevier Page 7 of 17 Hierarchical rank-evolving representation for physics-informed neural networks
+
+In the following subsections, we report numerical results for each benchmark sequentially: 3D Helmholtz equation, 5D Poisson equation, (2+1)D Klein-Gordon equation, (2+1)D flow-mixing equation, and (2+1)D Navier-Stokes equation. 
+
+4.1. 3D Helmholtz equation 
+
+Helmholtz equations are fundamental elliptic PDEs governing time-harmonic wave propagation in acoustics, electromagnetics, and structural dynamics. They are widely recognized as a challenging benchmark for physics-informed neural networks due to their high-frequency solution components, which frequently lead to training degradation and catastrophic accuracy loss in standard PINN formulations. We consider the 3D Helmholtz equation with homogeneous Dirichlet boundary conditions: 
+
+{
+
+Δ𝑢 (𝒙 ) + 𝑘 2𝑢 (𝒙 ) = 𝑞 (𝒙 ), 𝒙 ∈ 𝛺, 𝑢 (𝒙 ) = 0 , 𝒙 ∈ 𝜕𝛺, 
+
+where 𝛺 = [−1 , 1] 3, and 𝑘 = 1 . We employ the manufactured solution to generate an exact reference solution: 
+
+𝑢 (𝒙 ) = sin(4 𝜋𝑥 1) sin(4 𝜋𝑥 2) sin(3 𝜋𝑥 3), 𝒙 = ( 𝑥 1, 𝑥 2, 𝑥 3),
+
+with the corresponding source term derived as 
+
+𝑞 (𝒙 ) = −(4 𝜋 )2𝑢 (𝒙 ) − (4 𝜋 )2𝑢 (𝒙 ) − (3 𝜋 )2𝑢 (𝒙 ) + 𝑘 2𝑢 (𝒙 ).
+
+This benchmark tests the ability of HRE-PINN to handle high-frequency functions.                      
+
+> Table 1
+> Performance comparison of different methods for 3D Helmholtz equation Method RMSE 𝐿 2error 𝐿 ∞error SPINN 0.014 352 0.041 210 0.136 670 TT-PINN 0.009 998 0.028 709 0.090 714 Tucker-PINN 0.012 661 0.036 356 0.104 973 HRE-PINN 0.005 021 0.014 417 0.054 701 SPINN TT-PINN Tucker-PINN Proposed Predicted Error
+> Figure 3: Visual comparison of predicted solutions and absolute errors for 3D Helmholtz equation.
+
+Table 1 quantitatively summarizes the numerical performance of SPINN, TT-PINN, Tucker-PINN and HRE-PINN on the 3D Helmholtz equation, including RMSE, relative 𝐿 2 error and relative 𝐿 ∞ error. Among all competing   
+
+> R. Su et al.: Preprint submitted to Elsevier Page 8 of 17 Hierarchical rank-evolving representation for physics-informed neural networks
+
+tensor-based PINNs, HRE-PINN achieves the lowest approximation errors across all three error metrics: the RMSE reaches 0.005 021 , the 𝐿 2 error is reduced to 0.014 417 , and the 𝐿 ∞ error is only 0.054 701 , which is roughly 
+
+40% lower than the second-best TT-PINN. Figure 3 provides visual comparisons of the predicted solution and absolute error for each method over the cubic domain 𝛺 = [−1 , 1] 3. All three baseline tensor-based PINNs exhibit widespread, structured error patterns aligned with the high-frequency sinusoidal components of the manufactured solution, with prominent error hotspots uniformly distributed across the entire computational cube. In contrast, the error of HRE-PINN maintains consistently low magnitude throughout the domain, with nearly no visible high-error regions. This visual evidence corroborates the quantitative advantage in Table 1, verifying that the hierarchical together with rank-evolving mechanism can precisely capture the complex coupling structure of high-frequency elliptic PDE solutions. The consistent superiority in both quantitative metrics and qualitative visualization confirms that the HRE representation alleviates the bottleneck of tensor decompositions with fixed underlying structures for high-frequency wave propagation PDEs. 
+
+4.2. 5D Poisson equation 
+
+Poisson equations are the most fundamental elliptic PDEs, describing steady-state phenomena such as electrostatic potential, gravitational fields, and heat conduction. High-dimensional Poisson equations are particularly challenging for traditional numerical methods and PINNs due to the curse of dimensionality, which causes exponential growth in computational cost and memory usage with increasing dimension. We consider the 5D Poisson equation with homogeneous Dirichlet boundary conditions: 
+
+{
+
+−Δ 𝑢 (𝒙 ) = 𝑓 (𝒙 ), 𝒙 ∈ 𝛺, 𝑢 (𝒙 ) = 0 , 𝒙 ∈ 𝜕𝛺, 
+
+where 𝛺 = [−1 , 1] 5. We use a simple manufactured analytical solution: 
+
+𝑢 (𝒙 ) = 
+
+> 5
+
+∑
+
+> 𝑖 =1
+
+sin 
+
+( 𝜋 
+
+2 𝑥 𝑖 
+
+)
+
+, 𝒙 = ( 𝑥 1, 𝑥 2, 𝑥 3, 𝑥 4, 𝑥 5),
+
+with the corresponding source term 
+
+𝑓 (𝒙 ) = 𝜋 2
+
+4
+
+> 5
+
+∑
+
+> 𝑖 =1
+
+sin 
+
+( 𝜋 
+
+2 𝑥 𝑖 
+
+)
+
+.
+
+This benchmark specifically evaluates the high-dimensional scalability of HRE-PINN architecture.                  
+
+> Table 2
+> Performance comparison of different methods for 5D Poisson equation Method RMSE 𝐿 2error 𝐿 ∞error SPINN 0.001 899 0.000 586 0.003 586 TT-PINN 0.001 997 0.000 616 0.004 052 Tucker-PINN 0.002 125 0.000 656 0.003 329 HRE-PINN 0.001 078 0.000 333 0.001 675
+
+Table 2 reports the quantitative performance of SPINN, TT-PINN, Tucker-PINN and HRE-PINN on the 5D Poisson equation, including RMSE, relative 𝐿 2 error and relative 𝐿 ∞ error. This high-dimensional case clearly demonstrates the strong scalability of our hierarchical framework against the curse of dimensionality. Compared with all baseline tensor-based PINNs, HRE-PINN achieves the optimal accuracy on all error metrics: its RMSE is 0.001 078 , the 𝐿 2 error drops to 0.000 333 , and the 𝐿 ∞ error equals 0.001 675 , which outperforms the second-best SPINN by approximately 
+
+50% . Figure 4 visualizes the predicted solution and absolute error for each method. For SPINN, TT-PINN and Tucker-PINN, the error fields present obvious widespread high-value regions across the entire hypercube domain, indicating insufficient expressive power of fixed-topology tensor decompositions to capture the multi-dimensional coupling relations in 5D elliptic solutions. By contrast, the error magnitude of HRE-PINN is suppressed to a lower           
+
+> R. Su et al.: Preprint submitted to Elsevier Page 9 of 17 Hierarchical rank-evolving representation for physics-informed neural networks SPINN TT-PINN Tucker-PINN HRE-PINN Predicted Error
+> Figure 4: Visual comparison of predicted solutions and absolute errors for 5D Poisson equation, sliced at 𝑥 4=𝑥 5= 0 .9.
+
+level. This qualitative observation aligns perfectly with the quantitative data in Table 2, validating that the hierarchical structure of HRE can automatically determining the suitable ranks and flexible underlying structure without manual hyperparameter tuning. For high-dimensional PDEs where traditional discretization and standard PINNs are hindered by exponential computational cost, the rank-evolving mechanism effectively eliminates redundant model degrees of freedom, enabling precise approximation of high-dimensional physical fields. 
+
+4.3. (2+1)D Klein-Gordon equation 
+
+Klein-Gordon equations are nonlinear hyperbolic PDEs that arise in relativistic quantum mechanics, particle physics, and nonlinear optics. They describe the propagation of relativistic waves and exhibits rich dynamical behavior including wave dispersion and nonlinear interactions. The (2+1)D formulation presents significant challenges due to the combination of second-order temporal derivatives, second-order spatial derivatives, and nonlinear terms. We solve the inhomogeneous Klein-Gordon equation: 
+
+⎧⎪⎨⎪⎩
+
+𝜕 𝑡𝑡 𝑢 (𝑥, 𝑦, 𝑡 ) − Δ 𝑢 (𝑥, 𝑦, 𝑡 ) + 𝑢 2(𝑥, 𝑦, 𝑡 ) = 𝑓 (𝑥, 𝑦, 𝑡 ), (𝑥, 𝑦 ) ∈ 𝛺, 𝑡 ∈ 𝛤 , 𝑢 (𝑥, 𝑦, 𝑡 ) = 𝑏 (𝑥, 𝑦, 𝑡 ), (𝑥, 𝑦 ) ∈ 𝜕𝛺, 𝑡 ∈ 𝛺, 𝑢 (𝑥, 𝑦, 0) = 𝑥 + 𝑦, (𝑥, 𝑦 ) ∈ 𝛺, 
+
+where 𝛺 = [−1 , 1] 2, 𝛤 = [0 , 10] . The exact analytical solution is given by: 
+
+𝑢 (𝑥, 𝑦, 𝑡 ) = ( 𝑥 + 𝑦 ) cos 2 𝑡 + 𝑥𝑦 sin 2 𝑡, 
+
+from which the source term 𝑓 (𝑥, 𝑦, 𝑡 ) and boundary condition 𝑏 (𝑥, 𝑦, 𝑡 ) are derived. This benchmark assesses performance of HRE-PINN on time-dependent, second-order hyperbolic systems with nonlinearities.                  
+
+> Table 3
+> Performance comparison of different methods for (2+1)D Klein-Gordon equation Method RMSE 𝐿 2error 𝐿 ∞error SPINN 0.002 440 0.003 841 0.008 030 TT-PINN 0.007 433 0.011 702 0.040 222 Tucker-PINN 0.008 823 0.013 890 0.096 783 HRE-PINN 0.000 468 0.000 737 0.001 949
+
+Table 3 quantitatively compares the numerical performance of SPINN, TT-PINN, Tucker-PINN and HRE-PINN on the nonlinear time-dependent (2+1)D Klein-Gordon equation, listing the number of RMSE, relative 𝐿 2 error, and       
+
+> R. Su et al.: Preprint submitted to Elsevier Page 10 of 17 Hierarchical rank-evolving representation for physics-informed neural networks SPINN TT-PINN Tucker-PINN HRE-PINN Predicted Error
+> Figure 5: Visual comparison of predicted solutions and absolute errors for (2+1)D Klein-Gordon equation.
+
+relative 𝐿 ∞ error. This hyperbolic PDE with second-order temporal derivatives and quadratic nonlinear terms poses a severe challenge to conventional tensor-based PINNs, yet HRE-PINN achieves the best accuracy across all error metrics. Specifically, the RMSE of HRE-PINN is merely 0.000 468 , with a relative 𝐿 2 error of 0.000 737 and a relative 
+
+𝐿 ∞ error of 0.001 949 , which reduces the best baseline (SPINN) by roughly 80% . Figure 5 visualizes predicted solution and absolute error over the spatio-temporal domain for all comparative methods. SPINN, TT-PINN and Tucker-PINN all exhibit prominent errors distributed throughout the entire space-time cube. In stark contrast, the error of HRE-PINN maintains an extremely low amplitude across the whole computational domain, with almost no distinct high-error regions visible. This qualitative observation is fully consistent with the quantitative results in Table 3, and verifies that the hierarchical design and flexible underlying structure are effective in characterizing complex space-time correlations embedded in nonlinear hyperbolic PDE solutions. The rank-evolving mechanism avoids manual rank tuning and effectively mitigates training instability, demonstrating strong applicability to time-dependent relativistic wave problems with intricate dynamical behaviors. 
+
+4.4. (2+1)D flow mixing equation 
+
+The flow mixing problem models the mixing of two fluids at their interface and is widely used in chemical engineering and fluid dynamics. The problem is challenging due to its spatially varying velocity coefficients and sharp interface structures, which require high resolution to capture accurately. We consider the following formulation: 
+
+⎧⎪⎨⎪⎩
+
+𝜕 𝑡 𝑢 (𝑥, 𝑦, 𝑡 ) + 𝑎 (𝑥, 𝑦 )𝜕 𝑥 𝑢 (𝑥, 𝑦, 𝑡 ) + 𝑏 (𝑥, 𝑦 )𝜕 𝑦 𝑢 (𝑥, 𝑦, 𝑡 ) = 0 , (𝑥, 𝑦 ) ∈ 𝛺, 𝑡 ∈ 𝛤 , 𝑢 (𝑥, 𝑦, 0) = − tanh 𝑦  
+
+> 2
+
+, (𝑥, 𝑦 ) ∈ 𝛺, 𝑢 (𝑥, 𝑦, 𝑡 ) = 𝑏 (𝑥, 𝑦, 𝑡 ), (𝑥, 𝑦 ) ∈ 𝜕𝛺, 𝑡 ∈ 𝛤 , 
+
+where 𝛺 = [−4 , 4] 2, 𝛤 = [0 , 4] , and the spatially varying velocity coefficients are defined as: 
+
+𝑎 (𝑥, 𝑦 ) = − 𝑣 𝑡 
+
+𝑣 𝑡, max 
+
+𝑦 𝑟 , 𝑏 (𝑥, 𝑦 ) = 𝑣 𝑡 
+
+𝑣 𝑡, max 
+
+𝑥 𝑟 , 𝑣 𝑡 = tanh 𝑟 
+
+cosh 2 𝑟 , 𝑟 = √𝑥 2 + 𝑦 2, 𝑣 𝑡, max = 0 .385 .
+
+The exact analytical solution for this problem is 
+
+𝑢 (𝑥, 𝑦, 𝑡 ) = − tanh 
+
+( 𝑦 
+
+2 cos 
+
+( 1
+
+𝑟 𝑣 𝑡 
+
+𝑣 𝑡, max 
+
+𝑡 
+
+)
+
+− 𝑥 
+
+2 sin 
+
+( 1
+
+𝑟 𝑣 𝑡 
+
+𝑣 𝑡, max 
+
+𝑡 
+
+)) 
+
+,
+
+and the Dirichlet boundary condition 𝑏 (𝑥, 𝑦, 𝑡 ) is extracted from this solution. This benchmark tests the ability of HRE-PINN to handle sharp interface dynamics. Table 4 presents the quantitative performance metrics of SPINN, TT-PINN, Tucker-PINN and HRE-PINN on the advection-dominated flow mixing benchmark, including RMSE, relative 𝐿 2 error, and relative 𝐿 ∞ error. This PDE with                          
+
+> R. Su et al.: Preprint submitted to Elsevier Page 11 of 17 Hierarchical rank-evolving representation for physics-informed neural networks
+> Table 4
+> Performance comparison of different methods for (2+1)D flow mixing equation Method RMSE 𝐿 2error 𝐿 ∞error SPINN 0.024 408 0.033 809 0.279 922 TT-PINN 0.018 491 0.025 613 0.220 849 Tucker-PINN 0.024 644 0.034 136 0.272 519 HRE-PINN 0.002 487 0.003 445 0.032 788 SPINN TT-PINN Tucker-PINN HRE-PINN Predicted Error
+> Figure 6: Visual comparison of predicted solutions and absolute errors for (2+1)D flow mixing equation at 𝑡 = 4 .
+
+spatially variable rotational velocity fields and sharp fluid interface structures severely tests the representation capacity of tensor-based PINNs, and HRE-PINN achieves overwhelming accuracy advantages over all baseline methods. Numerically, HRE-PINN yields an RMSE of 0.002 487 , a relative 𝐿 2 error of 0.003 445 and a relative 𝐿 ∞ error of 
+
+0.032 788 , reducing the error of the second-best TT-PINN by approximately 80% . Figure 6 provides intuitive visual comparisons of the predicted solution and absolute error for each competing method across the spatial domain at 𝑡 = 4 .SPINN, TT-PINN and Tucker-PINN all generate prominent high-error bands concentrated along the twisted mixing interface; such concentrated error artifacts reveal that tensor decompositions with fixed underlying structures lack sufficient flexibility to capture complex correlations. In contrast, the error distribution of HRE-PINN remains uniformly close to zero throughout the entire domain. This qualitative observation strongly supports the quantitative results in Table 4, and validates that the hierarchical framework equipped with rank-evolving mechanism can automatically revealing the suitable underlying structure to resolve steep flow interfaces without predefining structures manually. For advection-dominated fluid transport problems featuring sharp transition layers, the customized tensor network decomposition effectively characterizes complex cross-dimensional coupling, while the sparsity-driven rank-evolving mechanism prevents over-parameterization and delivers high-fidelity approximations of mixing dynamics. 
+
+4.5. (2+1)D Navier-Stokes equation 
+
+Navier-Stokes equations are governing equations of fluid dynamics, describing the motion of viscous incompress-ible fluids. The (2+1)D decaying turbulence problem is a challenging benchmark that tests the ability of numerical methods to capture complex, chaotic flow structures and nonlinear interactions between vortices. We solve the vorticity formulation of the equations on a periodic domain: 
+
+⎧⎪⎨⎪⎩
+
+𝜕 𝑡 𝜔 (𝑥, 𝑦, 𝑡 ) + 𝒖 (𝑥, 𝑦, 𝑡 ) ⋅ ∇𝜔 (𝑥, 𝑦, 𝑡 ) = 𝜈 Δ𝜔 (𝑥, 𝑦, 𝑡 ), (𝑥, 𝑦 ) ∈ 𝛺, 𝑡 ∈ 𝛤 , 
+
+∇ ⋅ 𝒖 (𝑥, 𝑦, 𝑡 ) = 0 , (𝑥, 𝑦 ) ∈ 𝛺, 𝑡 ∈ 𝛤 , 𝜔 (𝑥, 𝑦, 0) = 𝜔 0(𝑥, 𝑦 ), (𝑥, 𝑦 ) ∈ 𝛺, 
+
+where 𝛺 = [0 , 2𝜋 ]2, 𝛤 = [0 , 1] and 𝒖 (𝑥, 𝑦, 𝑡 ) ∈ ℝ2 is the velocity field, 𝜔 = ∇ × 𝒖 is the vorticity, and 𝜈 = 0 .01 is the kinematic viscosity. The initial vorticity field 𝜔 0(𝐱 ) is generated as a Gaussian random field with a maximum velocity   
+
+> R. Su et al.: Preprint submitted to Elsevier Page 12 of 17 Hierarchical rank-evolving representation for physics-informed neural networks
+
+magnitude of 5, following the setup in [29]. We generate a high-resolution reference solution using the JAX-CFD solver [55] with a resolution of 128 × 128 × 100 . This benchmark represents the most challenging test in our suite, evaluating the ability of HRE-PINN to handle strong nonlinearities and chaotic dynamics.                        
+
+> Table 5
+> Performance comparison of different methods for vorticity-field predictions of (2+1)D Navier-Stokes equation Method RMSE 𝐿 2error 𝐿 ∞error SPINN 0.762 091 0.134 820 0.207 020 TT-PINN 1.320 352 0.233 581 0.281 729 Tucker-PINN 1.003 436 0.177 516 0.235 614 HRE-PINN 0.414 919 0.073 403 0.159 532 SPINN TT-PINN Tucker-PINN HRE-PINN Predicted Error
+> Figure 7: Visual comparison of predicted vorticity field and absolute errors for (2+1)D Navier-Stokes equation at 𝑡 = 1 .
+
+Table 5 quantitatively compares the prediction accuracy of SPINN, TT-PINN, Tucker-PINN and HRE-PINN on the challenging (2+1)D decaying turbulence Navier-Stokes benchmark, reporting RMSE, relative 𝐿 2 error and relative 𝐿 ∞
+
+error for vorticity fields. This chaotic viscous flow problem with strong nonlinear advection terms poses the strictest test among all numerical cases. HRE-PINN achieves the minimal error across all three evaluation metrics, yielding an RMSE of 0.414 919 , a relative 𝐿 2 error of 0.073 403 and a relative 𝐿 ∞ error of 0.159 532 . Compared with the best-performing baseline SPINN, HRE-PINN reduces the errors by approximately 40% . TT-PINN and Tucker-PINN produce substantially larger errors due to their fixed, inflexible structures, which fail to fully capture the intricate long-range vortex correlations in turbulent flow fields. Figure 7 visualizes the predicted vorticity fields and corresponding absolute errors of all competing models at 𝑡 = 1 . SPINN, TT-PINN and Tucker-PINN exhibit prominent clustered error hotspots; these widespread residual artifacts demonstrate that tensor decompositions with fixed underlying structures lack sufficient expressive capacity to resolve fine turbulent flow structures. In contrast, the error of HRE-PINN remains uniformly suppressed at low magnitude over the entire periodic domain, with only negligible residual values visible near small-scale vortices. This qualitative observation is fully consistent with the quantitative metrics in Table 5, and validates that the hierarchical framework equipped with automatic rank-evolving mechanism can accurately resolve complex chaotic fluid dynamics without manually presetting tensor ranks. For viscous turbulence problems, the rank-evolving mechanism automatically reveals the underlying low-rank structure of vorticity fields, yielding high-fidelity flow predictions that outperform existing tensor-based PINNs.   
+
+> R. Su et al.: Preprint submitted to Elsevier Page 13 of 17 Hierarchical rank-evolving representation for physics-informed neural networks
+
+## 5. Discussion 
+
+In this section, we conduct a series of targeted ablation studies. We separately quantify the performance contributions of the hierarchical design, the rank-evolving mechanism, and the flexible underlying structure. Through controlled experiments on the representative 5D Poisson equation, we isolate the gain brought by each key component, and clarify why the proposed HRE representation outperforms existing tensor-based PINNs. 
+
+5.1. Contribution of hierarchical design 
+
+To demonstrate the advantages of our hierarchical design, we conduct ablation experiments on the 5D Poisson equation by comparing three configurations: 1. Inner representation only: the target solution function is represented by the continuous variant of SVDinsTN decomposition; 2. Outer representation only: the target solution function is represented by the rank-evolving variant of function Tucker decomposition; 3. Both: the target solution function is represented by the proposed HRE representation.                   
+
+> Table 6
+> Performance comparison for ablation study of hierarchical design on 5D Poisson equation Inner representation Outer representation RMSE 𝐿 2error 𝐿 ∞error
+> ✓✗0.001 817 0.000 561 0.003 104
+> ✗✓0.001 957 0.000 604 0.002 921
+> ✓✓0.001 078 0.000 333 0.001 675
+
+Table 6 quantifies the individual and combined performance gains brought by the hierarchical architecture of HRE on the 5D Poisson equation. When only the inner representation is utilized, the model attains an RMSE of 
+
+0.001 817 , a relative 𝐿 2 error of 0.000 561 and a relative 𝐿 ∞ error of 0.003 104 , suffering from limited efficiency in decomposing high-dimensional coordinates. If we retain only the outer representation, the error rises to RMSE at 0.001 957 , relative 𝐿 2 error at 0.000 604 and relative 𝐿 ∞ at 0.002 921 , as the core tensor cannot directly capture complex cross-mode couplings. In contrast, the complete HRE hierarchical design integrating both inner and outer layers achieves the lowest RMSE ( 0.001 078 ), relative 𝐿 2 error ( 0.000 333 ) and relative 𝐿 ∞ error ( 0.001 675 ), nearly halving the error magnitude. This ablation result clearly verifies the complementary effect of the two hierarchical components: the outer representation mitigates the curse of dimensionality, while the inner representation accurately encodes multi-dimensional correlations; only their joint deployment delivers optimal approximation performance for high-dimensional PDE solutions. 
+
+5.2. Contribution of rank-evolving mechanism 
+
+The rank-evolving mechanism serves as the core adaptive component of the HRE representation, which automat-ically determines the suitable ranks and underlying structure throughout training. To evaluate the effectiveness of rank-evolving mechanism, we conduct ablation experiments on the 5D Poisson equation by removing part/all of the rank-evolving vectors in HRE representation. All other settings and architectures are kept identical.                       
+
+> Table 7
+> Performance comparison for ablation study of rank-evolving mechanism on 5D Poisson equation Inner rank-evolving Outer rank-evolving RMSE 𝐿 2error 𝐿 ∞error
+> ✗✗0.001 816 0.000 561 0.004 377
+> ✓✗0.001 463 0.000 452 0.002 636
+> ✗✓0.001 397 0.000 431 0.001 823
+> ✓✓0.001 078 0.000 333 0.001 675
+
+Table 7 clearly quantifies the independent and joint contributions of inner and outer rank-evolving mechanisms. Disabling both rank-evolving mechanisms yields the largest error metrics (RMSE of 0.001 816 , relative 𝐿 2 error of 
+
+0.000 561 , relative 𝐿 ∞ error of 0.004 377 ), which reveals the performance bottleneck of fixed manually preassigned ranks. Activating merely the inner rank-evolving vectors cuts the relative 𝐿 2 error to 0.000 452 , while only enabling the outer rank-evolving vectors reduces the relative 𝐿 2 error to 0.000 431 . When both inner and outer rank-evolving   
+
+> R. Su et al.: Preprint submitted to Elsevier Page 14 of 17 Hierarchical rank-evolving representation for physics-informed neural networks
+
+mechanisms are activated, the model reaches the minimal RMSE of 0.001 078 , relative 𝐿 2 error of 0.000 333 , and relative 𝐿 ∞ error of 0.001 675 . This observation confirms that the two sparse rank-evolving vectors act cooperatively, and their synergy substantially improves the approximation precision for high-dimensional PDE solutions. 
+
+5.3. Influence of underlying structure 
+
+To quantitatively verify the influence of the underlying structure on model performance, we conduct ablation experiments on the 5D Poisson equation. In these experiments, the outer rank-evolving linear projection is kept unchanged, and only the inner decomposition is replaced with four fixed structures: tensor directly, TT decomposition, TR decomposition, and FCTN decomposition.                     
+
+> Table 8
+> Performance comparison of different underlying structures on 5D Poisson equation Underlying structure RMSE 𝐿 2error 𝐿 ∞error Tensor directly 0.001 890 0.000 583 0.003 263 TT decomposition 0.001 772 0.000 547 0.004 088 TR decomposition 0.001 693 0.000 523 0.003 337 FCTN decomposition 0.001 397 0.000 431 0.001 823 Proposed 0.001 078 0.000 333 0.001 675
+
+Table 8 quantitatively demonstrates the superiority of the customized tensor network decomposition adopted in HRE representation over several fixed tensor decomposition structures. Direct tensor representation yields the highest RMSE and relative 𝐿 2 error among all candidates, failing to compress the high-dimensional core tensor and incurring severe redundant parameters. TT decomposition and TR decomposition only model adjacent-mode connections, resulting in moderate approximation accuracy but limited capacity to capture global cross-dimensional correlations. FCTN decomposition with fully connected structure achieves better fitting results yet still relies on fixed preset ranks. Proposed underlying structure equipped with rank-evolving vectors attains the minimal RMSE of 0.001 078 , relative 
+
+𝐿 2 error of 0.000 333 and relative 𝐿 ∞ error of 0.001 675 , as it can automatically simplify redundancy via sparsity regularization while retaining critical multi-mode interactions. This ablation validates that the customizable, rank-evolved underlying structure inside HRE representation provides stronger representation ability than conventional tensor decompositions with fixed structures for high-dimensional PDE solutions. 
+
+## 6. Conclusion 
+
+In this paper, we proposed a hierarchical rank-evolving (HRE) representation for multivariate functions and built HRE-PINNs to address two key drawbacks of existing tensor-based PINNs: pre-specified low-rank tensor decomposi-tions with fixed underlying structures and manually tuned ranks. The HRE representation adopts a hierarchical archi-tecture. Its outer representation reduces the computational complexity of function evaluation from exponential to linear with respect to the dimensions, effectively alleviating the curse of dimensionality. The inner representation leverages a customized tensor network decomposition to capture the underlying structure of the target multivariate function. Equipped with learnable rank-evolving vectors and sparse regularization, our method automatically determines the suitable ranks and underlying structure during training, removing tedious manual hyperparameter tuning. Extensive experiments on various PDE benchmarks, including high-dimensional static problems (3D Helmholtz equation and 5D Poisson equation), nonlinear time-dependent problems ((2+1)D Klein-Gordon equation), and complex fluid-dynamics problems ((2+1)D flow mixing equation and (2+1)D Navier-Stokes equation), show HRE-PINN outperforms existing tensor-based PINNs across all error metrics. Ablation studies verify the indispensable performance gains brought by both the hierarchical design and rank-evolving mechanism. In summary, the HRE representation provides a novel function approximation paradigm. The resulting HRE-PINN offers an accurate, easy-to-tune alternative to existing tensor-based PINNs, with broad application prospects for high-dimensional PDE simulation across fluid dynamics, quantum mechanics, and engineering multi-physics modeling.   
+
+> R. Su et al.: Preprint submitted to Elsevier Page 15 of 17
+
+Hierarchical rank-evolving representation for physics-informed neural networks 
+
+## References 
+
+[1] J. Song, W. Cao, W. Zhang, FENN: Feature-enhanced neural network for solving partial differential equations involving fluid mechanics, Journal of Computational Physics 542 (2025) 114370. doi: 10.1016/j.jcp.2025.114370 .[2] H. Xing, K. Jin, G. Yao, J. Zhao, D. Xu, D. Wen, A novel trunk branch-net PINN for flow and heat transfer prediction in porous medium, Journal of Computational Physics 543 (2025) 114385. doi: 10.1016/j.jcp.2025.114385 .[3] F. Rocha, S. Deparis, P. Antolin, A. Buffa, DeepBND: A machine learning approach to enhance multiscale solid mechanics, Journal of Computational Physics 479 (2023) 111996. doi: 10.1016/j.jcp.2023.111996 .[4] T. Würth, N. Freymuth, C. Zimmerling, G. Neumann, L. Kärger, Physics-informed meshgraphnets (PI-MGNs): Neural finite element solvers for non-stationary and nonlinear simulations on arbitrary meshes, Computer Methods in Applied Mechanics and Engineering 429 (2024) 117102. doi: 10.1016/j.cma.2024.117102 .[5] C. Mao, J. A. Fan, Accurate and scalable deep Maxwell solvers, Proceedings of the National Academy of Sciences 123 (2026) e2530330123. doi: 10.1073/pnas.2530330123 .[6] A. E. Rappaport, T. Chaumont-Frelet, A. Modave, A hybridizable discontinuous Galerkin method with transmission variables for time-harmonic electromagnetic problems, SIAM Journal on Scientific Computing 48 (2026) B629–B650. doi: 10.1137/25M1756818 .[7] J. Han, L. Zhang, W. E, Solving many-electron Schrödinger equation using deep neural networks, Journal of Computational Physics 399 (2019) 108929. doi: 10.1016/j.jcp.2019.108929 .[8] H. Shang, C. Guo, Y. Wu, Z. Li, J. Yang, Solving the many-electron Schrödinger equation with a transformer-based framework, Nature Communications 16 (2025) 8464. doi: 10.1038/s41467-025-63219-2 .[9] H. Wang, T. S. Basu, A fast finite difference method for two-dimensional space-fractional diffusion equations, SIAM Journal on Scientific Computing 34 (2012) A2444–A2458. doi: 10.1137/12086491X .[10] P. Martínez-Lera, M. De Corato, A finite element method for stochastic diffusion equations using fluctuating hydrodynamics, Journal of Computational Physics 510 (2024) 113098. doi: 10.1016/j.jcp.2024.113098 .[11] Y. Lu, D. Xiao, R. Fu, X. Xu, S. Sun, Non-intrusive reduced order modeling of fluid flows via finite element inspired graph neural network, Journal of Computational Physics 553 (2026) 114727. doi: 10.1016/j.jcp.2026.114727 .[12] R. Li, Y. Lu, Y. Wang, H. Xu, Hermite spectral method for multi-species Boltzmann equation, Journal of Computational Physics 471 (2022) 111650. doi: 10.1016/j.jcp.2022.111650 .[13] J. Han, A. Jentzen, W. E, Solving high-dimensional partial differential equations using deep learning, Proceedings of the National Academy of Sciences 115 (2018) 8505–8510. doi: 10.1073/pnas.1718942115 .[14] M. Hutzenthaler, A. Jentzen, T. Kruse, Overcoming the curse of dimensionality in the numerical approximation of parabolic partial differential equations with gradient-dependent nonlinearities, Foundations of Computational Mathematics 22 (2022) 905–966. doi: 10.1007/ s10208-021-09514-y .[15] Z. Hu, K. Shukla, G. E. Karniadakis, K. Kawaguchi, Tackling the curse of dimensionality with physics-informed neural networks, Neural Networks 176 (2024) 106369. doi: 10.1016/j.neunet.2024.106369 .[16] M. Raissi, P. Perdikaris, G. Karniadakis, Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations, Journal of Computational Physics 378 (2019) 686–707. doi: 10.1016/j.jcp. 2018.10.045 .[17] S. Cuomo, V. S. Di Cola, F. Giampaolo, G. Rozza, M. Raissi, F. Piccialli, Scientific machine learning through physics-informed neural networks: Where we are and what’s next, Journal of Scientific Computing (2022) 88–92. doi: 10.1007/s10915-022-01939-z .[18] Z.-Q. J. Xu, L. Zhang, W. Cai, On understanding and overcoming spectral biases of deep neural network learning methods for solving PDEs, Journal of Computational Physics 530 (2025) 113905. doi: 10.1016/j.jcp.2025.113905 .[19] F. Cao, K. Fan, H. Zhang, D. Yuan, J. Liu, Adaptive residual splitting in PINNs for solving complex PDEs, Journal of Computational Physics 540 (2025) 114297. doi: 10.1016/j.jcp.2025.114297 .[20] C. Si, M. Yan, X. Li, Z. Xia, Complex physics-informed neural network, Journal of Computational Physics 553 (2026) 114713. doi: 10.1016/j.jcp.2026.114713 .[21] O. Calin, Universal Approximators, Springer International Publishing, Cham, 2020, pp. 251–284. doi: 10.1007/978-3-030-36721-3_9 .[22] X. Pan, D. Xiao, Domain decomposition for physics-data combined neural network based parametric reduced order modelling, Journal of Computational Physics 519 (2024) 113452. doi: 10.1016/j.jcp.2024.113452 .[23] Y. Wang, X. Qiu, Q. Pei, J. Wang, P. Zhang, X. Bai, FAMAW-PINN: A physics-informed neural network integrating adaptive loss weighting with firefly-inspired adaptive point movement, Journal of Computational Physics 542 (2025) 114363. doi: 10.1016/j.jcp.2025.114363 .[24] F. Wang, X. Gu, J. Sun, Z. Xu, Learning-based local weighted least squares for algebraic multigrid method, Journal of Computational Physics 493 (2023) 112437. doi: 10.1016/j.jcp.2023.112437 .[25] F. Sahli Costabal, S. Pezzuto, P. Perdikaris, Δ-PINNs: Physics-informed neural networks on complex geometries, Engineering Applications of Artificial Intelligence 127 (2024) 107324. doi: 10.1016/j.engappai.2023.107324 .[26] L. Yang, X. Meng, G. E. Karniadakis, B-PINNs: Bayesian physics-informed neural networks for forward and inverse PDE problems with noisy data, Journal of Computational Physics 425 (2021) 109913. doi: 10.1016/j.jcp.2020.109913 .[27] Z. Zou, X. Meng, G. E. Karniadakis, Correcting model misspecification in physics-informed neural networks (PINNs), Journal of Computational Physics 505 (2024) 112918. doi: 10.1016/j.jcp.2024.112918 .[28] M. Petersen, R. Covino, PINN-MEP: Continuous neural representations for minimum energy path discovery in molecular systems, in: Frontiers in Probabilistic Inference: Learning meets Sampling, 2025. [29] S. Wang, S. Sankaran, P. Perdikaris, Respecting causality for training physics-informed neural networks, Computer Methods in Applied Mechanics and Engineering 421 (2024) 116813. doi: 10.1016/j.cma.2024.116813 .[30] Y. Wang, H. Xie, Computing multi-eigenpairs of high-dimensional eigenvalue problems using tensor neural networks, Journal of Computational Physics 506 (2024) 112928. doi: 10.1016/j.jcp.2024.112928 .
+
+R. Su et al.: Preprint submitted to Elsevier Page 16 of 17 Hierarchical rank-evolving representation for physics-informed neural networks 
+
+[31] A. Krishnapriyan, A. Gholami, S. Zhe, R. Kirby, M. W. Mahoney, Characterizing possible failure modes in physics-informed neural networks, in: M. Ranzato, A. Beygelzimer, Y. Dauphin, P. Liang, J. W. Vaughan (Eds.), Advances in Neural Information Processing Systems, volume 34, Curran Associates, Inc., 2021, pp. 26548–26560. [32] S. Wang, Y. Teng, P. Perdikaris, Understanding and mitigating gradient flow pathologies in physics-informed neural networks, SIAM Journal on Scientific Computing 43 (2021) A3055–A3081. doi: 10.1137/20M1318043 .[33] J. Guo, Y. Yao, H. Wang, T. Gu, Pre-training strategy for solving evolution equations based on physics-informed neural networks, Journal of Computational Physics 489 (2023) 112258. doi: 10.1016/j.jcp.2023.112258 .[34] Z. Zhang, J. Li, B. Liu, Annealed adaptive importance sampling method in PINNs for solving high dimensional partial differential equations, Journal of Computational Physics 521 (2025) 113561. doi: 10.1016/j.jcp.2024.113561 .[35] Q. Lin, C. Zhang, X. Meng, Z. Guo, Monte Carlo physics-informed neural networks for multiscale heat conduction via phonon Boltzmann transport equation, Journal of Computational Physics 542 (2025) 114364. doi: 10.1016/j.jcp.2025.114364 .[36] C. Zhao, X. Xie, W. Chen, Casual attention: Adaptive enforcement of causality in physics-informed neural networks, Journal of Computational Physics 563 (2026) 115071. doi: 10.1016/j.jcp.2026.115071 .[37] J. Cho, S. Nam, H. Yang, S.-B. Yun, Y. Hong, E. Park, Separable physics-informed neural networks, in: A. Oh, T. Naumann, A. Globerson, K. Saenko, M. Hardt, S. Levine (Eds.), Advances in Neural Information Processing Systems, volume 36, Curran Associates, Inc., 2023, pp. 23761–23788. [38] S. K. Vemuri, T. Büchner, J. Niebling, J. Denzler, Functional tensor decompositions for physics-informed neural networks, in: A. Antonacopoulos, S. Chaudhuri, R. Chellappa, C.-L. Liu, S. Bhattacharya, U. Pal (Eds.), Pattern Recognition, Springer Nature Switzerland, Cham, 2025, pp. 32–46. [39] Z. Liu, X. Yu, Z. Zhang, TT-PINN: A tensor-compressed neural PDE solver for edge computing, 2022. URL: https://arxiv.org/abs/ 2207.01751 . arXiv:2207.01751 .[40] Y. Wang, H. Xie, P. Jin, Tensor neural network and its numerical integration, Journal of Computational Mathematics 42 (2024) 1714–1742. doi: 10.4208/jcm.2307-m2022-0233 .[41] Y. Wang, Z. Lin, Y. Liao, H. Liu, H. Xie, Solving high-dimensional partial differential equations using tensor neural network and a posteriori error estimators, Journal of Scientific Computing 101 (2024) 67. doi: 10.1007/s10915-024-02700-4 .[42] S. K. Vemuri, T. Büchner, J. Niebling, J. Denzler, Scalable and expressive physics-informed neural networks via functional tensor decomposition, Pattern Recognition Letters 207 (2026) 184–192. doi: 10.1016/j.patrec.2026.06.027 .[43] L. Mandl, S. Goswami, L. Lambers, T. Ricken, Separable physics-informed DeepONet: Breaking the curse of dimensionality in physics-informed machine learning, Computer Methods in Applied Mechanics and Engineering 434 (2025) 117586. doi: 10.1016/j.cma.2024. 117586 .[44] I. V. Oseledets, Tensor-train decomposition, SIAM Journal on Scientific Computing 33 (2011) 2295–2317. doi: 10.1137/090752286 .[45] Q. Zhao, G. Zhou, S. Xie, L. Zhang, A. Cichocki, Tensor ring decomposition, 2016. URL: https://arxiv.org/abs/1606.05535 .
+
+arXiv:1606.05535 .[46] Y.-B. Zheng, T.-Z. Huang, X.-L. Zhao, Q. Zhao, T.-X. Jiang, Fully-connected tensor network decomposition and its application to higher-order tensor completion, in: Proceedings of the AAAI Conference on Artificial Intelligence, volume 35, 2021, pp. 11071–11078. doi: 10.1609/aaai.v35i12.17321 .[47] Y.-B. Zheng, T.-Z. Huang, X.-L. Zhao, Q. Zhao, Tensor completion via fully-connected tensor network decomposition with regularized factors, Journal of Scientific Computing 92 (2022) 8. doi: 10.1007/s10915-022-01841-8 .[48] Y.-B. Zheng, X.-L. Zhao, J. Zeng, C. Li, Q. Zhao, H. C. Li, T.-Z. Huang, SVDinsTN: A tensor network paradigm for efficient structure search from regularized modeling perspective, in: 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2024, pp. 22413–22422. doi: 10.1109/CVPR52733.2024.02480 .[49] Q. Li, J. Chen, An unsupervised network architecture search method for solving partial differential equations, Journal of Computational Physics 560 (2026) 114954. doi: 10.1016/j.jcp.2026.114954 .[50] A. Kashefi, T. Mukerji, Physics-informed PointNet: A deep learning solver for steady-state incompressible flows and thermal fields on multiple sets of irregular geometries, Journal of Computational Physics 468 (2022) 111510. doi: 10.1016/j.jcp.2022.111510 .[51] Z. Hu, Z. Yang, Y. Wang, G. E. Karniadakis, K. Kawaguchi, Bias-variance trade-off in physics-informed neural networks with randomized smoothing for high-dimensional PDEs, SIAM Journal on Scientific Computing 47 (2025) C846–C872. doi: 10.1137/23M1621356 .[52] A. Arzani, J.-X. Wang, R. M. D’Souza, Uncovering near-wall blood flow from sparse data with physics-informed neural networks, Physics of Fluids 33 (2021) 071905. doi: 10.1063/5.0055600 .[53] Y. Luo, X. Zhao, Z. Li, M. K. Ng, D. Meng, Low-rank tensor function representation for multi-dimensional data recovery, IEEE Transactions on Pattern Analysis and Machine Intelligence 46 (2024) 3351–3369. doi: 10.1109/TPAMI.2023.3341688 .[54] D. P. Kingma, J. L. Ba, Adam: A method for stochastic optimization, in: Proceedings of International Conference for Learning Representations, San Diego, 2015. [55] D. Kochkov, J. A. Smith, A. Alieva, Q. Wang, M. P. Brenner, S. Hoyer, Machine learning–accelerated computational fluid dynamics, Proceedings of the National Academy of Sciences 118 (2021) e2101784118. doi: 10.1073/pnas.2101784118 .
+
+R. Su et al.: Preprint submitted to Elsevier Page 17 of 17

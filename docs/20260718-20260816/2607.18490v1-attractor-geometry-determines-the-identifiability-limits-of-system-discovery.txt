@@ -1,0 +1,1593 @@
+Title: Attractor Geometry Determines the Identifiability Limits of System Discovery
+
+URL Source: https://arxiv.org/pdf/2607.18490v1
+
+Published Time: Wed, 22 Jul 2026 00:13:11 GMT
+
+Number of Pages: 42
+
+Markdown Content:
+# Attractor Geometry Determines the Identifiability Limits of System Discovery 
+
+Matteo Gallo 1,2 ∗ Fabio Anselmi 1 Paolo Lazzari 2,3 
+
+> 1
+
+University of Trieste, Trieste, Italy 
+
+> 2
+
+National Institute of Oceanography and Applied Geophysics - OGS, Trieste, Italy 
+
+> 3
+
+NBFC, National Biodiversity Future Center, Palermo, Italy 
+
+# Abstract 
+
+Symbolic discovery of governing equations from data is limited not only by al-gorithm design and data volume, but by the geometry of the attractor: what the long-run dynamics allow to be recovered. Using a within-system design on Lorenz-84, where one forcing parameter drives fixed-point, limit-cycle, and chaotic regimes while the governing equations and library stay fixed, we show that a single number, 
+
+λmin (M ), the smallest eigenvalue of the invariant-measure moment matrix, sets the identifiability ceiling for both sparse regression (SINDy) and evolutionary sym-bolic regression (PySR). Derived from the Birkhoff ergodic theorem and obtained from a short reference trajectory before any run, λmin (M ) measures how fully the attractor covers function space: where it vanishes, recovery is impossible for any algorithm, sparse or combinatorial alike; as it grows, both algorithms improve. Chaos raises λmin (M ) by spreading the attractor, but also enlarges it and amplifies noise; because noise enters SINDy’s regression bottleneck linearly and PySR’s discrimination channel superlinearly, the same transition can push the two methods in opposite directions, so deeper chaos is not uniformly better. Parameter-free mechanistic scores from this framework transfer without refitting to a held-out Lorenz-96 system, confirming mechanism rather than curve-fitting; a criterion read from the equations predicts when added chaos will not improve conditioning. We also introduce Soft F1, a coefficient-weighted structural metric that resolves performance differences invisible to binary-success and predictive scores. The first question of discovery is then not which algorithm, but what the attractor permits. 
+
+Keywords: system discovery | system identification | dynamical systems | SINDy | PySR | chaos |
+
+invariant measure | coverage 
+
+Author contributions: M.G. conceived the study, built the theoretical frameworks, ran all simulations and analyses, and wrote the first draft of the manuscript. F.A. and P.L. supervised the project, contributed to the theoretical development and interpretation of results, and reviewed the manuscript. P.L. secured the funding that supported this research. Competing interests: The authors declare no competing interests. 
+
+# Introduction 
+
+Discovering the governing equations of a dynamical system from observed trajectory data is a central goal of modern data-driven science. The methods proposed for it span sparse regression, evolutionary symbolic search, and, more recently, neural-network-based discovery [1]. Two have become workhorses of scientific practice: sparse identification of nonlinear dynamics (SINDy) [2] and evolutionary symbolic regression, exemplified by PySR [3, 4], now applied across fluid mechanics,  
+
+> ∗Corresponding author: matteo.gallo@phd.units.it
+> Preprint. arXiv:2607.18490v1 [cs.LG] 20 Jul 2026
+
+biological regulatory networks, and astrophysical dynamics [5–7]. Yet as these tools reach systems of ever greater variety, a prior question goes unasked: what does a system’s own attractor permit to be recovered at all, and can that ceiling be known before any algorithm is run? Trajectory coverage has been tied to discovery quality from several directions. How much of the attractor is sampled sets the data volume a method needs [8]; adding data from where the system eventually settles lowers that volume further [9]; persistent excitation guarantees unique parameter recovery in classical system identification [10, 11]; and Fisher information per trajectory segment gives the closest existing link between data quality and recovery probability [12]. Identifiability theory adds a sharper claim. Topological transitivity, the defining property of chaos, is provably necessary for recovery from a single trajectory in a generic function class [13]; and Tran & Ward showed that ergodicity alone implies dictionary nondegeneracy under the invariant measure, guaranteeing exact recovery for chaotic Lorenz-like flows even under heavy sparse-outlier corruption [14], a guarantee later extended to burst trajectories [15], periodic structure [16], and mixing data [17]. This chain settles a binary question, chaos permits recovery, and opens the graded ones it leaves behind: how identifiable a regime is when the answer is not yes-or-no; what happens in the fixed-point and limit-cycle regimes the chaos assumption never covers; and how the idealized ℓ1-recovery guarantee relates to the STLSQ and evolutionary-search mechanics SINDy and PySR actually run, under the dense measurement noise they actually face. Empirical benchmarks, meanwhile, compared algorithms across systems with different governing equations and found no consistent ordering by regime [18, 19], an intriguing result but one in which algebraic complexity varied alongside the regime and obscured any shared signal. No account is at once algorithm-specific, noisy, and graded, which leaves practitioners without a principled basis for choosing experimental conditions before a discovery run begins. To isolate the dynamical regime as the sole variable, we adopt a within-system design on the Lorenz-84 atmospheric model [20]: one forcing parameter F carries the system through fixed-point, limit-cycle, and chaotic regimes while the governing equations, each algorithm’s search space (a library for SINDy, an operator set for PySR), and the evaluation protocol stay fixed. We run SINDy and PySR across three independently varied conditions, data volume, measurement noise, and structural prior quality, scoring each by a relaxed term-matching metric, Soft F1. Every mechanistic indicator is built on Lorenz-84 alone and then applied without modification to a held-out Lorenz-96 system [21], a zero-parameter validation test. Across data volume, measurement noise, and prior quality, we find a broadly robust ordering: recovery is hardest at a fixed point, intermediate on a limit cycle, and easiest in chaos, and it holds for both algorithms. Its mechanism is attractor coverage, and its measure is a single computable number: λmin (M ), the smallest eigenvalue of the invariant-measure moment matrix, read from a short reference trajectory before any discovery run and requiring no knowledge of the governing equations. Where λmin (M ) vanishes, recovery is impossible for every algorithm, sparse or combinatorial alike, not merely hard; where it is positive, it fixes how much noise and regularization the problem can tolerate. From λmin (M ) we build parameter-free mechanistic indicators for each algorithm, derived from the Birkhoff ergodic theorem [22] with no constants fitted to discovery outcomes; these additionally need to know which library terms are correct, so they diagnose a completed or failed run rather than screen a system in advance, and they transfer unchanged to a held-out Lorenz-96 system, confirming they capture mechanism rather than curve-fitting. The same theory explains why the answer is not simply that chaos helps: deeper chaos raises λmin (M ) but also enlarges the attractor and amplifies noise, and because noise enters SINDy’s regression bottleneck linearly and PySR’s discrimination channel superlinearly, the same transition can push the two methods in opposite directions; a criterion read from the governing equations alone can explain when added chaos will not improve conditioning at all. Finally, we introduce Soft F1, a coefficient-weighted generalization of structural F1 that credits partial structural recovery and exposes performance differences invisible to binary success and predictive metrics. 2Background 
+
+Sparse Identification of Nonlinear Dynamics (SINDy) 
+
+SINDy [2] is the standard representative of the sparse regression class for symbolic discovery and among the most widely validated algorithms for recovering governing equations from trajectory data. Given N state observations x(ti), it constructs a data matrix Θ ∈ RN ×p by evaluating a library of 
+
+p candidate functions (here, all monomials up to degree 3) at each observation, and casts equation discovery as a sparse linear system ˙X ≈ Θ ξ, where ξ ∈ Rp×d is a sparse coefficient matrix whose nonzero entries identify the active library terms and their weights for each of the d state equations. The regression is solved by STLSQ (sequentially-thresholded least squares) [2]: alternating ridge regression and hard thresholding progressively prune library terms whose coefficients fall below a sparsity threshold until the active set stabilises; this threshold is the sole tunable algorithmic hyperparameter. 
+
+Evolutionary Symbolic Regression (PySR) 
+
+PySR [3] is among the most widely adopted symbolic regression tools for scientific discovery and serves here as a representative of the evolutionary algorithm class. Where SINDy restricts candidate expressions to a linear combination of pre-specified basis functions, its library, PySR searches the combinatorial space of expression trees assembled by recursively composing primitive operators. These operators are usually addition, subtraction, multiplication and division, placing no constraint on which combinations are formed or how deeply they are nested. The fixed SINDy library is replaced in PySR by an operator set, which brings a virtually unbounded search space, encompassing polynomial and rational expressions of arbitrary complexity, as well as compositions involving user-selected functions (e.g., exponential and trigonometric functions). We use dictionary , following standard compressed-sensing usage [14], for the algorithm-agnostic candidate-function object that a library or operator set instantiates. The algorithm maintains a population of candidate expression trees that evolves through genetic-programming operators with selection pressure toward lower residual loss on the training trajectory. At each candidate tree, numerical coefficients are refined to local optimality by BFGS [23] before the tree is evaluated, decoupling structural search from coefficient optimisation. Discovered expressions accumulate in a Hall-of-Fame Pareto front of accuracy versus expression complexity; at the end of a run, the best expression at each complexity level is available, and the model is selected from this front, typically the least complex expression that achieves acceptable residual loss. 
+
+Lorenz-84 (L84): the controlled system 
+
+The Lorenz-84 system [20], 
+
+˙x0 = −x21 − x22 − Ax 0 + AF, 
+
+˙x1 = x0x1 − Bx 0x2 − x1 + G, 
+
+˙x2 = Bx 0x1 + x0x2 − x2,
+
+is a three-dimensional polynomial model of large-scale atmospheric dynamics with A = 0 .25 , B = 4 ,
+
+G = 1 held fixed throughout. The single forcing parameter F drives a complete bifurcation sequence: a globally attracting fixed point at small F gives way to sustained limit-cycle oscillations near the Hopf bifurcation ( F ≈ 4.3), and to fully developed chaos for F ≳ 7.L84 is the controlled system of this study: a single parameter moves it through every dynamical regime of interest, fixed point, limit cycle, and chaos, while the governing equations and integrator remain identical throughout, isolating dynamical regime as the sole experimental variable. 
+
+Lorenz-96 (L96): zero-parameter held-out validation 
+
+The Lorenz-96 system [21] is a five-dimensional cyclic model governed by the equations 
+
+˙xi = ( xi+1 − xi−2)xi−1 − xi + F
+
+for i = 1 , . . . , 5 (periodic boundary conditions), sharing L84’s key property: the same single forcing parameter spans fixed-point, limit-cycle, and chaotic regimes. L96 is used exclusively as 3an independent held-out validation system: all quantities entering the mechanistic framework are derived from L84 and applied directly to L96 without any refitting. 
+
+Soft F1: graded performance metric 
+
+We fix terminology before defining the metric. A ground-truth term is one that appears in a system’s actual governing equations; a discovered (equivalently, identified or recovered ) term is one that an algorithm’s output expression actually contains; and a wrong (or spurious ) term is a dictionary, library, or operator-set candidate that is not a ground-truth term. Soft F1, defined next, scores how well an algorithm’s discovered terms recover the ground-truth terms. Standard structural F1 scores each term as recovered or not, assigning identical credit to exact coeffi-cient recovery and to a structurally correct term whose coefficient is off by an order of magnitude. Predictive metrics such as RMSE and R2 are insensitive to structural errors entirely, failing to distin-guish a physically correct model with a good-fitting wrong one. Neither captures the intermediate regime that is empirically common [24, 25]: under noise or limited prior, the correct structure is partially identified with imprecise coefficients; under data starvation, some terms are missing entirely while those found are accurately estimated. We introduce a coefficient-weighted Soft F1 score for equation discovery. Let j index every monomial that appears in either the ground-truth terms or the discovered expression (e.g. x0x1, x21); for each such monomial, define a coefficient-fidelity weight 
+
+wj = exp( −α δ j ) , δj = |cj − ˆcj ||cj | + |ˆcj | , (1) where cj and ˆcj are the ground-truth and discovered coefficients of term j (set to zero when the term is absent from the respective expression), and δj ∈ [0 , 1] is a symmetric normalized discrepancy. The exponent α is fixed by an information-theoretic criterion: a 2 × coefficient mismatch ( ˆcj = 2 cj )gives δj = 13 , and we require this to cost exactly one nat of information, i.e. wj = e−1. Solving 
+
+α · 13 = 1 gives α = 3 . Under this choice, − ln wj = 3 δj is the information cost in nats of the coefficient discrepancy: zero for an exact match, one nat for a 2 × error, and three nats ( wj ≈ 0.05 )for a missing or wholly spurious term. Soft precision and soft recall are obtained by averaging wj
+
+over the discovered and ground-truth term sets respectively, and Soft F1 is their harmonic mean. Soft F1 is distinct from tree-edit-distance metrics such as NED [26] and TED [27], which measure topological closeness between expression trees rather than coefficient accuracy within matched terms. 
+
+# Results 
+
+The dynamical regime ordering is robust across algorithms and experimental conditions 
+
+SINDy and PySR are applied to data generated by the L84 model [20] (see Background), with the forcing parameter F varied to produce eight distinct dynamical regimes. These eight regimes span all three dynamical families that were identified from a 100-point F -grid over [0 .5, 12 .0] and classified by the sign of the maximum Lyapunov exponent λ1 (Methods): negative for the fixed-point regime (R0), near zero for the two limit-cycle regimes, and positive for the five chaotic regimes. Because near-zero λ1 alone cannot distinguish a true limit cycle from a quasi-periodic torus, limit-cycle candidates were further verified using the second exponent λ2 (Methods), and the two limit-cycle regimes (R1–R2) were then ordered not by any Lyapunov exponent, which carries no discriminating information within the limit-cycle band, but by attractor amplitude, with R1 the low-amplitude branch and R2 the high-amplitude branch. The five chaotic regimes (R3–R7) were ordered by increasing λ1,with one representative F value chosen per equal-width interval of the chaotic λ1 range to ensure coverage from the onset of chaos to fully developed chaos. To study how dynamical regime interacts with the three experimental conditions of symbolic discovery, three experiments were conducted: 1. Data starvation. Both algorithms were run without any kind of noise: derivatives were evaluated precisely from the right-hand-side. The experiments ran across 17 log-spaced training-set sizes N ∈ [20 , 10 ,000] , across all eight dynamical regimes. 4Figure 1: Attractor coverage controls the conditioning and outcome of symbolic discovery. 
+
+Five dynamical regimes of the same governing equations are shown from bottom to top in order of increasing attractor coverage of state space. As coverage grows, state-space trajectories (first column) fill phase space more thoroughly; the identification problem becomes better conditioned (second column), with spurious symmetric solutions progressively eliminated; and the resulting symbolic recovery rate (fourth column) rises accordingly. Greater attractor coverage means the data contain more independent information about every term in the governing equations, making symbolic recovery more reliable. 2. Noise sensitivity. At fixed N = 5 ,000 , additive Gaussian measurement noise was injected at seven signal-to-noise ratios η ∈ { 0, 0.01 , 0.02 , 0.05 , 0.10 , 0.15 , 0.20 }; derivatives were estimated by two methods: first-order finite differences (FD) and FD followed by Savitzky– Golay smoothing. 3. Prior quality. At N = 5 ,000 without noise, the structural prior was varied across three levels: null : no ground-truth terms in the dictionary, testing whether structurally wrong terms can still achieve good predictive fit, motivated by the common use of held-out prediction error as validation of symbolic recovery [28, 29], overcomplete all ground-truth terms plus additional spurious ones, and oracle only the ground-truth terms available. In all experiments, SINDy was evaluated over 5 independent trajectory slots per regime and PySR over 5 slots × 5 initialisations; performance was recorded as the Soft F1 score (defined in Background section). Under data starvation (Fig. 2A and E), the fixed-point regime remains low for both algorithms at all training-set sizes. Within the limit-cycle family, the two sub-regimes respond differently: in R1 Soft F1 grows slowly with sample count and saturates well below reliable recovery for both algorithms, while in R2 Soft F1 converges alongside the chaotic regimes at moderate sample counts. At very low training set size ( N = 20 ), no clear relation between regimes R and Soft F1 score is evident , a clear positive correlation emerges by N ≈ 200 , Fig. 2A. In the presence of noise, Fig. 2 B, C, F and G, all regimes degrade. For SINDy (Fig.2B and C), Soft F1 declines more steeply with noise in the limit-cycle regimes than in the chaotic regimes, under both derivative methods; Savitzky–Golay smoothing substantially slows this decline for the chaotic regimes but not for the limit-cycle ones. For PySR, Fig. 2 F and G,finite-difference derivative estimation causes performance to collapse at η ≥ 5% 
+
+for all regimes; regime Soft F1 scores cluster near zero, suppressing the variation across regimes, and isolated inversions appear at high noise with R2 exceeding the chaotic regimes; Savitzky–Golay smoothing partially restores the between-regime spread. Under prior quality, Fig. 2 D and H, the null structural prior collapses all regimes to near-baseline for both algorithms. Surprisingly, predictive metrics diverge, image not shown: under the null prior, R2 reaches 0.64 for SINDy and 0.80 for PySR (Soft F1 ≈ 0.05 –0.09 ), confirming that structurally wrong terms can achieve substantial predictive fit. With overcomplete and oracle priors, the equation discovery behaviour is restored: the fixed-point regime remains show a low for SINDy regardless of prior quality, while for PySR it reaches a better level of recovery only under the oracle prior. 50.0 0.5 1.0                     
+
+> Soft F1
+> AData volume BNoise (FD) CNoise (SG) DPrior quality
+> Null Overcomplete Oracle R0 R1 R2 R3 R4 R5 R6 R7
+> Dynamical regime
+> 0.0 0.5 1.0
+> Soft F1
+> E
+> R1 R2 R3 R7
+> Dynamical regime
+> F
+> R1 R2 R3 R7
+> Dynamical regime
+> G
+> R0 R1 R2 R3 R4 R5 R6 R7
+> Dynamical regime
+> H
+> 20 64 206 659 2k 7k 10k
+> 20 64 206 659 2k 7k 10k
+> Training samples
+> 0% 5% 10% 15% 20%
+> 0% 5% 10% 15% 20%
+> Noise ratio  η
+> SINDy PySR
+
+Figure 2: The dynamical regime ordering is broadly preserved across algorithms and experi-mental conditions, with systematic inversions at data extremes and high noise. Rows: SINDy (top) and PySR (bottom). Background shading identifies regime families: grey = fixed point (R0), blue = limit cycles (R1–R2), red = chaos (R3–R7). ( A, starvation ) Soft F1 vs. training-set size N
+
+(log-spaced 20 –10 ,000 ; dark: large N ; light: small N ), all 8 regimes. SINDy: R0 is flat at ≈ 0.13 at every N ; R1 saturates at ≈ 0.28 even at N = 10 ,000 ; R2 and all chaotic regimes converge to ≥ 0.99 
+
+above N ≈ 2,000 . PySR: R0 plateaus near 0.18 ; R1 saturates near 0.79 ; R2 and chaos reach ≥ 0.99 .At N = 20 , cross-family inversions are present in both algorithms and vanish by N ≈ 200 . ( B, noise sensitivity ) Soft F1 under additive Gaussian noise ( η = 0 –20% ; dark red: clean; light: noisy) for finite differences (left) and Savitzky–Golay smoothing (right), using the four regimes common to both algorithms (R1, R2, R3, R7). SINDy under finite differences at η = 0 .10 : R1 and R2 collapse to ≤ 0.13 , while R3 and R7 retain ≈ 0.40 ; with Savitzky–Golay smoothing at the same noise level, R3 recovers to 0.74 and R7 to 0.67 , while R1 and R2 remain low ( ≤ 0.23 ). PySR: performance collapses sharply at η ≥ 0.05 for all regimes under finite differences, with the inter-regime spread compressed and isolated inversions between R2 and the chaotic regimes at η ≥ 0.10 ; Savitzky–Golay smoothing reduces but does not eliminate this compression. ( C, prior quality ) Soft F1 under null (grey), overcomplete (blue), and oracle (dark blue) structural priors at N = 5 ,000 without noise. Null prior: performance collapses uniformly to ≤ 0.13 for all regimes and both algorithms. Overcomplete prior, SINDy: R0 = 0 .13 , R1 = 0 .32 , R2–R7 = 1 .00 ; PySR: R0 = 0 .16 , R1 = 0 .79 , R2–R7 = 1 .00 .Oracle prior, SINDy: R0 remains at 0.13 , R1–R7 = 1 .00 ; PySR: R0 = 0 .43 , R1–R7 = 1 .00 . SINDy Soft F1: mean over 5 trajectory slots. PySR Soft F1: fraction of 5 slots × 5 initialisations recovering the exact expression. 
+
+Mechanistic indicators connect the invariant measure to discoverability 
+
+To understand why the dynamical regime controls discoverability, we constructed mechanistic performance indicators for each algorithm by identifying the mechanisms of failure and success from L84 experimental results and encoding them as parameter-free expressions: one for SINDy, grounded in the errors-in-variables structure of sparse regression [28], and one for PySR, grounded in the coefficient-optimisation and structural discrimination structure of evolutionary search. Both indicators contain no fitted parameters: every required quantity is computable from the training trajectory, the algorithm configuration, or the ground-truth governing equations. Both transfer without modification to the held-out Lorenz-96 system, demonstrating that the indicators capture mechanism rather than artifact. 6SINDy’s mechanistic model STLSQ optimizer solves ˙X ≈ Θ ξ by alternating ridge regression and hard thresholding. The ridge weight assigned to library direction k is wk = σ2
+
+> k
+
+/(σ2 
+
+> k
+
++ α), where σk
+
+is the k-th singular value of Θ and α the ridge penalty; this assigns near-unit weight to well-populated directions ( σk ≫ √α) and strongly suppresses near-null ones ( σk ≪ √α). The indicator combines the two failure modes of STLSQ: • The false-negative channel occurs when ground-truth terms in Θ are insufficiently excited by the realized trajectory and are consequently shrunk below the sparsity threshold during ridge regression, even in the absence of measurement noise. • In the false-positive channel , measurement noise contaminates both the state observations and the derivative targets ˙X, giving rise to the classical errors-in-variables (EIV) prob-lem [28]. EIV amplifies estimation errors along near-null directions of the regression, inflating the corresponding coefficient estimates and producing false positives. We formulate both modes as two threat ratios, each comparing STLSQ’s fixed sparsity threshold λ to the magnitude a term must clear to be correctly classified: 
+
+TFN = λwmin (σmin ) ∥ξgt ∥ , TFP = κeff · ρEIV · σε
+
+λ , (2) where wmin (σ) = σ2/(σ2 + α) is the ridge shrinkage factor applied to the smallest singular direction, 
+
+∥ξgt ∥ is the smallest ground-truth coefficient magnitude, κeff = σmax (Θ) /σ min (Θ) is the effective condition number of the data matrix, ρEIV quantifies the additional amplification from treating noisy states as exact regressors, and σε is the effective derivative noise amplitude. TFN > 1 means the smallest ground-truth coefficient is shrunk below threshold and pruned regardless of noise; TFP > 1
+
+means noise alone can lift a spurious coefficient above threshold. SINDy’s mechanistic performance score is 
+
+FSINDy = max( TFN , T FP ), (3) the logically appropriate combination: identification fails as soon as either threat exceeds 1, so no monotone sparsity threshold can simultaneously retain every ground-truth term and reject every spurious one whenever FSINDy > 1, regardless of how the threshold is chosen. The complete derivation of this particular functional form is provided in SI 1. 
+
+PySR’s mechanistic model PySR proposes expression trees via evolutionary search and refines their numerical coefficients locally via BFGS; the Hall-of-Fame retains the Pareto-optimal front across complexity levels, from which the best expression at each complexity is selected. Two independent bottlenecks can each prevent successful recovery. The first is a conditioning bottleneck , and it is a selection problem, not a fitting problem: once a tree is proposed, fitting its coefficients is fixed and well-posed regardless of which terms it contains. The risk sits earlier, in whether the correct tree is ever distinguished from a rival built from wrong terms. If some combination of wrong terms varies across the trajectory in nearly the same way as the ground-truth terms do, that rival matches the correct tree’s accuracy almost exactly, and Hall-of-Fame selection has no reason to prefer the correct tree over its impostor, even with the correct tree sitting right there in the population. We capture this with a single number, σmin ,partial (distinct from σmin (Θ) in SINDy’s model, which uses the full library): for each ground-truth term, find the best-fitting combination of wrong terms and subtract it out; what remains is the leftover no wrong term can explain. Take x0x1, a ground-truth term in L84, against a wrong candidate such as x0x1x2: fit the coefficient c that best tracks x0x1
+
+with c · x0x1x2, then look at the leftover x0x1 − c · x0x1x2. If x2 barely varies, as it can along a low-amplitude limit cycle, that leftover is nearly zero and the wrong term is a near-perfect stand-in; if 
+
+x2 ranges widely, as in chaos, no choice of c closes the gap. σmin ,partial is this leftover computed jointly, every ground-truth term against every combination of wrong terms at once, reported as the worst (smallest) case among them: a large value means every ground-truth term keeps a signal no combination of wrong terms can reproduce; a value near zero means some combination of wrong terms can reproduce a ground-truth term’s signal almost exactly, and no amount of coefficient tuning can tell the two apart. Its exact link to the invariant measure, through a moment-matrix Schur complement, is developed below in Connection to the moment matrix and the invariant measure and in SI 2. 7In the infinite-data limit, σmin ,partial can vanish exactly, meaning the ground-truth non-constant signal is entirely reproducible by wrong dictionary terms; no coefficient optimiser, indeed no estimator of any kind, can then separate them (SI 3, Proposition S6). The second is a signal-to-noise ratio discrimination bottleneck : the first bottleneck asked whether wrong terms can reproduce a ground-truth term’s contribution to the data entirely; the second asks whether, when they cannot, the unexplained part is large enough to stand out above the measurement noise. For each ground-truth term k, find the single wrong term that best reproduces it, and measure what remains unexplained: εwrong ,k is the mean squared size of that unexplained part. It is measured out-of-sample, via leave-one-out cross-validation, fitting the wrong term’s coefficient on all but one data point and evaluating the unexplained part on the point left out, so the wrong term cannot exploit the same data it is being evaluated on. Aggregating across all nnc ground-truth terms gives the discrimination score 
+
+Qnoise =
+
+> nnc
+
+Y
+
+> k=1
+
+min 
+
+
+
+1,
+
+q
+
+εwrong ,k /σ 2
+
+> ε
+
+
+
+, (4) where nnc = 3 for both L84 and L96, and σ2 
+
+> ε
+
+≈ (ησ x)2/(2 dt 2) is the noise variance of finite-difference derivative estimates. Each factor weighs one term’s unexplained part against the noise floor: a term already well clear of the noise is capped at a perfect score of 1, gaining nothing for being clearer still, while a term whose unexplained part is small next to the noise pulls the whole product down, since a single indistinguishable term is enough to compromise the fit. In noiseless experiments Qnoise = 1 , so only the conditioning bottleneck operates. Treating the two bottlenecks as independent, the combined mechanistic score is 
+
+FPySR =
+
+q
+
+σ1/4min ,partial · Qnoise , (5) Like FSINDy , this score has no parameters fitted to discovery outcomes: every quantity in it comes from the training data and the dictionary, not from PySR’s own configuration. σmin ,partial and the per-term ratio inside Qnoise are both derived from the Birkhoff argument developed below; the outer  
+
+> 14
+
+power and the geometric-mean combination, by contrast, are chosen empirically on L84 before L96 is ever consulted, and a full sensitivity sweep confirms the paper’s conclusions do not hinge on this choice (SI 2). 
+
+Validation of the mechanistic indicators on Lorenz-96 FSINDy and FPySR were built entirely from L84; the held-out Lorenz-96 system, which produces quantitatively different Soft F1 outcomes, was never consulted. L96 therefore serves as a zero-parameter validation of the mechanistic reasoning. Table 1 reports the Spearman correlation between each score and soft F1, computed separately within each of the three experimental conditions (data volume, measurement noise, and structural prior quality), together with their average in the final column. Correlations are consistently strong across all three experiments individually, including the two that are entirely noiseless, where Birkhoff applies exactly and both algorithms use exact derivatives. Both FSINDy and FPySR transfer to L96 with no loss of correlation; for PySR, in the noiseless starvation and prior-quality experiments Qnoise = 1 and only the σmin ,partial channel operates, whereas under measurement noise both channels activate and their geometric combination governs performance. The same two scores, applied without modification to a third, non-polynomial ODE family, reproduce the same regime ordering (SI 4). A further concern is that this correlation could simply restate “noise hurts” rather than reflect the regime-level quantities themselves; SI 5 addresses this directly, partialling out noise ratio, derivative track, and dimension jointly for both scores in both systems. 
+
+Connection to the moment matrix and the invariant measure A long ergodic trajectory is a random sample from the system’s invariant measure μ, the long-run probability distribution over the attractor. As the trajectory grows, the time-averaged dictionary Gram matrix (1 /N )Θ ⊤Θ does not depend on which particular trajectory was collected; it converges to a fixed geometric property of the attractor itself. The Birkhoff ergodic theorem [22] makes this precise: for any square-integrable dictionary of functions, 
+
+1
+
+N Θ⊤Θ N →∞ 
+
+−−−−→ M =
+
+Z
+
+> Rd
+
+Φ( x) Φ( x)⊤ dμ (x), (6) 8Table 1: Spearman correlation between each mechanistic score and soft F1, by experiment and averaged. |ρ| is computed separately within each of the three experimental conditions (per-dimension average); the Average column is the mean of those three per row. Starvation and prior quality are entirely noiseless (Birkhoff applies exactly); signal-to-noise ratio is the sole noisy experiment. Score System Starvation SNR Prior quality Average 
+
+FSINDy L84 0.68 0.92 0.84 0.81 
+
+FSINDy L96 0.84 0.90 0.86 0.87 
+
+FPySR L84 0.78 0.81 0.86 0.82 
+
+FPySR L96 0.82 0.88 0.91 0.87 
+
+a result that holds for any ergodic system and any dictionary, regardless of regime type or dictionary structure. The moment matrix M is the attractor’s fingerprint in function space: for every pair of dictionary terms it records how correlated their evaluations are under the long-run dynamics. 
+
+In practice. λmin (M ) is a property of the dynamical regime, not of any particular trajectory or its length: collecting more data from the same regime does not change λmin (M ) itself. This is not in tension with the starvation experiments, where more data does improve recovery (Fig. 2A): what grows with the sample size N is σmin (Θ) , the finite-sample quantity that actually enters the regression and that scales as pN · λmin (M ), not the regime’s underlying rate λmin (M ) itself, which stays fixed. At a fixed point (regime R0) the trajectory never moves, so every dictionary term evaluates to the same constant at every sampled time, the data matrix collapses to rank one, and λmin (M ) = 0 exactly. The consequence is not merely poor conditioning but outright impossibility: the Fisher information matrix is singular, so the Cramér–Rao bound [30], the theoretical floor on how precisely any unbiased estimator can pin down a parameter from the data, is infinite in the corresponding direction, and no algorithm can recover the missing term at any noise level or data volume (SI 3, Proposition S4, states this as a general conditioning floor for any regime). This impossibility extends beyond ordinary least-squares to sparse-recovery methods too, even though a vanishing λmin (M ) does not rule out sparse recovery in general: at a fixed point specifically, the design matrix’s spark collapses to 2,so no κ-sparse coefficient vector with κ ≥ 1 is uniquely identifiable by any algorithm, convex or combinatorial (full argument at SI 3, Proposition S2). This is an information-level impossibility, and it applies only where λmin (M ) vanishes exactly. Where λmin (M ) > 0 but small, as in the limit-cycle regimes, recovery is possible in principle from noiseless data: λmin (M ) no longer sets a zero-noise impossibility, only the scale of regularization and measurement noise the problem can tolerate before recovery degrades. Because the sparsity threshold and ridge weight were fixed a priori across all regimes here (Methods), a regime whose 
+
+λmin (M ) falls below what that fixed configuration can resolve will fail recovery; thus the observed limit-cycle ceiling is a configuration-dependent bound, not an intrinsic one. We confirm this directly: relaxing the ridge penalty and threshold together on R1 (SI 6) recovers soft F1 = 1 .0 at noiseless data volumes where the deployment configuration plateaus at ≈ 0.64 ; re-introducing measurement noise at the relaxed configuration collapses recovery again, because the same λ that must shrink to resolve the false-negative channel simultaneously raises the false-positive channel under noise (Eq. 2). A single scalar cannot solve both once noise is present. Conversely, as λmin (M ) grows, both algorithms benefit in concrete ways. In SINDy, the library matrix becomes better conditioned: ground-truth-term ridge weights sit clearly above the sparsity threshold while spurious weights stay clearly below, giving STLSQ a clean separation to exploit regardless of where the threshold is set. In PySR, the same growth improves both bottlenecks at once: as λmin (Mnc |aw ) rises, no combination of wrong terms can reproduce a ground-truth term as closely, so evolutionary search and BFGS coefficient optimisation can jointly tell the correct expression apart from wrong alternatives; and the signal-to-noise discrimination channel strengthens as the per-term irreplaceability distances εwrong ,k 
+
+grow relative to the derivative noise floor. Prior work already linked greater attractor coverage to better SINDy conditioning [9, 28], and quantified it per trajectory segment [12]. The step from ergodicity to a coverage guarantee via the invariant measure is itself prior art: Tran & Ward’s exact-recovery argument for chaotic flows rests on the same Birkhoff mechanism, established there as an existential nondegeneracy constant D > 0 rather than a computable one [14]. That paper further remarks, without pursuing it, that the dictionary loses full rank at a fixed point or short periodic orbit [14], the qualitative precedent for the regime-resolved story developed here. What is new here is twofold: replacing that existential constant with the computable spectral object λmin (M ),9evaluable from a short reference trajectory, and extending the argument to exactly the regimes the chaotic-flow hypothesis does not cover, the fixed-point and limit-cycle families, where λmin (M )
+
+degrades continuously rather than dropping out of the theory. The bottlenecks of both algorithms trace to λmin (M ) through this same Birkhoff step. By the same Weyl’s-inequality argument, both σmin (Θ) and the effective condition number κeff =
+
+σmax (Θ) /σ min (Θ) become, asymptotically, properties of the regime alone rather than of the data volume: 
+
+σmin (Θ) → pN λ min (M ), κeff → pλmax (M )/λ min (M )
+
+(proof: SI 1). Together with the state amplitude σx = pVar μ(x), these are the regime-level factors in FSINDy (Eq. 8); the remaining factors ( ρEIV , σε, ∥ξgt ∥) depend only on noise level and signal magnitude, not on μ.The same argument extends to the overcomplete dictionary: PySR’s conditioning quantity converges asymptotically to 
+
+σmin ,partial =
+
+q
+
+N · λmin (Mnc |aw ), (7) where Mnc |aw is the Schur complement of the overcomplete moment matrix with respect to the wrong-term block, the part of the ground-truth terms’ geometry no combination of wrong terms can explain away (full construction, including the rank-deficient case at a fixed point: SI 2). Similarly, 
+
+εwrong ,k converges to an L2(μ) distance (SI 2). This hierarchy is visible directly in the moment matrices themselves (SI Appendix, Fig. S1): they transition from rank-one at the fixed point through low-rank at the limit cycles to full rank at chaos, and λmin (M ) per regime spans more than three orders of magnitude, directly mapping onto the discoverability patterns of Fig. 2. 
+
+Two algorithms, one matrix, opposite responses Both algorithms read the dynamical regime through this same moment matrix M , yet measurement noise reaches each of them through a channel of very different steepness. For SINDy, noise enters through one term only, the false-positive threat ratio, and it enters linearly; in the large-sample limit (SI 1), 
+
+TFP ∼ κeff (μ) η σ x(μ), (8) so the pressure toward failure grows as the first power of the noise level η, scaled by two properties of the invariant measure alone: the conditioning κeff (μ) = pλmax (M )/λ min (M ) and the state amplitude σx(μ). For PySR, the same noise enters the discrimination score Qnoise far more steeply (SI 3), 
+
+Qnoise ∝ (η σ x)−nnc , (9) falling as the nnc -th power of the noise amplitude, where nnc is the number of non-constant ground-truth terms (three, for both L84 and L96). This gap between the exponents, one for SINDy and nnc 
+
+for PySR, means that a change in measurement conditions SINDy absorbs gently can overwhelm PySR: reading the same attractor through the same M , the two methods can still respond to identical data in opposite directions. 
+
+Why deeper chaos is not always better That the two methods can diverge on different target systems is not only a consequence of their internals; it follows from what deepening chaos does to the moment matrix itself, which moves in two opposing directions at once. Deepening chaos spreads the attractor across more of state space, raising λmin (M ) and improving conditioning, which helps both algorithms; but the same enlarged attractor also raises the state amplitude σx, amplifying measurement noise, which hurts both. Whether a step deeper into chaos helps or hurts is thus a contest between a conditioning gain and a noise cost, and the two algorithms settle it differently (SI 3): SINDy, paying for noise only linearly, usually needs only a modest conditioning gain to come out ahead, so chaos tends to help it; PySR, paying superlinearly, can watch the growing attractor overwhelm the conditioning gain the moment any noise is present, so deeper chaos can leave it no better, or worse. The experiments show exactly this: under noise PySR’s recovery collapses across regimes, and at high noise the large-amplitude limit cycle R2 can outscore the chaotic regimes (Fig. 2), simply because its smaller attractor carries less noise. The conclusion is not that chaos is better, but that coverage is a necessary enabler whose benefit each algorithm weighs, differently, against the noise that a larger attractor brings. 10 The noise cost is not the only way deeper chaos can disappoint; conditioning itself can fail to improve, for a reason written into the governing equations. If one coordinate is damping-dominated and driven by the others, its variance can stall, or even fall, as chaos deepens, and because λmin (M ) is bounded above by that coordinate’s variance (SI 3, Proposition S5.2), conditioning stalls with it, however much the rest of the attractor spreads. A coordinate-exchange symmetry forecloses this entirely, forcing every coordinate’s variance to move in lockstep (Proposition S5.3); without such a symmetry, the criterion marks a system as exposed from its equations alone, though it provably cannot fix the direction of the effect (Proposition S5.4). 
+
+A ceiling no algorithm can lift The mechanisms above are particular to how SINDy and PySR search, but beneath them lies a limit that mentions no algorithm at all. The moment matrix M is built from the invariant measure and the candidate dictionary alone, and where it is degenerate the data simply lack the information any method would need. At a fixed point the design matrix collapses to rank one, and no algorithm, least-squares, sparse, or combinatorial, can recover even a single term (SI 3, Propositions S2 and S6). Away from that extreme the impossibility softens into a quantitative floor: recovering a ground-truth coefficient of magnitude cmin from N samples at derivative-noise level σε requires λmin (M ) ≳ σ2 
+
+> ε
+
+/(N c 2min ), and below it no unbiased estimator, whatever its internal machinery, can separate that coefficient from noise (SI 3, Proposition S4). The specific bottlenecks of SINDy and PySR sit on top of this shared floor and decide how close to it each method runs, but neither can pass beneath it. What makes the floor practical rather than merely cautionary is that the quantity governing it, λmin (M ), is computable from a short reference trajectory before any discovery is attempted: the single number that orders the regimes in Fig. 2 also certifies, in advance, when recovery is beyond the reach of any algorithm. 
+
+# Discussion 
+
+Any scientist deploying symbolic regression faces a question that has lacked a principled answer: under what dynamical conditions does automated equation discovery actually work? Earlier bench-marks compared systems with different governing equations and found no consistent ordering by regime [18, 19], but there the governing equations changed from system to system, so algebraic complexity and operator availability varied alongside the regime and any regime signal was con-founded from the outset rather than absent. Our within-system design removes that confound: by varying only the forcing parameter F of Lorenz-84, holding the governing equations, each algorithm’s candidate-term configuration, and the evaluation protocol fixed, we isolate the regime as the sole variable, and a clear picture emerges: the regime matters, and the mechanism is attractor coverage. A fixed point visits a single location no matter how long one watches it, so its data are maximally redundant and no inactive term can ever be recovered. A limit cycle traces a one-dimensional curve that, depending on its amplitude, may or may not cover enough of state space to identify the equations. Instead, a chaotic attractor spans a higher-dimensional region; it is this expanded state-space coverage that conditions the identification problem. Coverage is necessary, but on its own it is not sufficient, and this is where the two algorithms part ways. What coverage reliably improves is the conditioning both methods share: the data matrix grows less singular, and regime-level information accumulates at rate pN λ min (M ). Whether that gain carries through to a successful discovery depends on how each algorithm weighs it against the noise a larger attractor brings, and they weigh it differently. Because noise enters PySR’s discrimination channel superlinearly, the enlarged attractor of a chaotic regime, which raises coverage and noise exposure together, can net negatively: under noise PySR’s recovery collapses across regimes, and at high noise the compact, high-amplitude limit cycle R2 can outscore the chaotic regimes outright. The honest summary is therefore not that chaos is better, but that coverage is a necessary enabler whose payoff, once secured, still depends on which bottleneck binds and how much noise is present. The one lever that helps regardless is a sharper structural prior: constraining the dictionary reduces wrong-term contamination and pays off across every noise level, and for PySR it grows more valuable precisely as noise worsens. These mechanisms have a directly practical payoff: a diagnostic that can be computed before any discovery run, from the data and a noise estimate alone. Three numbers suffice. The minimum singular value σmin (Θ) comes from a single SVD of the data matrix; the attractor amplitude σx is the standard deviation of the trajectory; and the noise level η can be estimated up front. Together they 11 locate the difficulty. When σmin (Θ) is small relative to the noise, the data matrix is near-singular and both algorithms fail for the same reason, too little coverage: no sparsity threshold separates true terms from spurious ones for SINDy, and PySR’s coefficient landscape is flat in some direction, so the right expression cannot be pinned down even when it is proposed. More data from the same regime will not help. When σmin (Θ) is instead large but η σ x is also large, a well-covered attractor observed under heavy noise, the difficulty shifts onto PySR alone, whose superlinear noise penalty σmin (Θ) 
+
+does not see; there η σ x is the missing signal of residual difficulty. Wherever the operating conditions can be chosen before data are collected, this turns experimental design into an optimization: find the dynamical operating point that maximizes σmin (Θ) while keeping η σ x in check, and commit to collection only there, rather than gathering data blindly and hoping discovery succeeds. Read as design advice, this promotes coverage from a property one measures after the fact to a variable one controls in advance. The unifying prescription is to maximize λmin (M ) before any algorithm runs, since it governs the difficulty of recovery for both methods through the same Birkhoff step and is computable from a short reference trajectory (SI 3, Proposition S3). When the system cannot be steered, coverage is still raised by seeking trajectory diversity: varied initial conditions, transients, and perturbation responses each sample regions a single settled recording never visits, and provably lift λmin (M ) above the attractor floor (SI 3, Proposition S1). When the system can be steered, the advice is more direct still: move the operating point toward larger coverage, and both algorithms benefit at once. The same ceiling binds any future method too: anything that must tell ground-truth terms from spurious ones under ergodic data inherits the M -determined limit, so maximizing coverage is a lever that sits beneath algorithm design rather than competing with it. The framework also speaks, before the fact, to when coverage will fail to improve with chaos, and it reads the answer from the governing equations alone. If the equations contain a damping-dominated coordinate that is driven by the others and not interchangeable with them, deepening chaos can suppress that coordinate’s variance and, with it, the conditioning it controls, so more chaos need not mean better coverage. A coordinate-exchange symmetry rules this out: Lorenz-96’s cyclic structure ties every coordinate’s variance together and its conditioning improves cleanly with chaos, whereas Lorenz-84’s singled-out variable leaves it exposed. We do not claim to predict the exact direction of the within-chaos trend, only to identify, from structure, which systems carry the risk. For a scientist facing a new system the practical reading is equation-free: if one coordinate’s variance lags as the control parameter drives the system harder, expect chaos to bring no reliable benefit there. Soft F1, the metric we introduce alongside these results, closes a measurement gap that widens as symbolic-regression methods mature. Structural F1 is blind to coefficient accuracy, scoring an expression with the right terms but coefficients off by a factor of a thousand exactly as it scores one off by a percent. Predictive metrics such as RM SE or R2 are blind to structure, so they cannot tell apart algorithms that recover different governing terms. Soft F1 weights each matched term by how close its coefficient is, and in doing so exposes differences neither metric alone can see, rewarding methods that get both the structure and the numbers right, which is what equation discovery is ultimately for [1, 26, 27]. We recommend reporting it alongside structural F1 as a standard benchmark. Several limitations bound these claims. The framework assumes the full state is observed; reaching systems where only some variables are measured would mean reconstructing the invariant measure from partial data, for instance through delay embeddings, a link to the approach of Ref. 31. The SINDy score FSINDy needs to know which library terms are ground-truth, so it diagnoses a failed run rather than screening a system before one. The PySR two-channel score treats its conditioning and discrimination bottlenecks as independent, which the data support but which we have not justified under correlated noise. And the within-chaos analysis rests on five chaotic regimes per system, enough to see structure but not to pin a slope, which is exactly why we read the moment-balance criterion as flagging risk rather than forecasting a sign. Several directions follow directly. The most immediate is to close the design idea into an algorithm: given a family of forcing functions or control inputs parameterized by θ, maximize λmin (M (θ)) 
+
+using the invariant-measure sensitivity ∂λ min /∂θ , tractable through ergodic perturbation theory, so that data collection is steered toward maximally covering trajectories before any discovery begins. A second is to carry the framework to stochastic and partial differential equations: for SDEs the invariant measure and the Birkhoff argument survive intact, while for PDEs the analogous object is a spatial covariance, and whether the same λmin principle governs coverage there is open. A third is to test the same moment-matrix ceiling against black-box methods, neural ODEs, operator-learning 12 networks, and sparse autoencoders among them, and to ask whether architectures can be built to exploit the coverage geometry rather than merely inherit its limits. The last direction is verification of physical neural models. Foundation models, PINNs, and digital twins all implicitly claim to represent the dynamics they are trained on, and the moment matrix of that training data supplies necessary conditions on the claim: where λmin (M ) is too small, no model of any architecture can separate the true dynamics from a family of observationally equivalent alternatives. Coverage certificates of this kind would tell a practitioner not whether a model was trained well, but whether its data could ever have supported a faithful representation at all. The informational content of a trajectory is not set by its Lyapunov exponent but by how fully the attractor’s invariant measure fills the relevant function space, a property captured in the single computable number λmin (M ). That reframes the first question of equation discovery: it is not “which algorithm?” but “what does this regime permit?”, and a short reference trajectory, one SVD, and the smallest eigenvalue of M answer it before any algorithm is run. 
+
+# Materials and Methods 
+
+Numerical integration and regime selection 
+
+Both systems were integrated with an adaptive Runge–Kutta RK45 solver (scipy.integrate.solve_ivp ; rtol = 10 −7, atol = 10 −9) at a fixed output sampling interval ∆t = 0 .01 t.u. Each trajectory was preceded by a transient discarded before recording (Tburn = 100 t.u. for L84; 50 t.u. for L96) from a random initial condition x0 ∼ N (0 , 0.01 I).Dynamical regimes were identified by sweeping the forcing parameter F over 100 linearly spaced values and estimating the maximum Lyapunov exponent (MLE, λ1) at each point via the Benettin QR method (see Lyapunov exponents below). Grid points were classified as fixed-point (FP, λ1 < −0.01 ), limit-cycle (LC, |λ1| ≤ 0.01 ), or chaotic ( λ1 > 0.02 ); the narrow transition band was excluded from data collection. Candidate LC trajectories required additional verification using the full Lyapunov spectrum: the second exponent λ2 had to be sufficiently negative ( λ2 < −0.02 ) to confirm true limit-cycle dynamics and reject quasi-periodic tori, which share λ1 ≈ 0 but have λ2 ≈ 0 as well. Trajectories passing this spectral check were then assigned to one of two LC sub-regimes by attractor amplitude (the mean state standard deviation σx) rather than by any Lyapunov exponent, since λ1 carries no discriminating information within the LC band. ground-truth The natural bimodality of the σx distribution (reflecting L84’s two attractor branches) was resolved by splitting at the largest gap, yielding a small-amplitude sub-regime (R1) and a large-amplitude one (R2). The five chaotic sub-regimes (R3–R7) were defined by non-overlapping routing windows in λ1 and ordered by increasing MLE. Table S1 lists the pinned F value realizing each fixed-point and chaotic regime, and the amplitude range defining each limit-cycle sub-regime, for both L84 and L96. 
+
+Trajectory data and library construction 
+
+For each regime, five independent trajectory slots were collected, each starting from a fresh random initial condition after burn-in. Each slot comprises a training pool of Npool = 10 ,000 uniformly spaced snapshots ( Tpool = 100 t.u.) followed by a held-out test block of Ntest = 2 ,000 snapshots from the same continuous trajectory. SINDy was evaluated against a degree-3 polynomial library with a constant term, yielding p = 20 
+
+candidate features for L84 ( n = 3 dimensions) and p = 56 for L96 ( n = 5 dimensions). Library columns were not normalized before regression; the ground-truth coefficients of both systems are 
+
+O(1) and no column scaling was required. PySR’s analogous configuration, an operator set rather than a fixed library, is described in its own subsection below. Exact time derivatives at each snapshot were computed analytically from the right-hand side evaluated at the recorded state. 13 Derivative estimation 
+
+For noiseless, data starvation, and prior quality experiments, derivatives were evaluated directly from the governing equations, eliminating all noise. For noise-to-signal ratio experiments, additive Gaussian noise was independently injected into each state dimension as ˜xd = xd + εd, where 
+
+εd ∼ N (0 , η 2 σ2 
+
+> xd
+
+), σxd is the standard deviation of the clean training trajectory for dimension d,and η ∈ { 0, 0.01 , 0.02 , 0.05 , 0.10 , 0.15 , 0.20 } denotes the noise ratio. Track 2 (finite differences, FD) estimated derivatives via second-order central differencing applied to the noisy state sequence. Track 3 (Savitzky–Golay, SG) fitted a degree-3 polynomial over a sliding window of 11 time steps; both the smoothed state ˜X and the derivative ˙˜X were extracted from the same polynomial fit, maintaining feature and target consistency. 
+
+Moment matrix and σmin 
+
+The moment matrix M and its empirical estimator ˆM = (1 /N ) Θ ⊤Θ are properties of the dynamical regime, not of any individual algorithm; the same ˆM feeds both mechanistic scores through the Birkhoff argument (Background). ˆM was estimated from the same degree-3 polynomial dictionary 
+
+Θ and the same state observations used for regression in each experimental cell. For the moment-matrix figure (SI Appendix, Fig. S1) and the data-volume experiments, Θ was built from clean trajectories; N equals 5,000 for the figure panels and equals nsamp for each data-volume cell. In the noise experiments, σmin (Θ) (entering TFN ) was computed from the measurement-corrupted state observations (noisy or Savitzky–Golay-smoothed, depending on track) that both algorithms received as input ( N = 5 ,000 ), so this term reflects the regression problem each noise level poses to both algorithms; σmax (Θ) and σx (entering TFP ) were computed once from the clean reference trajectory and held fixed across noise levels for a given regime, consistent with their role as regime-level (Birkhoff-limit) objects rather than noise-dependent quantities. Because σmin measured on a noise-corrupted matrix could in principle covary with the noise level under test independently of the underlying regime, SI 5 reports a control that recomputes σmin from the clean reference trajectory as well: the resulting Spearman correlations change by at most 0.04 in either direction and remain 
+
+≥ 0.86 for both systems, so the reported correlations are not an artifact of this choice. The minimum singular value σmin (Θ) , related to the moment matrix eigenvalue by λmin ( ˆM ) = σ2min (Θ) /N ,was extracted via full singular value decomposition. All reported values are means over the five independent trajectory slots. 
+
+Lyapunov exponents 
+
+The maximum Lyapunov exponent λ1 was estimated by the Benettin QR method [32]: the variational (state-tangent) system was integrated with a fixed-step RK4 using the analytical Jacobian of each system, with Gram–Schmidt reorthonormalisation every 10 steps. Integration ran for TLyap =5,000 t.u. after a 1,000 t.u. burn-in for L84, and TLyap = 200 t.u. after 50 t.u. for L96 (L96’s larger exponents converge faster); estimates were averaged over 10 independent initial conditions per F
+
+value. 
+
+SINDy 
+
+SINDy was run using the PySINDy implementation [33] with sequentially-thresholded least squares (STLSQ) as the optimizer. The sparsity threshold was fixed at λ = 0 .05 and the ridge regularization at α = 0 .05 across all experiments; both values were fixed prior to any regime-stratified analysis and not tuned per regime. The maximum number of STLSQ iterations was set to 1,000 across all experiments. Because α and λ enter FSINDy explicitly (Eq. 2), the score is read from whichever configuration produced a given fit rather than assuming (0 .05 , 0.05) , and a hyperparameter-grid control confirms it tracks soft F1 independently of this fixed choice (SI 6). For derivatives, SINDy used the exact values in the data-volume and prior-quality experiments and the track-2 or track-3 estimates in the noise experiments ( Derivative estimation ). For the prior-quality experiment, the SINDy feature library varied by prior level using the same three-level scheme as PySR (null, overcomplete, oracle), constructed per system so that the ground-truth terms are respectively absent, embedded among distractors, or exactly and exclusively present. 14 For L84, the null library contains the 8 cubic monomials not among the ground-truth terms (x30, x 31, x 32, x 0x21, x 0x22, x 21x2, x 1x22, x 0x1x2); the overcomplete library is the full degree-3 poly-nomial library with bias (20 features, containing all ground-truth terms among 12 distractors); and the oracle library is the 8 exact ground-truth terms ( 1, x 0, x 1, x 2, x 21, x 22, x 0x1, x 0x2) and nothing else, so regression under the oracle prior reduces to ordinary least squares over the ground-truth support. The L96 prior levels follow the same construction principle applied to its own right-hand side (SI 5). The oracle condition is by construction close to unconstrained regression on the ground-truth terms: an intentional upper-anchor that isolates coefficient estimation from term selection, not a realistic operating point. Results for each experimental cell are the mean Soft F1 over the five independent trajectory slots. 
+
+PySR 
+
+PySR [3] was run with 50 evolutionary iterations and 40 parallel island populations. The operator set for the data-volume and noise experiments comprised the binary operators {+, −, ×} with no unary operators and a maximum expression complexity of 20 nodes. For the prior-quality experiment the operator set varied by prior level: the null prior used {+, −} over decoy terms (no constructive operators); the overcomplete prior used {+, −, ×} with complexity up to 25; and the oracle prior used {+, −} over the pre-computed ground-truth term columns with complexity capped at 9. Parsimony and adaptive parsimony scaling were both set to zero in all experiments, so selection pressure derived purely from fitness. For each experimental cell, five independent data slots were each run with five independent random initialisations of the evolutionary search, giving 25 runs per cell; the reported Soft F1 is the mean over all runs. 
+
+Statistical analysis 
+
+Associations between mechanistic indicator scores and observed soft F1 were quantified by the Spearman rank correlation |ρ|, chosen for robustness to the monotone but nonlinear relationship between theoretical predictors and empirical performance. For both SINDy and PySR, |ρ| was computed separately for each output dimension, correlating FSINDy (respectively FPySR ) with soft F1 across all (regime, slot, derivative track, noise ratio) cells of that dimension, and the reported value is the mean |ρ| across dimensions. L84’s three structurally distinct equations show systematic per-dimension heterogeneity that this averaging absorbs (SI 5); L96’s five cyclically identical equations do not. All correlation values are reported descriptively; no significance threshold was applied and no correction for multiple comparisons was made. 
+
+# Data Availability 
+
+All trajectory data, analysis scripts, and the soft-F1 evaluation library will be deposited in a public repository upon acceptance. 
+
+# Acknowledgments 
+
+This work was supported by the European Union’s Horizon Europe research and innovation action (NECCTON, Grant Agreement No 101081273) and co-funded by the European Union – NextGenera-tionEU via the TeRABIT Project (IR0000022, PNRR Mission 4, Component 2, Action 3.1). 
+
+# References 
+
+[1] Fabrício Olivetti de França, Marco Virgolin, Michael Kommenda, Manzur Majumder, Miles Cranmer, et al. SRBench++: Principled benchmarking of symbolic regression with domain-expert interpretation. IEEE Transactions on Evolutionary Computation , 29:1127–1134, 2024. doi: 10.1109/tevc.2024.3423681. [2] Steven L. Brunton, Joshua L. Proctor, and J. Nathan Kutz. Discovering governing equations from data by sparse identification of nonlinear dynamical systems. Proceedings of the National Academy of Sciences , 113(15):3932–3937, 2016. doi: 10.1073/pnas.1517384113. 15 [3] Miles Cranmer. Interpretable machine learning for science with PySR and SymbolicRegres-sion.jl. arXiv preprint arXiv:2305.01582 , 2023. [4] Michael Schmidt and Hod Lipson. Distilling free-form natural laws from experimental data. 
+
+Science , 324(5923):81–85, 2009. [5] Kathleen Champion, Bethany Lusch, J. Nathan Kutz, and Steven L. Brunton. Data-driven discovery of coordinates and governing equations. Proceedings of the National Academy of Sciences , 116(45):22445–22451, 2019. doi: 10.1073/pnas.1906995116. [6] Niall M. Mangan, Steven L. Brunton, Joshua L. Proctor, and J. Nathan Kutz. Inferring biological networks by sparse identification of nonlinear dynamics. IEEE Transactions on Molecular, Biological and Multi-Scale Communications , 2(1):52–63, 2016. doi: 10.1109/TMBMC.2016. 2633265. [7] Miles Cranmer, Alvaro Sanchez-Gonzalez, Peter Battaglia, Rui Xu, Kyle Cranmer, David Spergel, and Shirley Ho. Discovering symbolic models from deep learning with inductive biases. In Advances in Neural Information Processing Systems , volume 33, pages 17429–17442, 2020. doi: 10.48550/arxiv.2006.11287. [8] Kathleen P. Champion, Steven L. Brunton, and J. Nathan Kutz. Discovery of nonlinear multiscale systems: Sampling strategies and embeddings. SIAM Journal on Applied Dynamical Systems ,18(1):312–347, 2019. doi: 10.1137/17M115477X. [9] José Antonio Lemus and Björn Herrmann. Multi-objective SINDy for parameterized model discovery from single transient trajectory data. Nonlinear Dynamics , 113:10911–10927, 2024. doi: 10.1007/s11071-024-10825-2. [10] Ivan Markovsky, Eduardo Prieto-Araujo, and Florian Dörfler. On the persistency of excitation. 
+
+Automatica , 147:110657, 2022. doi: 10.1016/j.automatica.2022.110657. [11] Karl Johan Åström and Björn Wittenmark. Adaptive Control . Dover Publications, 2nd edition, 2008. [12] Yuxuan Bao and J. Nathan Kutz. Information theory and discriminative sampling for model discovery. arXiv preprint arXiv:2512.16000 , 2025. doi: 10.48550/arxiv.2512.16000. [13] Zakhar Shumaylov, Peter Zaika, Philipp Scholl, Gitta Kutyniok, Lior Horesh, and Carola-Bibiane Schönlieb. When is a system discoverable from data? Discovery requires chaos. arXiv preprint arXiv:2511.08860 , 2025. [14] Giang Tran and Rachel Ward. Exact recovery of chaotic systems from highly corrupted data. Multiscale Modeling & Simulation , 15(3):1108–1129, 2017. doi: 10.1137/16M1086637. arXiv:1607.01067. [15] Hayden Schaeffer, Giang Tran, and Rachel Ward. Extreme sampling in model identification via L1 optimization: The sparse regression cases. SIAM Journal on Applied Mathematics , 78(6): 3279–3295, 2018. doi: 10.1137/17M1120792. arXiv:1707.08528. [16] Hayden Schaeffer, Giang Tran, Rachel Ward, and Linan Zhang. Extracting structured dynamical systems using sparse optimization with very few samples. Multiscale Modeling & Simulation ,18(4):1435–1461, 2020. doi: 10.1137/18M1194730. arXiv:1805.04158. [17] Lam Si Tung Ho, Hayden Schaeffer, Giang Tran, and Rachel Ward. Recovery guarantees for polynomial approximation from dependent data with outliers. arXiv preprint arXiv:1811.10115 ,2018. [18] Alan A. Kaptanoglu, Linan Zhang, Zachary G. Nicolaou, Urban Fasel, and Steven L. Brunton. Benchmarking sparse system identification with low-dimensional chaos. Nonlinear Dynamics ,111:13143–13164, 2023. doi: 10.1007/s11071-023-08525-4. [19] William Gilpin. Chaos as an interpretable benchmark for forecasting and data-driven modelling. 
+
+arXiv preprint arXiv:2110.05266 , 2021. 16 [20] Edward N. Lorenz. Irregularity: A fundamental property of the atmosphere. Tellus A , 36(2): 98–110, 1984. [21] Edward N. Lorenz. Predictability: A problem partly solved. In Proc. ECMWF Seminar on Predictability, Vol. 1 , pages 1–18. ECMWF, 1996. [22] George D. Birkhoff. Proof of the ergodic theorem. Proceedings of the National Academy of Sciences , 17(12):656–660, 1931. [23] C. G. Broyden. The convergence of a class of double-rank minimization algorithms 1. general considerations. IMA Journal of Applied Mathematics , 6(1):76–90, 1970. doi: 10.1093/imamat/ 6.1.76. [24] Charles B. Delahunt and J. Nathan Kutz. A toolkit for data-driven discovery of governing equations in high-noise regimes. IEEE Access , 10:31210–31234, 2022. doi: 10.1109/ACCESS. 2022.3159335. [25] Alexandre Cortiella, Kwang-Chun Park, and Alireza Doostan. Sparse identification of nonlinear dynamical systems via reweighted ℓ1-regularized least squares. Computer Methods in Applied Mechanics and Engineering , 376:113620, 2021. doi: 10.1016/j.cma.2020.113620. [26] Yoshitomo Matsubara, Naoya Chiba, Ryo Igarashi, Tatsunori Taniai, and Yoshitaka Ushiku. Rethinking symbolic regression datasets and benchmarks for scientific discovery. arXiv preprint arXiv:2206.10540 , 2022. doi: 10.48550/arxiv.2206.10540. [27] L. G. A. dos Reis, V. L. P. S. Caminha, and T. J. P. Penna. Benchmarking symbolic regression constant optimization schemes. arXiv preprint arXiv:2412.02126 , 2024. doi: 10.48550/arxiv. 2412.02126. [28] Kadierdan Kaheman, J. Nathan Kutz, and Steven L. Brunton. SINDy-PI: a robust algorithm for parallel implicit sparse identification of nonlinear dynamics. Proceedings of the Royal Society A, 476(2242):20200279, 2020. doi: 10.1098/rspa.2020.0279. [29] T. Nathan Mundhenk, Mikel Landajuela, Ruben Glatt, Claudio P. Santiago, Daniel M. Fais-sol, and Brenden K. Petersen. Symbolic regression via neural-guided genetic programming population seeding. arXiv preprint arXiv:2111.00053 , 2021. [30] C. Radhakrishna Rao. Information and accuracy attainable in the estimation of statistical parameters. Bulletin of the Calcutta Mathematical Society , 37:81–91, 1945. [31] Jonathan Botvinick-Greenhouse, Robert T. W. Martin, and Yunan Yang. Invariant measures in time-delay coordinates for unique dynamical system identification. Physical Review Letters ,135(16):167202, 2024. doi: 10.1103/ppys-lx68. [32] Giancarlo Benettin, Luigi Galgani, Antonio Giorgilli, and Jean-Marie Strelcyn. Lyapunov characteristic exponents for smooth dynamical systems and for Hamiltonian systems; a method for computing all of them. Part 1: Theory. Meccanica , 15(1):9–20, 1980. doi: 10.1007/ BF02128236. [33] Alan A. Kaptanoglu, Brian M. de Silva, Urban Fasel, Kadierdan Kaheman, Andy J. Goldschmidt, Jared L. Callaham, Charles B. Delahunt, Zachary G. Zheng, Joshua Mann, J. Nathan Kutz, and Steven L. Brunton. PySINDy: A comprehensive Python package for robust sparse system identification. Journal of Open Source Software , 7(69):3994, 2022. doi: 10.21105/joss.03994. [34] David L. Donoho and Michael Elad. Optimally sparse representation in general (nonorthogonal) dictionaries via ℓ1 minimization. Proceedings of the National Academy of Sciences , 100(5): 2197–2202, 2003. doi: 10.1073/pnas.0437847100. 17 Supporting Information 
+
+# Attractor Geometry Determines the Identifiability Limits of System Discovery 
+
+Table S1 lists, for both systems, the forcing parameter F pinning each fixed-point and chaotic regime and the attractor-amplitude range defining each data-driven limit-cycle sub-regime (Methods, 
+
+Numerical integration and regime selection ). Values are taken directly from the per-regime classifi-cation records underlying every result in this paper; the λ1 column matches the values reported in the moment-matrix table of SI 5 (§ Scale invariance of the within-chaos λmin (M ) trend ) to three decimals, confirming consistency between the two. System Regime F λ1 Notes L84 R0 (fp) 0.500 −0.150 
+
+L84 R1 (lc) 4.798 (ref.) 0.000 σx ∈ [0 , 0.567] 
+
+L84 R2 (lc) 5.727 (ref.) 0.000 σx ≥ 0.590 
+
+L84 R3 (chaos) 8.283 0.073 
+
+L84 R4 (chaos) 8.515 0.142 
+
+L84 R5 (chaos) 7.934 0.168 
+
+L84 R6 (chaos) 8.747 0.189 
+
+L84 R7 (chaos) 7.586 0.207 
+
+L96 R0 (fp) 0.200 −0.300 
+
+L96 R1 (lc) 0.970 (ref.) 0.000 σx ∈ [0 , 0.253] 
+
+L96 R2 (lc) 3.879 (ref.) 0.000 σx ≥ 0.375 
+
+L96 R3 (chaos) 8.364 0.507 
+
+L96 R4 (chaos) 9.212 0.754 
+
+L96 R5 (chaos) 10 .061 0.932 
+
+L96 R6 (chaos) 10 .788 1.133 
+
+L96 R7 (chaos) 11 .636 1.348 
+
+Limit-cycle regimes are data-driven amplitude bins rather than single pinned F values (Methods): the F entry shown is the single reference trajectory’s forcing value, but any F within the regime’s classification band (a range of 6–24 grid points depending on regime, from the 100-point sweep) produces the same LC classification and is pooled into the same σx bin. Chaotic-regime F values are not monotonic in regime index for L84 (R3–R7 are ordered by increasing λ1, not by F , since λ1(F )
+
+is non-monotonic through the L84 period-doubling cascade); L96’s chaotic F values are monotonic in regime index because λ1(F ) increases monotonically over the sampled range. 
+
+# SI 1. SINDy Mechanistic Model: Full Derivation 
+
+From ridge shrinkage to the two threat ratios 
+
+STLSQ alternates ridge regression with hard thresholding at λ. In the SVD basis of Θ, the ridge estimate of a coefficient along the direction with singular value σ is shrunk from its true value by the factor w(σ) = σ2/(σ2 + α) (the classical ridge bias factor); we write wmin = w(σmin ) for the worst-conditioned (most-shrunk) direction, since it is the binding constraint for both failure modes below. 
+
+False negative. The smallest ground-truth coefficient, of magnitude ∥ξgt ∥ in the worst direction, is shrunk to wmin ∥ξgt ∥ by ridge regression. It survives the hard threshold iff wmin ∥ξgt ∥ > λ , i.e. iff 
+
+TFN = λwmin ∥ξgt ∥ < 1. (S1) This threat has no dependence on measurement noise: it is a pure conditioning failure, present even at η = 0 whenever λmin (M ) is small enough that wmin ≪ 1.
+
+False positive. Because both states and derivatives are measured with noise (errors-in-variables), noise leaks into the near-null directions of Θ and can push a spurious coefficient’s ridge estimate above λ.18 The leaked magnitude scales as ρEIV · σε · σmax (Θ) /σ min (Θ) (the noise amplitude, amplified by the EIV factor ρEIV and by the condition number through which noise in well-populated directions leaks into the worst-conditioned one). A spurious term survives thresholding iff this exceeds λ:
+
+TFP = κeff · ρEIV · σε
+
+λ > 1, κeff = σmax (Θ) 
+
+σmin (Θ) . (S2) 
+
+TFP carries all of the noise dependence; TFN carries none. 
+
+Combination: max, not a symmetric mean 
+
+Identification via a single global threshold λ succeeds only if every ground-truth term clears threshold (TFN < 1) and every spurious term stays below it ( TFP < 1); failure of either condition alone is sufficient for identification to fail. The correct combination is therefore the logical OR of the two failure events, captured by 
+
+FSINDy = max( TFN , T FP ), (S3) which is exactly Eq. 3 of the main text, and is what is computed for every correlation and figure in this paper. A different, equivalent motivation for the same score follows from the observable ridge-shrunk coefficients directly: FSINDy can equivalently be written as 
+
+q
+
+| ˆξ[j∗]|/| ˆξ[jgt ]|, the square root of the ratio of the largest spurious to the smallest ground-truth coefficient magnitude after ridge regression. Substituting the shrunk magnitudes | ˆξ[j∗]| ≈ ρEIV σεσmax /σ min and | ˆξ[jgt ]| ≈ wmin ∥ξgt ∥ and comparing against Eqs. S1–S2 gives the exact identity 
+
+| ˆξ[j∗]|| ˆξ[jgt ]| = ρEIV σεσmax /σ min 
+
+wmin ∥ξgt ∥ = TFN · TFP 
+
+(the λ factors cancel exactly). So the original coefficient-ratio quantity equals the product TFN TFP ,not the max. The product and the max agree exactly at the decision boundary TFN = TFP = 1 (both equal 1) and are of the same order whenever TFN and TFP are comparable, but diverge away from the boundary: if one threat ratio is far below 1 and the other far above it, the product can be pulled toward 1 by the small factor while the max correctly tracks the binding (larger) constraint. Because the max is the quantity with the correct logical reading (OR of two failure events) and is what the code computes throughout, we take FSINDy = max( TFN , T FP ) as the operational definition and report the coefficient-ratio identity above only as an alternative, equivalent motivation. 
+
+Convergence proof: Birkhoff and Weyl 
+
+SINDy. The singular values σk(Θ) are by definition the square roots of the eigenvalues of Θ⊤Θ, so the eigenvalues of (1 /N )Θ ⊤Θ are exactly σk(Θ) 2/N . Weyl’s inequality for real symmetric matrices, 
+
+|λk(A) − λk(B)| ≤ ∥ A − B∥2,
+
+applied with A = (1 /N )Θ ⊤Θ and B = M , gives 
+
+σk(Θ) 2/N − λk(M ) ≤ (1 /N )Θ ⊤Θ − M 2.
+
+It remains to show the right-hand side converges to zero μ-almost everywhere. Each (i, j ) entry of 
+
+(1 /N )Θ ⊤Θ is the time average (1 /N ) P 
+
+> t
+
+ϕi(xt)ϕj (xt). The Birkhoff ergodic theorem states: if μ
+
+is an ergodic invariant measure and f ∈ L1(μ), then 
+
+1
+
+N 
+
+> N−1
+
+X
+
+> t=0
+
+f (xt) →
+
+Z
+
+f dμ 
+
+for μ-almost every initial condition x0, i.e. except on a set of μ-measure zero. Taking f (x) = 
+
+ϕi(x)ϕj (x): since the attractor is compact and ϕi, ϕ j are continuous, f is bounded on the attractor and hence f ∈ L1(μ). The theorem therefore gives, μ-almost everywhere, 
+
+1
+
+N
+
+X
+
+> t
+
+ϕi(xt)ϕj (xt) →
+
+Z
+
+ϕi(x)ϕj (x) dμ (x) = Mij .
+
+19 Since the matrix has fixed finite dimension p × p, every entry converging to zero μ-a.e. implies the Frobenius norm ∥(1 /N )Θ ⊤Θ − M ∥F → 0 μ-a.e.; and since ∥ · ∥ 2 ≤ ∥ · ∥ F , the spectral norm converges to zero μ-a.e. too. Therefore σk(Θ) 2/N → λk(M ) μ-almost everywhere; continuity of the square root on [0 , ∞) gives σk(Θ) → pN λ k(M ), and specialising to k = min yields 
+
+σmin (Θ) = pN · λmin (M ) asymptotically. (S4) The same convergence holds for every k, in particular k = max : σmax (Θ) = pN · λmax (M )
+
+asymptotically. Consequently 
+
+κeff = σmax (Θ) 
+
+σmin (Θ) →
+
+s
+
+λmax (M )
+
+λmin (M ) as N → ∞ : (S5) the factors of √N cancel exactly between numerator and denominator, so κeff saturates to a finite, 
+
+N -independent value determined entirely by M (hence by μ), rather than shrinking with more data as a naive reading of σmin (Θ) → ∞ alone might suggest. Substituting Eq. S5 into TFP (Eq. S2) gives the large-N asymptotic form quoted in the main text (Eq. 8): 
+
+TFP →
+
+s
+
+λmax (M )
+
+λmin (M ) · ρEIV · η σ x
+
+λ ∼ κeff (μ) · η σ x(μ),
+
+linear in η and in κeff , with no surviving √·: the noise exponent of 1 for SINDy follows directly from 
+
+TFP ’s definition (Eq. S2), not from any asymptotic simplification, and is unaffected by whichever of 
+
+TFN /TFP is currently the binding term in the max . TFN (Eq. S1) saturates separately, to λ/ ∥ξgt ∥ as 
+
+wmin → 1, and carries no η-dependence at all; ∥ξgt ∥ therefore does not appear in the noise-sensitive asymptotic form above, since it belongs to the channel that noise does not enter. 
+
+# SI 2. PySR Mechanistic Model: Full Derivation 
+
+Moment matrix convergence for PySR 
+
+Throughout this SI, dictionary denotes the algorithm-agnostic candidate-function object Φ entering the moment matrix, as distinct from library (SINDy’s specific regression basis) and operator set 
+
+(PySR’s specific tree-construction primitives); individual candidate functions, regardless of algorithm, are simply called terms; see main text, Connection to the moment matrix and the invariant measure .
+
+PySR. The Birkhoff argument connects both channels of FPySR to μ through the overcomplete moment matrix Mfull = R Φfull (x) Φ full (x)⊤dμ (x). Let Θpartial denote the column-normalised submatrix formed by the true non-constant dictionary columns after orthogonally projecting out the constant and wrong term columns; its Gram matrix (1 /N )Θ ⊤
+
+> partial
+
+Θpartial converges μ-a.e. by Birkhoff to the generalized Schur complement Mnc |aw of Mfull with respect to the always-included block. This identity holds at every finite N regardless of rank: Θpartial is computed directly as the residual of an orthogonal, minimum-norm least-squares projection (the operation performed on real data throughout this paper), which coincides with the textbook Schur complement when the always-included block is full rank and degrades gracefully to its Moore–Penrose-pseudoinverse generalization (main text, PySR’s mechanistic model ) when it is not, e.g. at a fixed point where Mfull 
+
+has rank 1 and every always-included sub-block larger than 1 × 1 is singular. (The pseudoinverse is not continuous at rank-changing limits in general, so this substitution needs the always-included block’s rank to already match its N → ∞ limit at every finite N , not merely in the limit; for any real-analytic dictionary, which includes the polynomial dictionaries used throughout this paper, this is guaranteed by Proposition S6, Remark 3 below: whenever μ is supported on a low-dimensional set, exact collinearity holds for every sampled point, not just μ-a.e., so the empirical and population ranks agree at every finite N , not only asymptotically.) Applying Weyl’s inequality as in the SINDy case gives σ2min ,partial /N → λmin (Mnc |aw ) μ-a.e., so the conditioning channel (7) is a property of the invariant measure alone. For the SNR discrimination channel, each εwrong ,k is a sample mean of squared pointwise residuals; by Birkhoff it converges to min w
+
+R |ϕ(nc ) 
+
+> k
+
+(x) − cwϕw(x)|2 dμ (x), the 
+
+μ-averaged L2 irreplaceability of each ground-truth term by any wrong term from the dictionary. 20 Functional-form selection: what is derived, what is selected, and why the choice does not matter 
+
+Two components of FPySR are derived from first principles via the Birkhoff argument above: 
+
+σmin ,partial (the Schur-complement conditioning channel) and the inner per-term ratio pεwrong ,k /σ 2
+
+> ε
+
+inside Qnoise . Two further choices are not derived and are stated as such: the outer 14 power applied to σmin ,partial , and the geometric-mean combination with Qnoise . Both were selected by maximizing mean Spearman correlation on L84 across all three experiments, before L96 was ever consulted (held-out validation, exactly as for the mechanistic scores themselves). We report the full sensitivity grid: 5 monotone transforms of σmin ,partial (raw, √·, (·)1/4, (·)1/8,
+
+1 − e−(·)) × 4 combination rules with Qnoise (product, arithmetic mean, geometric mean, harmonic mean), each scored by the same per-dimension-averaged Spearman |ρ| used throughout, averaged over the three experiments. (A sixth transform, log( σmin ,partial + ϵ), is excluded from the grid below because it can be negative, making the product/geometric/ harmonic combination rules ill-defined; it is only ever meaningfully paired with the arithmetic mean, for the same reason.) L84 (selection) L96 (held out) Range of mean Spearman |ρ| across the 20-member grid 0.755 –0.767 0.783 –0.825 
+
+Selected model ( (·)1/4, geometric mean) 0.767 0.820 
+
+The entire plateau spans ∆|ρ| = 0 .013 on L84 and ∆|ρ| = 0 .042 on L96: every member of the grid supports the same qualitative conclusions this paper draws from FPySR . Because Spearman correlation is invariant to any monotone rescaling of a single variable, much of this insensitivity is expected by construction; as a statistic that is not monotone-invariant, we also report the Pearson correlation between log(score) and logit(soft F1) , which is sensitive to the specific functional form: 
+
+r = 0 .60 –0.90 across the six (system, experiment) cells (all p < 10 −100 ), confirming the relationship is not an artifact of rank-invariance alone. 
+
+Ablation (SNR only, the one experiment where both channels are simultaneously active). This ablation is specific to the noise experiment: in the noiseless starvation and prior-quality experiments 
+
+Qnoise ≡ 1 by construction, so σmin ,partial is not one of two channels there but the entire score, and Table 1 already shows it achieves strong correlation on its own in both experiments and both systems (0.78 –0.91 ). The question this ablation asks is narrower: once measurement noise is present and 
+
+Qnoise becomes active alongside σmin ,partial , does each channel still contribute? Removing Qnoise 
+
+from the combined SNR score (scoring on σ1/4min ,partial alone) drops mean Spearman |ρ| from 0.839 
+
+to 0.548 on L96: both channels add value there. On L84 the same ablation drops the combined score only marginally ( 0.753 → 0.269 for the conditioning channel alone, but Qnoise alone already reaches 
+
+0.749 ): under measurement noise specifically, Qnoise carries most of the marginal signal on L84, echoing the partial-correlation asymmetry already reported in SI 5, § Partial correlations: ruling out noise level as the common driver . This is a statement about the relative marginal contribution of the two channels when noise is present, not about whether σmin ,partial is useful in general: it is the sole driver of the strong noiseless-experiment correlations reported throughout this paper. A convention note, exactly analogous to SI 5’s remark on pooled versus per-dimension-averaged correlations (§ Partial correlations: ruling out noise level as the common driver ): this ablation’s “combined” value is computed at the raw (slot × PySR-initialisation) granularity, the same granularity used for all three columns of the ablation, so the internal comparison between σmin ,partial alone, 
+
+Qnoise alone, and their combination is apples-to-apples. It is not the trajectory-averaged convention (mean over the 5 PySR initialisations per slot, taken before correlating) that Table 1 uses for the head-line SNR entries, so “combined” = 0 .753 (L84) and 0.839 (L96) should not be read as a restatement of Table 1’s 0.81 and 0.88 : recomputing “combined” with that same trajectory-averaging convention recovers 0.812 and 0.880 exactly, confirming the two numbers differ only by this granularity choice and not by any discrepancy in the underlying score. 21 L84 ( p = 20 )
+
+A  
+
+> L96 ( p = 56 )
+> −1.0 −0.5 0.0 0.5 1.0
+> Mij  / p95 |Mij |
+> −1.0 −0.5 0.0 0.5 1.0
+> Mij  / p95 |Mij |
+> 10 20
+> Eigenvalue rank k
+> −10.0 −7.5 −5.0 −2.5 0.0 2.5 5.0
+> log 10  λk(M)
+> L84
+
+B     
+
+> 020 40
+> Eigenvalue rank k
+> −10.0 −7.5 −5.0 −2.5 0.0 2.5 5.0
+> L96
+> R00 R01 R02 R03 R04 R05 R06 R07 R00 R01 R02 R03 R04 R05 R06 R07
+> −10 −8 −6 −4 −2 0
+> log 10  λmin (M)
+> ≈0 ≈0 ≈0 ≈0
+> L84 L96
+
+C   
+
+> Fixed point Limit cycle Chaos Oracle features
+
+Figure S1: The moment matrix encodes dynamical regime through its eigenvalue structure. 
+
+(A) Raw moment matrices M = (1 /N ) Θ ⊤Θ for a representative fixed point (grey border), limit cycle (blue), and chaotic regime (red), shown for L84 ( p = 20 , top row) and L96 ( p = 56 , bottom row). The orange box highlights the subblock spanned by the ground-truth dictionary terms; dashed lines mark its boundary. At a fixed point all dictionary rows are identical, yielding a rank-1 matrix; the limit cycle populates a low-dimensional subspace; the chaotic attractor fills all p dictionary directions. (B) Eigenvalue spectra log 10 (λk) vs. rank k for every regime (L84 left, L96 right; line opacity increases with chaos intensity). Fixed-point regimes collapse to a single nonzero eigenvalue; chaotic regimes maintain all eigenvalues well above the numerical floor (dotted line). ( C) log 10 λmin (M )
+
+per regime for L84 and L96. The transition from fixed point and limit cycle ( λmin ≈ 0) to chaos (λmin > 0) spans more than three orders of magnitude, directly predicting the discoverability ordering of Fig. 2. 
+
+# SI 3. Analytical Theory: Derivations and Formal Statements 
+
+Log-linear structure of both models 
+
+Both models are log-linear in their arguments away from saturation, making the sensitivity structure of each model exact and transparent. For SINDy, in the regime where TFP is the binding term of 
+
+FSINDy = max( TFN , T FP ) (the regime the noise experiment probes), taking logarithms of Eq. (8) gives 
+
+ln FSINDy ≈ ln TFP = ln η + ln σx(μ) + ln κeff (μ) + const: 22 noise amplitude, state amplitude, and condition number each contribute with exponent 1, and every knob is independent of every other in log space. For PySR, taking logarithms of FPySR =q
+
+σ1/4min ,partial · Qnoise (Eq. 5) in the noise-limited regime gives 
+
+ln FPySR ≈ 18 ln σmin ,partial + 14
+
+> nnc
+
+X
+
+> k=1
+
+ln εwrong ,k (μ) − nnc 
+
+2 ln( η σ x) + nnc 
+
+2 ln( dt ) + const, where nnc = 3 for L84 and L96: the conditioning gain σmin ,partial pushes FPySR upward with the very weak exponent 1/8, while η and σx push it downward with exponent 3/2. Unlike the other three terms, the per-term sum P 
+
+> k
+
+ln εwrong ,k (μ) does not reduce to a closed form in N or η: εwrong ,k (μ)
+
+is a μ-dependent L2 irreplaceability distance (§ Moment matrix convergence for PySR, above), not an asymptotic limit of a data statistic the way σmin ,partial and σx are, so it is retained explicitly here rather than absorbed into the constant. 
+
+Total derivatives along a regime-change path 
+
+Differentiating each log-form with η held fixed (an experimental parameter independent of the dynamical attractor) gives the total derivatives along any regime-change path θ. For SINDy this is exact: every term in its log-linear form has a closed-form μ-dependence, since ρEIV is regime-independent by construction (main text). For PySR, two of three terms are closed-form; the third is not: 
+
+d ln FSINDy 
+
+dθ ≈ d ln σx
+
+dθ + d ln κeff 
+
+dθ , (S6) 
+
+d ln FPySR 
+
+dθ ≈ 116 
+
+d ln λmin (Mnc |aw )
+
+dθ + 14
+
+> nnc
+
+X
+
+> k=1
+
+d ln εwrong ,k 
+
+dθ − 32
+
+d ln σx
+
+dθ , (S7) where the PySR terms are, in order, the conditioning gain (attenuated by coefficient 1/16 , since 
+
+σmin ,partial ∝ λ1/2min and enters FPySR at exponent 1/8), the SNR channel’s per-term regime-sensitivity, and the amplitude cost at exponent 3/2.
+
+The middle term is not eliminable. Unlike ρEIV on the SINDy side, εwrong ,k (μ) is explicitly a function of the invariant measure (§ Moment matrix convergence for PySR), so it generically varies along any regime-change path, and neither its sign nor its magnitude is fixed by the theory developed here: we do not attempt a closed-form expression for d ln εwrong ,k /dθ . Qualitatively, if every dictionary term’s amplitude scales with the attractor (as is typical moving from a limit cycle to chaos), εwrong ,k tends to grow alongside σx, partially offsetting the − 32 d ln σx/dθ noise penalty rather than reversing it. This is consistent with a term-level effect documented separately: low-coefficient terms (e.g. L84’s smallest true coefficient, −0.25 x0) are disproportionately fragile under noise in a way σmin ,partial alone does not capture, precisely because a small-amplitude term has a correspondingly small εwrong ,k at every regime, exactly the per-term effect the Qnoise product (Eq. 4) was constructed to capture. Eq. (S7) should therefore be read as complete for the two Birkhoff/Weyl-derived channels, and explicit, though not resolved in closed form, in the third. 
+
+Crossover conditions: when a deeper regime helps each algorithm 
+
+The total derivatives above turn “does deepening the regime help?” into a sign check, one per algorithm. They make precise the main text’s prose account (§ Analytical theory: from the invariant measure to discoverability) that SINDy tends to benefit from deeper chaos while PySR often does not. For SINDy, FSINDy is a threat ratio (smaller is better), so the regime change helps exactly when 
+
+d ln FSINDy /dθ < 0. Using Eq. (S6) and κeff = σmax /σ min with σmax varying slowly relative to 
+
+σmin (so d ln κeff /dθ ≈ − d ln σmin /dθ ), this reduces to a comparison of two fractional changes: SINDy benefits ⇐⇒ ∆σmin 
+
+σmin 
+
+> ∆σx
+
+σx
+
+. (S8) A mild condition: a modest conditioning gain suffices whenever the attractor does not expand disproportionately. 23 For PySR, FPySR is a score (larger is better), so the regime change helps when d ln FPySR /dθ > 0.Dropping the unclosed εwrong ,k term of Eq. (S7), the conditioning term enters with coefficient 1/16 
+
+(from σmin ,partial ∝ λmin (Mnc |aw )1/2 at outer exponent 1/8) against the amplitude term’s 3/2, so the benefit condition is PySR benefits ⇐⇒ ∆λmin (Mnc |aw )
+
+λmin (Mnc |aw ) > C ∆σx
+
+σx
+
+, C = 3/21/16 = 24 , (S9) a threshold steeper than SINDy’s by the factor C. The value C = 24 is contingent on the selected functional form of FPySR (the outer 14 power and geometric mean, § Functional-form selection); what is robust across that family is that C ≫ 1, so PySR requires a fractional conditioning gain more than an order of magnitude larger than SINDy does. The omitted per-term εwrong ,k channel varies with regime and partially offsets the amplitude penalty (§ Log-linear structure), but does not reverse it. In practice λmin (Mnc |aw ) grows with the effective dimension of the SRB attractor yet consistently falls short of the factor-C bar, so the PySR crossover condition typically fails once measurement noise is present — the analytical counterpart of PySR’s observed noise-sensitivity relative to SINDy in the main experiments. 
+
+Prior quality is a noise-independent lever, unique to PySR. Structural prior quality enters FPySR 
+
+only through σmin ,partial : a sharper prior (dimensional constraints, operator restrictions, symmetry arguments) reduces wrong-term contamination in Mnc |aw and raises λmin (Mnc |aw ), and in the log-linear form (§ Log-linear structure) this gain carries no factor of η: it has zero cross-derivative with the noise level. Prior quality therefore becomes relatively more valuable precisely when noise is heaviest, the regime where PySR’s superlinear amplitude penalty is most severe. It appears in no term of FSINDy , so among the two algorithms it is a lever available to PySR alone. 
+
+Compound knob effects in linear space 
+
+In linear space, log-additive contributions become multiplicative. Consider simultaneously increasing noise ( η′ = 2 η) and moving to a more chaotic regime ( σ′ 
+
+> x
+
+= 1 .5 σx) with the associated conditioning improvement ( κ′ 
+
+> eff
+
+= 0 .6 κeff ): 
+
+∆FSINDy = ( ×2) · (×1.5) · (×0.6) = ×1.8,
+
+while F−1PySR is worsened by a factor of 
+
+∆( F−1PySR ) ∝  (×2) · (×1.5) 3/2 = 3 3/2 ≈ × 5.2,
+
+a fivefold worsening that the conditioning gain (entering FPySR with exponent 1/8 on σmin ,partial )cannot compensate: the 3/2-power amplitude penalty structurally dominates FPySR . (This illustra-tion, like Eq. S7, omits the non-closed-form εwrong ,k channel; per the discussion above it is expected to partially offset, not reverse, the amplitude penalty, so the 3/2-power term remains the dominant, structurally unavoidable cost.) The compound of chaos with fine finite differences is the most severe scenario: noise variance in PySR scales as (η σ x)2/dt 2, so halving dt while increasing σx by ×1.5
+
+raises (η σ x)3/dt 3 by (1 .5) 3 · (1 /0.5) 3 = 3 .375 · 8 = 27 , and F−1PySR scales as the 1/2 power, giving a compound worsening of ≈ × 5.2. SINDy can decouple from this pathway entirely by substituting Savitzky–Golay or integral derivative estimation, which do not amplify noise at rate 1/dt ; PySR evaluates fitness on derivative data and has no equivalent escape. 
+
+Transient data and identifiability: formal statement (Proposition S1) 
+
+The following proposition formalises the claim in the main text that trajectory data including transients or perturbation responses provides an identifiability ceiling at least as large as the invariant-measure prediction, making λmin (M ) a conservative lower bound rather than an exact characterisation. 
+
+Proposition S1 (Transient data and coverage lower bound). Let {xt}Nt=1 be a finite trajectory in the basin of attraction of an ergodic invariant measure μ, with Ntrans transient points (before settling onto the attractor) and Nattr = N − Ntrans settled points. Define the partitioned empirical moment matrices 
+
+ˆMattr = 1
+
+Nattr 
+
+X
+
+> t>N trans
+
+Φ( xt)Φ( xt)⊤, ˆMtrans = 1
+
+Ntrans 
+
+X
+
+> t≤Ntrans
+
+Φ( xt)Φ( xt)⊤,
+
+24 so that the full empirical moment matrix satisfies 
+
+ˆMN = Nattr 
+
+N ˆMattr + Ntrans 
+
+N ˆMtrans .
+
+Then: (i) ˆMN ⪰ Nattr 
+
+N ˆMattr , and consequently λmin ( ˆMN ) ≥ Nattr 
+
+N λmin ( ˆMattr ).(ii) The transient contribution strictly raises λmin ( ˆMN ) above the attractor-only lower bound whenever v∗⊤ ˆMtrans v∗ > 0, where v∗ is the minimum-eigenvalue eigenvector of ˆMN (a sufficient, not necessary, condition: the bound can also be exceeded if v∗ is not itself the attractor-only minimizer). (iii) As N → ∞ with Ntrans fixed, ˆMN → M = R Φ Φ ⊤dμ entry-wise μ-a.e. by the Birkhoff ergodic theorem, so the transient contribution vanishes asymptotically and λmin ( ˆMN ) →
+
+λmin (M ).
+
+Proof. Since ˆMtrans is an empirical Gram matrix it is positive semidefinite, so (Ntrans /N ) ˆMtrans ⪰ 0.The Löwner partial order then gives 
+
+ˆMN = Nattr 
+
+N ˆMattr + Ntrans 
+
+N ˆMtrans ⪰ Nattr 
+
+N ˆMattr ,
+
+and since A ⪰ B implies λk(A) ≥ λk(B) for all k, statement (i) follows. Statement (ii) follows by evaluating the quadratic form at v∗, using λmin ( ˆMN ) = v∗⊤ ˆMN v∗ exactly (since v∗ is defined as the minimizer) and v∗⊤ ˆMattr v∗ ≥ λmin ( ˆMattr ) (since λmin ( ˆMattr ) is the minimum over all unit vectors, not just v∗): 
+
+λmin ( ˆMN ) = Nattr 
+
+N v∗⊤ ˆMattr v∗+ Ntrans 
+
+N v∗⊤ ˆMtrans v∗ ≥ Nattr 
+
+N λmin ( ˆMattr )+ Ntrans 
+
+N v∗⊤ ˆMtrans v∗;
+
+the transient term alone being strictly positive is therefore sufficient, but not necessary, for the bound in (i) to be strict, since the first term can already exceed λmin ( ˆMattr ) on its own if v∗ does not coincide with ˆMattr ’s own minimizer. Statement (iii) is the Birkhoff ergodic theorem applied entry-wise to [Φ( x)Φ( x)⊤]ij , which is μ-integrable because Φ is a polynomial dictionary evaluated on the bounded attractor. □
+
+Corollary. The invariant-measure prediction λmin (M ) is a conservative lower bound on the identifia-bility ceiling of any finite recording. For long recordings where transients are short relative to the settled phase ( Ntrans ≪ N ), the bound λmin ( ˆMN ) ≥ (Nattr /N )λmin (M ) is tight and the transient term generically provides additional coverage above the attractor floor. 
+
+Fixed-point identifiability: a sparse-recovery (spark) argument (Proposition S2) 
+
+The main-text argument that λmin (M ) = 0 makes identification impossible at a fixed point (R0) is stated there via the Fisher information / Cramér–Rao bound, an unconstrained-estimation argument. A referee could object that λmin = 0 does not generically imply impossibility for sparse recovery: sparse-recovery guarantees (e.g. compressed sensing, Tran–Ward-style ℓ1 recovery) do not require 
+
+M to be full rank, only that it be non-degenerate on the restricted set of sparse difference vectors (a restricted-eigenvalue condition). We show here that the fixed-point case survives this stronger objection: identification is impossible not only for unconstrained least-squares but for any sparse-recovery algorithm, including combinatorial ℓ0 search, because the design matrix’s spark is minimal. 
+
+Proposition S2 (Fixed-point spark collapse). Let x∗ be an asymptotically stable fixed point and let 
+
+{xt}Nt=1 be a trajectory that has settled onto x∗ (i.e. xt = x∗ for all t in the observed window, as 
+
+t → ∞ along any trajectory converging to x∗). Let Φ = ( ϕ1, . . . , ϕ p) be any dictionary of p ≥ 2
+
+functions with at least two terms nonzero at x∗ (true for every dictionary considered in this paper: the constant term alone guarantees one, and any polynomial dictionary of degree ≥ 1 in a nonzero variable, or with a nonzero x∗, guarantees a second). Then the design matrix Θ ∈ RN ×p has spark 25 spark(Θ) ≤ 2, and consequently no algorithm (convex, ℓ1; combinatorial, ℓ0; or otherwise) can uniquely recover any coefficient vector ξ with ∥ξ∥0 ≥ 1 from (Θ , ˙X) alone. 
+
+Proof. Every row of Θ equals Φ( x∗)⊤, since xt = x∗ for every t in the window; consequently 
+
+rank(Θ) = 1 (every row is a scalar multiple of every other), which is the rank-1 structure shown for the fixed-point moment matrix in Fig. S1A. Because Φ( x∗)̸ = 0 (by hypothesis at least two dictionary functions are nonzero there), a vector w ∈ Rp satisfies Θw = 1N (Φ( x∗)⊤w) = 0 exactly when the single scalar Φ( x∗)⊤w vanishes; the null space of Θ is therefore the entire hyperplane 
+
+N (Θ) = {w ∈ Rp : Φ( x∗)⊤w = 0 },
+
+of dimension p − 1 — not merely a single vector, a fact used below. Write Z = {i : ϕi(x∗)̸ = 0 }; by hypothesis |Z| ≥ 2.Picking any j, k ∈ Z and setting vj = ϕk(x∗), vk = −ϕj (x∗), vi = 0 otherwise gives one explicit nonzero, 2-sparse element of N (Θ) (direct check: Φ( x∗)⊤v = ϕj (x∗)ϕk(x∗) − ϕk(x∗)ϕj (x∗) = 0 ), exhibiting two linearly dependent columns of Θ directly, so spark(Θ) ≤ 2 (the spark is the smallest number of linearly dependent columns). This alone is not yet the claim we need, and stating precisely why is the point of what follows. The classical sparse-recovery uniqueness theorem (Donoho–Elad [34]; the same sufficiency direction underlies the Tran–Ward exact-recovery guarantees [14]) says that spark(Θ) > 2κ if and only if every κ-sparse coefficient vector is the unique κ-sparse explanation of its own data — an “if and only if” between two statements about the whole matrix Θ, not about one specific ξ. Its “if” direction (large spark ⇒ every sparse vector is uniquely recoverable) is the standard sufficiency guarantee. Its “only if” direction, read carelessly, might seem to say that spark(Θ) ≤ 2κ — which we have just shown, with κ = 1 — already implies that every κ-sparse ξ individually fails to be uniquely recoverable. That reading over-claims what the general theorem gives: its necessity direction guarantees only that some pair of distinct, sufficiently sparse vectors produces identical data somewhere in Rp, not that every candidate ξ has such a competitor. To make the fixed-point claim watertight we therefore give a direct, elementary construction — no further citation needed — showing the fully universal statement holds here, for every ξ with ∥ξ∥0 ≥ 1. This is possible precisely because the null space is unusually large at a fixed point (the whole (p − 1) -dimensional hyperplane N (Θ) above, not merely the single vector v just exhibited): a special feature of the rank-1 collapse, not a generic consequence of spark(Θ) ≤ 2 for an arbitrary matrix. Fix any ξ ∈ Rp with κ := ∥ξ∥0 ≥ 1 and let S = supp( ξ). Because |Z| ≥ 2, exactly one of three cases holds. 
+
+Case (I): S ∩ Z = ∅. Every active term of ξ vanishes at x∗, so Θξ = 1N
+
+ Φ( x∗)⊤ξ =
+
+1N
+
+P 
+
+> i∈S
+
+ϕi(x∗)ξi = 0 . The zero vector ξ′ = 0 then satisfies Θξ′ = 0 = Θ ξ with ∥ξ′∥0 = 0 < κ : ξ
+
+is not even the sparsest explanation of its own data, let alone the unique one. 
+
+Case (II): S ∩ Z̸ = ∅ and Z \ S̸ = ∅. Pick i0 ∈ S ∩ Z (an active term of ξ that is visible at x∗)and j0 ∈ Z \ S (an inactive term also visible at x∗). Set t = ξi0 /ϕ j0 (x∗) (well defined, since j0 ∈ Z
+
+means ϕj0 (x∗)̸ = 0 ) and define w ∈ N (Θ) by wi0 = t ϕ j0 (x∗) = ξi0 , wj0 = −t ϕ i0 (x∗), wi = 0 
+
+otherwise (this w lies in N (Θ) by the same two-term cancellation used to construct v above, scaled by t). Then ξ′ := ξ − w satisfies Θξ′ = Θ ξ − Θw = Θ ξ, and by construction ξ′ 
+
+> i0
+
+= ξi0 − ξi0 = 0 
+
+(the active term at i0 is exactly cancelled) while ξ′ 
+
+> j0
+
+= −t ϕ i0 (x∗) = −ξi0 ϕi0 (x∗)/ϕ j0 (x∗)̸ = 0 
+
+(nonzero, since ξi0̸ = 0 and ϕi0 (x∗)̸ = 0 ) is a newly activated term. So supp( ξ′) = ( S \ { i0}) ∪ { j0}:exactly κ-sparse, and ξ′̸ = ξ (they differ at i0) — a distinct, equally sparse alternative generating identical data. 
+
+Case (III): Z ⊆ S. Since |Z| ≥ 2, pick any two distinct i0, j 0 ∈ Z ⊆ S and construct w ∈ N (Θ) 
+
+supported on {i0, j 0} exactly as above (any nonzero scaling t). Because w is supported only on 
+
+{i0, j 0} ⊆ S, supp( ξ − tw ) ⊆ S for every t, so ξ′ := ξ − tw satisfies ∥ξ′∥0 ≤ κ (support cannot grow, and shrinks if some coordinate is driven to zero) and Θξ′ = Θ ξ; taking any t̸ = 0 gives ξ′̸ = ξ.In every case we have exhibited an explicit ξ′̸ = ξ with ∥ξ′∥0 ≤ κ and Θξ′ = Θ ξ: ξ is never the unique explanation — at its own sparsity or better — of the data it generates. Since ξ was an arbitrary vector with ∥ξ∥0 ≥ 1, no coefficient vector with even a single active term can be uniquely identified from fixed-point data, by any algorithm — convex, combinatorial, or otherwise — that seeks a solution of sparsity ∥ξ∥0 or less consistent with the data. □
+
+26 Remark. This is strictly stronger than the Cramér–Rao argument in the main text: that argument shows the estimator variance is infinite under a Gaussian noise model, which leaves open whether a differently-structured (e.g. sparse, combinatorial) estimator could still succeed; Proposition S2 shows no such estimator exists, even with exact noiseless data, because for every candidate ξ the data are combinatorially insufficient to distinguish it from the explicit, equal-or-lesser-sparsity alternative 
+
+ξ′ constructed above. This upgrades the R0 impossibility claim to a compressed-sensing-proof statement, closing the sparse-recovery objection for the fixed-point case specifically. 
+
+Scope. Proposition S2 is specific to λmin (M ) = 0 exactly (the fixed-point case). For 0 <λmin (M ) ≪ 1 (e.g. limit cycles), Θ has full spark in the noiseless limit and this argument does not apply; the relevant question there is quantitative (a restricted-eigenvalue or similar condition number, as in Tran–Ward and the main-text noise-robustness ceiling discussion), not a combinatorial impossibility. The whole-dictionary collapse used here is one instance of a more general phenomenon: Proposition S6 (below § Exact collinearity forces provable indistinguishability, in any regime) extends the same spark argument to any exactly-collinear subset of terms in any regime, not only to a fixed point’s total collapse. 
+
+Finite-time concentration of the moment matrix (Proposition S3) 
+
+The convergence σmin (Θ) = pN λ min (M ) established above (§ Convergence proof: Birkhoff and Weyl) is asymptotic: the Birkhoff ergodic theorem guarantees the limit but gives no rate. We give one, separately for each regime family, since the mechanism differs by regime in exactly the way the rest of this paper’s diagnostics do. 
+
+Proposition S3 (Finite-time concentration of ˆMT ). Let ˆMT = 1
+
+> T
+
+R T 
+
+> 0
+
+Φ( x(t))Φ( x(t)) ⊤dt be the empirical moment matrix from a trajectory of length T on the attractor, and M = R ΦΦ ⊤dμ its ergodic limit. (i) Fixed point. If the attractor is {x∗}, then ˆMT = M = Φ( x∗)Φ( x∗)⊤ exactly, for every 
+
+T > 0.(ii) Limit cycle. If x(t) is periodic with period P (once settled on the attractor), then for every 
+
+T ≥ P ,
+
+∥ ˆMT − M ∥2 ≤ 2BP T , B := sup 
+
+> x∈attractor
+
+∥Φ( x)∥22 < ∞,
+
+deterministically (no failure probability required). (iii) Chaos. If the attractor supports an ergodic Sinai–Ruelle–Bowen (SRB) measure, the physically observed invariant measure on a chaotic attractor, with exponential decay of correlations (constants K0, γ > 0, as in [13]’s exponential-mixing hypothesis), then for every η ∈ (0 , 1) and T large enough, with probability at least 1 − η,
+
+∥ ˆMT − M ∥2 ≤ 2λmax (M ) C∞CLip 
+
+s
+
+2pK 0
+
+γηT ,
+
+where C∞ = sup h∈H p ∥h∥L∞ /∥h∥L2(μ), CLip the analogous ratio for ∥∇ h∥L∞ , and p the dictionary size. In every case, Weyl’s inequality propagates the bound to |λmin ( ˆMT ) − λmin (M )|.
+
+Proof. (i) Immediate, since μ = δx∗ . (ii) Write T = nP + r, 0 ≤ r < P . Because Φ( x(t))Φ( x(t)) ⊤
+
+is exactly P -periodic, every complete period contributes exactly P M to R T 
+
+> 0
+
+ΦΦ ⊤dt , so ˆMT − M =
+
+> rT
+
+ 1
+
+> r
+
+R TnP ΦΦ ⊤dt −M ; both bracketed terms are bounded by B (attractor compact, Φ continuous) and 
+
+r < P , giving the stated bound. (iii) Whiten the dictionary to an L2(μ)-orthonormal basis Ψ = L−1Φ
+
+(Cholesky M = LL ⊤, valid since λmin (M ) > 0 on a chaotic attractor), so ˆGΨ,T := 1
+
+> T
+
+R T 
+
+> 0
+
+ΨΨ ⊤dt 
+
+has Eμ[ ˆGΨ,T ] = Ip. Under the exponential-mixing hypothesis, [13]’s Lemma A.7 bounds exactly this kind of quantity: applied to the zero-mean process ZG(t) = Ψ( x(t))Ψ( x(t)) ⊤ − Ip (so ˆGΨ,T − Ip =¯ZT := 1
+
+> T
+
+R T 
+
+> 0
+
+ZG(t)dt in that lemma’s own notation), it gives ∥ ¯ZT ∥2 ≤
+
+q
+
+2pK 0∥ZG∥2Lip /(γηT )
+
+27 with probability ≥ 1 − η. The same source paper’s proof of its Theorem 5.3 (labeled Theorem A.9 in the appendix), two steps after Lemma A.7, separately bounds this Lipschitz constant for the identical whitened-basis construction: ∥ZG∥Lip ≤ 2C∞CLip . Substituting gives ∥ ˆGΨ,T − Ip∥2 ≤
+
+2C∞CLip 
+
+p2pK 0/(γηT ) with probability ≥ 1 − η — Lemma A.7 and this Lipschitz bound used exactly as given in the source, with no adaptation step of our own. Transforming back: since Φ = LΨ,
+
+ˆMT = 1
+
+> T
+
+R T 
+
+> 0
+
+ΦΦ ⊤dt = L ˆGΨ,T L⊤ and M = LL ⊤ = L I p L⊤, so ˆMT − M = L( ˆGΨ,T − Ip)L⊤;submultiplicativity of the spectral norm together with ∥L∥2 = ∥L⊤∥2 and ∥L∥22 = λmax (M ) (since 
+
+M = LL ⊤ has the same eigenvalues as the squared singular values of L) gives the stated bound. □
+
+Remark (honest scope). Case (iii)’s exponential-mixing hypothesis is standard for chaotic attractors with SRB measures but has not been independently verified for the L84/L96 chaotic regimes studied here; it is assumed, exactly as it is assumed rather than proved in the source technique, where it is stated explicitly as a labeled assumption (not derived for a general chaotic system) and used only to prove that source paper’s own finite-time stability result. What is fully checked is the algebra connecting that assumption to the bound above: every constant in Case (iii)’s stated bound ( 2, C∞,
+
+CLip , p, K0, γ, η, T ) traces term for term to [13]’s own Lemma A.7 and its own Lipschitz-constant bound for the identical whitened-basis construction, combined here by a standard Cholesky change-of-basis argument; no constant or exponent was introduced, dropped, or altered in transferring it to the moment-matrix setting of this paper. Case (ii)’s bound is informative only for T ≥ P ; below one period it says nothing, and the short-window behavior of λmin ( ˆMT ) for T < P is governed by a different, local-smoothness effect not captured by this proposition. Case (ii)’s exact-periodicity hypothesis is itself an idealization: a numerically integrated trajectory only approaches a stable limit cycle asymptotically after a transient, so no finite recording is exactly periodic. The bound should be read as applying to the idealized settled orbit, consistent with the same “settled” convention used for the fixed point in Proposition S2, with the (exponentially small, for a stable limit cycle) residual transient distance folded into numerical tolerance rather than treated as a separate term. Both cases are consistent with, but not tightly confirmed by, direct numerical checks on the L84 data used throughout this paper: only 5 independent trajectory slots are available per regime, which is too few to resolve the precise convergence exponent against sampling noise in the estimate itself. 
+
+A Cramér–Rao floor for coefficient recovery (Proposition S4) 
+
+Proposition S3 concerns estimating the regime-level λmin (M ) itself. A different, complementary question does not require that estimate at all: given whatever moment matrix a discovery run actually has, from however many samples, from whichever regime, is it good enough for coefficient recovery to be possible by any algorithm? This generalizes, to a continuous statement, the main-text Fisher-information argument currently stated only for the degenerate λmin (M ) = 0 case. 
+
+Proposition S4 (Necessary conditioning floor for coefficient recovery). Consider ˙X = Θ ξgt + ε with 
+
+ε i.i.d. noise of variance σ2 
+
+> ε
+
+, and let ˆMnc |aw denote the Schur complement of the empirical moment matrix restricted to the ground-truth non-constant terms after projecting out any always-included wrong terms (so ˆMnc |aw = ˆM when there are none, the plain SINDy case). If ξgt has component 
+
+cmin along the worst-conditioned direction v∗ of ˆMnc |aw , then any unbiased estimator ˆξ satisfies 
+
+Var( v∗⊤ ˆξ) ≥ σ2
+
+> ε
+
+N λ min ( ˆMnc |aw ) ,
+
+so resolving this component at κ-sigma confidence requires 
+
+λmin ( ˆMnc |aw ) ≥ λ∗ 
+
+> min
+
+:= κ2σ2
+
+> ε
+
+N c 2min 
+
+. (S10) Below this floor, no unbiased estimator, regardless of algorithm and regardless of which dynamical regime produced the N samples, can reliably distinguish this coefficient from noise. 
+
+Proof. The Fisher information of the model, restricted to the relevant coordinates, is (N/σ 2 
+
+> ε
+
+) ˆMnc |aw ;the Cramér–Rao bound gives Cov( ˆξ) ⪰ (σ2 
+
+> ε
+
+/N ) ˆM −1nc |aw ; evaluating the quadratic form along v∗ and requiring the resulting standard deviation to be at most cmin /κ gives Eq. (S10). □
+
+28 Remarks. (1) As σε → 0, λ∗ 
+
+> min
+
+→ 0: this recovers “recovery is possible in principle from noiseless data” (main text). At λmin ( ˆMnc |aw ) = 0 exactly, the bound is infinite for any σε > 0, recovering the main text’s Fisher-information/Cramér–Rao sentence as the boundary case of this proposition. (2) The proposition presupposes cmin is well-defined, i.e. the ground-truth term is present in the dictionary; under a null structural prior no ground-truth term exists in the dictionary at all, so the proposition does not apply: this is consistent with the null-prior collapse being universal across every regime (main text, Fig. 2C), not explicable by any conditioning floor. (3) ˆMnc |aw = ˆM
+
+recovers the SINDy case (SI 1); the Schur-complement form recovers the PySR case (SI 2), once the correct expression structure has been found. Both algorithms’ specific bottlenecks ( TFN , TFP for SINDy; σmin ,partial , Qnoise for PySR) sit on top of this shared floor, which this proposition does not replace. (4) This is a necessary , not sufficient, condition, since it bounds only unbiased estimators, while STLSQ (ridge-biased, hard-thresholded) and PySR’s BFGS-refined evolutionary search are not Cramér–Rao-efficient. Checked directly against real trajectories and injected noise from the SNR experiment (L84, regimes R1/R2/R3/R7): the floor is cleared by orders of magnitude at every tested noise level, including cells where SINDy actually fails (R1 at η = 0 .10 ). It is therefore not the binding constraint in the experiments reported in this paper; the algorithm-specific mechanisms above remain the operative explanation for observed failure. The floor’s role is to establish, rigorously, that a more fundamental limit exists beneath those mechanisms, computable directly from whichever moment-matrix quantity each algorithm’s bottleneck already uses. 
+
+Why chaos does not always help: a moment-balance theory of conditioning (Propositions S5.1–S5.4) 
+
+Propositions S1–S4 concern the moment matrix M = R Φ( x)Φ( x)⊤ dμ (x) once the invariant measure μ is given. This subsection asks a structural question one level earlier: as a control parameter deepens chaos and reshapes μ itself, which features of the governing equations decide whether the conditioning of M improves or degrades ? Deepening chaos usually spreads the attractor across more of state space and improves conditioning — the generic case, and the one L96 realizes — but this is not guaranteed. We develop the answer in four steps, each more general than the L84/L96 pair that motivates it. Lemma S5.1 is a witness principle, true for any dictionary and any measure, that reduces every conditioning question to the search for a single nearly-degenerate combination of dictionary terms. Proposition S5.2 supplies such a combination whenever the equations contain a “damped-driven” coordinate. Proposition S5.3 shows that a coordinate symmetry provably removes it, which is why a symmetric system like L96 improves monotonically. Proposition S5.4 is an honest limit: the damped-driven structure alone does not fix the sign of the effect, so the theory predicts 
+
+where a degradation channel can open, not that it must fire in a given direction. Everything is stated for a general autonomous ODE with an invariant measure and assumes no chaos, periodicity, or near-Gaussianity. 
+
+Setup. Let ˙x = f (x; p), f ∈ C1(Rd), be an autonomous ODE depending on a parameter p, and suppose that for each p in the range of interest the flow admits an invariant Borel probability measure 
+
+μ = μp supported on a compact set Kp ⊂ Rd (guaranteed whenever the system is dissipative with a bounded absorbing set, as is true of L84 and L96 in every regime considered in this paper). Write 
+
+⟨g⟩μ := R g dμ for the μ-average of an integrable observable g, consistent with the Var μ(·) notation already used in the main text (§ Connection to the moment matrix and the invariant measure). 
+
+Lemma S5.0 (Stationarity identity). For any g ∈ C1(Rd), ⟨∇ g · f ⟩μ = 0 .Proof. Invariance of μ under the flow Φt means R g ◦ Φt dμ = R g dμ for every t, a quantity constant in t. Since Kp is compact and f , ∇g are continuous, t 7 → g(Φ t(x)) is C1 uniformly for 
+
+x ∈ Kp, justifying differentiation under the integral at t = 0 : 0 = ddt t=0 
+
+R g(Φ t(x)) dμ (x) = 
+
+R ∇g(x) · f (x) dμ (x). □
+
+Only invariance of μ is used here; ergodicity is not required for the identity itself, but is what additionally guarantees, via the Birkhoff ergodic theorem [22] already invoked throughout this paper, that a single long simulated trajectory’s time-average converges to ⟨g⟩μ almost surely — the justification for estimating every moment below from one simulated trajectory in practice, exactly as 
+
+M itself is estimated (main text, § Connection to the moment matrix and the invariant measure). 29 Taking g(x) = xk gives ⟨fk⟩μ = 0 ; taking g(x) = x2 
+
+> k
+
+gives ⟨xkfk⟩μ = 0 ; taking g(x) = xkxj gives 
+
+⟨xj fk⟩μ + ⟨xkfj ⟩μ = 0 . These are the dynamical inputs used below. The conditioning side needs one further, purely linear-algebraic, fact. 
+
+Lemma S5.1 (Conditioning is the smallest combination norm). For M = ⟨ΦΦ ⊤⟩μ and any coefficient vector v ∈ RP , write ψv := v⊤Φ = P 
+
+> i
+
+viϕi for the corresponding combination of dictionary functions. Then 
+
+λmin (M ) = min  
+
+> ∥v∥2=1
+
+ψ2  
+
+> vμ
+
+= min  
+
+> ∥v∥2=1
+
+∥ψv ∥2
+
+> L2(μ)
+
+, so λmin (M ) ≤ ∥ ψv ∥2 
+
+> L2(μ)
+
+for every unit v. 
+
+Proof. For any v, v⊤M v = v⊤⟨ΦΦ ⊤⟩μv = (v⊤Φ) 2 
+
+> μ
+
+= ⟨ψ2 
+
+> v
+
+⟩μ = ∥ψv ∥2
+
+> L2(μ)
+
+: the quadratic form is the μ-average of a square. The Courant–Fischer theorem writes the smallest eigenvalue of a symmetric matrix as the minimum of this quadratic form over unit vectors, and the value at any single unit v is an upper bound on that minimum. □
+
+In words. λmin (M ) is the smallest “energy” ⟨ψ2⟩μ any unit-length combination of dictionary terms can have on the attractor. It is small exactly when some combination is nearly the zero function under 
+
+μ — when the dictionary terms are nearly linearly dependent as functions on the attractor , not as abstract vectors. Every conditioning question thus reduces to finding one “witness” combination ψv
+
+of small μ-energy: to show conditioning degrades as a parameter changes, it suffices to exhibit a single fixed combination whose L2(μ) norm shrinks. Proposition S5.2(c) and the symmetry argument of S5.3 are both this one principle applied with a specific witness. 
+
+Definition (Damped-driven coordinate). Coordinate k of f is damped-driven if 
+
+fk(x) = −αkxk − Qk(x\k) + ck, αk > 0,
+
+where Qk depends only on the other coordinates x\k = ( xj )j̸ =k and ck is a constant (possibly 
+
+p-dependent, as a forcing term typically is). 
+
+Proposition S5.2 (Conditioning under a damped-driven coordinate). Let xk be a damped-driven coordinate. Then: (a) [Exact mean identity] 
+
+⟨xk⟩μ = ck − ⟨ Qk⟩μ
+
+αk
+
+.
+
+(b) [Exact, unclosed, second-moment identity] 
+
+Var μ(xk) = ck⟨xk⟩μ − ⟨ xkQk⟩μ
+
+αk
+
+− ⟨ xk⟩2
+
+> μ
+
+.
+
+(c) [Conditioning bound] If the dictionary Φ used to build M = ⟨ΦΦ ⊤⟩μ contains the coordinate function xj and the product xkxj for some j appearing in Qk, and |xj | ≤ R on supp( μ), then 
+
+λmin (M ) ≤ R2
+
+1 + ⟨xk⟩2
+
+> μ
+
+Var μ(xk).
+
+Proof. (a) Apply Lemma S5.0 with g(x) = xk: 0 = ⟨fk⟩μ = −αk⟨xk⟩μ − ⟨ Qk⟩μ + ck; solve for 
+
+⟨xk⟩μ. (b) Apply Lemma S5.0 with g(x) = x2 
+
+> k
+
+(∇g = 2 xkek): 0 = ⟨2xkfk⟩μ = −2αk⟨x2
+
+> k
+
+⟩μ −
+
+2⟨xkQk⟩μ + 2 ck⟨xk⟩μ; solve for ⟨x2
+
+> k
+
+⟩μ and subtract ⟨xk⟩2
+
+> μ
+
+. (c) Apply Lemma S5.1 with the witness 
+
+ψv = ( xk − ⟨ xk⟩μ)xj , normalized: take v =  e(xk xj ) − ⟨ xk⟩μ e(xj )
+
+/
+
+q
+
+1 + ⟨xk⟩2
+
+> μ
+
+, a unit vector (e(xk xj ) and e(xj ) are distinct dictionary columns by hypothesis, hence orthonormal), so that ψv =
+
+v⊤Φ = ( xk − ⟨ xk⟩μ) xj /
+
+q
+
+1 + ⟨xk⟩2
+
+> μ
+
+. Lemma S5.1 then gives 
+
+λmin (M ) ≤ ⟨ ψ2 
+
+> v
+
+⟩μ = (xk − ⟨ xk⟩μ)2x2 
+
+> jμ
+
+1 + ⟨xk⟩2
+
+> μ
+
+≤ R2 Var μ(xk)1 + ⟨xk⟩2
+
+> μ
+
+,
+
+the last step using x2 
+
+> j
+
+≤ R2 pointwise on supp( μ). □
+
+30 Remark (what S5.2 does and does not give). Part (a) needs nothing beyond invariance of μ: it holds identically at a fixed point, on a limit cycle, or on a chaotic (SRB) attractor, with zero fitted parameters. Part (c) converts it into a one-directional statement about λmin (M ): Var μ(xk) → 0
+
+forces λmin (M ) → 0 at least as fast, but not conversely. So a damped-driven coordinate whose variance collapses is sufficient for conditioning to collapse; it is not necessary, and a damped-driven coordinate whose variance merely fails to grow does not by itself tell us the sign of the change. The next two propositions settle when this channel is closed (S5.3) and why its sign is not fixed by structure alone (S5.4). 
+
+Proposition S5.3 (A coordinate symmetry closes the channel). Suppose μ is invariant under a permutation σ of the coordinate labels: with Pσ the relabeling map (Pσ x)i = xσ−1(i), suppose 
+
+(Pσ )∗μ = μ. Then every coordinate in one σ-orbit shares the same mean and variance, 
+
+⟨xσ(k)⟩μ = ⟨xk⟩μ, Var μ(xσ(k)) = Var μ(xk),
+
+so if σ acts transitively on {1, . . . , d } all coordinate variances are equal. No single coordinate can then concentrate while the rest do not, and the damped-driven witness of S5.2(c) cannot be opened by any coordinate. Proof. Invariance of μ under Pσ means ⟨h⟩μ = ⟨h ◦ Pσ ⟩μ for every integrable h (change of variables under (Pσ )∗μ = μ). With h(x) = xσ(k) we have h(Pσ x) = ( Pσ x)σ(k) = xσ−1(σ(k)) = xk,so ⟨xσ(k)⟩μ = ⟨xk⟩μ; with h(x) = x2 
+
+> σ(k)
+
+the same computation gives ⟨x2
+
+> σ(k)
+
+⟩μ = ⟨x2
+
+> k
+
+⟩μ, and subtracting the (equal) squared means gives equal variances. Iterating σ carries the equality around its orbit. □
+
+Scope, stated precisely. This closes exactly the channel S5.2 identifies — a single coordinate’s marginal collapsing — and no more. A combination that respects the symmetry (for instance the mean mode 1
+
+> d
+
+P 
+
+> i
+
+xi on a cyclic system) is not protected by this argument and could in principle still concentrate; ruling out every symmetric-mode witness is a strictly larger question we leave open. What is established is that a coordinate-transitive symmetry removes the one mechanism this subsection derives from the equations — the mechanism L84 exhibits and L96 does not. 
+
+Proposition S5.4 (The damped-driven structure does not fix the sign). The quantities that close in the low-order identities — αk, ck, and ⟨Qk⟩μ, hence ⟨xk⟩μ by S5.2(a) — do not determine Var μ(xk),and therefore do not determine the sign of d Var μ(xk)/dp or of the induced change in λmin (M ).Proof. By S5.2(b), Var μ(xk) depends on the cross-moment ⟨xkQk⟩μ in addition to the closed quantities above. When Qk has degree ≥ 2 in the other coordinates (as Q0 = x21 + x22 does in L84), 
+
+⟨xkQk⟩μ is a moment of degree ≥ 3, and moments of degree ≥ 3 are functionally independent of the degree-≤ 2 moments: one may hold ⟨xk⟩, ⟨xj ⟩, ⟨x2
+
+> k
+
+⟩, ⟨x2 
+
+> j
+
+⟩, ⟨xkxj ⟩ all fixed while giving ⟨xkx2 
+
+> j
+
+⟩
+
+either sign (a distribution on finitely many points matching five prescribed low moments and free in the sixth is elementary to construct). Hence Var μ(xk) is not a function of the closed inputs, and neither is its parameter-derivative. □
+
+Why more identities do not rescue it. Pinning ⟨xkQk⟩μ down with further stationarity identities (Lemma S5.0 at higher-degree g) only introduces still-higher moments faster than it constrains lower ones: the classical moment-closure problem for nonlinear dynamics, which does not terminate at any finite order without an external closure (e.g. joint Gaussianity via Isserlis’ theorem). The mean identity S5.2(a) is the exception that closes on its own, which is why it alone is sharply predictive (below). 
+
+L84: the channel is structurally open. With A = 0 .25 , B = 4 , G = 1 fixed (main text, § Lorenz-84 (L84)), the ˙x0 equation is damped-driven with k = 0 , α0 = A, c0 = AF , Q0(x1, x 2) = x21 + x22
+
+(the wave-mode kinetic energy), and x0 is not exchangeable with x1, x 2, so Proposition S5.3 does not apply. The degree-3 dictionary contains x0x1 and x0x2, so the S5.2(c) witness exists and the degradation channel is structurally present. Its closed half is sharply borne out: forcing F tracks the wave energy ⟨x21 +x22⟩ at Spearman ρ = 0 .975 (p = 1 .6×10 −16 , n = 25 ), as clean as any relationship in this paper, matching the exact mean identity S5.2(a); and the conditioning bound S5.2(c) holds with zero violations across all 25 chaos-regime slots (ratio λmin (M )/bound between 0.0008 and 
+
+0.0036 , valid but loose, as expected from a worst-case sup-norm R = max( |x1|, |x2|) = 2 .42 ). Its 
+
+unclosed half behaves exactly as S5.4 says it must: F tracks Var μ(x0) only weakly ( ρ = 0 .570 ), a Gaussian (Isserlis) closure recovers the right sign of Var( x0) near onset but misestimates its 31 magnitude by ≈ 7× in full chaos (L84’s chaotic attractor is markedly non-Gaussian [20]), and the within-chaos trend of λmin (M ) itself is not sign-definite: across the five L84 chaotic regimes, Spearman ρ(λ1, λ min (M )) = −0.50 at p = 0 .39 (n = 5 ; the point estimate is stable to trajectory-slot resampling but the five-regime correlation is not significant, § Scale invariance of the within-chaos 
+
+λmin (M ) trend and § Statistics hygiene). We therefore make no definite claim about the L84 within-chaos sign; S5.4 predicts precisely that structure alone cannot supply one, and the data are consistent with that. What S5.2 does establish for L84 is that the channel is open — the reason L84 need not follow L96’s clean improvement — not that it fires in a particular direction. 
+
+L96: the channel is closed by symmetry. Every coordinate of the ring equation ˙xi = ( xi+1 −
+
+xi−2)xi−1 − xi + F (main text, § Lorenz-96 (L96)) is also damped-driven ( αi = 1 , ci = F ,
+
+Qi the neighbor coupling), so a damped-driven coordinate is not what sets the two systems apart — L96 has one for every i. The difference is symmetry: the cyclic shift xi 7 → xi+1 leaves the equations invariant, and taking the SRB measure to inherit it (generic for a spatially homogeneous attractor) puts L96 squarely under Proposition S5.3. Every Var μ(xi) is then equal and moves in lockstep with chaos intensity; no coordinate can lag or reverse, the S5.2(c) channel is closed, and 
+
+λmin (M ) is free to improve monotonically — which it does, cleanly, across L96’s five chaotic regimes ( ρ(λ1, λ min (M )) = +1 .00 , p < 0.001 , n = 5 ; § Scale invariance of the within-chaos 
+
+λmin (M ) trend). 
+
+An equation-free version for practitioners. Propositions S5.2–S5.4 read the governing equations, which a theorist or benchmark designer has but a practitioner applying SINDy or PySR to an unknown system does not. The same content survives without f : sweep the available control parameter and watch whether every observed coordinate’s variance grows together, or whether one lags or moves opposite to the rest. Lockstep growth is the signature of the symmetric, channel-closed case, where chaos should help conditioning; one coordinate lagging is the observable fingerprint of an open damped-driven channel, where chaos’s effect on that system need not have a fixed sign — both diagnosable from trajectories alone, with the equations never inspected. 
+
+Exact collinearity forces provable indistinguishability, in any regime (Proposition S6) 
+
+Proposition S2 shows that at a fixed point, no sparse-recovery algorithm can identify any coefficient, because the design matrix’s spark collapses to 2. The main text separately asserts , in a different setting, that when the Schur complement Mnc |aw is singular the ground-truth signal is “entirely 
+
+L2(μ)-representable by wrong dictionary terms and no coefficient optimiser can separate them” (§ Mechanistic models connect the invariant measure to discoverability), but does not prove this in general or say what it implies for algorithms other than a coefficient optimiser. This subsection proves both as one statement, for any regime and any subset of wrong terms, showing Proposition S2 to be the special case where the whole dictionary collapses at once. 
+
+Setup. Let ˙x = Φ( x)⊤ξgt + ε with ξgt supported on the ground-truth index set G ⊆ { 1, . . . , p }, and let W = {1, . . . , p } \ G index the remaining, wrong dictionary terms. Say a nonempty W0 ⊆ W is 
+
+exactly collinear with G if there is v ∈ Rp, supported on G ∪ W0 and with vk̸ = 0 for some k ∈ W0,such that X
+
+> i∈G∪W0
+
+vi ϕi(x) = 0 for μ-a.e. x
+
+— equivalently, the Gram submatrix MG∪W0 = ⟨ΦG∪W0 Φ⊤ 
+
+> G∪W0
+
+⟩μ is singular, with a null vector nonzero on W0.
+
+Proposition S6 (Exact collinearity forces observational equivalence). Suppose W0 ⊆ W is exactly collinear with G via null vector v. Then: (a) For every t ∈ R, the coefficient vector ξ(t) = ξgt + tv generates exactly the same (x, ˙x) data as 
+
+ξgt , for every noise realization and μ-a.e. trajectory: no estimator of any kind — biased or unbiased, sparse or dense, at any sample size, at any noise level including σε = 0 — can distinguish ξgt from 
+
+ξ(t) for any t̸ = 0 .(b) At any finite sample {xn}Nn=1 drawn from the trajectory, the restricted design matrix ΘG∪W0
+
+satisfies ΘG∪W0 vG∪W0 = 0 exactly, so spark(Θ G∪W0 ) ≤ ∥ v∥0, and consequently no κ-sparse recovery guarantee of the Donoho–Elad type [34] can hold for ΘG∪W0 once κ ≥ ⌈∥ v∥0/2⌉: there 
+
+32 exist two distinct vectors of sparsity ≤ ⌈∥ v∥0/2⌉, both supported within supp( v) ⊆ G ∪ W0, that generate identical data. Proof. (a) P 
+
+> i
+
+ξi(t)ϕi(x) = P 
+
+> i
+
+ξgt  
+
+> i
+
+ϕi(x) + t P 
+
+> i∈G∪W0
+
+viϕi(x) = P 
+
+> i
+
+ξgt  
+
+> i
+
+ϕi(x) for μ-a.e. x, by hypothesis; the two models therefore induce identical ˙x given x, hence identical joint laws of 
+
+(x, ˙x, ε ), for every t. (b) Since the trajectory is ergodic it is, almost surely, generic for μ, so the 
+
+μ-a.e. identity of part (a) holds at every sampled xn (see Remark 3 for the polynomial-dictionary case, where this is exact with no exceptional set to worry about); consequently every row of ΘG∪W0
+
+satisfies the same linear relation, giving ΘG∪W0 vG∪W0 = 0 exactly and spark(Θ G∪W0 ) ≤ ∥ v∥0 (a nontrivial ∥v∥0-sparse null vector exhibits ∥v∥0 linearly dependent columns directly). As explained in Proposition S2’s proof, the Donoho–Elad necessity direction alone gives only an existence statement, not a claim about every κ-sparse vector individually; here it is proved directly by splitting supp( v)
+
+into two disjoint halves V1, V 2 of size ≤ ⌈∥ v∥0/2⌉ each and setting ζ1 = v|V1 (i.e. v restricted to V1, zero elsewhere), ζ2 = −v|V2 : since ζ1 − ζ2 = v|V1 + v|V2 = v ∈ ker(Θ G∪W0 ), we get 
+
+ΘG∪W0 ζ1 = Θ G∪W0 ζ2 with ζ1̸ = ζ2 (as v̸ = 0 ), the required pair. □
+
+Remarks. (1) Proposition S2 is the special case μ = δx∗ . At a fixed point every dictionary function is constant, so any two terms nonzero at x∗ furnish a 2-sparse null vector trivially (Proposition S2’s construction); Proposition S6 shows this is one instance of a much more general phenomenon, not particular to fixed points or to whole-dictionary collapse: any regime, and any exactly-collinear subset of any size, forces the same observational equivalence. (2) This proves the main-text assertion. Taking G to be the ground-truth non-constant terms and W0
+
+the always-included wrong terms of the PySR mechanistic model (main text, § Mechanistic models connect the invariant measure to discoverability), λmin (Mnc |aw ) = 0 is exactly the statement that 
+
+G∪W0 admits a null vector v supported on W0 (the Schur complement vanishes along some direction iff the corresponding combination of always-included terms exactly cancels a combination of ground-truth terms), so Proposition S6(a) proves, rather than merely asserts, that no coefficient optimiser — and by part (b), no sparse-recovery algorithm of any kind — can separate them in that case. Part (b) as proved above only guarantees existence of some indistinguishable pair; for the specific target this remark is about, ξgt restricted to G, the stronger universal claim (that ξgt itself, not merely some other vector, fails to be uniquely recoverable at its own sparsity) follows directly, by the same Case (II) construction used in Proposition S2. Write the block decomposition MG∪W0 =   MGG MG,W 0 
+
+> MW0,G MW0,W 0
+
+;
+
+MW0,W 0 is invertible whenever the Schur complement Mnc |aw = MG|W0 is even defined (this is already assumed throughout the paper wherever Mnc |aw is used). Eliminating the W0-block, any null vector v = ( vG, v W0 ) of MG∪W0 satisfies vW0 = −M −1 
+
+> W0,W 0
+
+MW0,G vG: if vG were zero this formula would force vW0 = 0 too, contradicting the hypothesis v̸ = 0 on W0; hence vG̸ = 0 as well. So v has some nonzero coordinate k ∈ W0 (outside supp( ξgt ) = G, since W0 ∩ G = ∅ by construction) and some nonzero coordinate i0 ∈ G (inside supp( ξgt )) — exactly the two ingredients Proposition S2’s Case (II) requires (an active term with an available inactive partner), applied here to v
+
+restricted to {i0, k } in place of the two-term vector built from Θ’s null space there. The resulting swap gives an exactly-equal-sparsity alternative to ξgt itself, generating identical data: for this specific, actually-relevant target, not merely for some unrelated vector, no sparse-recovery algorithm can uniquely recover it. This matches, from a purely combinatorial and algorithm-agnostic direction, the stronger continuum-of-t statement already given by part (a) for this same target. (3) When is the hypothesis satisfied? This question is about the regularity of the dictionary Φ alone, not about the governing equations f or the ODE that produces μ: no restriction on f (polynomial, analytic, or otherwise) is needed anywhere in this remark, only on the candidate functions ϕi
+
+themselves. The natural, maximally general condition — of which the polynomial libraries used in this paper are one instance, not the governing hypothesis — is that every ϕi be real-analytic on state space (true of polynomials, but equally of trigonometric, exponential, and rational — away from poles — dictionaries, and of essentially every candidate-function library used in symbolic regression in practice). Mere continuity or smoothness is not enough: a C∞ but non-analytic function can vanish on a set of positive measure without being identically zero (e.g. a smooth bump function), so the argument below genuinely needs analyticity and would fail for an arbitrary smooth dictionary. Given real-analytic ϕi, the identity theorem for real-analytic functions states that any nonzero real-analytic function on a connected open set vanishes only on a Lebesgue-null, in fact nowhere dense, subset of that set — the direct generalization of the elementary fact that a nonzero polynomial vanishes on a Lebesgue-null set. Consequently, if μ has a component absolutely continuous with respect to 33 Lebesgue measure on an open subset of state space — true of a genuinely chaotic SRB measure filling out the attractor, as in the moment matrices of Fig. S1A — then “ μ-a.e.” upgrades automatically to “for all x” on that open subset, so exact collinearity requires an actual functional identity among the chosen dictionary functions, not merely an accident of sampling. Generic, distinct real-analytic dictionary entries do not satisfy such an identity by chance; the hypothesis is satisfied structurally (rather than by coincidence) exactly when μ is instead supported on a lower-dimensional set — a fixed point (Proposition S2) or a limit cycle, where a lower-dimensional curve of support makes exact linear dependencies among dictionary functions far easier to satisfy — or when a dictionary contains a literally redundant or duplicated feature. This is why Proposition S6’s exact, provable impossibility is generically a low-dimensional-attractor phenomenon, while the generic situation in a fully chaotic regime is 0 < λ min (MG∪W0 ) ≪ 1 rather than exactly 0: a quantitatively hard but not provably impossible regime, governed instead by Proposition S4’s Cramér–Rao floor and the 
+
+TFP /σmin ,partial mechanistic scores already used throughout this paper. Every SINDy library in this paper is polynomial, hence real-analytic, so the general statement above applies directly; nothing in it is specific to the polynomial case. (4) Relation to Proposition S4. Proposition S4 gives a quantitative floor that degrades continuously as 
+
+λmin (Mnc |aw ) → 0; Proposition S6 is its λmin = 0 boundary case, strengthened from an unbiased-estimator (Cramér–Rao) statement to a combinatorial one covering every estimator, sparse or dense, exactly as Proposition S2 already strengthens the main text’s fixed-point argument in the same way (§ Fixed-point spark collapse, Remark). 
+
+# SI 4. Jerk Systems: A Non-Polynomial Held-Out Family 
+
+L84 and L96 share a structural feature that could be read as favouring the framework: both are degree-2/3 polynomial systems, and both SINDy libraries already contain the ground-truth terms. This section applies λmin (M ), FSINDy , and FPySR , unmodified, to a third, unrelated ODE family with two genuinely non-polynomial members, to test whether the regime-ordering story is an artifact of the polynomial setting or transfers to a harder functional form. 
+
+Systems. All four jerk systems share the form ˙x = y, ˙y = z, ˙z = −0.9z − y − bx + F (x, y ), with b
+
+the control parameter and F varying by system: poly , F = xy 2 (the in-dictionary control, identical in character to L84/L96); rat , F = xy 2/(1 + ( xy )2/64) ; sinrat , F = ( xy 2 + sin x)/(1 + ( xy )2/64) .rat and sinrat are genuinely non-polynomial: no finite-degree polynomial dictionary contains their true right-hand side. A fourth system, log (F = xy 2 + 0 .25 ln(1 + x2)), is excluded here pending completion of a cluster run (7 of its 8 regimes’ PySR fits did not complete). Each system has the same 8-regime structure as L84/L96 (R0 fixed point; R1–R2 limit cycle; R3–R7 chaos, λ1-binned), with 5 trajectory slots per regime. 
+
+Library and operators. SINDy is given the degree-3 polynomial basis (as in L84/L96) plus the system’s own ground-truth nonlinear term as one additional feature column (e.g., for rat, the column 
+
+xy 2/(1 + ( xy )2/64) itself), the same “ground-truth term included” convention as the main exper-iments’ default library, not the separate null/oracle prior-quality manipulation. PySR is given the corresponding term as a custom operator. Only the ˙z equation is scored: ˙x = y and ˙y = z are exact linear identities in every regime and carry no information about discoverability. 
+
+Protocol. Noiseless only: a single fixed training window ( N = 9 ,000 , exact ODE derivatives) per regime/slot; no starvation N-sweep or SNR noise-sweep exists yet for jerk systems. Conse-quently Qnoise = 1 identically and FPySR =
+
+q
+
+σ0.25 min ,partial , with no EIV channel to evaluate. σmin ,
+
+σmin ,partial , cmin , and the SINDy fit are all recomputed directly from the raw trajectories for this check, not read from any pre-existing cached result. 
+
+Results. Fig. S2 shows the same qualitative ordering as L84/L96 in all three systems: SINDy fails sharply outside chaos (soft F1 ≈ 0.07 –0.29 at R0/R1/R2, ≈ 1.0 from R3 on, for every system including the two non-polynomial ones); PySR shows the same floor-then-ceiling pattern for poly, and a genuinely graded FP < LC1 < LC2 < chaos ordering for rat ( 0.22 → 0.59 → 0.98 → 1.0)and sinrat ( 0.07 → 0.42 → 0.52 → 1.0), more texture than L84/L96 typically show, because rat and sinrat’s two limit-cycle regimes differ enough in λmin (M ) to separate cleanly. Spearman |ρ| between each mechanistic score and soft F1, pooled over all 8 regimes × 5 slots (n=40 per system): 34 0.0 0.2 0.4 0.6 0.8 1.0 SINDy soft F1                      
+
+> poly (in-library control) 0.0 0.2 0.4 0.6 0.8 1.0
+> rat (non-polynomial) 0.0 0.2 0.4 0.6 0.8 1.0
+> sinrat (non-polynomial) 01234567regime 0.0 0.2 0.4 0.6 0.8 1.0 PySR soft F1
+> 01234567regime 0.0 0.2 0.4 0.6 0.8 1.0
+> 01234567regime 0.0 0.2 0.4 0.6 0.8 1.0
+
+Figure S2: Regime ordering on the jerk systems. Mean soft F1 across 5 trajectory slots per regime (error bars: SD across slots), for SINDy (top) and PySR (bottom), on poly (in-dictionary control) and the two non-polynomial systems rat and sinrat. Grey = fixed point, blue = limit cycle (R1–R2), red = chaos (R3–R7). poly rat sinrat 
+
+FSINDy vs. soft F1 0.84 0.92 0.89 
+
+FPySR vs. soft F1 0.57 0.58 0.75 
+
+Pooled across all three systems (n=120), |ρ| = 0 .81 for FSINDy and |ρ| = 0 .61 for FPySR (both 
+
+p < 10 −12 ). 
+
+Is FPySR ’s correlation weak, or is this a like-for-like comparison? Read next to Table 1’s headline PySR numbers ( 0.78 –0.91 , pooled over three experiments per system), 0.57 –0.75 looks like a regression. It is not a like-for-like comparison: Table 1 pools a starvation N -sweep, an SNR noise-sweep, and a prior-quality sweep, each adding an axis of outcome variation for Spearman to exploit, whereas the jerk check here is a single noiseless snapshot. Recomputing L84’s and L96’s own PySR correlation under the identical restriction (one noiseless N , no sweep, using exactly the same starvation-experiment data already underlying Table 1) gives |ρ| = 0 .606 (L84) and 0.609 (L96): statistically indistinguishable from poly ( 0.57 ) and rat ( 0.58 ), and below sinrat ( 0.75 ). The jerk numbers are not anomalously low for non-polynomial systems; they are what every system tested here produces under a single-condition, noiseless design, because 98 –99% of non-fixed-point points already sit at soft F1 = 1 .0 (Fig. S2) and Spearman cannot reward a rising score against an outcome with no remaining variance to explain. This is a property of the single-snapshot measurement, not of the polynomial/non-polynomial distinction: FSINDy , evaluated under the same restriction, remains strong on every system ( 0.84 –0.92 on jerks; L84/L96 unaffected because wmin ’s ridge shrinkage keeps producing a spread of TFN values even where soft F1 has already saturated). The mechanistic account transfers, unmodified, to a third ODE family with two members whose true dynamics no finite polynomial dictionary contains: the central claim of this paper is not a polynomial-dictionary artifact, and FPySR ’s lower jerk correlation is explained by the measurement design, not by a failure to generalize. We additionally traced rat’s specific gap ( |ρ| = 0 .58 , the lowest of the three) to its mechanism directly: at R1 ( σmin ,partial ≈ 10 −8, a marginal-conditioning regime), the 25 (slot, init) PySR fits split into two attractor basins: roughly half converge to the exact rational term (soft F1 ≈ 1.0), and the rest to a structurally different but locally competitive rational form built from x31, x 21x2 terms (soft F1 ≈ 0.19 –0.24 ), a real, algorithm-level search bimodality at marginal conditioning, not a 35 property the deterministic conditioning score can or should predict. Averaging over the 5 slots per regime before correlating (n=8 per system, rather than pooling all regime ×slot pairs) removes exactly this search-level noise and recovers |ρ| = 0 .79 for rat, confirming the diagnosis quantitatively. We also checked whether the lower PySR correlation could be repaired by a better-behaved functional form. Because Spearman’s ρ is invariant to any strictly monotonic reshaping of a single score, raw, √·,and (·)0.25 give identical ρ to six decimal places on this data (verified numerically), since none of these can alter the rank order of σmin ,partial . A steep saturating transform, 1 − e−σmin ,partial /s ref with sref =0.1399 (the median σmin ,partial among L84’s unambiguous chaos successes), agrees closely but not exactly: ρ = 0 .572 /0.584 /0.746 (poly/rat/sinrat) versus 0.570 /0.584 /0.746 for the rank-preserving forms above, a difference of at most 0.002 , because σmin ,partial spans roughly 8 orders of magnitude in this dataset and the exponential saturates numerically to 1 for its largest values, merging a handful of them into floating-point ties that a strictly rank-preserving transform would not create. None of this affects the conclusion: no smooth reshaping of σmin ,partial alone changes these correlations by more than such a tie-induced rounding effect. We tested two genuinely structural, parameter-free alternatives (a per-term leave-one-out decomposition aggregated by minimum, mirroring the weakest-link principle used for cmin elsewhere; and a self-normalizing ratio against the wrong-term-free ground-truth conditioning) across L84, L96, and all three jerk systems: neither improves the reported correlations anywhere, confirming that the σ0.25 min ,partial form is not concealing an easy structural fix. 
+
+Scope, stated honestly. This is a cross-regime validation at a single noiseless N , not the full starvation/SNR/prior-quality replication reported for L84/L96 in Table 1; that would require new noise-injection and prior-quality pipelines for jerk systems, which do not yet exist. log is omitted pending completion of its incomplete regimes, not a result that failed to transfer. Because the single-condition design is itself the reason FPySR ’s correlation sits at 0.57 –0.75 rather than L84/L96’s full 
+
+0.78 –0.91 , the natural direction for future work is to run the same starvation-and-SNR sweep used for L84/L96 on one jerk system, which is expected to close this gap by the same mechanism that separates L84/L96’s single-N number from their reported one. 
+
+# SI 5. Lorenz-96: Extended Results 
+
+Scale invariance of the within-chaos λmin (M ) trend 
+
+Because λmin (M ) is a Gram-matrix eigenvalue, it is not scale-invariant: an attractor with the same correlation structure but larger amplitude has a proportionally larger λmin (M ). To check that the within-chaos trends reported in the main text reflect a genuine change in dictionary conditioning rather than attractor amplitude alone, we recomputed λmin on the correlation-normalized moment matrix D−1/2M D −1/2 (D = diag( M ), unit variance on every dictionary column), using the same degree-3 polynomial dictionary ( p=20 for L84, p=56 for L96) and the same per-regime average over 5 trajectory slots as the main-text λmin (M ).System Regime λ1 (ref.) λmin (M ) λmin (D−1/2M D −1/2)
+
+L84 R0 (fp) −0.150 ≈ 0 ≈ 0
+
+L84 R1 (lc) 0.000 6.31 × 10 −5 9.15 × 10 −5
+
+L84 R2 (lc) 0.000 1.60 × 10 −3 8.10 × 10 −4
+
+L84 R3 (chaos) 0.073 3.29 × 10 −3 1.10 × 10 −3
+
+L84 R4 (chaos) 0.142 4.98 × 10 −3 1.63 × 10 −3
+
+L84 R5 (chaos) 0.168 1.96 × 10 −3 8.05 × 10 −4
+
+L84 R6 (chaos) 0.189 4.75 × 10 −3 1.49 × 10 −3
+
+L84 R7 (chaos) 0.207 1.70 × 10 −3 7.57 × 10 −4
+
+L96 R0 (fp) −0.300 ≈ 0 ≈ 0
+
+L96 R1 (lc) 0.000 ≈ 0 ≈ 0
+
+L96 R2 (lc) 0.000 ≈ 0 ≈ 0
+
+L96 R3 (chaos) 0.507 1.38 × 10 −3 2.97 × 10 −4
+
+L96 R4 (chaos) 0.754 3.80 × 10 −3 7.46 × 10 −4
+
+L96 R5 (chaos) 0.932 6.89 × 10 −3 1.21 × 10 −3
+
+L96 R6 (chaos) 1.133 9.87 × 10 −3 1.72 × 10 −3
+
+L96 R7 (chaos) 1.348 1.26 × 10 −2 2.42 × 10 −3
+
+36 The fixed-point and limit-cycle values reported as ≈ 0 are at the numerical eigenvalue floor (10 −14 –10 −16 , occasionally slightly negative from floating-point error on a rank-deficient positive-semidefinite matrix), consistent with λmin = 0 exactly rather than a real ordering violation. Two results survive normalization unchanged. First, the family ordering λmin (R0) <λmin (R1 , R2) < λ min (chaos) holds under both the raw and the normalized matrix, for both systems, with the chaotic family separated from the limit-cycle family by one to two orders of magnitude in every case. Second, and more directly answering the amplitude-confound concern, the within-chaos rank ordering is identical between the raw and normalized columns for every regime in both systems: Spearman ρ(λ1, λ min ) = −0.50 (n=5 , p=0 .39 ) for L84 under both statistics, and ρ = +1 .00 (n=5 ,
+
+p < 0.001 ) for L96 under both statistics. Because correlation-normalization removes all ampli-tude information from M while preserving the identical rank ordering in both systems, whatever within-chaos trend each system shows is a property of the dictionary’s correlation structure, not an artifact of λmin (M )’s amplitude sensitivity. The two systems’ within-chaos trends are not alike, but they are not a clean mirror image either: L96 rises significantly with chaos intensity ( ρ = +1 .00 ,
+
+p < 0.001 ), whereas L84’s estimate is negative but not significant ( ρ = −0.50 , p = 0 .39 , n = 5 ). This asymmetry is what the moment-balance theory predicts (§ Why chaos does not always help): L96 sits in the symmetry-protected regime where conditioning must improve (Proposition S5.3), while L84’s non-exchangeable damped-driven coordinate x0 opens a channel (Proposition S5.2) whose sign structure alone does not fix (Proposition S5.4) — so a non-significant, merely weakly-negative L84 trend is consistent with the theory, not a verification of a definite downward one. We note the operational caveat that both algorithms are run on the raw, unnormalized dictionary throughout this paper, so it is the unnormalized λmin (M ) that governs the actual conditioning the algorithms face; the normalized comparison here is a robustness check on the mechanism, not an alternative predictor. 
+
+Clean-reference-trajectory control for the noise (SNR) validation 
+
+In the SNR mechanistic-score pipeline, σmin (Θ) (entering TFN , the term that dominates FSINDy =max( TFN , T FP ) in most cells) is computed from the actual noisy or Savitzky–Golay-smoothed regression matrix used in that experimental cell, while σmax (Θ) and σx (entering TFP ) are computed once from the clean reference trajectory and held fixed across noise levels (Methods). Because σmin 
+
+measured on a noise-corrupted matrix could in principle covary with the tested noise level for reasons unrelated to the Birkhoff-limit, regime-level mechanism this paper studies, we recompute σmin from the clean reference trajectory as well, so that all three regime-level factors ( σmin , σmax , σx) are Birkhoff-limit objects and noise enters FSINDy only through σε = η σ x, exactly as in the asymptotic form (Eq. 8). System |ρ| published (noisy σmin ) |ρ| clean-M control ∆
+
+L84 0.918 0.931 +0 .014 
+
+L96 0.902 0.867 −0.034 
+
+Both changes are within 0.03 –0.04 of the published value and both directions occur (L84 improves slightly, L96 declines slightly), so the reported theory-performance correlations are not an artifact of using a noise-corrupted σmin for the dominant term of FSINDy .To characterize the size of the effect being controlled for, the table below reports σmin (Θ noisy ),averaged over slots and dimensions, against the clean-reference value σmin (Θ clean ), for the four regimes used in the SNR experiment (R1, R2, R3, R7).                                                                           
+
+> σmin (Θ noisy )at noise ratio η
+> Regime η=0 0.01 0.02 0.05 0.10 0.15 0.20 clean ref.
+> L84
+> R1 0.173 0.175 0.179 0.205 0.265 0.336 0.406 0.251
+> R2 1.967 1.972 1.983 2.062 2.262 2.565 2.864 2.955
+> R3 4.027 4.029 4.041 4.084 4.259 4.541 4.812 3.857
+> R7 2.260 2.261 2.264 2.279 2.342 2.430 2.553 3.116
+> L96
+> R1 ≈07.2×10 −85.6×10 −79.5×10 −67.1×10 −52.4×10 −45.5×10 −43.0×10 −9
+> R2 6.5×10 −62.0×10 −45.0×10 −43.1×10 −32.0×10 −26.5×10 −20.147 4.5×10 −3
+> R3 2.299 2.303 2.317 2.401 2.695 3.088 3.565 8.307
+> R7 7.241 7.244 7.251 7.331 7.576 7.879 8.397 15 .60
+
+37 Noise measurably lifts σmin (Θ noisy ) at the highest tested noise ratios, most visibly in the L96 limit-cycle regimes (R1, R2) where the clean-trajectory library is near-singular and even small measurement noise adds rank in directions the clean attractor does not populate; the chaotic regimes (R3, R7), whose clean library is already full rank, show a milder relative lift. This confirms noise can inflate the naively measured σmin , which is precisely the artifact the clean-M control above rules out as the driver of the reported correlations. 
+
+Partial correlations: ruling out noise level as the common driver 
+
+A pooled Spearman correlation between a mechanistic score and soft F1 across the noise experi-ment could in principle be driven almost entirely by noise ratio η itself, if both the score and the observed outcome simply decline together as η increases, without the regime-level quantities ( σmin ,
+
+σmin ,partial ) doing any of the work. We address this directly with partial Spearman correlation: the rank association between score and soft F1 after the linear effect of η, derivative track, and dimension has been removed from both rank series (rank residualization on all three jointly). Score System Pooled |ρ| Partial |ρ| (η, track, dim) Within-stratum median (min-max) 
+
+FSINDy L84 0.92 0.86 0.70 (0.28 –0.78 )
+
+FSINDy L96 0.90 0.92 0.81 (0.69 –0.87 )
+
+FPySR L84 0.69 0.46 0.11 (0.00 –0.85 )
+
+FPySR L96 0.84 0.75 0.68 (0.00 –0.84 )The “Pooled” column is a single Spearman correlation computed over all (regime, slot, track, dimension) rows of the noise experiment at once, distinct from the per-dimension-averaged convention used for the SNR column of Table 1 elsewhere in this paper (Methods, Statistical analysis ). The two conventions can differ materially when per-dimension heterogeneity is large, as it is for FPySR on L84 (SI 5, Per-dimension soft F1 ): the fully-pooled values here ( 0.69 , L84; 0.84 , L96) should not be compared directly against Table 1’s per-dimension-averaged SNR entries ( 0.81 , L84; 0.88 , L96) for the same score and system. This distinction does not affect the partialling-out logic below, which is applied consistently to whichever pooling convention is used in the same row. “Within-stratum” refers to the 14 strata defined by the 7 noise ratios × 2 derivative tracks; within each stratum η and track are exactly fixed, so any remaining correlation is attributable to regime/slot/dimension variation alone, the sharpest available version of this test. 
+
+FSINDy ’s partial correlation is close to its pooled value in both systems (in L96 it is not diminished at all), and every one of the 14 within-stratum correlations is positive and statistically significant (L84 range 0.28 –0.78 ; L96 range 0.69 –0.87 ): the SINDy score’s association with outcome survives controlling for noise level, track, and dimension jointly, so it is not a restatement of “noise hurts.” 
+
+FPySR ’s partial correlation also remains well above the pooled-vs-zero null in both systems, but is genuinely weaker than SINDy’s, especially for L84 (pooled 0.69 → partial 0.46 ) where several within-stratum correlations are not statistically distinguishable from zero. Diagnosing this: the instability concentrates specifically at η = 0 (exactly zero noise), where Qnoise = 1 identically and only the σmin ,partial conditioning channel is active; once noise is present and the SNR discrimination channel activates, within-stratum correlations recover to 0.6–0.85 for most cells. This is consistent with the main-text account that PySR’s SNR discrimination channel carries most of the identifying power once noise is present, while the pure conditioning channel alone is a coarser predictor across the four regimes (R1, R2, R3, R7) sampled by the SNR experiment. We report this honestly rather than folding it into the pooled number: the circularity concern is fully answered for FSINDy in both systems and for FPySR in L96, and only partially answered for FPySR in L84, where the claim should be read as scoped to the combined two-channel regime rather than the conditioning channel in isolation. 
+
+L96 prior-quality library construction (SINDy) 
+
+The L96 prior-quality experiment uses the same null/overcomplete/oracle scheme as L84 (Methods), constructed against the L96 right-hand side ˙xi = ( xi+1 − xi−2)xi−1 − xi + F (5-dimensional, cyclic indices). The null library contains 10 cubic decoys with no linear or bilinear structure: x3
+
+> i
+
+for i = 0 , . . . , 4 and x2 
+
+> i
+
+xi+1 (cyclic) for i = 0 , . . . , 4, none of which coincide with a ground-truth 38 term. The overcomplete library is the full degree-3 polynomial library with bias (56 features for 5 variables, containing all 16 ground-truth terms among 40 distractors). The oracle library is the 16 exact ground-truth terms: the constant 1, the 5 linear terms xi, and the 10 bilinear cross-pairs xixj
+
+(i < j ) spanning the terms that appear in the expanded right-hand side, and nothing else. As in L84, the oracle condition is an intentional upper-anchor isolating coefficient estimation from term selection, not a realistic operating point. 
+
+Statistics hygiene: soft F1 α sensitivity, effective sample size, and within-chaos bootstrap 
+
+Soft F1 α sensitivity. The coefficient-closeness weight in soft F1, S = exp( −αδ ), uses α = 3 
+
+throughout. Recomputing soft F1 directly from the stored discovered-expression strings at α ∈{1.5, 3, 6} (starvation experiment, both algorithms, both systems, at a representative small and the largest N ) leaves the regime ordering unchanged: the Spearman correlation between regime-mean soft F1 at α = 3 and at α = 1 .5 or α = 6 is 1.000 in 7 of 8 (system, algorithm, N ) cells, and 0.976 
+
+in the eighth (L84 PySR, small N , α = 3 vs. α = 6 ), a single near-tied pair of regimes swapping rank, not a qualitative change. 
+
+Effective sample size. Trajectory samples within a regime are autocorrelated; we estimate the integrated autocorrelation time τint per regime (averaged over dimensions and slots, from the clean reference trajectory) and report Neff = N/τ int . Limit-cycle regimes have 1.97 × (L84) to 2.93 × (L96) longer τint than chaotic regimes, so a given raw N corresponds to substantially fewer independent samples in a limit cycle than in chaos. Re-expressing the starvation soft F1 curves against Neff 
+
+rather than raw N does not change the ordering: in L96, chaotic regimes reach soft F1 ≈ 1.0 by 
+
+Neff ≈ 30 –45 , while the limit-cycle regime R2 at the same Neff remains at soft F1 ≈ 0.06 –0.07 ;in L84, R2 (the high-amplitude limit cycle) reaches soft F1 = 1 .0 by Neff ≈ 40 , matching chaos, while R1 (the low-amplitude limit cycle) plateaus at soft F1 ≈ 0.64 even at its maximum achievable 
+
+Neff ≈ 60 (raw N = 10 ,000 ; this plateau value differs numerically from Fig. 2’s reported 0.28 for the same nominal point, the same discrepancy documented in SI 6, where it is traced to independent regeneration of the R1 trajectory slots between analyses). Both values are consistent with, not an artifact overturning, the R1/R2 distinction already drawn in the main text: the limit-cycle disadvantage is not an autocorrelation/effective-sample-size artifact, since at matched Neff , chaotic regimes succeed while the harder limit-cycle regime does not, under either reported value. 
+
+Within-chaos bootstrap. Each within-chaos correlation (main text) has only 5 points (one per chaotic regime). Bootstrapping over the 5 trajectory slots per regime (5000 resamples, recomputing the per-regime mean λmin (M ) from a random slot sample with replacement each time) probes only slot-level measurement noise, not the five-regime sampling uncertainty: it gives a wide 95% CI on the correlation magnitude for L84 ( [−0.90 , −0.10] ) with every resample negative, and exactly 
+
++1 for L96. This shows the L84 point estimate is stable against which slots are drawn — the five regime-means are precisely measured — but it does not upgrade the L84 trend to significant, since it holds the five regimes fixed and cannot address the p = 0 .39 regime-level uncertainty that only five chaotic regimes allow. So L96’s positive within-chaos trend is significant and L84’s negative point estimate is slot-stable, but we do not claim a definite L84 sign: consistent with Proposition S5.4, structure does not fix it and five regimes cannot establish it empirically. 
+
+Signed correlations. All reported |ρ| values in this paper are positive when unsigned: we checked every per-dimension Spearman correlation entering Table 1 for sign, and found no sign flips (all dimensions agree in direction with the pooled correlation, for both algorithms and both systems). 
+
+λmin (M ) vs. regime, across both system dimensionalities 
+
+Fig. S3 plots λmin (M ) against λ1 for every regime of both systems tested in this paper (L84, d = 3 ;L96, d = 5 ), the scatter-plot companion to the table already given above in Scale invariance of the within-chaos λmin (M ) trend , using the same underlying values. Both systems show the same qualitative three-tier structure regardless of d: fixed point at the numerical eigenvalue floor, limit cycle one to two orders of magnitude above it, chaos a further order of magnitude or more above the limit cycle. The within-chaos ordering visibly differs between the two panels: monotonically increasing with λ1 for L96 (significant, ρ = +1 .00 ), non-monotonic for L84 (a negative but non-significant point estimate, ρ = −0.50 , p = 0 .39 ). This is the asymmetry the moment-balance theory accounts for (§ Why chaos does not always help): L96 is symmetry-protected and must improve, while L84’s 39 damped-driven x0 opens a channel whose sign structure does not fix — so the difference is that L84’s trend is unconstrained , not that it is reliably opposite. 0.15 0.10 0.05 0.00 0.05 0.10 0.15 0.20                    
+
+> 1(max Lyapunov exponent)
+> 10 13
+> 10 11
+> 10 9
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> min (M) (raw, unnormalized)
+> R0 R1 R2 R3 R4 R5 R6 R7
+> L84 (d = 3)
+> 0.25 0.00 0.25 0.50 0.75 1.00 1.25
+> 1(max Lyapunov exponent)
+> R0 R1 R2 R3 R4 R5 R6 R7
+> L96 (d = 5)
+> fixed point limit cycle chaos
+
+Figure S3: λmin (M ) vs. regime for both systems tested. Grey circle = fixed point, blue square =
+
+limit cycle, red triangle = chaos; log scale on y. Fixed-point and limit-cycle points at the numerical eigenvalue floor ( 10 −14 –10 −16 ) are plotted at a representative floor value of 10 −14 , per the caveat already noted in Scale invariance of the within-chaos λmin (M ) trend above. Same data as the table there. 
+
+Per-dimension soft F1: within-system heterogeneity 
+
+The main text and Fig. 2 report soft F1 averaged over all state-space dimensions of each regime. Because L84’s three equations are structurally distinct (Background) while L96’s five are cyclically identical, we checked whether this averaging masks systematic per-equation differences, using the same per-(regime, dimension) soft F1 values underlying the per-dimension Spearman correlations reported in Methods. For L96, per-dimension soft F1 is uniform to within run-to-run noise across all five dimensions, in both the starvation and SNR experiments (mean soft F1 across dimensions differs by < 0.02 in every condition tested), consistent with L96’s cyclic symmetry and adding no information beyond the system-level average already reported. For L84, PySR shows a reproducible per-equation reversal between experiments: Experiment (mean soft F1) dim 0 ( ˙x0) dim 1 ( ˙x1) dim 2 ( ˙x2)Starvation 0.563 0.783 (dims 1–2 pooled) SNR (noise) 0.666 0.474 (dims 1–2 pooled) Prior quality: null 0.117 0.121 0.050 
+
+Prior quality: overcomplete 0.847 0.897 0.895 
+
+Prior quality: oracle 0.959 0.901 0.922 
+
+Dim 0 is the hardest equation to recover under data starvation and the easiest under measurement noise; dims 1–2 show the opposite pattern. This traces to the same wave-wave coupling constant 
+
+B = 4 that the main text’s within-chaos L84 discussion already invokes: B raises the smallest ground-truth coefficient in dims 1–2 relative to dim 0 (helping dims 1–2 when data is scarce, since larger coefficients are easier to pin down from few samples), while B2 = 16 amplifies measurement noise leaking through the bilinear features specific to dims 1–2 (hurting dims 1–2 once noise is present). The prior-quality experiment shows the same asymmetry concentrated in dim 0: moving from the overcomplete to the oracle prior improves dim 0 by +0 .112 soft F1 while dims 1–2 improve by ≤ 0.027 , indicating dim 0’s terms ( x21, x 22) are the harder structural target for the overcomplete search. This is additional texture on top of, not a revision of, the system-level regime ordering in Fig. 2 and Table 1: the per-dimension means reported here are exactly what is averaged into every system-level number in the main text. 40 SI 6. R1 Hyperparameter Control: Noiseless Recovery and Noise Collapse 
+
+The main text’s “In practice” paragraph argues that the L84 R1 (limit-cycle, low λmin (M )) recovery ceiling reported in Fig. 2 reflects the fixed, deployment-realistic STLSQ configuration ( λ = 0 .05 ,ridge α = 0 .05 ) evaluated at a nonzero noise level, not an information-theoretic impossibility: R1 has λmin (M ) > 0 (no exact polynomial identity, unlike L96’s LC1 regime), so noiseless recovery is possible in principle. This section supplies the empirical demonstration. 
+
+Protocol. SINDy (STLSQ, degree-3 polynomial library) was fit to L84 R1 (and R2, for contrast) across a grid of ridge penalty α ∈ { 0.05 , 10 −3, 10 −4, 0} crossed with sparsity threshold λ: two fixed values (0.05 , the deployment default, and 0.01 ) plus an oracle-tuned value λscaled = 0 .5 cmin wmin (σmin , α ),where cmin = 0 .25 is the smallest ground-truth L84 coefficient magnitude (the −0.25 x0 term) and 
+
+wmin = σ2min /(σ2min + α) is the ridge shrinkage factor; this sets TFN = 0 .5 < 1 by construction (Eq. 2), the threshold an experimenter with oracle knowledge of the ground-truth coefficients would choose, and the concrete instance of the “per-regime oracle retuning” the main text contrasts with the fixed deployment configuration. Leg 1 (noiseless) used exact derivatives and swept N over the same 17-point log grid as the production starvation experiment ( 20 to 10 ,000 ). Leg 2 (noisy) fixed N = 5 ,000 , matching the production SNR experiment’s Ntrain exactly, and applied additive Gaussian measurement noise at η ∈ { 0.02 , 0.05 } with finite-difference derivatives, following the same noise-injection protocol as the production SNR experiment (Methods). Both legs average soft F1 over the 5 trajectory slots per regime. Caveat: this experiment uses a freshly regenerated draw of the R1/R2 trajectory slots, independent of the specific draw underlying Fig. 2’s starvation curve; the deployment-configuration baseline reported here (soft F1 ≈ 0.64 at N = 10 ,000 ) therefore differs numerically from Fig. 2’s reported 0.28 , though both show the same qualitative sub-ceiling plateau, and the R1/R2 asymmetry central to the claim is reproduced within this fresh draw as well. 
+
+Results, noiseless (Fig. S4A). At the deployment configuration, R1 grows slowly and plateaus at soft F1 ≈ 0.64 by N ≈ 700 , never reaching 1.0 even at N = 10 ,000 , the ceiling already reported in the main text. Setting α = 0 and λ = λscaled reaches soft F1 = 1 .0 by N ≈ 30 and remains there for every larger N : the ceiling is not intrinsic to R1’s dynamics, it is a property of the fixed threshold/ridge configuration relative to what λmin (M ) can resolve. R2 (higher λmin (M )) reaches soft F1 = 1 .0 under the deployment configuration alone by N ≈ 700 , with no retuning required, reproducing the R1/R2 asymmetry from Fig. 2. 
+
+Results, noisy (Fig. S4B). At N = 4 ,597 , introducing measurement noise collapses the recovery regardless of configuration: the oracle-tuned threshold falls from soft F1 = 1 .0 (noiseless) to 
+
+0.59 at η = 0 .02 and 0.23 at η = 0 .05 ; the deployment configuration falls to 0.40 and 0.10 
+
+respectively. Critically, the small fixed threshold ( λ = 0 .01 ), which helped in the noiseless leg by relaxing the false-negative channel, performs worse than the deployment default under noise ( 0.14 
+
+at η = 0 .02 , converging to the same floor as the default only at η = 0 .05 ): shrinking λ to relieve 
+
+TFN simultaneously raises TFP = κeff ρEIV σε/λ (Eq. 2), so no single fixed value of λ resolves both failure channels once noise is present. This is the direct empirical picture of the noise-robustness ceiling: λmin (M ) sets the scale of noise and regularization the problem tolerates, and it is that scale, not an information-theoretic wall, that closes as η grows. 
+
+Does FSINDy transfer across hyperparameter configurations, not only across regime/ N /noise at one fixed configuration? The production experiments compute FSINDy = max( TFN , T FP ) at the single deployment configuration (α, λ ) = (0 .05 , 0.05) and correlate it with soft F1 across regime, N ,and noise level. α and λ are explicit arguments of TFN and TFP (Eq. 2), not constants baked into the score, so nothing in the model’s construction ties it to that one configuration; the deployment choice only fixes which FSINDy value was realised in the reported experiments, it does not limit what the score can compute. We check this directly using the full C1 grid: for every (regime, α, λ,
+
+N , η) cell, FSINDy is re-evaluated with that cell’s own α and λ (rather than the deployment values) and correlated against the soft F1 actually observed in that cell. Pooled across all 2,244 cells (both legs, both regimes, the full α × λ grid), Spearman |ρ| = 0 .72 (p ≈ 0); split by regime, |ρ| = 0 .71 
+
+(R1, n = 1 ,122 ) and 0.71 (R2, n = 1 ,122 ). This is weaker than the within-fixed-configuration correlations reported in the main text ( 0.81 –0.87 , Table 1), as expected: here α and λ are themselves varied over more than two orders of magnitude, adding an axis of variation the main-text correlations do not span, and at only two regimes the comparison is coarser than the five-to-eight-regime main experiments. It nonetheless confirms that FSINDy ’s account of failure is not an artifact of the specific 41 10 2 10 3 10 4 
+
+> training samples N
+> 0.0 0.2 0.4 0.6 0.8 1.0 soft F1
+
+(A) noiseless          
+
+> R1, deployment ( = 0.05, = 0.05 )
+> R1, oracle-tuned ( = 0, scaled)
+> R2, deployment (reference)
+> 0.00 0.01 0.02 0.03 0.04 0.05 measurement noise ratio
+> 0.0 0.2 0.4 0.6 0.8 1.0 soft F1
+
+(B) noisy, R1, N = 4597 ( = 0 )   
+
+> deployment ( = 0.05 )
+> oracle-tuned ( scaled)
+> small fixed ( = 0.01 )
+
+Figure S4: R1 hyperparameter control. (A) Noiseless soft F1 vs. training-set size N for L84 R1 at the deployment configuration ( α = λ = 0 .05 , blue) vs. an oracle-tuned configuration ( α = 0 , λ
+
+scaled to σmin , red); R2 at the deployment configuration shown for reference (grey, dashed). (B) Soft F1 vs. measurement noise ratio η for R1 at N = 4 ,597 , comparing the deployment threshold, the oracle-tuned threshold, and a small fixed threshold ( λ = 0 .01 ), all at α = 0 .
+
+(α, λ ) = (0 .05 , 0.05) choice: whatever hyperparameters actually generate a fit, the same formula, evaluated at those hyperparameters, continues to track whether the fit succeeds. 42

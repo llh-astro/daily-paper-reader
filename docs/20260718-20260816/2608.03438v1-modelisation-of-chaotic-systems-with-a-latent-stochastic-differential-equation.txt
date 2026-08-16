@@ -1,0 +1,1214 @@
+Title: Modelisation of chaotic systems with a latent Stochastic Differential Equation
+
+URL Source: https://arxiv.org/pdf/2608.03438v1
+
+Published Time: Wed, 05 Aug 2026 01:04:25 GMT
+
+Number of Pages: 35
+
+Markdown Content:
+# Modelisation of chaotic systems with a latent Stochastic Differential Equation 
+
+Ismaël Zighed a,b, ∗, Nicolas Thome b, Patrick Gallinari b, Taraneh Sayadi c
+
+> aInstitut Jean le Rond d’Alembert, Sorbonne Université, France
+> bISIR, Sorbonne Université, France
+> cM2N, Conservatoire National des Arts et Métiers, France
+
+Abstract 
+
+Stochastic Differential Equations (SDEs) have become a cornerstone of scientific machine learning, though they are predominantly utilized as algorithmic tools for uncertainty quantification or distribution matching. In contrast, leveraging SDEs fundamentally to model macroscopic, nonlinear physics as stochastic processes remains largely unexplored. This work introduces a probabilistic, non-intrusive reduced-order model (ROM) for chaotic dynamical systems. We argue that projecting high-dimensional nonlinear dynamics onto a low-dimensional manifold intro-duces irreducible uncertainty, compounded by the chaotic attractors and multi-admissible futures inherent to turbulent flows. Consequently, a chaotic system governed by a partial differential equation can be effec-tively modeled by an SDE in a suitable latent space. To this end, a nonlinear autoencoder is employed to map the flow field into a low-dimensional representation, within which the temporal evolution is explicitly governed by an SDE. The predictable component of the dynamics is captured by a learned drift term, while state-dependent stochasticity is absorbed by a diffusion term. We demonstrate that this probabilistic framework successfully propagates highly nonlinear states, offering a robust alternative to traditional deterministic methodologies for chaotic regimes. Ultimately, our model generates new chaotic flow trajectories that remain locally and globally consistent with the true transition kernel learned from Direct Numerical Simulation (DNS) data. Even though these generated trajectories are unique and distinct from the training set, they preserve the underlying statistics and manifolds, validating the strong generative performance and robustness of our methodology. Our code, one experimental dataset along with its associated pre-trained model are publicly available on Github. 
+
+Keywords: Stochastic Differential Equations, Chaotic Systems, Reduced-Order Model, Latent Space, Non Linear Dynamics 
+
+1. Introduction 
+
+This work explores reduced-order models (ROMs) for dynamical systems through a probabilistic lens. Traditional methodologies often rely on solving equations in a reduced space [1, 2, 3], searching for a closed Koopman space [4, 5, 6], or constructing deterministic, non-linear reduced dynamical systems from data [7, 8, 9, 10, 11]. In contrast, we ask: can one condition the future state of a reduced system entirely on its past? Furthermore, can we learn this underlying distribution and sample from it to propagate a highly non-linear system within a low-dimensional latent space? This work demonstrates that, through relatively simple modeling choices, a probabilistic framework can challenge traditional deterministic approaches by capturing not only model uncertainties but also the intrinsic stochastic nature of the system. This motivates the        
+
+> ∗Corresponding authors
+> Email addresses: ismael.zighed@sorbonne-universite.fr (Ismaël Zighed), nicolas.thome@sorbonne-universite.fr
+> (Nicolas Thome), patrick.gallinari@sorbonne-universite.fr (Patrick Gallinari), taraneh.sayadi@lecnam.net (Taraneh Sayadi) arXiv:2608.03438v1 [physics.flu-dyn] 4 Aug 2026
+
+adoption of a strategy in which the dynamics are modeled stochastically, through the use of stochastic differential equations (SDEs). Consider a high-dimensional, highly nonlinear dynamical system. Projecting this system onto a reduced manifold is the cornerstone of reduced-order modelling, essential for maintaining fast and computationally cheap training and inference. However, these manifolds often exhibit complex topologies [12], multiple, chaotic or strange attractors [13]. Even within this simplified, reduced space, a system may exhibit multi-admissible futures, extreme sensitivity to initial conditions, and a sense of stochasticity stemming inherently from its chaotic nature and from information lost in the projection’s orthogonal subspace [14, 15]. Conse-quently, these systems, and their reduced counterparts, harbour an irreducible amount of uncertainty. To illustrate, imagine a ball balanced perfectly atop a symmetrical mountain: will it roll down the left side or the right? Traditional techniques attempt to refine the system’s resolution to capture the most intricate initial conditions, aiming to determine whether the ball leans microscopically to one side. Instead, our framework accepts that the ball has an equal probability of falling either way. Once this initial "decision" is made, subsequent states can be computed within a Bayesian framework. This work applies a similar conceptual shift to chaotic fluid flows, where randomness and multi-admissible futures are framed as a chain of probabilistic transitions. These states possess a predictable component inherited from the system’s deterministic physics, alongside an inherent stochastic component [16]. Rather than attempting to close the system deterministically, we embrace this stochasticity, framing the state of our reduced system as the flow of a probability distribution in a latent space. Specifically, the reduced system is modelled via a Stochastic Differential Equation (SDE), where the predictable dynamics are governed by a drift term and the stochastic variations are captured by a diffusion term. This diffusion term can de-facto be learnt, as its magnitude and entropy, are state (or time)-dependent, maximizing when the ball is balanced precariously at the peak, and minimizing as it accelerates down the steep slope. The aim then, is to learn the transition kernel. Stochastic Differential Equations (SDEs) have become relevant in several machine learning paradigms. For instance, they are widely used for uncertainty quantification in autoregressive rollouts, where accumu-lating error is modelled via a diffusion term [17], and can even separate aleatoric and epistemic uncertainties [18], treating the model’s transformations itself as an SDE. Algorithmically, SDEs are also heavily leveraged to steer an initial distribution toward a target data distribution, as seen in diffusion models [19] and their continuous-time counterpart [20]. While these approaches use SDEs instrumentally to improve algorithmic performance, we employ SDEs fundamentally to capture the intrinsic physical “randomness" of the system within its latent representation. This paper is organized as follows: Section 2 skims the existing research this work builds upon. Section 3 establishes our methodology. Section 4 describes the chaotic problems used as our benchmark. Section 5 presents the experimental results and a detailed discussion. Section 6 concludes the paper and outlines potential avenues for future work. 
+
+2. Background 
+
+The foundation of this study builds upon the existing works in latent Stochastic Differential Equations, also referred to as SDE matching, which formulates variational inference over the infinite-dimensional path-space of continuous-time dynamical systems. Applying variational inference within such spaces presents a set of mathematical and algorithmic challenges. From a mathematical standpoint, [21] derives the loss function for such latent SDE emulators. Let Z = {zt}t∈[0 ,T ] be a continuous latent trajectory in Rd over [0 , T ], and let Φ = {φ1, . . . , φ K } be a sequence of K high-dimensional observations, with φk ∈ Rdx (dx ≫ d) recorded at time tk and generated by the latent state ztk .An SDE matching model, parameterized by θ, aims to maximize the marginal log-likelihood of the data. The problem is that this quantity requires marginalizing over every possible latent trajectory Z, making it 2analytically intractable: 
+
+θ∗ = arg max  
+
+> θ
+
+log pθ (Φ) , (1) 
+
+pθ (Φ) = 
+
+Z
+
+pθ (Φ | Z) dPθ (Z). (2) Where Pθ is the prior, infinite-dimensional path measure. Assuming the observations are conditionally independent given the trajectory, and that the prior’s dynamics are governed by an Itô SDE, we have: 
+
+pθ (Φ | Z) = 
+
+> K
+
+Y
+
+> k=1
+
+pθ (φk | ztk ), (3) 
+
+dz t = fθ (zt, t ) dt + gθ (zt, t ) dW t, z0 ∼ pθ (z0). (4) Because Pθ has no closed-form transition density, Equation 2 simply cannot be evaluated directly, and naive Monte Carlo sampling is hopeless as the odds of a random prior path landing close to the data are minimal. [21] works around this by introducing an approximate posterior, parametrized by ξ, which defines a new path measure Qξ through a surrogate SDE: 
+
+dz t = hξ (zt, t, Φ) dt + gθ (zt, t ) dW t, z0 ∼ qξ (z0 | Φ) . (5) Note that the diffusion term gθ (zt, t ) matches the prior’s exactly. This stems from a modelling constraint which guarantees that Qξ stays absolutely continuous with respect to Pθ (Qξ ≪ Pθ ), which in turn makes the Radon–Nikodym derivative dPθ /d Qξ well-defined. With a change of measure and Jensen’s inequality, we get the Evidence Lower Bound (ELBO), which then splits cleanly into a reconstruction term and a KL term: 
+
+log pθ (Φ) = log EQξ
+
+
+
+pθ (Φ | Z) dPθ
+
+dQξ
+
+(Z)
+
+
+
+≥ EQξ
+
+
+
+log pθ (Φ | Z) + log dPθ
+
+dQξ
+
+(Z)
+
+
+
+, (6) 
+
+LELBO = EQξ
+
+" KX
+
+> k=1
+
+log pθ (φk | ztk )
+
+#
+
+− DKL (Qξ ∥ Pθ ). (7) The first term is a perfectly tractable reconstruction loss, evaluated at the discrete observation times. It is conceptually a decoder loss. The second is a Kullback-Leibler divergence expressed in terms of the Radon–Nikodym derivative. The KL divergence between two infinite-dimensional path measures is infinite whenever the diffusion terms are not equal, due to the absolute continuity condition. This motivates the diffusion term used in 5. This term is therefore finite yet intractable in its current form. The Girsanov theorem turns this KL term into a tractable integral (see Appendix 7.4 for the derivation): 
+
+DKL (Qξ ∥ Pθ ) = DKL (qξ (z0 | Φ) ∥ pθ (z0)) + 12 EQξ
+
+"Z T
+
+> 0
+
+∥rθ,ξ (zt, t )∥22 dt 
+
+#
+
+. (8) With rθ,ξ (zt, t ) = g−1 
+
+> θ
+
+(zt, t ) hξ (zt, t, Φ) −fθ (zt, t ) the drift discrepancy. The loss function for SDE matching, written as the negative of the log-likelihood, then writes : 
+
+Lloss = −EQξ
+
+" KX
+
+> k=1
+
+log pθ (φk | ztk )
+
+#| {z }
+
+> Lrecon
+
++ DKL (qξ (z0 | Φ) ∥ pθ (z0)) 
+
+| {z }
+
+> Lprior
+
++ 12 EQξ
+
+"Z T
+
+> 0
+
+∥rθ,ξ (zt, t )∥22 dt 
+
+#| {z }
+
+> Ldiff
+
+. (9) where Lrecon handles reconstruction error at the observation times, Lprior regularizes the inferred initial condition, and Ldiff penalizes any drift between the learned surrogate dynamics and the true prior dynamics over the whole interval. 3This objective is elegant on paper, but expensive in practice. Since Ldiff is a time integral, computing it at each training step means simulating the surrogate SDE forward over the full interval [0 , T ] with a numerical solver. Backpropagating through this continuous-time integral generally requires adjoint sensitivity methods, which avoid the memory blowup of standard backpropagation through time, but at the cost of solving a backward-in-time adjoint SDE, introducing computational and numerical bottlenecks. Recent work sidesteps this computational bottleneck entirely through simulation-free training. [22] show that if the surrogate posterior is restricted to a linear (Markov Gaussian) SDE, its marginal distribution 
+
+qξ (zt | t) at any time t is available in closed form, with the mean and covariance evolving according to simple ODEs. This makes it possible to evaluate the drift residual rθ,ξ analytically at arbitrary time points, so the model can be trained by sampling directly from these Gaussian marginals instead of numerically integrating the SDE, eliminating the forward solver, and the adjoint backward pass, from the training loop altogether. [23] then extend this work to parametric dependency and forcing to dynamical systems. An alternative simulation-free strategy is proposed by [24], drawing on ideas from continuous-time diffusion and score/flow matching [20, 25]. Rather than restricting the posterior to a linear SDE, [24] define a generative flow 
+
+zt = Fξ (ϵ, t, Φ) , ϵ ∼ N (0 , I ), whose time-derivative along fixed noise ϵ yields a velocity field vξ generating the marginals qξ (zt | Φ) :
+
+ddt zt = vξ (zt, t, Φ) . (10) Since Fξ (·, t, Φ) is invertible in ϵ, the change-of-variables formula gives the marginal log-density in closed form: 
+
+log qξ (zt | Φ) = log p(ϵ) − log det ∂F ξ (ϵ, t, Φ) 
+
+∂ϵ , ϵ = F −1 
+
+> ξ
+
+(zt, t, Φ) . (11) Using the equivalence between an SDE’s marginals and those of its associated probability-flow ODE, the posterior drift hξ consistent with both vξ and the shared diffusion term gθ can then be recovered in closed form: 
+
+hξ (zt, t, Φ) = vξ (zt, t, Φ) + 12 gθ (zt, t )gθ (zt, t )T ∇zt log qξ (zt | Φ) . (12) This enables closed-form evaluation, at any arbitrary t, of the drift-matching loss: 
+
+Ldiff = Et,ϵ 
+
+12 g−1 
+
+> θ
+
+(zt, t )( hξ (zt, t, Φ) − fθ (zt, t )) 22 . (13) Ultimately, all these methods aim to bypass the intractable integral term Ldiff in Equation 9. In contrast, we pursue a considerably simpler formulation: rather than approximating the continuous-time SDE poste-rior, we take the discrete-time, deterministic-autoencoder limit of this framework. This alleviates the need for forward SDE pass and adjoint sensitivity back-propagation, while considerably simplifying the model and accelerating the training. We discretize the dynamics using an Euler-Maruyama scheme with a fixed time increment ∆t = 1 . We also fit the SDE posterior directly to the latent data (as a consequence of the deterministic autoencoder), hence we do not distinguish a prior SDE and measure Pθ from its surrogate posterior and measure Qξ . This impacts our loss formulation as discussed in 3. Crucially, on a more con-ceptual note, we use the SDE to model the inherent stochasticity of the chaotic system itself, rather than merely to quantify predictive uncertainty as in [17, 23, 18]. Aside from a few exceptions, such as [26], few reduced-order models, to our knowledge, explicitly treat macroscopic systems, and chaotic systems in partic-ular, as stochastic processes, even-though these systems are known to exhibit a form of irreducible amount of stochasticity, passed their Lyapunov time scale. This work draws inspiration from [27], which follows a similar conceptual path, modelling complex dynamical systems that feature bifurcations, multimodality, and sharp transitions. However, it does not address chaotic dynamics or non-Markovian effects, both of which we aim to incorporate by extending this methodology. 43. Methodology 
+
+We consider the time-dependant state φt of a high-dimensional dynamical system characterized by ’ch’ 
+
+channels or fields and a nx × ny spatial resolution. 
+
+φt ∈ Rch ×nx×ny ,
+
+The lower-dimensional manifold is identified using an autoencoder composed of an encoder E and a decoder 
+
+D such that 
+
+D ◦ E : φ 7 → φ. 
+
+The identified low-dimensional latent space Z ⊂ Rd, has the dimensiona d ≪ ch × nx × ny , defiend as 
+
+E : Rch ×nx×ny → Rd, φ 7 → z. 
+
+The decoder D then maps the latent variables back to the original high-dimensional space, 
+
+D : Rd → Rch ×nx×ny , z 7 → ˆφ, 
+
+where, ˆφ denotes the reconstruction of the input state. The latent variable (zt)t≥0 are evolved by a stochastic process in Rd. At each time t, zt is a random variable whose distribution characterizes the uncertainty in the latent representation. In this sense, the latent dynamics can be viewed as the flow of a probability distribution in the latent space. This probability is then modeled using an Itô-type SDE (Eq. 14) to capture two distinct sources of stochasticity: the system’s inherent chaotic dynamics and multi-admissible futures, as well as the stochas-ticity or ’noise’ stemming from lost information in the projection’s orthogonal subspace [14, 15], following 
+
+dzt = f (zt) d t + γ(zt) d Wt, (14) where f : Rd → Rd is the drift function encoding the deterministic component of the dynamics, γ :
+
+Rd → Rd×d is the diffusion function encoding stochastic effects, and (Wt)t≥0 is a standard d-dimensional Wiener process. This formulation induces a family of transition kernels (pt)t≥0 on the latent space, where 
+
+pt(z | z0) denotes the conditional distribution of zt given the initial state z0. Under standard regularity assumptions namely continuity and Lipschitz-continuity on f and γ, these transition kernels are Gaussian in the infinitesimal sense. Its further assumed that the coefficients f and γ are time-homogeneous, i.e., they do not depend explicitly on time. Any implicit time dependence arises solely through the state zt. Finally, the stochastic components of the latent variables are assumed to remain conditionally independent throughout the temporal evolution, which amounts to restricting the diffusion matrix to be diagonal, so that 
+
+γ(z) = diag( g(z)) , with g : Rd → Rd.
+
+Equivalently, the SDE can be written component-wise as 
+
+dz(i) 
+
+> t
+
+= fi(zt) d t + gi(zt) d W (i) 
+
+> t
+
+, i = 1 , . . . , d, (15) where, the (W (i) 
+
+> t
+
+)di=1 are independent standard Wiener processes. In a discrete-time setting, the above continuous SDE can be approximated using the Euler-Maruyama scheme. For a sufficiently small time step ∆t > 0, such that the infinitesimal Gaussian approximation of the transition kernel remains valid, we obtain 
+
+zt+∆ t = zt + f (zt) ∆ t + g(zt) ⊙ ∆Wt, (16) where, 
+
+∆Wt ∼ N (0 , ∆t I d).
+
+5For simplicity, a constant time step ∆t = 1 is assumed, interpreted as a unit increment required to be sufficiently small for the infinitesimal Gaussianity approximation to remain valid. This yields the discrete-time dynamical system 
+
+zt+1 = zt + f (zt) + g(zt) ⊙ ξt, (17) where, 
+
+ξt ∼ N (0 , I d), i.i.d. In the data-driven setting adopted here, the drift and diffusion coefficients are parameterized by neural networks fθ and gθ . The learned latent dynamics are then given by 
+
+zt+1 = zt + fθ (zt) + gθ (zt) ⊙ ξt, (18) with ξt ∼ N (0 , I d). There is, however, a fundamental limitation to this formulation in its current form: the proposed Gaussian transition kernel is Markovian, which is likely to prevent the model from learning any meaningful drift component. Indeed, such dynamical systems — and their latent representations in particular, are often non-Markovian [6]. It is therefore essential to incorporate a memory term, as supported by the Mori–Zwanzig formalism, in order to recover, at least partially, the dynamics lost in the orthogonal complement of the projection subspace. From a probabilistic perspective, this implies that the transition kernel is path-dependent: 
+
+p(zt+1 | zt, z t−1, . . . ).
+
+To account for such memory effects, an augmented latent space is used instead, 
+
+Y ⊂ Rd×τ ,
+
+where τ ∈ N denotes the length of a finite look-back window. The augmented state yt ∈ Y is defined as 
+
+yt =
+
+
+
+zt
+
+zt−1
+
+...
+
+zt−τ +1 
+
+ .
+
+By construction, the process (yt)t≥0 is Markovian, even if (zt)t≥0 is not. As a result, the augmented dynamics can be modeled using a Gaussian Markov transition, 
+
+yt+1 = yt + Fθ (yt) + Gθ (yt) ⊙ ξt, (19) with, yt+1 =
+
+
+
+zt+1 
+
+zt
+
+...
+
+zt−τ +2 
+
+, Fθ =
+
+
+
+fθ (yt)
+
+zt − zt−1
+
+...
+
+zt−τ +2 − zt−τ +1 
+
+ ∈ Rd×τ , Gθ =
+
+
+
+gθ (yt)0
+
+...
+
+0
+
+ ∈ Rd×τ and ξt ∈ Rd×τ ,which propagates the memory window forward in time. This formulation enables the likelihood of observed transitions to be evaluated under the proposed model, which is in turn used to determine the parameters of fθ and gθ . Given the Gaussian Markov transition kernel, the conditional distribution of the augmented state yt+1 given yt is 
+
+p(yt+1 | yt) = N  yt + Fθ (yt), diag  G2 
+
+> θ
+
+(yt) ,
+
+where the covariance matrix is supported only on the first d components and is given by 
+
+diag  G2 
+
+> θ
+
+(yt) =
+
+diag  g2 
+
+> θ
+
+(yt) 00 0
+
+
+
+∈ Rdτ ×dτ .
+
+6This defines a degenerate Gaussian Markov kernel on the augmented space, with stochasticity restricted to the leading d coordinates. As a consequence, the transition can be equivalently characterized by its marginal on the first d components: 
+
+p(yt+1 | yt) = p(zt+1 | yt),
+
+with 
+
+p(zt+1 | yt) = N  zt + fθ (yt), diag  g2 
+
+> θ
+
+(yt) .
+
+This equivalence follows from the fact that only the first d components of yt+1 are stochastic (namely zt+1 ), while the remaining (τ − 1) d components are deterministic shifts of the history window. 
+
+3.1. Latent learning objective 
+
+The parameters of fθ and gθ are estimated by minimizing the expected negative log-likelihood (NLL) over a dataset X of transitions: 
+
+fθ , g θ = arg min  
+
+> θ
+
+E(yt, z t+1 ) ∼ X 
+
+Lzt+1 |yt
+
+ . (20) Dropping constant terms, the NLL of a single transition is given by 
+
+Lzt+1 |yt = − log p(zt+1 | yt) = 12
+
+> d
+
+X
+
+> i=1
+
+"   z(i) 
+
+> t+1
+
+− z(i) 
+
+> t
+
+− fi(yt)2
+
+g2 
+
+> i
+
+(yt) + log g2 
+
+> i
+
+(yt)
+
+#
+
+. (21) Using the NLL as a training objective offers two complementary advantages. First, it explicitly accounts for the uncertainty arising from the latent system’s irreducible uncertainty. Second, it enables the time-integrator to compensate for inaccurate drift estimates through increased diffusion, thereby capturing un-certainties inherent to the temporal integration itself. Both fθ and gθ are jointly parametrized by a single transformer T , leveraging the state-of-the-art per-formance of attention mechanisms for sequence forecasting [28]: 
+
+T : yt 7 → fθ (yt), g θ (yt).
+
+The model is trained over a fixed rollout horizon of H steps, during which predicted states are fed back as input context, forcing the model to learn to propagate dynamics auto-regressively rather than relying solely on ground-truth observations. The pipeline is illustrated in Figure 1. Note that during auto-regressive rollout, predictions are conditioned on the predicted augmented state 
+
+ˆyt rather than the true state yt, yielding a learned surrogate transition kernel 
+
+pθ (zt+1 | ˆyt).
+
+Let Qθ denote the model-induced rollout distribution. The training objective after many rollout steps is the corresponding on-policy negative log-likelihood: 
+
+LNLL (θ) = E(zt+1 , ˆyt)∼Qθ
+
+ − log pθ (zt+1 | ˆyt). (22) with : 
+
+− log p(zt+1 | ˆyt) = 12
+
+> d
+
+X
+
+> i=1
+
+"   z(i) 
+
+> t+1
+
+− ˆz(i) 
+
+> t
+
+− fi( ˆ yt)2
+
+g2 
+
+> i
+
+( ˆ yt) + log g2 
+
+> i
+
+( ˆ yt)
+
+#
+
+. (23) The transition sampled from the true rollout distribution P, conditioned on a model-generated path ˆyt,given by 
+
+E(zt+1 , ˆyt)∼P, ˆyt∼Qθ
+
+ − log pθ (zt+1 | ˆyt). (24) is intractable, unless one somehow integrates the DNS solver in the training routine to query it at every model rollout step. We therefore optimize the surrogate objective L(θ) from Equation 22 as a tractable approximation. One could also use teacher forcing, i.e. conditioning on true data, to optimize the objective: 
+
+E(zt+1 , y t)∼P
+
+ − log pθ (zt+1 | yt). (25) 7However, this latter objective breaks the auto-regressive conditioning, and the model would lose its generative properties. The training routine is given in its pseudo-code format in alg. 1.   
+
+> Figure 1: Data pipeline over a prediction rollout of H steps using τsteps of lookback window.
+
+3.2. Training 
+
+The autoencoder (E, D) and the latent integrator T are trained jointly so that the learnt latent repre-sentation also benefits the dynamical integration. The resulting objective function can be written as 
+
+Ltotal = Ez∼q(z|φ)
+
+h
+
+∥φ − D (z)∥2i
+
++ α E(zt+1 , ˆyt)∼Qθ [− log pθ (zt+1 | ˆyt)] , (26) with q defining the encoder distribution over all input states φ. In the context of classical, deterministic Autoencoders, the conditional distribution q(z | φ) is a Dirac function, δ(z). The first term in the above objective function corresponds to the reconstruction loss, enforcing that the decoded signal remains close to the input. The second term is the latent integration objective calculated with equation 22. Architecture specifications, detailed loss and hyperparametrs are provided in the Appendix 7.2. Our latent dynamics loss (Equation 21) can be recovered as a special case of the general SDE matching objective (Equation 9) under the discrete-time, deterministic-autoencoder, diagonal-diffusion limit discussed above. However, one structural difference remains: whereas Ldiff in Equation 9 reduces to a pure drift-residual term, our objective retains an explicit log g2 
+
+> i
+
+(yt) normalization term. That is because the Girsanov-based derivation of Ldiff relies on the posterior and prior path measures sharing an identical diffusion coefficient gθ , which causes the Gaussian normalizing constants of both measures to cancel exactly in the resulting KL divergence (the two measures Pθ and Qξ mutually regularize each other). In our setting, by contrast, there is no separate reference process to cancel against: pθ (zt+1 | yt) is fit directly to observed transitions via maximum likelihood, so its regularization is retained. 8Algorithm 1 Training of latent dynamics model 
+
+Require: Dataset {φt}Tt=1 , window size τ , horizon H, regularization weight α
+
+Ensure: Encoder E, decoder D, dynamics model T 
+
+> 1:
+
+for each epoch do  
+
+> 2:
+
+for each minibatch centered at time t do  
+
+> 3:
+
+Extract sequences:  
+
+> 4:
+
+{φs}ts=t−τ +1  
+
+> 5:
+
+{φs}t+Hs=t+1  
+
+> 6:
+
+Encode past:  
+
+> 7:
+
+{zs}ts=t−τ +1 ← E ({φs}ts=t−τ +1 ) 
+
+> 8:
+
+Encode future (target):  
+
+> 9:
+
+{zs}t+Hs=t+1 ← E ({φs}t+Hs=t+1 ) 
+
+> 10:
+
+Initialize context zctx ← { zs}ts=t−τ +1  
+
+> 11:
+
+Initialize predictions {ˆzt+n}Hn=1 ← ∅  
+
+> 12:
+
+for n = 1 , . . . , H do  
+
+> 13:
+
+(ft+n, g t+n) ← T (zctx ) 
+
+> 14:
+
+Sample ξn ∼ N (0 , I ) 
+
+> 15:
+
+zlast ← last (zctx ) 
+
+> 16:
+
+ˆzt+n ← zlast + ft+n + gt+n ⊙ ξn 
+
+> 17:
+
+{ˆzt+n}Hn=1 ← append ({ˆzt+n}Hn=1 , ˆzt+n) 
+
+> 18:
+
+zctx ← concat (zctx [2 : ] , ˆzt+n) 
+
+> 19:
+
+end for  
+
+> 20:
+
+Reconstruction loss: 
+
+Lrecon ← 1
+
+τ
+
+> t
+
+X 
+
+> s=t−τ+1
+
+Eq(zs|φs)
+
+∥φs − D (zs)∥2 
+
+> 21:
+
+Latent dynamics loss: 
+
+Llatent ← L NLL 
+
+
+
+{zt+n}Hn=1 , {ft+n, g t+n}Hn=1 
+
+ 
+
+> 22:
+
+Total loss: 
+
+L ← L recon + α Llatent  
+
+> 23:
+
+Update parameters of E, D, T 
+
+> 24:
+
+end for  
+
+> 25:
+
+end for  
+
+> 26:
+
+return E, D, T
+
+4. Flow configurations 
+
+The proposed approach is validated on two standard PDE benchmarks known to exhibit chaotic dynam-ics: the two-dimensional Navier–Stokes equations configured as a Kolmogorov flow, and the one-dimensional Kuramoto–Sivashinsky equation. These flow configurations are briefly described below. 
+
+4.1. Kolmogorov flow 
+
+One of the benchmarks considered in this work is the Kolmogorov flow , a two-dimensional, incompressible, and unsteady solution of the Navier-Stokes equations defined on a doubly periodic domain, 
+
+(x, y ) ∈ [0 , 2π] × [0 , 2π].
+
+9The flow is sustained by a spatially periodic body force acting in the x-direction. The governing equations are given by ∂u
+
+∂t = −∇ p − (u · ∇ )u + 1
+
+Re ∇2u + f ,
+
+∇ · u = 0 ,
+
+f (x, y ) = sin( nf y) ex,
+
+(27) where u = ( u, v ) denotes the velocity field, p the pressure, Re the Reynolds number, and f the external forcing. The forcing term injects energy at a prescribed spatial scale through a sinusoidal excitation of wavenumber nf .Kolmogorov flow provides a canonical setting for studying turbulence [29]. Depending on the choice of 
+
+Re and nf , the system exhibits a wide range of dynamical regimes, from laminar states to fully developed turbulence [30]. At sufficiently high Reynolds numbers, the flow develops an energy cascade in which energy injected at large scales is transferred to progressively smaller scales and ultimately dissipated by viscosity. In this study, we consider Re = 90 and forcing wavenumber nf = 4 . The characteristic length L entering the Reynolds number, Re = ρU ∞Lμ , is defined by the sinusoidal forcing amplitude. At such a Reynolds number, the flow exhibit chaotic and multi-scale behaviour. The flow is simulated on a 64 × 64 uniform grid using the publicly available pseudo-spectral solver 
+
+kolSol [31]. The solution is represented using 32 Fourier modes in each spatial direction. Time integration is performed in Fourier space with a time step δt = 0 .01 . Snapshots of the velocity field are recorded every 
+
+δt = 0 .12 . The resulting dataset consists of velocity fields u(x, y, t ), v(x, y, t ) stored as tensors in Rnx×ny ×T
+
+with nx = ny = 64 and T = 1000 time steps per trajectory. An ensemble of 10 independent trajectories is generated. Figure 2 shows the energy cascade alongside one snapshot of the Kolmogorov velocity fields, U
+
+and V .     
+
+> (a) Velocity fields U, V
+> (b) Kolmogorov energy cascade
+> Figure 2: Snapshots of the Kolmogorov velocity fields Uand V(left) and the corresponding energy cascade (right).
+
+For the learning task, the dataset is split along the temporal dimension, with 80% of the snapshots used for training and the remaining 20% for testing. This results in a training set 
+
+X ∈ R10 ×Ttrain ×2×nx×ny , Ttrain = 800 ,
+
+and a test set 
+
+Xtest ∈ R10 ×Ttest ×2×nx×ny , Ttest = 200 ,
+
+with (nx, n y ) = (64 , 64) .10 4.2. Kuramoto-Sivashinsky (1D-KS) 
+
+We also validate our methodology with a 1-D canonical system. The Kuramoto-Sivashinsky (KS) equa-tion is a fourth-order nonlinear PDE widely utilized as a benchmark in turbulence modeling and the study of spatiotemporal chaos. It is defined as: 
+
+∂u ∂t + u ∂u ∂x + ∂2u∂x 2 + ν ∂4u∂x 4 = 0 , (28) where, u(x, t ) denotes the scalar field of interest, x is the spatial coordinate, t represents time, and ν > 0
+
+is the viscosity parameter. The KS equation captures the essential features of chaos, namely, sensitive dependence on initial conditions and complex spatio-temporal patterns, while remaining computationally tractable. This makes it an ideal test-bed for evaluating data-driven PDE emulators in chaotic regimes. The 1D Cauchy problem for the KS equation is well-posed, and for a given initial condition u(x, 0) , there exists a unique solution u(x, t ) for t ∈ [0 , ∞] that depends continuously on the initial data. However, long-term forecasting remains highly challenging due to the system’s chaotic nature, where infinitesimal initial errors amplify exponentially over time, eventually degrading emulator performance. In this work, we fix 
+
+ν = 0 .8 to ensure the system operates within this characteristically chaotic regime. Numerical simulations are performed over a spatial domain of fixed size L = 512 δx subject to periodic boundary conditions. The system is integrated over a time horizon T = 1000 δt with a dimensionless time increment of δt = 0 .25 . To expose the emulator to a diverse range of dynamical scenarios, thereby leveraging their stochastic properties to explore multiple admissible futures under identical past-conditioning, we generate an ensemble of 10 distinct trajectories differing solely in their initial conditions. This approach yields a rich variety of spatio-temporal transitions, illustrated as (x, t ) plots in Figure 3. The reasoning that motivates the number of trajectory used is detailed with an ablation study in 7.3.   
+
+> Figure 3: Numerical integration of 10 independent 1D-KS trajectories over the time horizon T, each starting from a unique initial condition.
+
+For the learning task, the dataset is split along the temporal dimension, with 80% of the snapshots used for training and the remaining 20% for testing. This results in a training set 
+
+X ∈ R10 ×Ttrain ×nx , Ttrain = 800 ,
+
+and a test set 
+
+Xtest ∈ R10 ×Ttest ×nx , Ttest = 200 ,
+
+.Throughout this work, predicted quantities are indicated using a hat notation (ˆ · ).11 5. Results 
+
+5.1. 2D - Kolmogorov flow 
+
+To assess the model’s ability to reproduce and extrapolate the flow dynamics, we initialize the model from the same 10 training initial conditions and roll out its predictions over an extended horizon of 1200 
+
+snapshots. This evaluation window therefore includes the training horizon, the testing horizon, and an additional forecasting horizon of 200 snapshots beyond the available data. This procedure is repeated over a defined ensemble cardinality to evaluate the stochastic properties of the model. The results of that evaluation are compiled in Figure 4 at a given spatial location (x, y ) ∈ [0 , 2π]2.           
+
+> Figure 4: Reconstruction of the velocity component Uxi,y i(t)at the spatial location (xi, y i) = ( π, π )over an autoregressive rollout horizon of T= 1200 δt . For each initial condition, an ensemble of 60 stochastic trajectories is generated by the model. The solid line denotes the ensemble mean, while the shaded regions represent the intervals corresponding to one and three standard deviations around the mean, illustrating the uncertainty over time.
+
+12 The results shown in Figure 4 indicate that the stochastic trajectories accurately follow the ground-truth trajectory from a given initial condition over a finite and variable time horizon, before eventually diverging, often before the test window. While the MSE with the mean trajectory remains moderate on the training set, it increases substantially on the test set, reaching the same order of magnitude as the signal itself as supported by table 1. This is accompanied by an increase in predictive standard deviation, indicating that each stochastic realization follows its own trajectory and becomes progressively less correlated with the ground truth over time. Such behaviour is characteristic of chaotic systems, where small perturbations accumulate and induce trajectory separation. MSE PICP 1σ PICP 3σ
+
+Train Set 0.53 61% 93% Test Set 1.70 59% 92% 
+
+> Table 1: Evaluation Metrics across Trajectories
+
+Although the distance between the ensemble mean and the ground truth increases over the prediction horizon, the prediction interval coverage probability (PICP) remains relatively stable as supported by table 1 suggesting that the model’s uncertainty weights out the mean discrepancy. The PICP is defined by the expression given in 29 
+
+PICP kσ = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+I (yi ∈ [μi − kσ i, μ i + kσ i]) , (29) where, N is the number of prediction points, yi is the ground-truth value, μi the ensemble mean prediction, 
+
+σi the predictive standard deviation, and I(·) the indicator function. An important observation is that the distance between the ensemble mean and the ground truth does not blow up and often remains within the same range even after individual realizations have significantly decorrelated. This should, however, be interpreted cautiously: the ensemble mean does not correspond to a physically realizable trajectory and does not necessarily satisfy the learned dynamics. In high-variance regimes, the mean may lie in regions of state space that are unlikely to be visited by any individual trajectory. We therefore use it primarily as an indicator that the probability mass remains centered around the reference trajectory. This is why individual realizations can provide more dynamical insight than the ensemble mean. Figure 5 compares the evolution of three trajectories generated by the model from the same initial condition, alongside the corresponding reference trajectory. The figure highlights that, prior of the testing window, trajectories begin to diverge and explore distinct regions of state space. While these trajectories separate from the reference and from each other, their evolution remains dynamically plausible, illustrating the model’s ability to capture multiple admissible futures under stochastic dynamics. 13 Figure 5: Comparison between a reference trajectory ( Uti (x, y ) top, Vti (x, y ) bottom) and three stochastic realizations 
+
+( ˆUj , ˆVj )j=1 ,2,3 initialized from the same initial condition. The rollout goes passed the training window, with shown snap-shots ti ∈ { 1, 250 , 500 , 750 } × δt , and the test window with shown snapshots: ti ∈ { 850 , 950 } × δt . Finally a forecast window is also represented at the snapshot : ti = 1100 × δt . Snapshots were selected arbitrarily. 
+
+To assess the learned transition kernel beyond trajectory reconstruction, we evaluate its generative capability and stability under long-term rollouts from an unseen initial condition. The goal is to verify that trajectories sampled from the model remain dynamically consistent with the underlying system and stable as the rollout progresses, rather than simply reproducing trajectories observed during training by "memorizing them". To this end, we generate an ensemble of 10 trajectories initialized from a synthetic 14 initial condition outside the training set. Each trajectory is obtained by recursively sampling from the learned transition kernel at every rollout step over 2000 snapshots thus largely exceeding the train and test window encompassing a thousand snapshots. Emulators of chaotic PDEs often accumulate errors auto-regressively, leading to exponential error growth and unphysical realizations after only a few rollout steps in the absence of explicit stabilization [32, 8]. Crucially, the framework proposed in this work must maintains stability well beyond the training horizon. Figure 6 shows the temporal evolution of ˆUxi,y i (t) at a given spatial location (xi, y i). This set of 10 generated trajectories is now the subject of evaluation until the end of the this subsection. Importantly, no ground-truth reference trajectory is considered in this experiment. The objective is not to evaluate the model’s ability to reproduce a known path, but rather to assess whether the generated trajectories remain dynamically plausible and stable under long-term autonomous rollout.         
+
+> Figure 6: Temporal evolution of the velocity components ( Uxi,y i(t)top, Vxi,y i(t)bottom) at the spatial location (xi, y i) = ( π, π )
+> for 10 generated trajectories over a rollout of 2000 snapshots. For visualization purposes only, the trajectories are smoothed using a moving-average convolution with a sliding window spanning 40 δt .
+
+Figure 7 shows the first and second moments of the generated ensemble over the prediction horizon. The variance remains bounded and does not simply accumulate over time. Rather, it varies both temporally and spatially, with uncertainty appearing in localized regions of the state space causing trajectories to diverge and explore different regions of the attractor. 15 Figure 7: Mean and standard deviation of ˆU and ˆV throughout the prediction horizon. 
+
+Each generated trajectory, although initialized from the same initial condition, is unique and does not ’replicate’ any training path. To formally assess the plausibility of the generated trajectories, we consider delay-embedding manifolds. Delay embeddings provide a dynamically informative representation of the system, as they encode the distribution of future states conditioned on past states, which is precisely the dependency structure learned by the transition kernel. Figure 8 compares the delay-embedding manifold of the kinetic energy at a fixed spatial location. The kinetic energy, 
+
+k = 12 (U 2 + V 2),
+
+provides a compact observable that aggregates the two velocity components. We construct a reference, local manifold from the ground-truth dataset by projecting the kinetic energy into the two-dimensional delay-embedding space (kt, k t−τ )xi,y i , with a fixed delay parameter τ and at a location (xi, y i). The choice of τ must balance two constraints: it must be small enough for (kt, k t−τ ) to remain correlated, while being sufficiently large to avoid a trivial identity mapping and reveal the underlying joint distribution. Each generated trajectory is then projected into the same delay-embedding space. As shown in Figure 8, the generated trajectories largely overlap with the reference manifold, indicating that the learned transition kernel preserves the dynamical structure of the true system and generates trajectories that remain consistent with the underlying attractor. 16 (a) Reference manifold obtained from the kinetic energy delay embedding. (b) Delay embeddings of the generated stochastic trajectories. 
+
+Figure 8: Local delay embedding at the spatial location (xi, y i) = ( π, π ) using a delay parameter τ = 10 δt . The reference manifold is constructed from ten ground-truth trajectories, against which the generated stochastic trajectories are projected for comparison. 
+
+To complement the local analysis based on the kinetic energy at a single probe location, we perform the same delay-embedding analysis using the dissipation rate averaged over the full two-dimensional flow field. Unlike the kinetic energy probe, the dissipation provides a global measure of the flow dynamics. The dissipation rate is defined as : 
+
+ϵ(t) = ν
+
+|Ω|
+
+Z
+
+> Ω
+
+ ∂U f
+
+∂x 
+
+2
+
++
+
+ ∂U f
+
+∂y 
+
+2
+
++
+
+ ∂V f
+
+∂x 
+
+2
+
++
+
+ ∂V f
+
+∂y 
+
+2!
+
+dΩ,
+
+where ν is the viscosity and Ω denotes the spatial domain. Using this scalar observable, we construct the dissipation delay-embedding manifold in the same way as for the kinetic energy, by projecting the temporal signal into the two-dimensional space (ϵt, ϵ t−τ ) with a fixed delay parameter τ . Figure 9 compares the delay embeddings of the generated trajectories with the reference manifold obtained from the ground-truth system. The strong overlap between the generated trajectories and the reference manifold further supports that the learned transition kernel preserves the global dissipative structure of the true dynamics.  
+
+> (a) Reference manifold obtained from the dissi-pation delay embedding. (b) Delay embeddings of the generated stochastic trajectories.
+
+Figure 9: Global delay embedding using a delay parameter τ = 5 δt . The reference manifold is constructed from ten ground-truth trajectories, against which the generated stochastic trajectories are projected for comparison. 
+
+The previous analyses suggest that the learned transition kernel is dynamically consistent with the true system both locally and globally. To further validate this, we analyse the autocorrelation structure of the 17 trajectories in order to quantify how information about the current state is retained as the system evolves. From an information-theoretic perspective, the autocorrelation function provides a measure of memory decay and allows us to assess whether the generated trajectories lose information at a rate comparable to that of the true system. From a dynamical systems perspective, autocorrelation can also reveal characteristic patterns such as periodic or quasi-periodic behaviour, which provide insight into the topology of the underlying attractor. Figure 10 shows that the learned transition kernel reproduces the autocorrelation structure of the reference system well. In particular, the rate at which autocorrelation decays is consistent between the generated and true trajectories, indicating that the model captures the characteristic memory timescales of the dynamics.                 
+
+> (a) Autocorrelation of the ground truth dataset trajectories U(t)
+> and the generated trajectories ( ˆU(t)).
+> (b) Autocorrelation of the ground truth dataset trajectories V(t)
+> and the generated trajectories ( ˆV(t)).
+> Figure 10: Autocorrelation functions computed over a horizon of 250 ×δt .The Pearson correlation coefficient is evaluated between each trajectory and its time-shifted counterpart at lags separated by 10 ×δt .
+
+To assess whether the generated flow is also statistically consistent with the reference dynamics, we also compare the empirical probability density functions of the generated trajectories with those of the ground-truth system, interpreting the latter as an approximation of the invariant measure of the underly-ing dynamics. For an ergodic system, long-term trajectories should sample the invariant measure of the attractor. Therefore, if the learned transition kernel faithfully captures the true dynamics, the distribution of generated trajectories should converge toward the same statistical law. Figure 11 compares the marginal density functions of the velocity components U (x, y, t ) and V (x, y, t ) between the generated trajectories and the reference system. Although individual generated trajectories may exhibit statistical deviations from the reference distribution, as illustrated in Figures 11b and 11d, the distribution obtained by aggregating all generated trajectories closely matches the reference density, as shown in Figures 11a and 11c. This observation suggests that, despite variability at the trajectory level, the stochastic model reproduces the same underlying invariant distribution as the reference system. The close agreement between the aggregated distributions indicates that the generated trajectories accurately capture the system’s long-term statistical behaviour. 18 (a) Aggregated density of ˆU (x, y, t )                  
+
+> with reference U(x, y, t )density.
+> (b) Individual trajectory densities of ˆUi(x, y, t )with reference U(x, y, t )density.
+> (c) Aggregated density of ˆV(x, y, t )
+> with reference V(x, y, t )density.
+> (d) Individual trajectory densities of ˆVi(x, y, t )with reference V(x, y, t )density.
+
+Figure 11: Comparison of the marginal density functions of the velocity components. The left column shows densities estimated from all generated trajectories aggregated together, whereas the right column displays the densities of the generated trajectories individually. The reference density is estimated by aggregating the ten ground-truth trajectories and serves as an approximation of the invariant distribution that each generated trajectory is expected to reproduce. The top row corresponds to U , and the bottom row to V .
+
+Similar conclusion can be drawn from different statistics. Figure 12 compares the density functions of the dissipation signal of our dataset with that of the aggregated, generated ensemble. Although the model’s predictions seem less dissipative (also supported by the delay embeddings in figure 9), it accurately captures the asymmetry of the system’s dissipation statistics or third moment of the probability distribution. The model seem able to explore low-probability regions at the tail of the density function. 19 Figure 12: Comparison of the marginal density functions of the dissipation. The reference density is estimated by aggregating the ten ground-truth trajectories and serves as an approximation of the invariant distribution. 
+
+Finally, we evaluate the long-rollout stability of the model by checking if the predicted states adhere to a known flow invariant: the Kolmogorov energy cascade. While individual trajectories in data-driven emulators often drift away from this physical reference over time [32], maintaining a consistent scale-energy distribution serves as a crucial sanity check. To quantify this, we compute spectrograms averaged over successive slices of 10 δt . As shown in Figure 13, the generated flow reproduces the energetic contribu-tions across most scales within the inertial subrange. However, energy accumulates artificially at smaller scales (high wavenumbers). This discrepancy between the true and predicted spectrograms emerges at a wavenumber where the corresponding structures account for less than 0.1% of the total kinetic energy. This discrepancy is likely to originate from decoder reconstruction and is therefore probably a numerical arte-fact, as it is a recurrent issue associated with convolutional decoders. Although our framework includes an optional spectral regularisation term that corrects the spectrogram faithfully, this arguably degrades spatial reconstruction performance. Hence, it was deactivated for the results presented in this paper. A detailed discussion of this spectral regularisation term and its impact can be found in Appendix 7.2. Crucially, despite this high-wavenumber discrepancy, the simulation remains stable over time and does not blow up. 20 Figure 13: Spectrogram of one generated trajectory averaged over slices of 10 δt compared with the ground-truth reference flow. 
+
+5.2. 1D - Kuramoto-Sivashinsky 
+
+Here, the 1D Kuramoto-Sivashinsky dataset is considered. First, we validate performance across both the training and test sets to ensure that the generated trajectories, initialized from the dataset’s ground-truth initial conditions, remain consistent with the true system. Figure 19 illustrates this evaluation over time at a fixed spatial location x = L 
+
+> 2
+
+. Visual support is provided in the Appendix 7.1 Mean MSE Mean PICP 1σ Mean PICP 3σ
+
+Train Set 0.64 70% 96% Test Set 2.11 54% 95% 
+
+> Table 2: Evaluation Metrics across Trajectories
+
+Similar conclusions to what was reported in 4.1 can be drawn, with performance metrics gathered in table 2. Over the entire dataset, the empirical coverage reaches approximately 66 .8% within one standard deviation and 96% within three standard deviations, indicating that the predictive uncertainty is broadly consistent with Gaussian behaviour, for which the expected coverages are 68.3% and 99.7%, respectively. As a sanity check, we observe consistency between the ensemble variance and the deviation of individual trajectories from the ground truth: trajectories tend to separate from one another at approximately the same time they separate from the reference trajectory. This is visually supported by figure 14 where the increase in variance occurs synchronously with the L2 distance between the mean trajectory and the ground truth. 21 Figure 14: From left to right : Ground truth, corresponding to the last trajectory from the dataset, mean trajectory prediction from the same initial condition, averaged over an ensemble of 60 members, variance of the ensemble and quadratic distance between the ground truth and the mean trajectory. The shaded area highlights the test region. 
+
+This behaviour confirms that individual ensemble members decorrelate from one another at the same rate they diverge from the reference trajectory, while remaining physically plausible realizations. To evaluate the learned transition kernel beyond simple memorization, we test its generative capability on an unseen, synthetic initial condition outside the training set. We autonomously rollout an ensemble of 10 trajectories over 2000 snapshots, thus once more exceeding the combined training and test window, without a ground-truth reference, similarly to what was reported in 5.1. The goal is purely to assess long-term dynamical plausibility. While each generated trajectory evolves uniquely, they remain strictly bounded by the true system dynamics. Remarkably, when projected into the low-dimensional (u, u xx ) phase-space, all ten autonomous trajectories accurately capture and respect the topology of the underlying physical manifold (Figure 15).    
+
+> (a) Reference manifold (true data). (b) Generated trajectories projection.
+> Figure 15: Low-dimensional manifold in the (u, u xx )phase space. The generated stochastic trajectories are projected into the same embedding space for comparison.
+
+Figure 16b demonstrates that the learned transition kernel successfully reproduces both the temporal and spatial autocorrelation structures of the reference system, exhibiting strong agreement with the ground truth. Furthermore, not only is the spatial decorrelation rate preserved, as supported by Figure 16b, but the oscillating behaviour of the autocorrelation function also indicates a spatial pseudo-periodicity. Because the model accurately captures this characteristic feature, it provides strong evidence of agreement between the true and generated attractor topologies. 22 (a) Temporal autocorrelation functions computed over a horizon of 250 δt . The Pearson correlation coefficient is evaluated between each trajectory and its time-shifted counterpart at lags separated by 10 δt .   
+
+> (b) Spatial autocorrelation functions computed over a spatial do-main of 250 δx .The Pearson correlation coefficient is evaluated between each trajectory and its spatially shifted counterpart at lags separated by 10 δx .
+
+Figure 16: Comparison of temporal (a) and spatial (b) autocorrelation functions between the true and generated trajectories. 
+
+Then, looking at statistical invariants, figure 17 compares the marginal density functions between the generated trajectories ˆu(x, t ) and the reference system u(x, t ). As shown in Figure 17, mean, variance, and skewness, are well recovered across all trajectories, confirming that the model captures the main moments faithfully. However, a systematic discrepancy is observed in the fourth moment: the generated PDFs exhibit a consistently lower kurtosis than the reference, manifesting as an over-smooth central peak. Addressing this deficit may require moment matching regularization. 
+
+Figure 17: Individual trajectory densities of ˆu with reference u density. 
+
+Finally, we evaluate model consistency with respect to physical invariants and spectral properties. Specif-ically, we compute the spatial kinetic energy spectrum—averaged across temporal slices of 10 δt , to verify stability over long rollouts and consistency across scale relative contributions. Complementarily, we perform a temporal frequency spectrum analysis across spatial segments of 16 δx to validate the generated trajectories in the Fourier domain. Both spectral comparisons are presented in Figure 18. 23 (a) Spatial energy spectrum quantifying the energetic contribu-tion across wavenumbers, averaged over temporal slices of 10 δt . 
+
+> (b) Temporal frequency spectrum quantifying the distribution of dynamic frequencies, averaged over spatial segments of 16 δx .
+> Figure 18: Comparison of the (a) spatial energy spectra and (b) temporal frequency spectra between the true and generated trajectories.
+
+Not only do the true and generated spectra closely match—suggesting accurate relative contributions across both scales and frequencies, but Figure 18a also demonstrates the stability of this physical invariant as the rollout progresses well beyond the training and testing time windows. Additionally, the artificial energy accumulation at high wavenumbers observed in the Kolmogorov flow test case (Figure 13) does not occur here. Indeed, because the KS experiment is one-dimensional, we utilize a fully connected autoencoder and decoder. This mitigates the convolutional reconstruction artifacts that, in our view, are responsible for the accumulation of energy at very high wavenumbers. 
+
+6. Conclusion 
+
+In this work, we attempt to reframe the role of stochasticity in scientific machine learning, from a tool for uncertainty quantification to a foundational framework for modelling chaotic, non-linear macroscopic physics. Rather than exhausting computational resources to deterministically resolve highly sensitive trajectories through infinite precision, our approach embraces the inherent stochastic nature of chaotic fluid dynamics. By modelling the system statistically, we successfully capture the multi-admissible futures that occur when fluid flows transit between competing attractors. We established an encode-process-decode framework utilizing an Autoencoder. Within this latent space, a Transformer architecture was leveraged to learn the state-dependent drift and diffusion terms of a discretized Itô Stochastic Differential Equation (SDE). Given the extreme sensitivity to initial conditions inherent to chaotic systems, evaluating the frame-work against explicit ground-truth trajectories is fundamentally unrepresentative of its true performance. Instead, we evaluated the models based on their local and global statistical consistency across the flow field in two different test cases. Evaluation via manifold comparison, delay embeddings and autocorrelation plots confirmed that the system preserves long-term correct conditioning of future states by past states thus pre-serving dynamical consistency. Crucially, our experiment demonstrated stochastic stability over long rollout. From a statistical standpoint, the model seem to recover important statistical invariants. In particular, the first three moments are accurately predicted, even for statistics exhibiting low-probability events such as the dissipation signal. However, 4th moments and statistics exhibiting complicated kurtosis are not recovered at this point. A critical open question arising from this methodology lies in the intricate mixing of different sources of uncertainty, making it difficult to disentangle aleatoric (inherent physical randomness) from epistemic uncertainty. In our current framework, the learned diffusion term of the SDE acts as a catch-all container 24 absorbing three distinct stochastic drivers. First, it captures the intrinsic chaos and multi-attractor proper-ties of the system, representing the true aleatoric uncertainty of the physical system. Second, it absorbs the subspace projection loss of information, which is an irreducible stochasticity resulting from truncating the state space. And third, it encompasses the model’s own epistemic uncertainties, absorbing the approxima-tion errors and structural limitations inherent to the neural network components or lack of training data. This co-existence inherently creates a mathematical conflict: the system’s true physical stochasticity, which we aim to learn, is structurally confounded with the model’s approximation and architectural uncertainties, which we aim to minimize. Disentangling these mixed uncertainties presents an exciting pathway for future research. Resolving this conflict will improve interpretability and pave the way for more robust probabilistic models across a wider spectrum of chaotic macroscopic systems. 25 References 
+
+[1] S. Hijazi, G. Stabile, A. Mola, G. Rozza, Data-driven pod-galerkin reduced order model for turbulent flows, Journal of Computational Physics 416 (2020) 109513. doi:https://doi.org/10.1016/j.jcp. 2020.109513 .URL https://www.sciencedirect.com/science/article/pii/S0021999120302874 
+
+[2] E. Menier, M. A. Bucci, M. Yagoubi, L. Mathelin, M. Schoenauer, Cd-rom: Complemented deep -reduced order model, Computer Methods in Applied Mechanics and Engineering 410 (2023) 115985. 
+
+doi:https://doi.org/10.1016/j.cma.2023.115985 .URL https://www.sciencedirect.com/science/article/pii/S0045782523001081 
+
+[3] A. Colanera, L. Magri, Quantized local reduced-order modeling in time (ql-rom), Computer Methods in Applied Mechanics and Engineering 447 (2025) 118393. doi:https://doi.org/10.1016/j.cma.2025. 118393 .URL https://www.sciencedirect.com/science/article/pii/S0045782525006656 
+
+[4] S. L. Brunton, M. Budišić, E. Kaiser, J. N. Kutz, Modern koopman theory for dynamical systems, SIAM Review 64 (2) (2022) 229–340. arXiv:https://doi.org/10.1137/21M1401243 , doi:10.1137/ 21M1401243 .URL https://doi.org/10.1137/21M1401243 
+
+[5] P. J. Schmid, Dynamic mode decomposition of numerical and experimental data, Journal of Fluid Mechanics 656 (2010) 5–28. doi:10.1017/S0022112010001217 .[6] P. Gupta, P. Schmid, D. Sipp, T. Sayadi, G. Rigas, Mori–zwanzig latent space koopman clo-sure for nonlinear autoencoder, Proceedings of the Royal Society A: Mathematical, Physical and Engineering Sciences 481 (2313) (2025) 20240259. arXiv:https://royalsocietypublishing. org/rspa/article-pdf/doi/10.1098/rspa.2024.0259/2822700/rspa.2024.0259.pdf , doi: 10.1098/rspa.2024.0259 .URL https://doi.org/10.1098/rspa.2024.0259 
+
+[7] I. Zighed, N. Thome, P. Gallinari, T. Sayadi, Uncertainty-aware and parametrized dynamic reduced-order model: Application to unsteady flows, Phys. Rev. Fluids (2025). doi:10.1103/f6ty-t6gl .URL https://link.aps.org/doi/10.1103/f6ty-t6gl 
+
+[8] E. Özalp, A. Nóvoa, L. Magri, Real-time forecasting of chaotic dynamics from sparse data and autoen-coders (08 2025). doi:10.48550/arXiv.2508.08729 .[9] A. Mohan, D. Gaitonde, A deep learning based approach to reduced order modeling for turbulent flow control using lstm neural networks (04 2018). doi:10.48550/arXiv.1804.09269 .[10] A. Solera-Rico, C. Sanmiguel Vila, M. Gómez-López, Y. Wang, A. Almashjary, S. Dawson, R. Vin-uesa, β-variational autoencoders and transformers for reduced-order modelling of fluid flows, Nature Communications 15 (02 2024). doi:10.1038/s41467-024-45578-4 .[11] C. J. G. Rojas, A. Dengel, M. Dias Ribeiro, Reduced-order model for fluid flows via neural ordinary differential equations (2021). [12] G. Haller, S. Ponsioen, Nonlinear normal modes and spectral submanifolds: existence, unique-ness and use in model reduction, Nonlinear Dynamics 86 (3) (2016) 1493–1534. doi:10.1007/ s11071-016-2974-z .URL https://doi.org/10.1007/s11071-016-2974-z 
+
+26 [13] A. Liu, J. Axås, G. Haller, Data-driven modeling and forecasting of chaotic dynamics on inertial manifolds constructed as spectral submanifolds, Chaos: An Interdisciplinary Journal of Nonlinear Sci-ence 34 (3) (2024) 033140. arXiv:https://pubs.aip.org/aip/cha/article-pdf/doi/10.1063/5. 0179741/19848841/033140_1_5.0179741.pdf , doi:10.1063/5.0179741 .URL https://doi.org/10.1063/5.0179741 
+
+[14] H. Mori, Transport, collective motion, and brownian motion*), Progress of Theoretical Physics 4 (3) (1965) 423–455. doi:10.1143/PTP.33.423 .[15] R. Zwanzig, Nonlinear generalized langevin equations, Journal of Statistical Physics 9 (3) (1973) 215– 220. doi:10.1007/BF01008729 .[16] K. Burrage, P. Burrage, T. Mitsui, Numerical solutions of stochastic differential equations – imple-mentation and stability issues, Journal of Computational and Applied Mathematics 125 (1) (2000) 171–182, numerical Analysis 2000. Vol. VI: Ordinary Differential Equations and Integral Equations. 
+
+doi:https://doi.org/10.1016/S0377-0427(00)00467-2 .URL https://www.sciencedirect.com/science/article/pii/S0377042700004672 
+
+[17] J. M. Benet, A. K. Koupaï, R. D. Regueiro-Espino, N. Baskiotis, P. Gallinari, Adaptive SDE interpolants for calibrated probabilistic PDE forecasting (2026). URL https://openreview.net/forum?id=hwy0BvBIQQ 
+
+[18] L. Kong, J. Sun, C. Zhang, Sde-net: Equipping deep neural networks with uncertainty estimates, Proceedings of Machine Learning Research 119 (2020). [19] J. Ho, A. Jain, P. Abbeel, Denoising diffusion probabilistic models, Advances in Neural Information Processing Systems (NeurIPS) 33 (2020) 6840–6851. [20] Y. Song, J. Sohl-Dickstein, D. P. Kingma, A. Kumar, S. Ermon, B. Poole, Score-based generative modeling through stochastic differential equations, arXiv preprint arXiv:2011.13456 (2020). [21] J.-S. Ha, Y.-J. Park, H.-J. Chae, S.-S. Park, H.-L. Choi, Adaptive path-integral autoencoders: Rep-resentation learning and planning for dynamical systems, Advances in Neural Information Processing Systems 31 (2018). [22] K. Course, P. B. Nair, State estimation of a physical system with unknown governing equations, Nature 622 (7982) (2023) 261–267. [23] A. F. Ilersich, K. Course, P. B. Nair, Data-driven stochastic reduced-order modeling of parametrized dynamical systems, arXiv preprint arXiv:2601.10690 (2026). [24] G. Bartosh, D. Vetrov, C. A. Naesseth, Sde matching: Scalable and simulation-free training of latent stochastic differential equations, arXiv preprint arXiv:2502.02472 (2025). [25] Y. Lipman, R. T. Chen, H. Ben-Hamu, M. Nickel, M. Le, Flow matching for generative modeling, arXiv preprint arXiv:2210.02747 (2022). [26] Y. Zhu, H. Lei, Effective mori-zwanzig equation for the reduced-order modeling of stochastic systems, Discrete and Continuous Dynamical Systems - S 15 (4) (2022) 959–982. doi:10.3934/dcdss.2021096 .URL https://www.aimsciences.org/article/id/885db29c-bdff-44a4-a5bd-e33dca8937d9 
+
+[27] M. Shen, C. Cheng, Neural sdes as a unified approach to continuous-domain sequence modeling (2025). 
+
+arXiv:2501.18871 .URL https://arxiv.org/abs/2501.18871 
+
+27 [28] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, I. Polosukhin, Attention is all you need (2017). URL https://proceedings.neurips.cc/paper_files/paper/2017/file/ 3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf 
+
+[29] I. Zighed, N. Thome, P. Gallinari, T. Sayadi, Leveraging scale separation and stochastic closure for data-driven prediction of chaotic dynamics, Data-Centric Engineering 7 (2026) e12. doi:10.1017/ dce.2026.10045 .[30] N. Platt, L. Sirovich, N. Fitzmaurice, An investigation of chaotic kolmogorov flows, Physics of Fluids A: Fluid Dynamics 3 (4) (1991) 681–696. arXiv:https://pubs.aip.org/aip/pof/article-pdf/3/ 4/681/12301110/681_1_online.pdf , doi:10.1063/1.858074 .URL https://doi.org/10.1063/1.858074 
+
+[31] C. Canuto, A. Quarteroni, M. Y. Hussaini, T. A. Zang, Spectral Methods: Evolution to Complex Geometries and Applications to Fluid Dynamics, 1st Edition, Scientific Computation, Springer Berlin Heidelberg, 2007, published: 30 June 2007, eBook ISBN: 978-3-540-30728-0, Hardcover ISBN: 978-3-540-30727-3, Softcover ISBN: 978-3-642-43395-5. doi:10.1007/978-3-540-30728-0 .URL https://doi.org/10.1007/978-3-540-30728-0 
+
+[32] C. Pedersen, L. Zanna, J. Bruna, Thermalizer: Stable autoregressive neural emulation of spatiotemporal chaos (03 2025). doi:10.48550/arXiv.2503.18731 .28 7. Appendix 
+
+7.1. Kuramoto-Sivashinsky - complementary discussions 
+
+To complement the discussions and statements made in 4.2 we provide here visual support in the Kurmaoto-Sivashinsky benchmark. Figure 19, illustrates how the model rolls out from the initial conditions taken from the training dataset. Following a similar procedure than in 5.1, the rollout window encompasses 
+
+1200 δt thus exceeding training and testing window. For this test-case as well, we notice good accordance between the mean trajectory and the true one until a certain time after which, trajectories diverge. This divergence however preserves good statistical consistency as the ground truth remains bounded within a three standard deviation range.           
+
+> Figure 19: Reconstruction of the field u(x, t )at the spatial location x=L
+> 2over an autoregressive rollout horizon of T= 1200 δt .For each initial condition, an ensemble of 60 stochastic trajectories is generated by the model. The solid line denotes the ensemble mean, while the shaded regions represent the intervals corresponding to one and three standard deviations around the mean, illustrating the growth of uncertainty over time.
+
+29 In the KS test case as well, individual trajectories sampled from the transition kernel throughout long rollout diverge from their DNS counterparts and from each other, but remain physically plausible, as sup-ported by the figure 20.          
+
+> Figure 20: Comparison between a reference trajectory u(x, t )and three stochastic realizations ˆui(x, t )i=1 ,2,3initialized from the same initial condition. Snapshots show selected profiles across the training, test, and extended forecast windows ( t∈
+> [1000 ,1200] ×δt ).
+
+7.2. Model architecture, hyperparameters and loss functions 
+
+Depending on the configuration, typically if the input data is 1D or 2D, the autoencoder has an adaptative architecture. In the 2D settings, developed for a Kolmogorov flow at Re = 90 and nf = 4 , the autoencoder 
+
+(E, D) has the following architecture : 
+
+Stage Layer Output Shape Details Encoder : E
+
+Input – 2 × 64 × 64 φ
+
+Conv1 Conv2D + SiLU 8 × 32 × 32 Kernel 3 × 3, stride 2
+
+Conv2 Conv2D + SiLU 16 × 16 × 16 Kernel 3 × 3, stride 2
+
+Conv3 Conv2D + SiLU 32 × 8 × 8 Kernel 3 × 3, stride 2
+
+Conv4 Conv2D 64 × 4 × 4 Kernel 3 × 3, stride 2
+
+Flatten – 1024 64 × 4 × 4
+
+Latent projection Linear d Dense connections 
+
+Decoder : D
+
+FC Decoder Linear 1024 d → 64 × 4 × 4
+
+Reshape – 64 × 4 × 4 –Up1 Upsample + Conv2D + SiLU 32 × 8 × 8 Scale factor 2, kernel 3 × 3
+
+Up2 Upsample + Conv2D + SiLU 16 × 16 × 16 Scale factor 2, kernel 3 × 3
+
+Up3 Upsample + Conv2D + SiLU 8 × 32 × 32 Scale factor 2, kernel 3 × 3
+
+Up4 Upsample + Conv2D 2 × 64 × 64 Scale factor 2, kernel 3 × 3
+
+Output Reconstruction 2 × 64 × 64 ˆφ 
+
+> Table 3: Architecture of the convolutional autoencoder (CNN). The latent dimension is denoted by d.
+
+The latent transformer T has the following architecture : 30 Hyperparameter Value 
+
+Input sequence length ( τ ) 20 Transformer dimension d
+
+Attention heads 8Attention blocks 4Minimum log-diffusion −6
+
+Maximum log-diffusion 2
+
+> Table 4: Transformer model hyperparameters.
+
+The total training loss function is defined as: 
+
+Ltotal = Ez∼q(z|φ)
+
+h
+
+∥φ − D (z)∥2i
+
+++ αE(zt+1 , ˆyt)∼Qθ [− log pθ (zt+1 | ˆyt)] + βE(zt+1 , ˆyt)∼Qθ
+
+h
+
+φt+1 − D (ˆ zt+1 ) 2i
+
++ γE. (30) In practice, if the Autoencoder is not variational, the reconstruction loss Ez∼q(z|φ)
+
+h
+
+∥φ − D (z)∥2i
+
+is simply the mean squared error between the reconstructed states ˆφ and the true states φ.The transition model T : ˆ yt 7 → (fθ , g θ ) parametrizes the latent dynamics such that: 
+
+ˆzt+1 = ˆ zt + fθ (ˆ yt) + gθ (ˆ yt) ◦ ξ, with ξ ∼ N (0 , Id), (31) yielding the transition negative log-likelihood: 
+
+− log pθ (zt+1 | ˆyt) = 12
+
+> d
+
+X
+
+> i=1
+
+"   z(i) 
+
+> t+1
+
+− ˆz(i) 
+
+> t
+
+− fi( ˆ yt)2
+
+g2 
+
+> i
+
+( ˆ yt) + log g2 
+
+> i
+
+( ˆ yt)
+
+#
+
+. (32) The input context history vector ˆyt spanning a temporal window τ adapts dynamically during the autore-gressive rollout. Let h ≥ 1 denote the current rollout prediction step. The history vector is structured as: 
+
+ˆyt = wt wt−1 . . . wt−τ +1 
+
+T , (33) where the components wt−i are sampled from either the ground-truth latents or the model’s own prior predictions according to: 
+
+wt−i =
+
+(
+
+ˆzt−i if i < h, zt−i if i ≥ h. (34) In contrast to the formulation presented in Eq. 26, the objective function in Eq. 30 introduces a deter-ministic trajectory regularization term designed to encourage the model to fit training trajectories. This includes a trajectory reconstruction loss, 
+
+Lrecon = E(zt+1 , ˆyt)∼Qθ
+
+h
+
+φt+1 − D (ˆ zt+1 ) 2i
+
+, (35) alongside an energy regularization term E. The energy loss is computed as the time-dependent energy signal averaged over the spatial domain: 
+
+E = E(zt+1 , ˆyt)∼Qθ
+
+h
+
+⟨ ˆU 2 + ˆV 2⟩(x,y ) − ⟨ U 2 + V 2⟩(x,y )
+
+> 2
+
+i
+
+, (36) where ⟨·⟩ x denotes the spatial mean operator over the domain x. Physically, the energy term enforces that the total energy across the entire velocity field remains bounded within a valid range. 31 To evaluate the model over extended horizons, we sample ˆyt sequentially H times from the model-induced rollout distribution Qθ . Crucially, by setting H > τ , the model is explicitly regularized to generate stable predictions from autoregressive input contexts sampled entirely from its own rollout distribution Qθ . The total loss function is computed and averaged over H rollout steps. In the 1D setting, developed for the Kuramoto-Sivashinsky test case, the autoencoder (E, D) has the following architecture :                                          
+
+> Stage Layer Output Shape Details Encoder :E
+> Input –512 φ
+> FC1 Linear + SiLU 256 512 →256
+> FC2 Linear + SiLU 128 256 →128
+> FC3 Linear d128 →d
+> Decoder :D
+> FC1 Linear + SiLU 128 d→128
+> FC2 Linear + SiLU 256 128 →256
+> FC3 Linear 512 256 →ˆφ
+> Table 5: Architecture of the 1D Autoencoder (AE). It is a fully connected network. The latent dimension is denoted by d.
+
+The hyper-parameter selection applies to both test-case and are summarized in table 6 
+
+Hyperparameter Value 
+
+Latent dimension ( d) 64 Prediction horizon ( H) 40 Context sequence length ( τ ) 20 Likelihood weight ( α) 0.01 d−1
+
+Reconstruction weight ( β) 0.01 
+
+Energy regularization ( γ) 0.01 
+
+> Table 6: Training and model hyperparameters
+
+Finally, it is possible to toggle an ultimate regularization term in the loss, to enforce spectral consistency. The proposed added objective incorporates a kinetic energy spectrogram loss LEk . This term penalizes discrepancies in the energy cascade spectrogram computed in Fourier space. Because the energy spectrogram acts as a flow invariant, enforcing this constraint encourages the reconstructed velocity fields to preserve the correct multi-scale energy distribution. Without this spectral regularization, optimizing solely on an Euclidean distance in physical space leads to reconstructed spectrograms that accumulate unphysical energy in small-scale structures. This occurs because small-scale discrepancies account for only a negligible fraction of the total kinetic energy, meaning a physical-space loss cannot sufficiently penalize high-wavenumber spectral errors. To enforce structural fidelity across the entire energy cascade, we define a spectral loss term computed in the Fourier domain. Let u′ = u − ⟨ u⟩(x,y ) represent the fluctuating components of a velocity field. Its 2D Discrete Fourier Transform is denoted by ˜u(k) = (˜ u(k), ˜v(k)) T , where k = ( kx, k y ) is the wavenumber vector. We extract the radial kinetic energy spectrum by slicing the spectral energy density over Nk wavenumber batches Bk:
+
+E(k; u′) = X
+
+> k∈Bk
+
+12
+
+
+
+|˜u(k)|2 + |˜v(k)|2
+
+, (37) 32 where Bk = {k ∈ N2 | k ≤ ∥ k∥2 < k + 1 }.The kinetic energy spectrogram loss LEk is formalized as the mean squared error in log-space across all 
+
+Nk resolved discrete radial wavenumbers between the predicted and true spectra, ˆE(k) and E(k) respectively. It is given by equation 38. 
+
+LEk = 1
+
+NkNkX
+
+> k=1
+
+
+
+log 
+
+h ˆE(k) + ϵ
+
+i
+
+− log [ E(k) + ϵ]
+
+2
+
+, (38) where ϵ ≪ 1 ensures numerical stability. The current model applied this regularization for the Kolmogorov test-case and has simply been added to the Autoencoder loss. Figure 21 compares the impact of that loss term upon the generated trajectories spectrograms.     
+
+> (a) Comparison between one generated trajectory spectrogram averaged over slices of 10 δt and the true spectrogram without spectral regularization in the total loss.
+> (b) Comparison between one generated trajectory spectrogram averaged over slices of 10 δt and the true spectrogram with spec-tral regularization in the total loss.
+
+Figure 21: Impact of spectral regularization on the trajectories spectrograms throughout long-rollouts. 
+
+The cost on reconstruction metrics are quantified in table 7. Configuration Mean MSE Mean PICP 1σ Mean PICP 3σ
+
+Without Spectral Regularization Train Set 0.64 70 % 96 %Test Set 2.11 54 % 95 %With Spectral Regularization Train Set 1.47 55% 88% Test Set 2.12 54 % 91% 
+
+Table 7: Evaluation Metrics across Trajectories with and without the spectral regularization LEk during training. 
+
+The addition of the spectral regularization LEk in the total loss function slightly degrades reconstruction performances. We suggest that applying it is case-specific, as the associated costs and benefits require a careful compromise. 
+
+7.3. Sensitivity to trajectories 
+
+Both the KS and Kolmogorov models are initially trained on 10 distinct initial conditions, each integrated over an 800 δt trajectory generated by a numerical solver. A critical question, however, is how the diversity 33 of training trajectories influences the learned transition kernel’s ability to sample a broad, physically sound distribution of futures conditioned on past states. The intuition behind this reasoning is best framed through its asymptotic limits. When trained on a single trajectory, the transition kernel lacks exposure to phase-space variability; it becomes overconfident and mode-collapsed, attempting to match predictions to the single sequence observed during training. Conversely, with an infinite ensemble of trajectories, the universal approximation property guarantees that the model perfectly learns the true transition kernel across all valid state sequences permitted by the governing dynamics. Practical interest thus lies in identifying the threshold of training diversity at which the model learns that a given context admits multiple valid future trajectories, while ensuring those futures remain strictly constrained to the system’s invariant geometric structure. To visualize this structure, we examine the KS system’s phase-space manifold. Specifically, we conduct an ablation study by training the model on 1, 2, 4, and 10 (the presented framework) trajectories, evaluating how accurately and completely the (ux, u xx ) manifold is reconstructed during pure generative rollouts initialized from an unseen initial condition. The results are compiled in Figure 22 along with the mean squared error and PICP ±3σ .             
+
+> (a) Reconstructed (ux, u xx )phase-space manifolds across training setups. From left to right: model predictions using 1,2,5,10 training trajectories, DNS gen-erated trajectory. (b) Test MSE and PICP ±3σcoverage metrics.
+> Figure 22: Impact of training trajectory diversity ( 1,2,5, and 10 trajectories) on generative performance for the KS test case. Increasing trajectory diversity improves phase-space manifold reconstruction (a) and significantly enhances prediction interval coverage (b).
+
+At first glance, Figure 22a suggests that training on 5 trajectories, half the baseline dataset, is sufficient to capture the geometry of the phase-space manifold, even appearing slightly closer to the ground truth than the 10 -trajectory configuration. However, Figure 22b reveals why 10 trajectories are necessary for robust generative forecasting. While 5 trajectories capture the invariant structure, the model severely underestimates uncertainty, yielding a Prediction Interval Coverage Probability (PICP ±3σ ) of only 25% . In contrast, 10 trajectories achieve a coverage of 95% , demonstrating that greater dataset diversity is required to reliably encompass the full spectrum of admissible future dynamics. 
+
+7.4. Girsanov KL divergence derivation 
+
+This section details the derivation of the Kullback-Leibler divergence between the two probability measure 
+
+P, Q expressed in terms of the Radon–Nikodym derivative, leveraging Stochastic Optimal Control theory and the Girsanov theorem. Left to its natural dynamics, the prior SDE generates trajectories that wander blindly and almost never align with the discrete observations Φ. To resolve this, [21] introduce a control variable u(zt, t ) that acts as a continuous steering force, actively guiding the probability mass of the surrogate measure Qξ toward trajectories that fit the data. They parametrize the surrogate drift hξ by perturbing the prior drift fθ via this control, scaled by the diffusion coefficient: 
+
+hξ (zt, t, Φ) = fθ (zt, t ) + gθ (zt, t )u(zt, t, Φ) . (39) Consequently, the control effort required to match the surrogate drift is: 
+
+u(zt, t ) = g−1 
+
+> θ
+
+(zt, t )hξ (zt, t, Φ) − fθ (zt, t ). (40) 34 The log of the Radon–Nikodym derivative reads : 
+
+log dQξ
+
+dPθ
+
+(Z) = log qξ (z0 | Φ) 
+
+pθ (z0) + log dQSDE 
+
+dPSDE 
+
+(Z | z0). (41) The KL divergence is defined as the expectation of this log-ratio under the surrogate measure EQξ . Taking the expectation of the first term yields the standard KL divergence of the initial state, functioning identically to the regularization term in a Variational Autoencoder (VAE), but interestingly where the initial latent state z0 in conditioned by the entire sequence Φ and not just φ0 :
+
+EQξ
+
+
+
+log qξ (z0 | Φ) 
+
+pθ (z0)
+
+
+
+= DKL (qξ (z0 | Φ) ∥ pθ (z0)) . (42) For the second term, Girsanov’s theorem expresses the path log-ratio as a tractable stochastic integral: 
+
+log dQSDE 
+
+dPSDE 
+
+(Z | z0) = 
+
+Z T
+
+> 0
+
+u(zt, t ) · dW P 
+
+> t
+
+− 12
+
+Z T
+
+> 0
+
+∥u(zt, t )∥22dt. (43) Girsanov’s theorem also dictates how the driving Brownian motions relate across the two measures. Because 
+
+Qξ is steered by u(zt, t ), the random increments from the perspective of the prior Pθ are biased by the control effort: 
+
+dW P 
+
+> t
+
+= dW Q 
+
+> t
+
++ u(zt, t )dt. (44) Substituting this relationship back into the integral shifts the dynamics entirely to the posterior measure 
+
+Qξ :
+
+log dQSDE 
+
+dPSDE 
+
+(Z | z0) = 
+
+Z T
+
+> 0
+
+u(zt, t ) · dW Q 
+
+> t
+
++ 12
+
+Z T
+
+> 0
+
+∥u(zt, t )∥22dt. (45) Finally, we apply the expectation EQξ to evaluate the KL divergence. The first term is an Itô integral with respect to the Brownian motion dW Q 
+
+> t
+
+. Under standard regularity conditions, this integral is a martingale and its expectation is strictly zero. Thus, the infinite-dimensional KL divergence elegantly collapses to a finite integral over the squared control effort: 
+
+DKL (QSDE ∥ PSDE ) = 12 EQξ
+
+"Z T
+
+> 0
+
+∥u(zt, t )∥22dt 
+
+#
+
+. (46) This penalty can be expressed purely in terms of the system’s drift and diffusion functions with equation 40: 
+
+DKL (QSDE ∥ PSDE ) = 12 EQξ
+
+"Z T
+
+> 0
+
+g−1 
+
+> θ
+
+(zt, t ) hξ (zt, t, Φ) − fθ (zt, t ) 22dt 
+
+#
+
+. (47) For notational convenience, we define this scaled drift discrepancy as the residual vector rθ,ξ (zt, t ) = 
+
+g−1 
+
+> θ
+
+(zt, t ) hξ (zt, t, Φ) − fθ (zt, t ). Recombining this with the initial state divergence yields the complete KL divergence between the surrogate and prior measures: 
+
+DKL (Qξ ∥ Pθ ) = DKL (qξ (z0 | Φ) ∥ pθ (z0)) + 12 EQξ
+
+"Z T
+
+> 0
+
+∥rθ,ξ (zt, t )∥22dt 
+
+#
+
+. (48) 35

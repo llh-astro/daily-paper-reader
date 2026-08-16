@@ -1,0 +1,2197 @@
+Title: 2608.05554v1.pdf
+
+URL Source: https://arxiv.org/pdf/2608.05554v1
+
+Published Time: Fri, 07 Aug 2026 00:25:07 GMT
+
+Number of Pages: 56
+
+Markdown Content:
+1
+
+# A Label-Free Physics-to-Data Acceleration Framework for Parametric Time-Dependent PDEs with Latent-Space Differential-Operator Learning 
+
+Hongjiang WANG, Weizhe WANG*, Yingzheng LIU 
+
+*Corresponding author (Email:  wangwz0214@sjtu.edu.cn ; Tel/Fax: +86-21-34205083) 
+
+Shanghai Jiao Tong University, Shanghai 200240, China 2
+
+Abstract 
+
+Efficiently solving time-dependent parametric partial differential equations (PDEs) is a central task in computational science and engineering. Deep-learning-based accelerators span aphysics-to-data spectrum, ranging from physics-informed solvers with strong physical consistency but high computational cost to data-driven surrogates with efficient inference but strong dependence on high-fidelity datasets. Although methods across this spectrum have been extensively studied, they have largely evolved in isolation and are often only loosely connected through explicit solution-field labels. In this work, we propose PHD-SF, a compact physics-to-data spectrum framework for accelerating time-dependent parametric PDEs. Through the SD –TPD separation strategy and the differential-operator learning strategy, PHD-SF enables reusable model information, including spatial features, latent dynamical features, and spatial differential-operator information, to be generated, inherited, and enriched across three operating modes —
+
+PIDON, HIDON, and DIDON —within a unified DON-based architecture. This design realizes compact label-free spectrum modeling without relying on precomputed full-field solution labels or explicit solution-label transfer among the operating modes. Furthermore, PHD-SF establishes a separated-solving –hyper-reduction-like-enrichment –direct-inference acceleration path, avoiding the dependence on large-scale high-fidelity data generation and its high offline computational cost in conventional label-mediated workflows. Results on four benchmark time-dependent PDE problems demonstrate accurate cross-parameter solving and direct inference using only one or two representative parameter cases in the initial physics-informed solving stage. The total end-to-end computational cost is lower than that required to train a conventional PINN for a single parameter case, while enabling reusable cross-parameter inference. PHD-SF therefore provides a new efficient solution path for many-query parametric PDE. 
+
+Keywords: differential-operator learning, time-dependent parametric partial differential equations, acceleration solution, reduced order model 3
+
+Introduction 
+
+Dynamical systems are ubiquitous in science and engineering, and their evolution is commonly governed by time-dependent partial differential equations (PDEs) defined over space and time. A central task is to repeatedly solve such PDEs over broad parameter ranges and under diverse initial and boundary conditions, in support of online monitoring, system control, design optimization, and digital twins[1-3]. Although high-fidelity numerical solvers are reliable, each parameter case typically requires independent spatial discretization and time marching, making many-query and real-time computation prohibitively expensive. Developing fast and scalable acceleration methods for parametric PDEs is therefore a longstanding challenge in computational science. 
+
+Acceleration of parametric PDEs, however, is not a new problem. Reduced-order modelling (ROM) has long been a mainstream paradigm, supported by fairly mature theory and algorithms. Early studies on high-dimensional flow identification and energetic mode extraction developed Proper Orthogonal Decomposition (POD) [4, 5]. Building on POD, Galerkin-projection ROMs became a standard implementation of projection-based ROMs (PROMs) [6-8]. The Reduced Basis Method (RBM) further introduced an offline –online decomposition and certified error estimation, enabling multi-query and real-time solutions for parametric PDEs [8]. For large-scale nonlinear systems, the Empirical Interpolation Method (EIM) and its discrete variant DEIM reconstruct nonlinear terms from a small set of representative degrees of freedom [9, 10]. The idea of operator reconstruction from sparsely sampled degrees of freedom has driven the development of hyper-reduced-order models (HROMs) [1, 11-13], which typically achieve orders-of-magnitude speedups over full-order numerical solvers while preserving physical consistency and controllable errors. In this sense, the numerical-ROM community has already developed a relatively coherent theory of acceleration for parametric PDEs. 
+
+By contrast, deep-learning-based acceleration models (DL-AMs) for parametric PDEs have developed rapidly in recent years, resulting in a broad family of data-driven, hybrid, and physics-constrained approaches. Among data-driven models, non-intrusive ROMs such as POD –NN construct surrogate mappings from input parameters to latent states, enabling fast online 4
+
+inference[14], while nonlinear-manifold ROMs exploit encoder –decoder architectures to learn low-dimensional nonlinear solution manifolds[13, 15]. Beyond these approaches, operator-learning methods learn mappings between function spaces and can be viewed as resolution-invariant black-box surrogates for parametric PDEs, exhibiting strong expressive power and acceleration potential on complex parametric problems [16]. Representative examples include operator learners grounded in universal approximation theorems, such as DeepONet [17, 18], and integral-transform-based neural operators, such as the Fourier Neural Operator (FNO) [19]. However, purely data-driven models often suffer from high data requirements and limited physical consistency. Recent studies have shown that injecting physical knowledge into these fast solvers can effectively reduce data demand and enhance physical interpretability, thereby striking a better balance among data cost, physical consistency and computational speed [20]. Representative PINN-based approaches include physics-reinforced neural networks[21] and GPT-PINNs [22], whereas representative operator-learning models include PI-DeepONet [18], Physics-Informed Neural Operators [23] and physics-informed deep-learning ROMs (PI-DL-ROMs) [24, 25]. On the high-fidelity acceleration side, separable network architectures combined with forward-mode automatic differentiation (AD) have achieved computational complexity that scales linearly with the problem dimension, leading to orders-of-magnitude speedups for deep-learning-based PDE solvers [26-28]. Overall, these DL-AMs have demonstrated strong potential in non-intrusive implementation, nonlinear feature extraction, direct inference, inverse modeling, knowledge distillation, and transfer learning, while also driving the study of parametric PDE acceleration beyond traditional numerical ROMs toward a broader and more diverse family of deep learning frameworks [2, 29, 30]. 
+
+Taken together, both classical numerical ROMs and emerging DL-AMs have produced a variety of methods with distinct characteristics. Viewed through the lens of physics-constraint strength and data dependence, these approaches can be organized along a continuous spectrum. At one end lie strongly physics-constrained and weakly data-dependent models with high computational cost, such as finite element method and PINN. At the other end lie weakly physics-constrained but strongly data-dependent models with extremely low online inference cost, such as DeepONet-type surrogates. Between these extremes are hybrid models, including HROMs and physics-reinforced 5
+
+neural networks[21]. Although methods across the physics-to-data spectrum have attracted substantial attention, they have largely evolved within separate research communities. The connections among them are often discussed only at the level of loose conceptual analogies or explicit data transfer. A typical workflow is that an upstream model, such as a high-fidelity solver, first generates labeled solution data, and a downstream data-driven model then learns a low-dimensional latent representation or a latent-state surrogate mapping from these labels. From a more structural perspective, however, such latent representations or surrogate mappings may already be identified during the upstream solving process itself, rather than being relearned afterwards through a separate supervised training stage based on explicitly generated solution labels. 
+
+Therefore, the relationships among models across the physics-to-data spectrum should not be understood merely as the transfer of explicit solution labels. A deeper connection lies in the reusable model information formed during the solving process and subsequently inherited or enriched by downstream models. This information includes representation-related quantities, such as spatial features, latent dynamical features and differential information, as well as structure-related information, such as the dependence of conventional HROMs on the discrete structures of their corresponding high-fidelity models [31]. If such information can be generated, inherited, and further enriched within a unified architecture, the transition from strongly physics-constrained solving, to hybrid modeling, and finally to fast direct inference can be realized without relying entirely on external labeled datasets or independent supervised training procedures. This perspective shifts DL-AMs from isolated acceleration models toward systematic PDE-acceleration frameworks based on cross-stage information reuse. 
+
+To realize such cross-stage information reuse, a unified computational and architectural framework is required. We observe that the mature and coherent acceleration theory developed in numerical ROMs, together with the flexible computational architectures of deep learning, provides a natural basis for unified modeling. Along this line, 6
+
+we propose PHD-SF, a compact physics-to-data spectrum framework for accelerating parametric time-dependent PDEs. PHD-SF consists of three operating modes within a unified differential operator network based (DON-based) architecture: physics-informed differential operator network (PIDON), physics-and-data hybrid informed DON (HIDON), and data-driven DON (DIDON). More fundamentally, these should be understood as three operating modes of a single DON-based architecture across different modes of the physics-to-data spectrum (a more detailed interpretation is provided in Appendix S1). Unlike conventional workflows in which upstream solvers generate solution-field labels for independently trained downstream surrogates, PHD-SF treats the solving process itself as a source of reusable model information, where solution and feature learning are performed simultaneously. Its central innovation lies in a cross-stage mechanism for the generation, inheritance, and enrichment of reusable model information within a unified DON-based architecture. Specifically, during physics-informed solving, PIDON generates reusable spatial features and the corresponding spatial differential information through separable differential-operator learning. HIDON then inherits these quantities and enriches latent dynamical features over a broader parameter domain at low cost by enforcing governing-equation residuals on sparse spatial collocation points. DIDON further reuses the inherited spatial features and latent dynamical features to enable fast direct inference. In this way, the transition from strongly physics-constrained solving, to hybrid enrichment, and finally to data-informed inference is realized not through external solution-label transfer, but through the internal generation, inheritance, and enrichment of reusable model information across the physics-to-data spectrum. Under this design, PHD-SF not only reduces the computational burden of repeated case-by-case optimization in conventional PINN-type methods, but also alleviates the dependence of purely data-driven surrogates on large-scale high-fidelity solution labels, thereby providing a compact solution path for many-query parametric time-dependent PDEs that balances physical consistency, computational efficiency, and cross-parameter inference capability. 
+
+We evaluate PHD-SF on four benchmark time-dependent PDE problems using a sparse, one-shot-like parameter configuration. Specifically, PIDON performs physics-constrained solving on only one or two representative parameter cases, HIDON enriches the latent dynamics over a broader 7
+
+parameter domain, and DIDON conducts large-scale direct inference. The results show that PHD-SF achieves accurate physics-constrained solutions for representative cases and reliable cross-parameter inference, while its total end-to-end computational cost is substantially lower than that required to train a conventional PINN for a single parameter case. 
+
+Fig. 1 | Architectures of (a) PIDON, (b) HIDON and (c) DIDON. PIDON couples a TPNet that outputs BCFs 
+
+A(t,μ) with a SpatialNet that outputs BFs Φ(x). Temporal and spatial derivatives (∂ tA, LΦ ) are obtained by AD and combined via an inner product to form the PDE residual loss and update both subnetworks. HIDON inherits the learned BFs, SDOs, and SpatialNet, evaluates the residual on a sparse set of control points, and updates t
+
+> μ
+> x
+> AD
+
+Φ
+
+> PDE BC&IC
+
+Loss 
+
+> Minimize
+> Orthogonalization
+
+LΦ
+
+A
+
+> AD
+
+∂tA
+
+
+
+u
+
+Update θt
+
+Update θx   
+
+> TPNet: fθt(· )
+> SpatialNet: gθx(· )
+
+a  
+
+> Solving a small set of cases
+> α1
+> α2
+> αn
+> φ1
+> φ2
+> φn
+> ℒ(u)
+> u
+> ∂tu
+> θt,θx
+> Reduced ODE BC&IC
+
+Loss 
+
+> Minimize
+
+
+
+  
+
+> x
+> TPNet: fθt(· )
+
+b 
+
+> Solving a large set of cases
+> AD
+> Trained SpatialNet: gθx(· )
+> t
+> μ
+
+Φs
+
+LΦs
+
+A
+
+∂tA
+
+Update θt
+
+> α1
+> α2
+> αn
+> ℒ(us)
+> us
+> ∂tus
+
+Φ
+
+> φ1
+> φ2
+> φn
+> t
+> μ
+> x
+
+
+
+> Inferring all cases
+
+c 
+
+> Trained TPNet:
+> fθt(· )
+> Trained SpatialNet:
+> gθx(· )
+
+Φ
+
+A                                    
+
+> α1
+> α2
+> αn
+> φ1
+> φ2
+> φn=+( , ()) 0tuuuL=,()0(,)tu u uL−2
+> dFGI+=sss(,() ) 0
+> duuudt L=sss,()0(,)
+> du uudt L
+
+8
+
+only TPNet to enrich the BCFs. DIDON directly inherits the trained SpatialNet and TPNet and performs inference. 
+
+Fig. 2 | Schematic comparison of differentiation mechanisms in conventional learning-based PDE solvers and the proposed PIDON. a , Conventional solvers apply AD directly to the approximate solution u to evaluate loss function. b, PIDON applies AD to the learned BFs to obtain the associated differential operators, and evaluates loss function indirectly. 
+
+Fig. 3 | Overview of PHD-SF across the physics-to-data spectrum models. PHD-SF enables reusable model information to be generated, inherited, and enriched across three operating modes —PIDON, HIDON, and DIDON —within a unified DON-based architecture. Φ Loss 
+
+LΦ
+
+## SpatialNet uNetwork u, ℒ(u)
+
+TPNet A
+
+Loss u, ℒ(u)
+
+ab
+
+AD for BFs AD for approximate solution Differential operator of BFs (t, μ)TPNet 
+
+fθt (· )
+
+A Φ
+
+PDE as loss 
+
+x
+
+SpatialNet 
+
+gθx(· )
+
+( μ)
+
+TPNet 
+
+fθt (· )
+
+∂ AA Φs
+
+Reduced ODE as loss 
+
+( μ)
+
+Trained 
+
+TPNet 
+
+A Φ
+
+Trained 
+
+SpatialNet 
+
+> Update  θt
+> Update
+> Update  θt
+
+a
+
+PIDON : Learning spatial feature 
+
+b
+
+HIDON : Learning latent dynamic feature 
+
+c
+
+DIDON : Direct inference model 
+
+Trained 
+
+TPNet Trained 
+
+SpatialNet 
+
+Trained 
+
+SpatialNet 
+
+u
+
+Trained 
+
+SpatialNet 
+
+> s
+
+Trained 
+
+SpatialNet   
+
+> AD AD AD
+
+Φs AD Φs
+
+
+
+> Latent dynamic feature information Spatial feature information Spatial feature information
+
+PIDON solves PDE 
+
+while learning 
+
+spatial features HIDON solves ODE while learning latent dynamic features 
+
+Lots of physics with little data Some physics with some data little physics with big data 
+
+LΦ
+
+LΦs LΦs
+
+LΦs∂tA
+
+Solving a small 
+
+set of cases Solving a large set of cases Inferring all cases 
+
+PHD-SF 
+
+Reusable model information (RMI) 
+
+> Generating RMI Inheriting RMI Inheriting RMI Enriching RMI
+
+9
+
+Fig. 4 | Conceptual comparison between the conventional label-mediated workflow and PHD-SF workflow in terms of governing-equation enforcement patterns. The columns represent different governing-equation enforcement patterns, including conventional coupled SD –TPD evaluations, separated SD –TPD evaluations, sparse-spatial evaluations, and direct inference without governing-equation enforcement. The rows represent different workflows. In the conventional label-mediated workflow, high-fidelity solvers generate solution-field labels through coupled SD –TPD evaluations, after which downstream data-driven models learn from these labels and perform direct inference. In PHD-SF, PIDON operates under separated SD –TPD evaluations, HIDON under sparse-spatial governing-equation enforcement, and DIDON performs direct inference without further governing-equation enforcement. :Points without governing-equation enforcement 
+
+Separated SD –TPD evaluations for governing-equation enforcement Sparse-spatial evaluations for governing-equation enforcement No governing-equation enforcement 
+
+Conventional coupled SD –TPD evaluations for governing-equation 
+
+enforcement    
+
+> High-fidelity model solves a large set of cases
+> HIDON inherits reusable spatial, solves a large set of cases, and enriches latent dynamic feature Learning spatial feature and latent dynamic feature from explicit solution-field labels
+> DIDON inherits reusable model information and infers all cases
+
+u 
+
+> PIDON solves a small set of cases and generates reusable spatial feature
+> Data-driven model
+> infers all cases
+
+Compact label-free Workflow of PHD-SF 
+
+Conventional 
+
+label-mediated workflow 
+
+Corresponding 
+
+governing-equation enforcement patterns 
+
+xtxtxtxt 
+
+> :Points with governing-equation enforcement
+
+Workflows 
+
+Representative separable solving Hyper-reduction-like 
+
+enrichment Direct inference Batch high-fidelity solving Direct inference  
+
+> Label learning No label No label 10
+
+2. Methodology 
+
+2.1 Problem statement 
+
+Set the spatial domain (SD) be  Ω xdxx ,and the time –parameter domain (TPD) be +
+
+=   1
+
+[ , ] Ω μdTztz μ
+
+, where  μd
+
+μ denotes the system parameter vector, including PDE coefficients, source terms, and quantities related to boundary and initial parameters. The unknown state field is  →: Ω Ω udx zu . We consider a general time-dependent parametric PDE written in operator form as (
+
+ + =, ) 0. tu u uL
+
+(1) 
+
+Here = 1 , ]: [ , TmL ，j D ，where D is a dictionary of spatial differential operators (e.g.,  kx , kx x  ,
+
+,Δ ). The operator  is a general nonlinear operator including convection, diffusion, reaction, source terms. 
+
+2.2 PIDON solving and spatial feature learning 
+
+PIDON is an accelerated physics-informed neural solver for high-dimensional PDE, designed to efficiently solve a small number of representative parameter cases while simultaneously learning spatial features and differential information of the solution field, as shown in  Fig. 1 a and  Fig. 3 a. To achieve linearly scalable computational complexity, PIDON adopts the space –time separation strategy inspired by numerical ROMs. Specifically, PIDON is explicitly decomposed into a time –
+
+parameter network (TPNet) and a spatial network (SpatialNet): the former outputs basis coordinate functions (BCFs) to capture the latent time –parameter dynamic features, while the latter outputs basis functions (BFs) to encode the spatial features of the solution manifold. Together, the BCFs and BFs constitute the two separable latent factors of the approximate solution. 
+
+To explicitly extract reusable model information, we further introduce a differential-operator learning strategy: transferring the differentiation of the approximate solution to the BCFs and BFs (see  Fig. 2 b). In this way, once PIDON completes solution of the representative parameter cases, the learned BFs and their corresponding spatial differential operators (SDOs) encode both the spatial features and the associated differential information of the solution field. These quantities can 11 
+
+then be inherited by HIDON and DIDON as reusable model information, without requiring an additional supervised learning stage based on PIDON-generated solution labels. 
+
+2.2.1 SD –TPD separation strategy 
+
+To achieve linearly scalable computational complexity, we adopt the classical space –time separation idea from numerical ROMs and refine it into an explicit separation of SD dependence from TPD dependence in the solution representation. Then, PIDON illustrated in  Fig. 1 a, is explicitly decomposed into a SpatialNet → b
+
+: Ωx
+
+> nxθ
+
+f and a TPNet → b
+
+: Ωt
+
+> nzθ
+
+g . SpatialNet outputs BFs (
+
+# )
+
+= =   b
+
+> 1
+
+( ) : ( ) ( ), , ( )x 
+
+> nT
+> θn
+
+φ φΦ fx x x x
+
+, while TPNet outputs BCFs ( )
+
+= =   b
+
+> 1
+
+( ) : ( ) ( ), , ( ) t 
+
+> nT
+> θn
+
+a aA gz z z z
+
+, nb is the number of BFs. The approximate solution of the parametric PDE is then expressed as =
+
+= = 
+
+> b
+> 1
+
+.( , ) : ( ) ( ) ( ) ( ) i inTi
+
+u aφΦ Ax z x z x z
+
+(2) 
+
+A natural question is whether such a separable representation is sufficiently expressive for general parametric PDE solutions. The answer is affirmative: the PIDON separable function class is uniformly dense in the space of continuous solutions on compact domains. This implies that any continuous parametric PDE solution can be approximated arbitrarily well by a PIDON representation. The proof combines the classical density of finite sums of separable functions [32, 33] with the universal approximation theorem for neural networks [34-36], and is provided in Appendix S2. 
+
+This SD –TPD separation preserves the flexibility of spatial sampling, without being strictly constrained by the sampling rules of all-variable separation frameworks such as proper generalized decomposition (PGD) and separable physics-informed neural networks (SPINNs) [26, 27]. Furthermore, the BFs and BCFs themselves have clear physical meanings, which helps to maintain the interpretability of the model. 12 
+
+2.2.2 Differential-operator learning strategy 
+
+Based on the separable SD –TPD representation in Equation (2), temporal differentiation of the approximate solution can be transferred to the BCFs , and spatial differentiation of the approximate solution can be transferred to the BFs. Specifically, ==
+
+ =  = = =
+
+# 
+
+> 11
+
+( , , ) ( , )( ,( )))( , ) )( (( , )    
+
+> ntttiniiiii
+
+u x t μ a t φ x
+
+φμ
+
+u x t μ a t μx
+
+Φ A
+
+ΦAL L L
+
+(3) 
+
+Here, SDOs, LΦ , is defined entrywise by =,( ) ij i j φΦL . Motivated by Equation (3), we introduce a new differentiation strategy (differential-operator learning strategy) schematically shown in  Fig. 2 b. 
+
+Specifically, AD is applied to the BCFs and BFs with respect to their own variables, thereby transferring the differentiation of the approximate solution to its separable latent factors and explicitly obtaining the corresponding SDOs. 
+
+It should be noted that differential-operator learning here does not aim to identify an unknown analytical form of the governing PDE operator, nor is it used in the conventional operator-learning sense of learning a solution operator from input functions or parameters to output solution fields. Rather, it explicitly obtains the differential-operator information induced by the known governing equations on the two separable latent factors. Specifically, temporal differentiation is applied to the BCFs, while the governing spatial differential operators are applied to the learned BFs to obtain the SDOs. 
+
+2.2.3 PIDON solving 
+
+Using the separable SD –TPD representation in Equation (2), and the differential transformation in in Equation (3). The PDE system in Equation (1) can be written abstractly as ( (
+
+ + =   + =, ) 0 ,( ) ) 0. t tu u uL LΦ A ΦA Φ A
+
+(4) 
+
+Then, a weighted mean-square-error (MSE) loss = + + +r r b b i i orth orth ( , ) ,x zL θ θ λ L λ L λL λ L13 
+
+can be constructed on the on the spatial collocation set = =p 1{ } ΩxNi i xx and the temporal –
+
+parametric collocation set = = P PP 1{ } ΩzNi i zz using Φ ,LΦ ,A , and t A . where r r{ , }λ L ,b b{ , }λ L ,i i{ , }λ L
+
+, and orth orth { , }λ L denote the weights and residual losses associated with the interior PDE, boundary conditions, initial conditions, and orthogonality regularization, respectively. The detailed definitions of these loss terms are provided in Appendix S4. 
+
+The role of orth L is to improve the orthogonality of Φ while maintaining numerical stability, thereby enlarging the effective subspace spanned by Φ and enhancing the expressive power and cross-parameter generalization of subsequent HIDON and DIDON. This design echoes classical POD, where orthogonal bases are sought to improve subspace quality. As a flexible penalty, orth L
+
+provides a controllable trade-off between early-stage optimization cost and the richness of the learned subspace: a stronger orthogonality constraint may increase the initial training cost, but often yields a more representative subspace and thus benefits downstream modelling and generalization. After defining ( , )x zL θ θ , we update { , }x zθ θ using Adam (or other optimizers) until convergence, obtaining the trained SpatialNet and the corresponding approximation 
+
+( , , ; , )x zt θ θu x μ .
+
+2.2.4 Computational efficiency and convergence behaviour of PIDON 
+
+Owing to the SD –TPD separable architecture, PIDON evaluates the SpatialNet only at xN
+
+distinct spatial collocation points and the TPNet only at zN distinct temporal –parametric collocation points. Therefore, the required neural-network evaluations and input-based automatic differentiation (AD) operations are performed on +( )x zN N , rather than with the full tensor-product size x zN N 
+
+as in a conventional PINN. More specifically, because temporal differentiation is applied to the BCFs and spatial differentiation is applied to the BFs, the generation of latent-factor values and their differential information scales as +b( ( )) x zn N N , where bn is the number of BFs. By contrast, a conventional PINN evaluates the approximate solution and its derivatives directly at ( )x zN N 
+
+coupled collocation points. This estimate mainly concerns the dominant costs of network evaluation and input-based AD, which are typically the most expensive parts of high-resolution physics-informed training. Therefore, the SD –TPD separation substantially reduces the practical training cost when b )min( ,x zn N N .14 
+
+The separated architecture also improves empirical optimization behaviour. In conventional PINNs, spatial and temporal derivatives are imposed on a single network, and high-order differentiation often induces gradient stiffness and hinders training [37]. By contrast, PIDON assigns spatial differentiation to the BFs and temporal differentiation to the BCFs, thereby reducing the differentiation burden on each network and leading to more stable convergence in practice. 
+
+2.3 HIDON Solving and latent dynamical feature learning 
+
+HIDON is an accelerated hybrid solver for a reduced ordinary differential equation (ODE) system, designed to solve a large set of parameter cases at low computational cost while enriching latent dynamical features, as shown in  Fig. 1 b and  Fig. 3 b. To reduce the computational cost, HIDON is inspired by the latent-space reduction idea of PROMs and the sparse-element discretization idea of HROMs. On the one hand, by inheriting the BFs, SDOs, and SpatialNet learned by PIDON, HIDON represents both the high-dimensional solution and the associated spatial differential operation in a low-dimensional latent solution space. Specifically, the BFs provide the low-dimensional representation of the solution, while the SDOs encode the spatial differential information required for governing-equation enforcement. In this way, the original high-dimensional PDE is recast into a reduced latent ODE system. 
+
+On the other hand, HIDON enforces the governing equations only on a sparse spatial collocation set, producing a hyper-reduction-like computational effect without following a standard HROM construction such as DEIM or ECSW. This sparse enforcement reduces the cost of governing-equation evaluation and enables HIDON to solve a large set of parameter cases at low cost. During this process, the BCFs are further optimized over the temporal –parametric domain, thereby enriching the latent dynamical features encoded in them. These enriched BCFs are then transferred to DIDON as reusable model information, without requiring an additional supervised learning stage based on HIDON-generated solution labels. 
+
+2.3.1 Inherit-then-enrich strategy 
+
+For many parametric PDEs of practical interest, the solution manifold can often be well approximated by a low-dimensional solution subspace, as suggested by Kolmogorov n-width 15 
+
+arguments and classical ROM studies [38-40]. In PIDON, such an approximate solution subspace, spanned by the learned BFs, is obtained from a small number of representative parameter cases through physics-informed solving. Although the dominant solution subspace can often be captured from limited representative cases, the latent dynamical features encoded in the BCFs over the TPD generally require richer temporal –parametric sampling to be learned reliably. HIDON therefore adopts an inherit-then-enrich strategy: it inherits the BFs, SDOs, and SpatialNet learned by PIDON, while continuing to train the TPNet over a larger set of parameter cases to enrich the BCFs and the latent dynamical features encoded in them. 
+
+2.3.2 HIDON solving and latent dynamical feature learning 
+
+Building on the inherit –then –enrich strategy, HIDON inherits the Φ and LΦ , learned by PIDON, and substitutes them into the original PDE in Equation (1). The spatial features encoded in Φ
+
+restrict the high-dimensional solution u to a low-dimensional latent solution space, where A
+
+serves as the corresponding latent state, while LΦ provides the spatial differential information required for governing-equation enforcement. Therefore, the only differentiated unknown in HIDON is A and the original PDE system can be recast into a reduced latent ODE system: =+ ( , ) ; ,( ) 0,
+
+ddt 
+
+A
+
+Φ ΦA L Φ A x z 
+
+(5) 
+
+where = =p 1{ } ΩxNi i xxx and = =   
+
+> HHH1
+
+{ } ΩzNi i zzz . According to the inherit –then –enrich strategy, HIDON is required to solve and train this ODE system over a large number of parameter cases, i.e. H P 
+
+> zz
+
+N N . Compared with the original PDE, the reduced latent ODE system significantly lowers the computational complexity and memory requirement. However, if governing-equation enforcement is still performed on the full high-resolution spatial collocation set p , the cost remains proportional to the number of spatial points xN , which becomes a bottleneck for large-scale multi-case training. 
+
+To remove this bottleneck, we introduce sparse spatial sampling strategy that follows the same complexity-reduction principle as HROMs. Specifically, the governing equations are enforced only on a sparse yet representative subset of spatial points, so that the computational cost becomes 16 
+
+independent of the original spatial resolution. Concretely, HIDON inherits Φ and LΦ from PIDON and drives the reduced dynamics only on a sparse spatial sampling set =  = s 
+
+> ss1
+
+{ } Ωni i xxx :=+s s s s( , ) ; ,( , ) 0
+
+ddt 
+
+A
+
+Φ Φ A L Φ A x z
+
+(6) 
+
+where =s s: ( )xθΦ f x , Hz . The sparsity is reflected by s xn N , and sΦ ,sLΦ are precomputed and stored before HIDON training. A weighted MSE loss is then constructed over s and H := + +r r b b i( ) ,z iL θ λ L λ L λL
+
+(7) 
+
+where r r{ , }L λ ,b b{ , }L λ ,i i{ , }L λ denote the residual losses are their weights associated with the reduced ODEs, boundary conditions and initial conditions, respectively. Detailed definitions are provided in Appendix S5. During HIDON training, only the parameters of TPNet, zθ , are updated, while SpatialNet is kept frozen. Minimizing ( )zL θ via Adam (or other optimisers) yields a converged parameter set 
+
+> z
+
+θ and the corresponding BCFs A . Finally, inserting A into the separable representation in Equation (2) yields the final approximate solution ( , , ; , )x zt θ θu x μ , enabling efficient large-scale multi-case solution and latent-dynamics learning. 
+
+Importantly, the strength of physical constraints in HIDON can be adjusted through the number of sparse spatial sampling points sn . Therefore, HIDON can vary continuously along the physics-to-data spectrum: using more sparse points strengthens governing-equation enforcement, whereas using fewer points further reduces computational cost and moves the model closer to data-dominated inference. 
+
+2.3.3 Computational efficiency and closure analysis for HIDON 
+
+HIDON inherits the BFs and SDOs learned by PIDON and incorporates hyper-reduction through sparse spatial sampling, so that the original PDE system can be recast into a reduced latent ODE system. This yields a two-level reduction in complexity, both in the solution degrees of freedom and in the cost of governing-equation enforcement. First, the high-dimensional solution is represented in the learned BF space with dimension bn . Second, the governing equations are enforced only on a sparse spatial set == s 
+
+> s1
+
+{ }ni ix , rather than on the full spatial collocation set of size Nx. As a result, 17 
+
+the effective computational cost is mainly determined by bn and sn . In this sense, HIDON produces a hyper-reduction-like acceleration effect, although it is not a classical HROM. 
+
+We next examine the closure property of HIDON. Closure of the resulting reduced latent ODE system depends primarily on whether the sparse governing-equation constraints provide sufficient information to determine the latent state A . For a fixed ( , )t μ , Let  s 
+
+> ,
+
+( ) nt μF A denote the vector of scalar governing-equation constraints evaluated on s . A necessary dimension-counting condition for closure is s bn n . However, this condition alone is not sufficient because the sampled constraints may be linearly dependent or weakly sensitive to some latent directions. A stronger local identifiability condition is that the sparse residual Jacobian =  , ,( /t μ t μF A) J has full column rank, so that perturbations in the latent coefficients can be locally distinguished. In this work, we adopt a mildly over-constrained setting together with a simple uniform-sampling baseline for point selection. These choices provide a practical balance between robustness and efficiency. Although ns and s
+
+are both important and interesting, a full exploration is beyond the scope of this manuscript, and a detailed analysis is deferred to Appendix S3. 
+
+2.4 Direct inference via DIDON 
+
+DIDON is constructed by directly inheriting the trained SpatialNet from PIDON and the enriched TPNet from HIDON. It performs online prediction for parameter cases within the enriched temporal –
+
+parametric domain = = D DD 1{ } ΩzNi i zz . Since HIDON has already enriched the latent dynamical features over the target temporal –parametric domain, this work focuses on DIDON inference within this enriched domain, rather than on extrapolation beyond it. Therefore, we set =D H
+
+Ω Ωz z in the numerical experiments. Under this setting, DIDON attains accuracy comparable to HIDON while requiring only negligible online computational cost. 
+
+2.5 PHD-SF 
+
+PHD-SF is a compact physics-to-data spectrum framework for accelerating parametric time-dependent PDEs. For clarity, it is described as consisting of three components: PIDON, HIDON, and DIDON. More fundamentally, these components are three operating modes of a unified DON-based architecture at different stages of the physics-to-data spectrum. A more detailed interpretation 18 
+
+is provided in Appendix S1. Specifically, PHD-SF switches among different operating modes through parameter reuse, staged training and freezing of subnetworks, thereby enabling the cross-stage transfer of reusable model information among PIDON, HIDON, and DIDON. 
+
+Fig. 4  conceptually compares PHD-SF workflow with a conventional label-mediated workflow from high-fidelity solvers to data-driven models. The figure highlights two key differences. First, the carrier connecting different modeling stages changes from explicit solution-field labels to reusable model information. Second, the governing-equation enforcement pattern changes from coupled space –time sampling followed by direct inference in the conventional workflow, to separated SD –
+
+TPD sampling in PIDON, sparse spatial sampling in HIDON, and direct inference in DIDON. 
+
+From the perspective of information connection, PHD-SF is a compact label-free generation –
+
+inheritance –enrichment workflow of reusable model information. As shown in  Fig. 4, the conventional label-mediated workflow usually requires high-fidelity solvers to generate explicit solution labels, which are then used by downstream data-driven models to learn spatial features and latent dynamical features. In contrast, the PHD-SF workflow connects its three operating modes, namely PIDON, HIDON, and DIDON, through reusable model information generated, inherited, and enriched within a unified DON-based architecture. The term “label -free” has two implications. 
+
+Externally, PHD-SF does not require precomputed high-fidelity solution snapshots as training labels. Internally, there is no explicit solution-field label collection or label-based learning among PIDON, HIDON, and DIDON. 
+
+From the perspective of computational complexity, PHD-SF substantially reduces the total end-to-end computational cost through a compact “representative separable solving– hyper-reduction-like enrichment –direct inference (solve –enrich –infer)” acceleration path. As shown in  Fig. 4 , the 
+
+conventional workflow follows the path of “batch high -fidelity solving –solution-label-based training –direct inference.” Although this workflow can provide fast online inference a fter training, it usually requires high-fidelity solvers to precompute a large set of parameter cases for dataset construction. This offline data-generation stage introduces a considerable computational burden and remains a key limitation of data-driven accelerators. In comparison, the PHD-SF follows a solve –enrich –infer 19 
+
+acceleration path. In PIDON, the SD –TPD separable representation reduces the computational complexity of physics-informed solving, while only a small number of representative parameter cases are solved, avoiding the construction of large-scale high-fidelity solution datasets. In HIDON, the inherited spatial features and differential information are reused, and governing-equation constraints are enforced only on sparse spatial collocation points, leading to a hyper-reduction-like acceleration effect and significantly reducing the cost of latent-dynamics enrichment over multiple parameter cases. Finally, DIDON directly reuses the model information inherited from PIDON and HIDON for fast inference. In this way, PHD-SF improves the end-to-end computational efficiency of many-query parametric time-dependent PDE problems while retaining the role of physical constraints. 
+
+In summary, PHD-SF has three key characteristics. First, at the framework level, it organizes the generation, inheritance, and enrichment of reusable model information within a unified DON-based architecture. Second, at the individual-mode level, solving and reusable-information learning are performed simultaneously, so that reusable model information is formed during the solving process itself. Third, at the spectrum level, PHD-SF establishes a progressive acceleration path from strongly physics-constrained solving, to hybrid latent-dynamics enrichment, and finally to fast direct inference. Along this path, explicit physical constraints gradually weaken, whereas inherited reusable model information becomes increasingly important, providing a unified framework for balancing physical consistency, cross-parameter reusability, and inference efficiency. 
+
+Algorithm 1 summarizes the overall computational pipeline of PHD-SF, including PIDON, HIDON, and DIDON. The detailed procedures of each stage are listed below.      
+
+> Algorithm 1 . PHD-SF pipeline
+> Input : PDE operator ;SD collocation set p; PIDON solving TPD collocation set P; HIDON enrichment TPD collocation set HDIDON inference TPD collocation set D; sparse SD set
+
+s p
+
+> .
+> Output : trained SpatialNet 
+
+( ; )xθΦ x ; TPNet 
+
+( , ; )zt θA μ ; PIDON/HIDON solvers and DIDON inference model. 
+
+> 1. PIDON: solve PDE system & learn spatial features
+> 1.1 For
+
+ px evaluate BFs ( ; )xθΦ x and compute SDOs LΦ via AD. 
+
+> 1.2 For
+
+ P( , )t μ evaluate BCFs ( , ; )zt θA μ and compute t A via AD. 20 
+
+1.3 Assemble residuals and compute ( , )x zL θ θ .
+
+1.4 Update { , }x zθ θ ←Adam(  ,x zθ θ L ) until convergence obtaining 
+
+> x
+
+θ
+
+( ; )xθΦ xLΦ and u .
+
+2. Precompute for HIDON 
+
+2.1 For s sx calculate 
+
+=s s( ; )xθΦ Φ x and sLΦ .
+
+3. HIDON: solve reduced latent ODE system & learn latent dynamical features 
+
+3.1 For  H( , )t μ evaluate BCFs ( , ; )zt θA μ and compute t A via AD. 
+
+3.2 Assemble residuals and compute ( )zL θ .
+
+3.3 Update zθ ←Adam(  zθ L ) until convergence obtaining 
+
+> z
+
+θ
+
+( , ; )zt θA μ and u .
+
+4. DIDON: direct inference .
+
+4.1 For  D( , )t μ direct infer    
+
+=( , , ; , ) ( ; ) ( , ; )x z x zt θ θ θ t θΦ Au x μ x μ .21 
+
+3. Results 
+
+We evaluate PHD-SF on four benchmark time-dependent PDE problems using deliberately sparse parameter configurations, as summarized in  Table 1 . These configurations are referred to as one-shot-like because only one or two representative parameter cases are used in the initial PIDON solving stage. Since PHD-SF follows this compact label-free solve –enrich –infer acceleration path rather than the conventional label-mediated computational pattern, we do not adopt a global training –test split. Instead, the parametric sets are named according to their roles in the three operating modes: the PIDON solving set PD , the HIDON enrichment set HD , and the DIDON inference set DD . The target parameter domain covered by the HIDON enrichment set and the DIDON inference set is denoted as T
+
+Ωμ .
+
+Detailed network architectures and hyperparameters are provided in Appendix S6, and the detailed collocation-set sizes used in all benchmarks are provided in Appendix S7. To ensure a fair comparison, all models are trained under an equivalent full-batch optimization setting. For PINN, a literal full-batch forward/backward pass may exceed GPU memory limits because of the large number of coupled collocation points. We therefore use gradient accumulation to emulate full-batch updates under GPU memory constraints. This implementation may increase the wall-clock training time of PINN, but it ensures that all models are compared under the same full-batch optimization protocol. A detailed explanation is provided in Appendix S8. All training and inference procedures are implemented in PyTorch and executed on an NVIDIA GeForce RTX 5070 Ti GPU (16 GB memory). 
+
+Table 1. Summary of benchmarks for assessing the computational task and performance of each model. The reported solution error corresponds to the relative L2 error averaged over all examples in the test dataset. 
+
+Governing law  Model  Computational task  Run-time (s)  Error  Memory (MB) 
+
+Diffusion reaction: = += 0( ,0) ( ; )      
+
+> txx uλuru u x uxα
+
+with = ( , )r αμ
+
+PINN = =P 1 1 ),{ ( )} (3,1 D D μ μ 444 120  7 346 
+
+PIDON = =P 1 1 ),{ ( )} (3,1 D D μ μ 49 228  7 434 
+
+HIDON ==  H 1121 , ]{ ( )} [1 ,3] [-1 ,1 j j jD D μ μ 1 262  0.35±0.10%  3978 
+
+DIDON ==  2500 D 1 , ]{ ( )} [1 ,3] [-1 ,1 j j jD D μ μ 0.22  0.36±0.10%  1 984 
+
+Wave: ==       
+
+> 0( ,0) ( ; )
+> tt xx upuuu x xθ
+
+PINN = =P 1 1 ),{ ( )} (1 ,0 D D μ μ 686 160  6 860 
+
+PIDON = =P 1 1 ),{ ( )} (1 ,0 D D μ μ 8 310  7 434 
+
+HIDON ==  H 177 , 0{ ( )} [0.5,3] [0, .75 ]j j jD D πμ μ 3 351  0.20±0.08%  9 410 22 
+
+with = ( , )p θμ DIDON ==  2500 D 1 , .{ ( )} [0.5,3] [0,0 75 ]j j jD D πμ μ 0.53  0.18±0.07%  3 892 
+
+Burger: = −t x xx u uu νu
+
+with = ( ) νμ
+
+PINN =P { (0.01), (0.1)} D D D 296 000  11 154 
+
+PIDON =P { (0.01), (0.1)} D D D 8 580  9 930 
+
+HIDON == H 148 , ]{ ( )} [0.08,0.5 j j jD D μ μ 2 900  0.18% ±0.26%  2 400 
+
+DIDON == 250 D 1{ ( )} [0.08,0.5] ,j j jD D μ μ 0.03  0.14±0.18%  138 
+
+Heat transfer: = +=
+
+( )( ,1 , ) ( , ; )  
+
+> txx yy
+
+u α u uu x t u x t θ
+
+with = ( ),α θ μ
+
+PINN = =1 1 ),{ ( )} (1 ,1 D D μ μ 1 034 780  7 010 
+
+PIDON = =train 1 1{ ( )} (1 ,1) ,D D μ μ 24 962  9 600 
+
+HIDON ==  1test 108 ],{ ( )} [0.75,3] [0.3,5 j j jD D μ μ 10 534  0.6±0.32%  13 000 
+
+DIDON ==  0test 1150 , ]{ ( )} [0.75,3] [0 3 5 . , j j jD D μ μ 0.18  0.62±0.41%  2 770 23 
+
+Table 2. PIDON and HIDON architectures for each benchmark employed in this work (unless otherwise stated). 
+
+Governing law 
+
+TPNet width 
+
+TPNet 
+
+output width 
+
+TPNet depth 
+
+SpacialNet width 
+
+SpacialNet 
+
+Output width 
+
+SpacialNet depth 
+
+Activation function 
+
+Diffusion reaction  50  12  5 50  12  5 Tanh 
+
+Wave  50  12  5 50  12  5 Tanh 
+
+Burger  50  12  5 50  12  5 Tanh 
+
+Heat transfer  128  16  6 128  16  6 Tanh 
+
+3.1 Diffusion-reaction equation 
+
+We begin with a classical nonlinear diffusion –reaction equation: = +  = = = + 
+
+PDE: ( , ) ( , ) ( , ), [0,1], [0,1], BC: (0, ) (1, ), (0, ) (1, ), [0,1], IC: ( ,0) sin(2 ) cos(2 ), [0,1].   
+
+> txx xx
+
+u x t λu x t ru x t x tu t u t u t u t tu x α πx β πx x
+
+Here, α controls the initial condition (IC) amplitude, and r modulates the reaction strength; together they form the system parameter vector = ( , )r αμ . λ and β are fixed constants. 
+
+3.1.1 Solving process 
+
+a) PIDON. The weighted loss ( , )x zL θ θ for diffusion –reaction equation reads = + + +r r b b i i orth orth ( , )x zL θ θ λ L λ L λL λ L
+
+with =  −  −= −  −  −+= − − =   −  
+
+> 2r22b2i2orth orth 2b
+
+1 ( ) ( , ) ( ) ( , ) ( ) ( , )1 1( (0) (1)) ( , ) ( (0) (1)) ( , )1 ( ) (0, ) sin(2 ) cos( ,0).2 ),1max ,,        
+
+> txx FxZxxFFZZFxμ
+> dF
+
+L x t λ x t r x tN N L t tN NL x α πx β πxN N L γ
+
+n
+
+Φ A Φ A Φ A
+
+Φ
+
+AG I
+
+Φ A Φ Φ A
+
+Φ
+
+μ μ μμ μμ
+
+and r
+
+λ ,bλ ,iλ and orth λ are 1, 5, 100 and 0.1, respectively. After defining ( , )x zL θ θ , we update { , }x zθ θ
+
+using Adam until convergence, obtaining the trained Φ and the corresponding approximation ( , , ; , )x zt θ θu x μ .24 
+
+b) HIDON. We precompute and store the sparse basis evaluations sΦ and their associated spatial differential operator =  s s s{ , }x xx Φ Φ ΦL on the sparse spatial sampling points =  = s 
+
+> ss1
+
+{ } Ωni i xxx
+
+. The weighted loss ( )zL θ for diffusion –reaction equation is = + +r r b b i i( )zL θ λ L λ L λL
+
+with += −  −= −  −  = − −           
+
+> 2rssss22bssss2issss
+
+11 1(0) (1)) ( , ) (0) (1)) ( , )1 (0, ) sin(2 ) cos(2 ) ,,,   
+
+> xx FZxxFFZZF
+> μ
+
+dL λ rn N dt L t tN NL α πx β πxn N 
+
+A
+
+Φ Φ A Φ A(Φ Φ A ( Φ Φ A
+
+Φ A
+
+μ μμ
+
+and r
+
+λ ,bλ and iλ are 1, 5 and 100, respectively. It is worth noting that boundary constraints are enforced only on the sparse boundary subset   sΩx . For the periodic boundary conditions  =Ω {0,1} 
+
+, we construct s to explicitly include the endpoints, so that boundary constraints are well-defined. After defining ( )zL θ , we update zθ using Adam until convergence, obtaining the trained A and the corresponding approximate solutions. 
+
+c) DIDON. DIDON is constructed by directly inheriting the trained SpatialNet and TPNet from PIDON and HIDON. DIDON is then used for direct solution inference. 
+
+3.1.2 Computational task and preliminary results 
+
+To stress-test the cross-parameter capability of PHD-SF, we adopt a deliberately sparse solve –
+
+enrich –infer configuration. PIDON is first solved on one representative parameter case, =P 1{ ( )} D D μ
+
+. HIDON then enriches the latent dynamics on 121 uniformly sampled parameter cases in = T
+
+Ω [1 ,3] [-1 ,1] μ , denoted as the HIDON enrichment set HD . Finally, DIDON performs direct inference on 2500 parameter cases over the same parameter domain, denoted as the inference set DD
+
+. The high-resolution spatial and temporal collocation set uses = 40,000 xN ,= 1,000 tN , with uniform sampling. 
+
+This deliberately stringent configuration is not intended to imply that PHD-SF is restricted to single-case or few-case physics-informed solving. Instead, it is used to assess whether HIDON can 25 
+
+exploit the BFs and SDOs to enrich the latent dynamics over a broader parameter domain. This setting therefore evaluates the cross-parameter enrichment capability of HIDON, the residual-free direct inference capability of DIDON, and the overall effectiveness of PHD-SF for cross-parameter solution and inference tasks. Specifically, if the solution field obtained by PIDON from a single parameter case were simply treated as externally labeled data for training a conventional data-driven DL-AM, such single-case supervision would generally be insufficient to learn a reliable cross-parameter solution mapping [17]. In PHD-SF, the representative case instead provides reusable spatial features and differential information, which are inherited and enriched under physical constraints in HIDON. 
+
+Fig. 5 (a –d) visualize PIDON solving set PD , HIDON enrichment set HD , DIDON inference set DD
+
+, and the relative L2 error fields of HIDON and DIDON across HD and DD . In this numerical experiment, the relative L2 error of HIDON and DIDON reach 0.35%± 0.1% and 0.36%±0.1%, respectively, with DIDON exhibiting uniformly low absolute error across representative test parameter cases (see  Fig. 7 ), demonstrating the strong cross-parameter inference capability of PHD-SF within the enriched parameter domain. 
+
+3.1.3 Computational efficiency and accuracy analysis 
+
+Since PINN and PIDON both serve as physics-informed PDE solvers, we first compare these two models. Under comparable memory usage, PIDON converges slightly faster in iteration count and reduces wall-clock time by about two orders of magnitude relative to PINN (see  Fig. 5 e-f), while achieving one order of magnitude better accuracy under nearly identical computational budgets (see 
+
+Fig. 5 h). 
+
+HIDON further improves the efficiency of cross-parameter solving. When enriching the latent dynamics over 121 parameter cases simultaneously, HIDON requires substantially less memory than PIDON and its wall-clock time is only about 0.3× that of the PIDON solving stage ( Fig. 5 e-f). After this enrichment stage, DIDON performs direct inference over 2500 parameter cases with only an additional 0.22 s. Viewed as an integrated solve –enrich –infer path, PIDON+HIDON+DIDON enables direct inference over 2500 parameter cases with a total wall-clock time that is still more than 26 
+
+two orders of magnitude lower than that required by PINN to solve a single parameter case. In contrast, the conventional label-mediated workflow illustrated in Fig. 4 would require labeled solution data for many parameter cases before surrogate training; if a PINN-type solver were used to generate labels for the 121 enrichment cases considered here, the offline data-generation cost alone would exceed the total PHD-SF cost by several orders of magnitude. 
+
+Transitioning from PIDON to HIDON leads to a moderate loss of accuracy but reduces memory and time costs by roughly three orders of magnitude, whereas the transition from HIDON to DIDON preserves nearly the same accuracy while further reducing memory and time costs by about one and five orders of magnitude, respectively ( Fig. 5 h). 
+
+Finally,  Fig. 5 i summarizes the overall performance along four axes: physics information, data information, accuracy, and solving speed. In this diagram, physics information represents the strength of explicit governing-equation enforcement, while data information denotes the inherited reusable model information. Along the PIDON –HIDON –DIDON progression, explicit governing-equation enforcement gradually weakens and inherited reusable model information becomes increasingly dominant. This transition substantially improves solving speed with only moderate accuracy degradation, thereby broadening the achievable performance envelope of PHD-SF relative to PINN 
+
+3.1.4 BFs analysis 
+
+We further examine the influence of the number of BFs, bn , on PHD-SF. As shown in  Fig. 6 a–
+
+c, PIDON exhibits only weak sensitivity to bn , whereas its time and memory costs increase approximately linearly, consistent with the complexity analysis. The cost of SDO evaluation can be further reduced through optimized GPU parallelization. For HIDON and DIDON, the error decreases rapidly at small and then saturates, reflecting the classical behavior of low-dimensional manifold approximation, as discussed in Appendix S9. 
+
+A comparison between  Fig. 6 d and  Fig. 6 f reveals a clear difference between the PIDON-learned BFs latent space and the POD latent space. PIDON produces diverse and information-rich spatial structures, whereas POD is dominated by a single leading mode and the remaining modes 27 
+
+contribute limited additional information. This difference is further quantified by the residual energy (RE) across parameter cases, as shown in  Fig. 6 (g), with the definition provided in Appendix S10. Except for the PIDON solving case, PIDON achieves RE values that are 3 –4 orders of magnitude lower than those of POD in T
+
+Ωμ , indicating substantially better coverage of the solution manifold and. This improved latent-space coverage explains the strong cross-parameter performance of HIDON and DIDON. Beyond this quantitative comparison, PIDON-learned BFs offer four advantages over POD modes: 
+
+a) Potentially improved latent-space expressiveness. In this benchmark, the learned BFs span a richer latent space with better cross-parameter coverage. 
+
+b) Smoothness and differentiability. They are spatially differentiable, and naturally associated with SDOs that encode derivative information, as shown in  Fig. 6 (e). 
+
+c) Absence of POD-based spectral truncation. They avoid the truncation error introduced by singular-value truncation in POD (quantified by ΔRE_2). 
+
+d) Transferability. They can be efficiently adapted under parameter-domain shifts through warm-start transfer. 
+
+These properties highlight the expressiveness, smoothness and differentiability, and adaptability of PIDON-learned BFs and SDOs, which are central to the strong generalization performance of PHD-SF and highlight their potential to further advance DL-AMs. 
+
+3.1.5 Spatial-collocation scaling analysis 
+
+We further investigate the influence of the number of spatial collocation points, Nx, on accuracy and computational cost ( Fig. 6 h–j). In this test, Nμ=1 and Nt=1000 are fixed, and increasing Nx
+
+directly increases the scale of the full spatial collocation set. The errors of PINN and PIDON generally decrease with increasing Nx, whereas HIDON and DIDON remain nearly insensitive to Nx.Compared with PINN, PIDON shows more favourable cost scaling with respect to Nx, supporting the efficiency gain introduced by SD –TPD separation. The run-time and memory consumption of HIDON and DIDON are almost unchanged as Nx increases, indicating that their dominant cost is decoupled 28 
+
+from the full spatial sampling scale. This behavior demonstrates the spatial-scale-independent acceleration capability enabled by sparse spatial sampling in HIDON and direct inference in DIDON. 
+
+Fig. 5 | Results for the diffusion –reaction equation. a, PHD-SF workflow: PIDON is solved on one representative parameter case while learning apatial features; HIDON then solves 121 parameter cases while enriching the latent dynamic features; DIDON finally performs direct inference on 2,500 parameter cases. b, 
+
+PIDON solving case and the target parameter domain. c–d, Relative L2 error landscapes of HIDON and DIDON. 
+
+e–f, Convergence histories of conventional PINN, PIDON and HIDON, reported as relative L2 error versus iteration count and wall-clock time under their respective tasks. g, GPU memory footprint and total run-time for different models. h, Per-case averages of memory footprint, wall-clock time and relative L2 error for PINN, PIDON, HIDON and DIDON; for HIDON and DIDON, the per-case cost is computed as the total cost divided by 0 15000 30000 45000 10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+Iterations Relative  L2 error 
+
+> PINN for 1 case PIDON for 1 case HIDON for 121 cases PINN (1 case) PIDON (1 case) HIDON (121 cases) DIDON (2500 cases)
+
+10 3
+
+10 4
+
+10 5
+
+> Total run-time (s)
+
+10 1 10 2 10 3 10 4 10 5
+
+10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+Time (s) Relative  L2 error Under the same number of iterations, PIDON converges faster than PINN 0 5000 10000 10 −3 
+
+> 10 −2
+> 10 −1
+> 10 0
+> A speedup of two orders of magnitude
+
+PIDON solving 1 case PIDON solving 1 case Learning spatial features HIDON solving 121 case DIDON solving 2500 case Relative  L2 error of HIDON Relative  L2 error of DIDON 
+
+ab c d10 2
+
+10 3
+
+10 4
+
+> Memory (MB)
+
+e f g
+
+> 444120 4666 +1402 4666 + 0.22 1402 4666
+> Solving (learning) more cases in less time
+
+PINN (1 case) PIDON (1 case) HIDON (121-cases avg.) DIDON (2500-cases avg.) 
+
+10 −4 
+
+10 −3 
+
+10 −2 Relative L2 error Time (s) Memory (MB) 
+
+10 −3 
+
+10 −1 
+
+10 1
+
+10 3
+
+10 5
+
+10 0
+
+10 1
+
+10 2
+
+10 3
+
+10 4Accuracy Data information Solving speed Physics information PINN PIDON HIDON DIDON 
+
+h i
+
+> Performance envelope of PINN Performance envelope of PHD-SF
+
+PINN (1 case) PIDON (1 case) HIDON (121 cases) DIDON (2500 cases) 
+
+10 3
+
+10 4
+
+10 5
+
+> Total run-time (s)
+
+PINN (1 case) PIDON (1 case) HIDON (121 cases) DIDON (2500 cases) 
+
+r r r
+
+α α α
+
+Learning dynamic features 29 
+
+the number of solved cases (“n -cases average”). i, a qualitative characterization of model performance from physics-information, data-information perspectives, accuracy and solving speed perspectives. 
+
+Fig. 6 | BFs and collocation-size analysis. a –c, Effects of the number of BFs nb on the relative L2 error, wall-clock time, and GPU memory for different models. d, BFs learned by PIDON. e, SDOs associated with one of PIDON-learned BFs. f, The first 12 normalized POD modes extracted from analytical solutions. g, Residual energy (RE) comparison between the subspaces induced by PIDON and POD across parameter cases. h–j, 
+
+Effects of the spatial collocation point, Nx, on the relative L2 error, wall-clock time, and GPU memory for different models. 10 2 10 3 10 4
+
+10 1
+
+10 2
+
+10 3
+
+10 4
+
+> Memory (MB)
+
+Nx10 2 10 3 10 4
+
+10 −5 
+
+10 −3 
+
+10 −1 
+
+10 1
+
+10 3
+
+10 5
+
+> Run-time (s)
+
+Nx10 2 10 3 10 4
+
+10 −3 
+
+> Relative  L2 error
+
+Nx0.0 0.2 0.4 0.6 0.8 1.0 
+
+> −2 −1
+> 01
+> SDOs of  φ1
+
+x     
+
+> φ1
+> ∂φ1/∂
+> ∂2φ1/∂ x20.0 0.2 0.4 0.6 0.8 1.0
+> −1
+> 01
+> PIDON BFs
+
+x          
+
+> φ1φ2φ3φ4φ5φ6
+> φ7φ8φ9φ10 φ11 φ12
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+−1 
+
+012
+
+> POD modes
+
+x−1.0 −0.5 0.0 0.5 1.0 10 −14 
+
+10 −5 
+
+10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+10 1
+
+> Residual energy
+
+α
+
+> POD for PIDON solution POD for analytical solution PIDON
+
+6 9 12 15 10 −5 
+
+10 −3 
+
+10 −1 
+
+10 1
+
+10 3
+
+10 5
+
+> Run-time (s)
+
+nb6 9 12 15 10 −1 
+
+10 1
+
+10 3
+
+> Memory (MB)
+
+nb6 9 12 15 10 −5 
+
+10 −3 
+
+10 −1 
+
+> Relative  L2 error
+
+nba b ch i jd f g     
+
+> Ineffective bases
+> ∆RE_1 ∆RE_2 0.0 0.2 0.4 0.6 0.8 1.0
+> −4 ×10 −7
+> 04×10 −7
+
+φ1
+
+φ2 ~ φ12 
+
+e10 4 10 5 10 6 10 7
+
+10 −4 
+
+10 −3 
+
+> Relative  L2 error
+
+Nc
+
+PINN PIDON HIDON DIDION 10 4 10 5 10 6 10 7
+
+10 −4 
+
+10 −3 
+
+> Relative  L2 error
+
+Nc
+
+PINN PIDON HIDON DIDION 30 
+
+Fig. 7 | DIDON predicted solution fields and the corresponding absolute error fields for representative parameter cases. 
+
+3.2 Wave equation 
+
+We next consider a classical wave equation: =  = = = = − 
+
+PDE: ( , ) ( , ), [0,1], [0,1], BC: (0, ) (1 , ), (0, ) (1 , ), [0,1], IC: ( ,0) sin(2 )cos( ), [0,1], ( ,0) sin(2 )sin( ), [0,1],   
+
+> tt xx xxt
+
+u x t pu x t x tu t u t u t u t tu x A πx θ xu x Aω πx θ x
+
+here = 2
+
+( / 2 )p ω π controls the PDE coefficient (wave speed) and θ affects the IC; together they form the system parameter vector ( , )p θμ .A is fixed constant. 
+
+3.2.1 Solving process 
+
+a) PIDON. The weighted loss ( , )x zL θ θ for wave equation is defined as = + + +r r b b i i orth orth ( , )x zL θ θ λ L λ L λL λ L
+
+with 0.0 1.0                
+
+> −2.0
+> 2.0
+> u0
+> xDIDON solutions
+> r= 1
+> α= 1
+> r= 2 r= 3
+> α= 0.4
+> α= -0.4
+> α= -1
+> r= 1 r= 2 r= 3
+> x100.5 010.2 0.4 0.6 0.8
+> t
+> abs. error
+> xu031
+
+=  − = −  −  = − +  +− = − +   
+
+> 2r22b22i2orth orth 2b
+
+1 ( ) ( , ) ( ) ( , )1 1( (0) (1)) ( , ) ( (0) (1)) ( , )1 1( ) (0, ) sin(2 )cos( ) ( ) (0, ) si ,n(2 )sin( )1m x 0, ,,.a         
+
+> tt xx FxZxxFFZZtxdFFxμμ
+> F
+
+L x t p x tN N L t tN NL x A πx θ x Aω πx θ
+
+N N N N L γ
+
+n
+
+Φ A Φ A
+
+Φ Φ A Φ Φ A
+
+Φ AG IA Φ
+
+μ μμ μμ μ
+
+and r
+
+λ ,bλ ,i
+
+λ and orth λ are 1, 5, 100 and 0.1, respectively. The SpatialNet and TPNet parameters, { , }x zθ θ
+
+, are then optimized using Adam until convergence, yielding the trained Φ and the corresponding approximate solutions. 
+
+b) HIDON. We precompute and store the sparse basis evaluations sΦ and their associated spatial differential operator =  s s s{ , }x xx Φ Φ ΦL on the sparse spatial sampling points =  = s 
+
+> ss1
+
+{ } Ωni i xxx
+
+. The weighted loss ( )zL θ for wave equation is = + +r r b b i i( )zL θ λ L λ L λL
+
+with = − = −  −  −+= + +             
+
+> 22rss2s22bssss22issssss
+
+11 1( (0) (1)) ( , ) ( (0) (1)) ( , )1 1(0, ) sin(2 )cos( ) (0, ) sin(2 )sin( ) ,,,      
+
+> xx ZFxxFFZZFF
+> μμ
+
+dL pn N dt L t tN NL A πx θ Aω πx θ
+
+n N n N 
+
+A
+
+Φ Φ A
+
+Φ Φ A Φ Φ A
+
+Φ A Φ A
+
+μ μμ μ
+
+and r
+
+λ ,bλ and i
+
+λ are 1, 5 and 100, respectively. After defining ( )zL θ , we update zθ using Adam until convergence, obtaining the trained A and the corresponding approximate solutions. 
+
+3.2.2 Results and analysis 
+
+We again adopt a deliberately sparse solve –enrich –infer configuration (see  Fig. 8 b and  Table 1). The high-resolution spatial and temporal collocation set uses = 40,000 xN ,= 1,000 tN , with uniform sampling. HIDON and DIDON achieve relative L2 errors of 0.20%±0.08% and 0.18%± 0.07%, respectively, while DIDON maintains uniformly low absolute error over representative inference cases (see  Fig. 8 a–d and  Fig. 9 ). Under comparable memory usage, PIDON converges about one 32 
+
+order of magnitude faster in iteration count and achieves roughly three orders of magnitude reduction in wall-clock time compared with PINN (see  Fig. 8 e–f). HIDON, at a cost slightly lower than PIDON, enriches latent dynamical features over the 77 parameter cases (see  Fig. 8 f). These trends are consistent with the complexity analysis and mirror those observed in diffusion-reaction equation. The per-case memory, time, and error statistics in  Fig. 8 g further confirm that PHD-SF retains strong generalization and low computational cost for hyperbolic wave dynamics. This again shows that, once the reusable spatial features and differential information are inherited, HIDON and DIDON can efficiently extend the computation from representative physics-informed solving to large-scale cross-parameter inference. 
+
+Fig. 8 | Results for the wave equation. a, PHD-SF workflow: PIDON is solved on one parameter case while learning spatial features; HIDON then solves 77 parameter cases while learning dynamic features; DIDON finally performs direct inference on 2,500 parameter cases. b, PIDON solving case and target parameter domain. c–d, Relative L2 error landscapes of HIDON and DIDON over the test domain. e–f, Convergence histories of conventional PINN, PIDON and HIDON, reported as relative L2 error versus iteration count and wall-clock time under their respective tasks. g, Per-case averages of memory footprint, wall-clock time and relative L2
+
+error for PINN, PIDON, HIDON and DIDON. 0 15000 30000 45000 10 −4     
+
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> 10 1
+> Iterations Relative  L2 error
+> PINN for 1 case PIDON for 1 case HIDON for 77 cases 10 110 210 310 410 5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> 10 1
+> Time (s) Relative  L2 error PIDON solving 1 case Learning spatial features HIDON solving 77 case DIDON solving 2500 case
+> PIDON solving 1 case
+
+a
+
+> A speedup of three orders of magnitude
+> Relative  L2 error for HIDON
+> Relative  L2 error for DIDON
+
+e f g
+
+b c d         
+
+> Under the same number of iterations, PIDON converges faster one orders of magnitude than PINN PINN (1 case) PIDON (1 case) HIDON (77-cases avg.) DIDON (2500-cases avg.)
+> 10 −4
+> 10 −3
+> 10 −2
+> Relative L2error Time (s) Memory (MB)
+> 10 −4
+> 10 −2
+> 10 0
+> 10 2
+> 10 4
+> 10 6
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> ppp
+> 0.5 11.5 22.5 3
+
+p p p
+
+θ θ θ
+
+> Learning dynamic features
+
+33 
+
+Fig. 9 | DIDON predicted solution fields and the corresponding absolute error fields for representative parameter cases. 
+
+3.3 Burgers ’ equation 
+
+We then consider the viscous Burgers’ equation a ca nonical nonlinear advection –diffusion model that exhibits steep gradients and shock-like structures, = −  − − = = = −  − 
+
+PDE: ( , ) ( , ) ( , ), [ 1 ,1], [0,1], BC: ( 1 , ) (1 , ) 0, [0,1], IC: ( ,0) sin( ), [ 1 ,1].   
+
+> txxx
+
+u x t uu x t νu x t x tu t u t tu x πx x
+
+here the parameter ν controls the viscosity, and thus the balance between convection and diffusion; ν itself serves as the system parameter ( )νμ .
+
+3.3.1 Solving process 
+
+a) PIDON. The weighted loss ( , )x zL θ θ for burger equation reads = + + +r r b b i i orth orth ( , )x zL θ θ λ L λ L λL λ L
+
+with DIDON solutions            
+
+> θ= 0 π
+> p = 0.5
+> θ= 0.375 πθ= 0.75 π
+> p = 1.25 p = 2.25 p = 3
+> x100.5 010.2 0.4 0.6 0.8
+> t
+> abs. error
+> θ= 0 πθ= 0.375 πθ= 0.75 π34
+
+=  −  + = −= + = − +−  
+
+> 2r22b2i2orth orth 2b
+
+1 ( ) ( , ) ( ( ) ( , )) ( ( ) ( , )) ( ) ( , )1 1( 1) ( , ),0,,.(1) ( , )1 ( ) ( , ) sin( )1max 0,       
+
+> txxx FxZFFZZF
+> μ
+> dxF
+
+L x t x t x t ν x tN N L t tN NL x πxN N L γ
+
+n
+
+Φ A Φ A Φ A Φ A
+
+Φ A Φ A
+
+Φ AG I
+
+μ μ μ μμ μμ
+
+and r
+
+λ ,bλ ,iλ and orth λ are 1, 5, 100 and 0.1, respectively. The symbol  denotes the Hadamard (element-wise) product . After defining ( , )x zL θ θ , we update { , }x zθ θ using Adam until convergence, obtaining the trained Φ and the corresponding approximation ( , , ; , )x zt θ θu x μ .
+
+b) HIDON. We precompute and store the sparse basis evaluations sΦ and their associated spatial differential operator =  s s s{ , }x xx Φ Φ ΦL on the sparse spatial sampling points =  = s 
+
+> ss1
+
+{ } Ωni i xxx
+
+. The weighted loss ( )zL θ for burger equation is = + +r r b b i i( )zL θ λ L λ L λL
+
+with =  −  + = − += +         
+
+> 2rsssss22bss2isss
+
+,,.1 ( ) ( )1 1( 1) ( , ) (1) ( , )1 (0, ) sin( )     
+
+> txxx FZFFZZF
+> μ
+
+L ν
+
+n N L t tN NL πxn N 
+
+Φ A Φ A Φ A Φ A
+
+Φ A Φ A
+
+Φ A
+
+μ μμ
+
+and r
+
+λ ,bλ and iλ are 1, 5 and 100, respectively. After defining ( )zL θ , we update zθ using Adam until convergence, obtaining the trained A and the corresponding approximate solutions. 
+
+3.3.2 Results and analysis 
+
+We again adopt a deliberately sparse solve –enrich –infer configuration (see  Fig. 10 a and  Table 1). The high-resolution space –time collocation set uses = 40,000 xN spatial, = 1,000 tN temporal collocation points under uniform sampling. HIDON and DIDON achieve relative L2 errors of 0.18%±0.26% and 0.14%±0.18%, respectively, and DIDON again shows uniformly low absolute error on representative inference cases (see  Fig. 10 a–c). Compared with PINN under similar 35 
+
+memory usage, PIDON converges slightly faster in iteration count and reduces wall-clock time by roughly two orders of magnitude ( Fig. 10 d–e). HIDON enriches latent dynamical features over 48 parameter cases at a cost slightly lower than that of the PIDON solving stage (see  Fig. 10 e). These observations are fully consistent with the theoretical complexity analysis and with the trends observed in the previous examples. The per-case memory, time, and error statistics in  Fig. 10 ffurther confirm that PHD-SF retains strong cross-parameter generalization and low computational cost for nonlinear Burgers-type dynamics. 
+
+3.3.3 Sparse spatial sampling effects for HIDON 
+
+To further examine the influence of sparse spatial sampling on HIDON, we conduct an 
+
+additional study using the Burgers’ equation with viscosity ν = 0.02. Two sparse spatial sampling 
+
+strategies are compared: uniform sampling and non-uniform sampling. The non-uniform points are generated from a Gaussian-biased density function, = + − − 2 20p(x) p exp[ (x x ) / (2 )] c σ , where xc =0.25, σ = 0.5, and ρ0 = 0.5 in this test. This setting provides a mild non-uniform distribution, which increases the sampling density over a broad dynamically active region while maintaining global coverage of the spatial domain, as shown in  Fig. 10 i. 
+
+The results in  Fig. 10 g show that the relative L2 error decreases as the sampling ratio ns/nb
+
+increases. This is expected because a larger number of sparse points provides more governing-equation constraints and improves the identifiability of the latent dynamics. However, after ns/nb
+
+reaches approximately 10, the error gradually enters a plateau, indicating that the system has become sufficiently constrained and that further increasing ns brings only limited accuracy improvement. The comparison between the two sampling strategies shows that non-uniform sampling is particularly beneficial when ns is small. As ns increases, the difference between uniform and non-uniform sampling becomes smaller, because both strategies eventually provide enough governing-equation constraints to stabilize the latent system. 
+
+Fig. 10 h further shows that the GPU memory requirement increases with ns. This is because more sparse spatial points require more governing-equation evaluations and larger tensors for constructing the reduced latent system. Therefore, the practical selection of ns should balance 36 
+
+accuracy, stability, and computational cost. In general, more complex systems require more sparse spatial points to obtain stable constraints on the reduced latent system. This is particularly evident 
+
+for the Burgers’ equation where steep -gradient or shock-like solution structures make HIDON more sensitive to both the number and the distribution of sparse sampling points. 
+
+It should be noted that the present non-uniform sampling strategy is not claimed to be optimal. It is used here only to demonstrate that the spatial distribution of sparse residual points can affect the information efficiency of HIDON, especially in the small-ns regime. More systematic sampling strategies, such as adaptive sampling, greedy point selection, or error-indicator-guided sampling, will be investigated in future work. 37 
+
+Fig. 10 | Results for the Burgers’ equation. a, PIDON solving case and target parameter domain, together with the relative L2 errors of PIDON, HIDON and DIDON over the target parameter domain. b, For representative parameter cases, DIDON predicted solution fields, the corresponding exact solution fields, and absolute error fields. c, Solution fields at t = 1 comparing DIDON predictions with the exact solution for representative parameter cases. d-e, Convergence histories of conventional PINN, PIDON and HIDON, reported as relative L2
+
+error versus iteration count and wall-clock time under their respective tasks. f, Per-case averages of memory footprint, wall-clock time and relative L2 error for PINN, PIDON, HIDON and DIDON. g, Relative L2 error under different sampling ratio ns/nb for uniform and non-uniform sparse residual sampling. h, GPU memory usage under different sampling ratios. i, Representative uniform and non-uniform sparse point distributions for ns = 12. 
+
+3.4 Heat transfer equation 
+
+We finally consider a two-dimensional transient heat transfer problem, representative of diffusion-dominated thermal processes in solid components. The governing equation reads 10 -2 10 -1 
+
+10 -4 
+
+10 -3 
+
+10 -2 
+
+10 -1 
+
+> Relative  L2 error
+
+ν
+
+> 2 cases by PIDON 48 cases by HIDON 250 cases by DIDON
+
+0.0 0.5 1.0 
+
+−0.6 −0.3 
+
+0.0 0.3 0.6 
+
+> Value
+
+x     
+
+> DIDON solution (solid line) Exact solution (circle markers)
+> ν=0.008 ν=0.009
+> ν=0.010 ν=0.020
+> ν=0.029 ν=0.053
+> ν=0.076 ν=0.100
+> ν=0.163 ν=0.500
+
+u(x,1)  
+
+> 0.40 0.50 0.48 0.70
+
+ν=0.008 
+
+ν=0.009 
+
+ν=0.01 
+
+ν=0.053 
+
+ν=0.1 
+
+ν=0.332 
+
+ν=0.5 DIDON solutions exact solutions abs. error acb0 10000 20000 30000 40000 50000 10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+Iterations Relative  L2 error 
+
+PINN for 2 training cases PIDON for 2 training cases HIDON for 48 test cases 10 1 10 2 10 3 10 4
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+Time (s) Relative  L2 error PINN (2 cases) PIDON (2 cases) HIDON (48-cases avg.) DIDON (250-cases avg.)   
+
+> 10 −3
+> 10 −2
+> Relative L2error Time (s) Memory (MB)
+> 10 −5
+> 10 −3
+> 10 −1
+> 10 1
+> 10 3
+> 10 5
+> 10 −1
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+
+d e f  
+
+> A speedup of two orders of magnitude 02500 5000 10 −2
+> 10 −1
+> 10 0
+> Under the same number of iterations, PIDON converges faster than PINN
+
+0 10000 20000 30000 40000 50000 10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+10 1
+
+Iterations 
+
+> PINN for 2 cases PIDON for 2 cases HIDON for 48 cases
+> MSE
+
+10 0 10 1 10 2
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> Relative  L2 error
+
+ns/nb
+
+Non-uniform sampling Uniform sampling 10 0 10 1 10 2
+
+45 60 75 90 105 120 
+
+> Memory (MB)
+
+ns/nb
+
+Non-uniform sampling Uniform sampling 
+
+g h i38 = += =   = =
+
+n  
+
+> 12435
+
+PDE: ( ), BC: sin( ), ( , ) Γ ,0, ( , ) Γ and Γ ,0, ( , ) Γ and Γ ,IC : 0,   
+
+> txx yy
+> θ
+
+u α u uu t πx x y u x y 
+
+α u x y u
+
+For the heat transfer equation with boundary partition  =  1 5Ω Γ Γ . The detailed computational domain and the boundary partition are shown in Fig. 11(a). Here α controls the thermal diffusivity, while θ parametrizes a boundary-temperature profile; together they form the system parameter vector = )( , α θ μ .
+
+3.4.1 Solving process 
+
+a) PIDON. The weighted loss ( , )x zL θ θ for heat transfer equation reads = + + +r r b b i i orth orth ( , )x zL θ θ λ L λ L λL λ L
+
+with )
+
+# ( ) ( )
+
+− + +=  −  +  === −+   +  −          
+
+> 112435
+> ΓΓ
+> o
+> ΓΓ
+> 2r222b2i2orth 22b2
+> ΓΓ
+
+1 ( , ) ( , ) ( ( , ) ( , )) ( , )1 1 11 ( , ,( , ) ( , ) ( , ) ( , )x) (0, ) ,)1ma 1 1( , 0, ) ,,(          
+
+> txx yy FxZFFFZZZFFFzdxμ
+> Fz
+
+LA t μ g t θ A t μ A t μα A t μ α
+
+x y t α x y x y tN N L N N NL x y N N L nA t μ
+
+N N
+
+γ
+
+Φ A Φ Φ A
+
+Φ Φ ΦΦ
+
+AnG I
+
+Φ
+
+n Φ
+
+μ μμ
+
+    
+
+> rth
+
+.
+
+Here =1Γ sin , ) ( )( θ
+
+tt θ πxg on 1
+
+Γ , and r
+
+λ ,bλ ,i
+
+λ and orth λ are 1, 5, 100 and 0.1, respectively. After defining ( , )x zL θ θ , we update { , }x zθ θ using Adam until convergence, obtaining the trained Φ and the corresponding approximation ( , , ; , )x zt θ θu x μ .
+
+b) HIDON. We precompute and store the sparse basis evaluations sΦ and their associated spatial differential operator =    s s s s s{ , , , }x y xx yy LΦ Φ Φ Φ Φ on the sparse spatial sampling points =  = s 
+
+> ss1
+
+{ } Ωni i xxx
+
+. The weighted loss ( )zL θ for heat transfer equation is = + +r r b b i i( )zL θ λ L λ L λL39 
+
+with )
+
+# ( ) ( )
+
+− + ++ =  −  +  =  =+                  
+
+> 112435
+> 2rssss222bs, s, ss
+> ΓΓΓΓ
+> 22,s, ,ss
+> Γ,i
+> Γ
+> 2s
+
+.,( , ) ( , ) ( , )1 ( , ) ( ) ( , ( , )1 1( , ) ( , )1 1 11 ()0, ),       
+
+> txx yy FFFFzZFFZZZF
+> μ
+> z
+
+L t α tn N L N N N
+
+μ
+
+A t μ g t θ A t μ A t μα A t NL n N 
+
+α A t μ
+
+N
+
+Φ A Φ Φ A
+
+Φ Φ ΦΦ ΦΦ
+
+n nA
+
+μ μμ
+
+Here Γs, i
+
+Φ denotes the restriction of sΦ to the sparse boundary subset s Γi , and r
+
+λ ,bλ and i
+
+λ
+
+are 1, 5 and 100, respectively. After defining ( )zL θ , we update zθ using Adam until convergence, obtaining the trained A and the corresponding approximated solutions. 
+
+c) DIDON. DIDON directly inherits the trained SpatialNet from PIDON and the enriched TPNet from HIDON, and performs direct solution inference. 
+
+3.4.2 Results and analysis 
+
+The sparse solve –enrich –infer configuration is summarized in  Table 1 . The high-resolution space –time collocation set uses =c 14,400 N spatial, = 1,000 tN temporal collocation points under uniform sampling. DIDON predictions agree closely with the reference solutions for representative inference cases (see  Fig. 11 b–d). HIDON and DIDON achieve relative L2 errors of 0.60%±0.32% and 0.62%±0.41%, respectively. Under comparable memory usage, PIDON converges slightly faster than PINN in iteration count and reduces wall-clock time by roughly two orders of magnitude, while HIDON enriches latent dynamical features over 108 parameter cases at a cost slightly below that of PIDON (see  Fig. 11 e–f). These observations are fully consistent with the theoretical complexity analysis and with the trends observed in the previous examples. The per-case statistics in  Fig. 11 g further confirm the strong generalization and low computational cost of PHD-SF for two-dimensional heat transfer problems. 40 
+
+Fig. 11 | Results for the heat-transfer equation. a, Computational domain and boundary-condition specification. b, DIDON solution and exact solution fields for representative test domain parameter cases, shown on cross-section C1 . c, PIDON solution at t = 1. d, DIDON solutions and exact solutions for representative cases in target parameter domain, reported at monitoring point A. e–f, Convergence histories of conventional PINN, PIDON and HIDON, reported as relative L2 error versus iteration count and wall-clock time under their respective tasks. 0 10000 20000 30000 40000 50000 10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+10 1
+
+Iterations   
+
+> PINN for 1 case PIDON for 1 case HIDON for 108 cases
+> MSE 0.0 0.5 1.0 0.0 0.2 0.4 0.6
+> Solutions at point A
+
+t     
+
+> DIDON solution (solid line) Exact solution (circle markers)
+> θ=0.3 θ=0.5
+> θ=0.7 θ=0.9
+> θ=1.0 θ=1.5
+> θ=2.0 θ=3.0
+> θ=4.0 θ=5.0 Cross-line C1
+
+Point A 
+
+> θ=0.3,  α=2 θ=0.7,  α=2 θ=1.0,  α=2 θ=3.0,  α=2 θ=5.0,  α=2
+
+DIDON solutions at C1 Exact solutions at C1 
+
+DIDON solutions at t=1s 
+
+0.8 
+
+0.6 0.4 0.2 00.4 0.2 0 1.0 0.8 0.6 00.5 
+
+1
+
+> y
+
+Time (s) 
+
+PIDON solving one case ==−   =n  
+
+> 12435
+
+Γ : sin( )
+
+Γ and Γ : 0
+
+Γ and Γ : 0
+
+> θ
+
+u t πxu
+
+α u1Γ2Γ4Γ3Γ5Γ10 2 10 3 10 4 10 5
+
+10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+10 1
+
+Time (s) MSE 
+
+a bd e fc41 
+
+4. Discussion 
+
+This work proposes PHD-SF, a compact physics-to-data spectrum framework for accelerating parametric time-dependent PDEs. Its core contribution lies not simply in constructing three models, namely PIDON, HIDON, and DIDON, but in organizing them as three operating modes of a unified DON-based architecture at different stages of the physics-to-data spectrum, with cross-stage connections established through reusable model information. Unlike the conventional label-mediated workflow of “batch high -fidelity solving –solution-label training –direct inference ” PHD -SF forms a compact solve –enrich –infer acceleration path. This path significantly reduces the computational burden associated with batch high-fidelity solving and labeled-data construction in the conventional label-mediated workflow, providing a new computational mode for fast parametric PDE solving and cross-parameter inference. 
+
+The reusable model information in PHD-SF is mainly organized at two levels. First, at the representational-information level, PIDON learns spatial features and the associated spatial differential-operator information during physics-informed solving over a small number of representative parameter cases; HIDON then inherits this information and further enriches the latent dynamical features encoded in the BCFs over a broader time –parameter domain. The resulting spatial features, spatial differential-operator information, and latent dynamical features constitute the main reusable model information in PHD-SF. Second, at the structural-information level, PIDON, HIDON, and DIDON share a unified DON-based architecture and realize cross-stage structural reuse through parameter reuse and staged training and freezing of subnetworks. It is worth emphasizing that the reuse of both representational and structural information is the core mechanism by which PHD-SF achieves compact acceleration across the physics-to-data spectrum. 
+
+Moreover, from the broader perspective of PDE solvers, PHD-SF can be understood as a label-free physics-informed solver with cross-parameter generalization capability. It requires neither precomputed high-fidelity solution snapshots as training labels nor explicit solution-field label transfer among PIDON, HIDON, and DIDON. Similar to traditional solvers such as FEM and PINN, PHD-SF can perform high-accuracy physics-constrained solving according to the given governing 42 
+
+equations. The key difference is that, after solving a single case or a small number of cases, traditional solvers can hardly acquire direct cross-parameter generalization capability. By contrast, PHD-SF can subsequently perform accurate and fast solving over a nearby or enriched parameter domain using HIDON and DIDON, thereby providing cross-parameter generalization capability. This ability to extend from single-case solving to cross-parameter generalized solving is a key capability that current deep-learning-based PDE solvers urgently need to achieve. 
+
+The results on four benchmark time-dependent PDE problems demonstrate that PHD-SF enables effective cross-parameter solving under sparse, one-shot-like parameter configurations. The numerical results show that the framework maintains high accuracy in physics-constrained solving for representative cases and achieves reliable generalized inference for unseen parameter cases. Meanwhile, the total end-to-end computational cost of PHD-SF is lower than that required to train a conventional PINN for a single parameter case, while providing cross-parameter direct-inference capability that is typically unavailable in single-case PINN solvers. These results indicate that PHD-SF not only realizes spectrum-wide modeling from physics-constrained to data-informed modes, but also provides an efficient and generalizable deep-learning-based solution path for many-query parametric PDE problems. 
+
+Beyond its methodological significance, PHD-SF is broadly applicable to time-dependent parametric PDE systems arising in fluid mechanics, heat transfer, solid mechanics, and related fields. The accuracy –cost –generalization performance illustrated in  Fig. 5 i supports a wide range of engineering demands, including design optimization, online monitoring, and digital twins. In particular, digital-twin applications typically require fit-for-purpose integration and trade-offs among physics-based, data-driven, and hybrid models; therefore, PHD-SF offers a potential model foundation for such applications [41]. Moreover, PHD-SF is compatible with existing learning paradigms: operator-learning modules may strengthen DIDON, advanced PINN variants may improve the robustness of PIDON, and transfer learning or knowledge distillation may further enhance adaptability and deployment efficiency. 43 
+
+Although the present study demonstrates the effectiveness of PHD-SF on four representative time-dependent PDE benchmarks, several extensions remain open. First, the sparse spatial points in HIDON are selected using a simple uniform baseline. This choice is sufficient to demonstrate the hyper-reduction-like effect of sparse governing-equation enforcement, but more adaptive sampling strategies may further improve robustness and efficiency, especially for strongly localized or shock-like dynamics. Second, the current DIDON inference is performed within the temporal –parametric domain enriched by HIDON. Extending it to out-of-domain extrapolation requires additional transfer or adaptive enrichment mechanisms. Third, the present work focuses on regular benchmark problems; extending PHD-SF to complex geometries, unstructured discretizations, and coupled multi-physics systems is an important direction for future work. Finally, although the closure of HIDON is discussed through dimension counting and local identifiability of the sparse constraint Jacobian, rigorous stability analysis and a priori/a posteriori error estimates remain to be developed. 44 
+
+Appendix 
+
+S1 Unified-mode interpretation of PHD-SF 
+
+Although the main text describes PHD-SF as comprising PIDON, HIDON, and DIDON for convenience of presentation, these should more fundamentally be understood as three operating modes of a single DON-based framework. The network architecture itself remains unchanged throughout the workflow; what changes across stages is only the trainable part of the network. 
+
+In the PIDON mode, both SpatialNet and TPNet are optimized to solve a small set of representative high-fidelity PDE cases while learning transferable spatial features and their associated differential information. After PIDON training, SpatialNet is frozen, and the framework switches to the HIDON mode, in which only TPNet is further updated to solve reduced ODE systems and enrich latent dynamical features over a larger set of parameter cases. After HIDON training, TPNet is further frozen, yielding the DIDON mode for direct cross-parameter inference without any further parameter update. 
+
+Under this view, the inheritance mechanism in PHD-SF is implemented as staged parameter freezing and mode switching within a unified architecture, rather than as information transfer among three entirely separate models. The essential distinction among PIDON, HIDON, and DIDON therefore lies not in different network structures, but in different trainable subnetworks, levels of governing-equation enforcement, and computational roles across the physics-to-data spectrum. 
+
+S2 Proof of Proposition1 
+
+Proposition1 (Density of the PIDON separable function class) . Let Ω xdx and Ω zdz be compact sets, and define the PIDON-associated separable function family =
+
+ = = =      
+
+# 11
+
+ˆ: , : ( , ) ( ) ( ) | (Ω ), (Ω ) (Ω Ω ),          
+
+> nnniiixizxniz
+
+φ φ Ca a C Cu x z x z
+
+equipped with the uniform norm 
+
+ . Then 1 nn is dense in (Ω Ω )x zC . In other words, PIDON possesses a uniform universal approximation property: any continuous parametric PDE solution can be approximated to arbitrary accuracy by a PIDON representation. 45 
+
+Proof . Consider the algebra of finite sums of separable continuous functions on the compact product domain Ω Ωx z ,=
+
+ =      
+
+∣
+
+> 1
+
+: ( ) ( ) , (Ω ), (Ω )    
+
+> niiixzii
+
+f x g z n f C g C . It is straightforward that 
+
+is a subalgebra of (Ω Ω )x zC that (i) contains the constant functions, and (ii) separates points on Ω Ωx z (if two points differ in either x or z, one may choose a continuous function depending only on that coordinate to distinguish them). By the Stone –Weierstrass theorem,  is dense in (Ω Ω )x zC
+
+in the uniform norm [32, 33]. Hence, for any  (Ω Ω )x zu C and any  0ε , there exists ˆ nu
+
+for some n such that − ˆu u ε ; that is, finite linear combinations of separable continuous functions uniformly approximate any continuous target function to arbitrary accuracy. 
+
+On the other hand, the classical universal approximation theorems for feed-forward neural networks on compact sets state that, with a non-polynomial activation function, a multilayer perceptron can uniformly approximate any continuous function on a compact domain to arbitrary accuracy[34-36]. Therefore, each function  (Ω )xif C and  (Ω )zig C can be approximated by neural networks ( )iφ x and ( ) ia z , respectively, with arbitrarily small errors. Combining these factorwise approximations with a standard product error bound yields that the induced PIDON approximation can be made uniformly close to u within any prescribed tolerance. Consequently, PIDON possesses a uniform universal approximation property for any continuous parametric PDE solution[16, 17]. 
+
+S3 Closure and sparse-point selection for HIDON 
+
+From the perspective of degrees of freedom (DoFs) versus constraints, HIDON can be interpreted as solving a dynamical system with bn DoFs, subject to sn governing equation constraints enforced on a sparse spatial sampling set =  = 1s s { } Ωxni i xxx . Specifically, the governing equations evaluated at the sn sampled points act as system constraints , while the latent dynamics (parameterised by TPNet) constitute the unknown DoFs to be inferred. This viewpoint naturally raises two fundamental questions: 
+
+Question 1. How should the number of sparse sampling points ns be chosen to ensure system closure? 46 
+
+Discussion . From the viewpoint of algebraic closure, the sparse constraint system should provide no fewer effective independent constraints on the unknown BFCs ( , ) n
+
+tA μ than the number of system DoFs bn . From the perspective of deep-learning-based solving, system closure 
+
+means that, for a given ( , )t μ , the physical constraints enforced at the sparse control points can uniquely (or at least locally uniquely) determine ( , )tA μ , so that the associated optimisation problem admits an identifiable minimiser and exhibits stability with respect to perturbations. 
+
+To formalise this idea, we define the sparse constraint vector (under ( , )t μ ) as  =    ss, 1( ) ( , , ; ) ,, , ( , , ; )t nμ
+
+> n
+
+x t μ x t μF A A A
+
+where  denotes the physics constraint evaluated at a sampling point (e.g., governing-equation residuals and/or boundary/interface constraints, depending on the formulation). A natural local closure condition is that, in a neighbourhood of the target solution A , the constraint mapping is sufficiently sensitive to A . Concretely, the Jacobian 
+
+=    s b 
+
+> ,,
+
+( ) ( /t μ t μ 
+
+> nn
+
+A F A)A J should have full column rank. Equivalently, the information matrix T
+
+J J  should be well-conditioned in the sense that its smallest eigenvalue is strictly positive: min ( ) 0λ J J  . This condition implies that the sparse constraints can locally distinguish different A , thereby preventing an underdetermined system. By a basic dimension-counting argument, a necessary condition for closure is s bn n . However, due to the variation of ( , )t μ , the nonlinearity of the constraints, and training noise, such ideal identifiability is difficult to guarantee a priori over the entire domain. Therefore, in practice one typically adopts an over-constraint (over-sampling) strategy: =s s bn γ n ,s 1γ , using redundant constraints to improve robustness and training stability, and to avoid underdetermined or ill-conditioned behaviour when sn is too small. In this work, to balance closure with online cost, we choose a moderate sγ in the numerical examples (typically s [2,20] γ ), so as to preserve sparsity and the resulting acceleration benefits. Notably, this closure issue —and the corresponding over-sampling remedy —is also standard in numerical reduced-order modelling. Representative examples include over-sampled regression in gappy POD [42], sparse interpolation point selection in DEIM[10], and sparse-constraint DHROM formulations[43]. These mature ROM/HROM practices can be directly borrowed and transferred to HIDON. 47 
+
+Question 2. Given a prescribed number of sampling points sn , how should the sparse sampling set s be selected? 
+
+Discussion. With sn fixed, the optimal sampling pattern can be viewed as one that makes the sparse constraints maximally informative for distinguishing ( , )t μA across as broad a subset of the parameter domain as possible. A practical and widely used criterion is to improve the spectral properties of the information matrix 
+
+=  b b
+
+> s
+
+( ) ( ) ( )T nzznzG x A AJ J over the training cases —e.g., maximising its smallest eigenvalue or reducing its condition number —thereby enhancing identifiability and numerical stability. Since J for unseen parameter instances cannot be known a priori, this objective cannot be strictly enforced beforehand. This challenge is also ubiquitous in hyper-reduction for ROMs, where mature point-selection strategies exist such as DEIM’s greedy 
+
+selection (and its variants) that target stable sparse interpolation. 
+
+Although the determination of ns and s are both important and interesting, they are not the focus of this work, and a full exploration is beyond the scope of this manuscript. In our numerical experiments, we adopt a simple and reproducible baseline: s [2,10] γ and uniform sampling for s
+
+.
+
+S4 Construction and optimization of the weighted MSE loss for PIDON 
+
+Based on the separable SD –TPD representation and the differentiation-transfer strategy described in the main text, we construct a weighted mean-squared-error (MSE) objective on the spatial (SD) and temporal –parametric (TPD) collocation sets using Φ ,LΦ ,A , and t A .Specifically, we define ：= + + +r r b b i i orth orth ( , ) ,x zL θ θ λ L λ L λL λ L
+
+where xθ and zθ denote the parameters of SpatialNet and TPNet, respectively, and rλ ,bλ ,iλ ,orth λ
+
+are the corresponding weights. 
+
+a) Interior PDE residual. On the interior collocation points Ωxx , the interior PDE residual is constructed by 48 =  − r MSE( ( ,( , ) ); , )), Ω ,xtL tΦ A ΦA L Φ A x xμ
+
+where  denotes the (possibly nonlinear) PDE operator written in residual form. 
+
+b) Boundary condition residual. On boundary collocation points BC on Ωxx , we enforce the boundary operator ( )  by ( )
+
+= −BC BC b ( ) ( , ) ( ,MSE( , , )) tL g tΦ Ax μ x μ
+
+where g is the prescribed boundary condition. 
+
+c) Initial condition residual. On spatial points on Ωxx at t=0, we impose ( )
+
+= − 0i ( ) (0, ) ( , )), MSE( L uΦ Ax μ x μ
+
+where 0u denotes the initial condition. Here, rL ,bL , and iL correspond to the interior PDE, boundary conditions, and initial conditions, respectively. Their weights rλ ,bλ ,iλ , balance the relative importance of these constraints during training. 
+
+d) Orthogonality regularization. To improve the quality of the learned Φ while maintaining numerical stability, we introduce an orthogonality regulariser =
+
+− = == 1orth MSE( ), (, ), ( ) ,      
+
+> Ndij ijijk
+
+L φ φ φ k φ kG I G
+
+where G is the (discrete) Gram matrix computed on Ωx , and dI is the identity matrix. Intuitively, encouraging  dG I promotes approximate orthogonality among Φ , which enlarges the effective subspace and can improve the expressive capacity and cross-parameter generalisation of downstream HIDON and DIDON. This design echoes classical POD, where orthogonal bases are sought to improve subspace quality. Since enforcing strict orthogonality may increase optimisation difficulty and computational burden, we set orth λ to be typically one order of magnitude smaller than the PDE weight rλ , alleviating early-stage convergence pressure. Moreover, because orth λ is often 49 
+
+difficult to reduce to (near) zero in practice, we introduce an orthogonality tolerance orth γ and rewrite the regulariser as ( )
+
+−= −orth orth max 0,MSE( ) .dL γG I
+
+Accordingly, when −  orth MSE( )d γG I , the Φ is considered “sufficiently orthogonal”. The tolerance orth γ
+
+can also be made dependent on the number of basis functions to reflect the fact that strict orthogonality becomes harder to enforce as the basis dimension increases. Overall, orth L provides a flexible trade-off: stronger orthogonality constraints may raise the initial training cost, but often yield a richer and more representative subspace, benefiting subsequent modelling and generalization. 
+
+e) Optimization. After defining ( , )x zL θ θ , we compute gradients via backpropagation through both SpatialNet and TPNet, and update { , }x zθ θ using Adam (or other optimizers) until convergence. This yields the trained networks and the corresponding PIDON approximation solution u .
+
+S5. Construction and optimization of the weighted MSE loss for HIDON 
+
+Following the sparse spatial sampling idea from HROMs, we restrict the enforcement of the governing equations to a sparse spatial sampling set =  = 1s s { } Ωxni i xxx . Accordingly, we precompute and store the sparse basis evaluations sΦ and their associated spatial differential operator sLΦ , and construct a weighted MSE loss on the sparse spatial set s and the temporal –
+
+parametric collocation set h . Concretely, = + +r r b b i( ) ,z iL θ λ L λ L λL
+
+where rL ,bL , and iL denote the residual losses for the reduced dynamics, boundary conditions, and initial conditions, respectively, and rλ ,bλ and iλ , are their weights. 
+
+a) Interior sparse equation residual. On the interior sparse collocation points s sx , the interior PDE residual is constructed by = − Φr s s s s s(MSE( (, ) ; , )), ,
+
+dL dt t
+
+A Φ A L A x xμ50 
+
+where  denotes the governing operator. 
+
+b) Boundary-condition residual. On boundary collocation points   sBC Ωxx , we enforce the boundary operator ( )  by ( )
+
+−  = BC BC Bs Cb s,MSE( ,( ) ( , ) ( , , )) Ωxt gL tΦ Ax μ x μ x
+
+where g is the boundary condition. 
+
+c) Initial-condition residual. On spatial points s sx at t=0, we impose −= s s s s s0( ) (0, ) ( ,MSE( .)) iL uΦ A μx xμx
+
+where 0u denotes the initial condition. 
+
+d) Optimization. In line with standard deep-learning solvers, the evaluated loss ( )zL θ is passed to an optimizer, and gradient-based methods (e.g., Adam) are used to iteratively update only the parameters of TPNet, zθ , while SpatialNet is kept frozen throughout HIDON training. Minimizing ( )zL θ
+
+yields a converged parameter set 
+
+> z
+
+θ and the corresponding BCFs 
+
+( )zθA . Finally, inserting the converged BCFs back into the separable representation (Eq. (2) in the main text) produces the final approximate solution. 
+
+S6 Network architecture and Hyper-parameter settings 
+
+Network architecture settings are shown in  Table 2 . And Hyper-parameter settings are shown in  Table 3 . In all examples considered in this work, the branch net and the trunk net are equipped with hyperbolic tangent activation functions (Tanh). In this work, we tuned these hyper-parameters manually, without attempting to find the absolute best hyper-parameter setting. This process can be automated in the future leveraging effective techniques for meta-learning and hyper-parameter optimization.                                          
+
+> Table 3. Default hyper-parameter settings for each benchmark employed in this work (unless otherwise stated).
+> Governing law Model Learning rate Iterations Optimizer
+> Diffusion reaction PINN 0.001 10 000 Adam
+> PIDON 0.001 50 000 Adam 51
+> HIDON 0.005 10 000 Adam
+> Wave
+> PINN 0.01 10 000 Adam
+> PIDON 0.01 50 000 Adam
+> HIDON 0.01 20 000 Adam
+> Burger
+> PINN 0.001 5 000 Adam
+> PIDON 0.001 50 000 Adam
+> HIDON 0.01 50 000 Adam
+> Heat transfer
+> PINN 0.002 5 000 Adam
+> PIDON 0.002 50 000 Adam
+> HIDON 0.005 50 000 Adam
+
+S7 Explanation of the collocation-set sizes 
+
+Table 4  summarizes the sampling sizes and effective network-evaluation scales used in all benchmarks, unless otherwise stated. Here, Nx denotes the number of spatial sampling points in the SD domain, Nt denotes the number of temporal sampling points, and Nμ denotes the number of sampled parameter cases. We define Nz = Nt Nμ as the number of temporal –parametric sampling points. For HIDON, ns denotes the number of sparse spatial control points used for sparse residual enforcement. 
+
+The last column of  Table 4  reports Neval , the effective number of network evaluations associated with governing-equation enforcement. It should not be interpreted as the number of physical collocation pairs in the full tensor-product domain. In a conventional PINN, the network takes the coupled input ( x,z) and must be evaluated and differentiated at every space –time –parameter pair, leading to zxN N  evaluations. In PIDON, however, SpatialNet and TPNet are evaluated separately on the SD and TPD sampling sets, and the residual is assembled from these separated outputs. Therefore, the effective network-evaluation scale becomes + zxN N .
+
+Accordingly, Neval = NxNz for a conventional PINN, Neval = Nx +Nz for PIDON, Neval = ns +Nz for HIDON, Neval = 0 for DIDON (see  Fig. 4  for a schematic illustration). Unless otherwise specified, all spatial points, temporal points, and parameter cases are generated by uniform sampling over their corresponding domains; for HIDON, the sparse set s is also constructed by uniform sampling.                                                                            
+
+> Table 4. The collocation-set sizes for each benchmark employed in this work (unless otherwise stated).
+> Governing law Model NxNNμnsNeval
+> Diffusion reaction
+> PINN 40 000 1 000 14×10 7
+> PIDON 40 000 1 000 141 000
+> HIDON 40 000 1 000 121 20 121 020
+> DIDON 40 000 1 000 2 500 0
+> Wave PINN 40 000 1 000 14×10 752
+> PIDON 40 000 1 000 141 000
+> HIDON 40 000 1 000 77 20 77 020
+> DIDON 40 000 1 000 2 500 0
+> Burger
+> PINN 40 000 1 000 24×10 7
+> PIDON 40 000 1 000 241 000
+> HIDON 40 000 1 000 48 100 48 020
+> DIDON 40 000 1 000 250 0
+> Heat transfer
+> PINN 14 000 1 000 11.4×10 7
+> PIDON 14 000 1 000 115 000
+> HIDON 14 000 1 000 108 20 108 020
+> DIDON 14 000 1 000 1 500 0
+
+S8 Full-batch training protocol and gradient accumulation for PINN 
+
+To ensure a fair comparison across all models and all parameter cases, we adopt a full-batch training protocol throughout: each optimization step is defined with respect to the full set of training collocation points for the corresponding loss terms. For PINN, however, the number of collocation points can be extremely large, making a literal full-batch forward/backward pass infeasible under GPU memory constraints. We therefore implement PINN using gradient accumulation: the full collocation set is partitioned into multiple mini-batches; gradients are computed sequentially for each mini-batch and accumulated in the parameter buffers, and a single optimizer step is performed only after all mini-batches have been processed. With the loss averaged consistently over the full batch (or, equivalently, by scaling each mini-batch loss by its relative batch size), each parameter update is numerically equivalent to a full-batch gradient step. This design eliminates performance discrepancies that would otherwise arise purely from different mini-batching strategies, ensuring that the reported differences reflect the modelling choices rather than optimization artefacts. 
+
+S9 Effect of nb for accuracy of HIDON and DIDON 
+
+For both HIDON and DIDON, the error decreases rapidly when bn is small and then gradually saturates as bn increases. This is a typical signature of finite-dimensional solution-manifold approximation. 
+
+During PIDON training, the learned spatial bases =
+
+> b
+> 1
+
+{ }ni iφ span a reduced subspace n . HIDON and DIDON approximate the parametric solution manifold on the test set within n ; thus, generalisation is primarily determined by how well n represents the dominant solution variations across the parameter domain. When bn is too small, n is insufficient to capture these variations, 53 
+
+leading to larger errors. As bn grows, more independent spatial features are included and the error drops quickly. Beyond a certain bn , newly added bases contribute little additional coverage, so the error becomes weakly sensitive to bn and saturates. 
+
+S10 Definition of residual energy (RE) for quantifying subspace expressiveness 
+
+To quantify the expressiveness of a learned subspace (i.e., its coverage of the solution manifold), we evaluate the residual energy (RE) of each solution snapshot after projection onto a prescribed basis subspace. 
+
+During PIDON training or POD, the learned spatial bases == b
+
+> 1
+
+{ }ni iφΦ span a reduced subspace n
+
+. We define the (Euclidean) orthogonal projector onto n as −
+
+= 1
+
+( )T T
+
+P Φ Φ Φ Φ . The residual energy (RE) of snapshot ( );u μ with respect to n is defined by  − = 
+
+> 2222
+
+( ; ) ( ; )RE( , ) : .( ; )
+
+> ν
+> n
+
+u μ P u μμ u μ
+
+This quantity is a normalized squared projection error, hence  0 RE( , ) 1nμ . A smaller RE indicates that the subspace n captures a larger fraction of the snapshot energy, i.e., provides stronger representational coverage of the solution manifold. 54 
+
+References 
+
+[1] P. Benner, S. Gugercin, K. Willcox, A Survey of Projection-Based Model Reduction Methods for Parametric Dynamical Systems, SIAM Review, 57 (2015) 483-531. 
+
+[2] M. Yin, N. Charon, R. Brody, L. Lu, N. Trayanova, M. Maggioni, A scalable framework for learning the geometry-dependent solution operators of partial differential equations, Nature computational science, 4 (2024) 928-940. 
+
+[3] D. Huynh, Data ‐driven physics ‐based digital twins via a library of component  ‐based reduced ‐order models, International Journal for Numerical Methods in Engineering, 123 (2022) 2986-3003. 
+
+[4] J.L. Lumley, The structure of inhomogeneous turbulent flows, Atmospheric turbulence and radio wave propagation, (1967) 166-178. 
+
+[5] L. Sirovich, Turbulence and the dynamics of coherent structures. I. Coherent structures, Quarterly of applied mathematics, 45 (1987) 561-571. 
+
+[6] G. Berkooz, P. Holmes, J.L. Lumley, The proper orthogonal decomposition in the analysis of turbulent flows, Annual review of fluid mechanics, 25 (1993) 539-575. 
+
+[7] C.W. Rowley, T. Colonius, R.M. Murray, Model reduction for compressible flows using POD and Galerkin projection, Physica D: Nonlinear Phenomena, 189 (2004) 115-129. 
+
+[8] G. Rozza, D.B.P. Huynh, A.T. Patera, Reduced basis approximation and a posteriori error estimation for affinely parametrized elliptic coercive partial differential equations: application to transport and continuum mechanics, Archives of Computational Methods in Engineering, 15 (2008) 229-275. 
+
+[9] M. Barrault Y. Maday N.C. Nguyen A.T. Patera An ‘empirical interpolation’method: 
+
+application to efficient reduced-basis discretization of partial differential equations, Comptes Rendus Mathematique, 339 (2004) 667-672. 
+
+[10] S. Chaturantabut, D.C. Sorensen, Nonlinear model reduction via discrete empirical interpolation, SIAM Journal on Scientific Computing, 32 (2010) 2737-2764. 
+
+[11] K. Carlberg, C. Farhat, J. Cortial, D. Amsallem, The GNAT method for nonlinear model reduction: effective implementation and application to computational fluid dynamics and turbulent flows, Journal of Computational Physics, 242 (2013) 623-647. 
+
+[12] B. Kramer, B. Peherstorfer, K.E. Willcox, Learning nonlinear reduced models from data with operator inference, Annual Review of Fluid Mechanics, 56 (2024) 521-548. 
+
+[13] Y. Kim, Y. Choi, D. Widemann, T. Zohdi, A fast and accurate physics-informed neural network reduced order model with shallow masked autoencoder, Journal of Computational Physics, 451 (2022) 110841. 
+
+[14] J.S. Hesthaven, S. Ubbiali, Non-intrusive reduced order modeling of nonlinear problems using neural networks, Journal of Computational Physics, 363 (2018) 55-78. 
+
+[15] K. Lee, K.T. Carlberg, Model reduction of dynamical systems on nonlinear manifolds using deep convolutional autoencoders, Journal of Computational Physics, 404 (2020) 108973. 
+
+[16] T. Chen, H. Chen, Universal approximation to nonlinear operators by neural networks with arbitrary activation functions and its application to dynamical systems, IEEE transactions on neural networks, 6 (1995) 911-917. 55 
+
+[17] L. Lu, P. Jin, G. Pang, Z. Zhang, G.E. Karniadakis, Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators, Nature machine intelligence, 3 (2021) 218-229. 
+
+[18] S. Wang, H. Wang, P. Perdikaris, Learning the solution operator of parametric partial differential equations with physics-informed DeepONets, Science advances, 7 (2021) eabi8605. 
+
+[19] Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar, Fourier neural operator for parametric partial differential equations, arXiv preprint arXiv:2010.08895, (2020). 
+
+[20] G.E. Karniadakis, I.G. Kevrekidis, L. Lu, P. Perdikaris, S. Wang, L. Yang, Physics-informed machine learning, Nature Reviews Physics, 3 (2021) 422-440. 
+
+[21] W. Chen, Q. Wang, J.S. Hesthaven, C. Zhang, Physics-informed machine learning for reduced-order modeling of nonlinear problems, Journal of computational physics, 446 (2021) 110666. 
+
+[22] Y. Chen, S. Koohy, Gpt-pinn: Generative pre-trained physics-informed neural networks toward non-intrusive meta-learning of parametric pdes, Finite Elements in Analysis and Design, 228 (2024) 104047. 
+
+[23] Z. Li, H. Zheng, N. Kovachki, D. Jin, H. Chen, B. Liu, K. Azizzadenesheli, A. Anandkumar, Physics-informed neural operator for learning partial differential equations, ACM/IMS Journal of Data Science, 1 (2024) 1-27. 
+
+[24] S. Brivio, S. Fresca, A. Manzoni, PTPI-DL-ROMs: Pre-trained physics-informed deep learning-based reduced order models for nonlinear parametrized PDEs, Computer Methods in Applied Mechanics and Engineering, 432 (2024) 117404. 
+
+[25] S. Karumuri, L. Graham-Brady, S. Goswami, Physics-informed latent neural operator for real-time predictions of time-dependent parametric PDEs, Computer Methods in Applied Mechanics and Engineering, 450 (2026) 118599. 
+
+[26] J. Cho, S. Nam, H. Yang, S.-B. Yun, Y. Hong, E. Park, Separable physics-informed neural networks, Advances in Neural Information Processing Systems, 36 (2023) 23761-23788. 
+
+[27] L. Mandl, S. Goswami, L. Lambers, T. Ricken, Separable physics-informed DeepONet: Breaking the curse of dimensionality in physics-informed machine learning, Computer Methods in Applied Mechanics and Engineering, 434 (2025) 117586. 
+
+[28] B. Jacob, A.A. Howard, P. Stinis, SPIKANs: separable physics-informed Kolmogorov –
+
+Arnold networks, Machine Learning: Science and Technology, 6 (2025) 035060. 
+
+[29] Z. Liu, Y. Liu, X. Yan, W. Liu, H. Nie, S. Guo, C.-a. Zhang, Automatic network structure discovery of physics informed neural networks via knowledge distillation, Nature Communications, 16 (2025) 9558. 
+
+[30] A. Jiao, H. He, R. Ranade, J. Pathak, L. Lu, One-shot learning for solution operators of partial differential equations, Nature Communications, 16 (2025) 8386. 
+
+[31] S. Ingimarson, L.G. Rebholz, T. Iliescu, Full and reduced order model consistency of the nonlinearity discretization in incompressible flows, Computer Methods in Applied Mechanics and Engineering, 401 (2022) 115620. 
+
+[32] M.H. Stone, The generalized Weierstrass approximation theorem, Mathematics Magazine, 21 (1948) 237-254. 56 
+
+[33] A. Pinkus, Weierstrass and approximation theory, Journal of Approximation Theory, 107 (2000) 1-66. 
+
+[34] G. Cybenko, Approximation by superpositions of a sigmoidal function, Mathematics of control, signals and systems, 2 (1989) 303-314. 
+
+[35] K. Hornik, M. Stinchcombe, H. White, Multilayer feedforward networks are universal approximators, Neural networks, 2 (1989) 359-366. 
+
+[36] A. Pinkus, Approximation theory of the MLP model in neural networks, Acta numerica, 8 (1999) 143-195. 
+
+[37] S. Wang, Y. Teng, P. Perdikaris, Understanding and Mitigating Gradient Flow Pathologies in Physics-Informed Neural Networks, SIAM Journal on Scientific Computing, 43 (2021) A3055-A3081. 
+
+[38] A. Pinkus, N-widths in Approximation Theory, Springer Science & Business Media, 2012. 
+
+[39] T. Lassila, A. Manzoni, A. Quarteroni, G. Rozza, Generalized reduced basis methods and n-width estimates for the approximation of the solution manifold of parametric PDEs, in: Analysis and numerics of partial differential equations, Springer, 2013, pp. 307-329. 
+
+[40] J.S. Hesthaven, G. Rozza, B. Stamm, Certified reduced basis methods for parametrized partial differential equations, Springer, 2016. 
+
+[41] A. Ferrari, K. Willcox, Digital twins in mechanical and aerospace engineering, Nature Computational Science, 4 (2024) 178-183. 
+
+[42] R. Everson, L. Sirovich, Karhunen –Loeve procedure for gappy data, Journal of the Optical Society of America A, 12 (1995) 1657-1664. 
+
+[43] H. Wang, G. Jiang, W. Wang, Y. Liu, A novel hyper-reduction framework featuring direct projection without an approximation process, Physics of Fluids, 36 (2024).
