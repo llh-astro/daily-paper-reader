@@ -1,0 +1,648 @@
+Title: DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems
+
+URL Source: https://arxiv.org/pdf/2608.22277v1
+
+Published Time: Tue, 25 Aug 2026 01:01:39 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# DAW: D YNAMICS -A WARE WEIGHTING FOR DEEP LEARNING 
+
+# FORECASTS OF CHAOTIC SYSTEMS 
+
+Zhou Fang 
+
+Department of Mechanical Engineering National University of Singapore Singapore 
+
+zhou.fang@u.nus.edu 
+
+Gianmarco Mengaldo 
+
+Department of Mechanical Engineering Department of Mathematics National University of Singapore Singapore 
+
+mpegim@nus.edu.sg 
+
+# ABSTRACT 
+
+Deep learning surrogates have become powerful tools for simulating and forecasting complex dynam-ical systems, yet their utility remains limited by catastrophic error accumulation during long-term autoregressive rollouts. This behavior is partly tied to the nature of the underlying systems: chaotic spatiotemporal systems, such as the Kuramoto-Sivashinsky (KS) equation, visit phase space unevenly, with dynamics dominated by recurrent, low-dimensional quiescent states (e.g., near-laminar flows) and characterized by rare and dynamically complex topological transitions (e.g., wave-merging events). Trained under a sample-wise uniform objective, standard neural surrogates allocate their finite capacity to the statistically more numerous low-dimensional quiescent states, systematically under-representing the transient regimes that trigger disproportionate, localized errors. Existing imbalanced-regression methods attempt to tackle this challenge by reweighting samples according to target-space density. However, statistical target-space rarity need not coincide with the intrinsic dynamical rarity – the recurrence geometry of the attractor that contributes directly to the source of the imbalance. To address this, we introduce Dynamics-Aware Weighting (DAW), a data-centric objective reweighting framework. Using the local dimension d from dynamical systems theory as an apriori measure of a state’s active degrees of freedom or complexity, DAW reshapes the loss landscape to allocate representational capacity toward the sparse, high-d regimes where forecast errors are systematically large. Evaluated on the chaotic KS equation, DAW consistently outperforms uniform training, purely statistical density weighting, and its randomly permuted ablation. In particular, DAW reduces the long-term error in autoregressive forecasting relative to all baselines. Event-level analysis shows that DAW achieves this by suppressing the localized error amplifications incurred during sharp jumps in the local dimension d, which typically accompany complex physical processes such as wave-merging in the KS system. 
+
+Keywords Dynamical system · forecasting · imbalanced regression 
+
+# 1 Introduction 
+
+Deep learning (DL) surrogates have become powerful tools for modeling and forecasting complex dynamical systems, with applications spanning weather and climate, fluid dynamics, and finance, among others [1, 2, 3, 4, 5, 6, 7]. In many settings, these models match or exceed the accuracy of traditional statistical and physics-based approaches at a lower computational cost [8]. However, they remain prone to error accumulation over long-term autoregressive rollouts [9, 10]. This behavior is partly tied to the nature of the underlying systems. The phase space of a chaotic attractor is visited unevenly: some regions recur frequently, while others are reached only rarely [11, 12]. The Lorenz-63 system is a common example – its trajectory spends most of its time spiraling within two lobes, whereas the switches between them occur far less often [13]. Trained with a sample-wise uniform objective such as the mean squared error (MSE), a arXiv:2608.22277v1 [cs.LG] 23 Aug 2026 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems DL surrogate implicitly treats all states as equally informative and allocates its approximation capacity in proportion to the sampling measure, fitting the frequently recurring states while under-representing the rarer ones. This difficulty is an instance of imbalanced regression , in which the data follow a non-uniform distribution and a model that minimizes average error favors the densely sampled majority, performing poorly on the sparse regions of the target space [14, 15]. The mismatch has been observed in both simulated and real-world dynamical systems, yet has so far received limited attention [16]. A common response to this imbalance is to reweight the training objective so that under-represented states contribute more, assigning each sample a scalar importance signal. Two lines of work follow this strategy, distinguished by whether the importance signal is drawn from the model or from the data. The first line of work relies on model-centric 
+
+signals. Motivated by the observation that not all samples contribute equally to learning, and that not all are learned equally well [17], these importance-sampling schemes prioritize challenging or high-impact samples through posterior 
+
+quantities such as gradients or losses [17, 18, 19]. Originally developed in computer vision to handle class imbalance, such schemes have been used to accelerate training and have gained traction in large language models [19, 20]. However, since the signal is derived from the surrogate itself, it is sensitive to the reactive feedback of the model during training. The second line of work relies on data-centric signals. Here, deep imbalanced regression compensates for rare target values in two ways. One is by estimating the target density with kernel smoothing and up-weighting low-density regions, as in label distribution smoothing [14], DenseWeight [15], and SMOGN [21]. The other is by rescaling the loss to balance contributions across the target range [22]. Computed once from the data, such signals avoid the model-feedback loop issue of model-centric signals. Most of these methods reduce each sample to a single aggregate statistic of the target value, whose choice is largely a matter of convention. More specifically, depending on the system, the L1 norm, 
+
+L2 norm, or entropy could each serve, with no uniform criterion or physical insight for selecting among them. Moreover, such hand-picked statistics have been shown to transfer poorly to high-dimensional systems [22]. Together, these observations point to a gap, which is the absence of dynamically meaningful indicators that describe the intrinsic imbalance of the underlying system, and of a principled, data-centric scheme designed to exploit them. Dynamical systems theory offers exactly such indicators. Indeed, the imbalance can be well characterized in phase space by indicators rooted in extreme value theory and Poincaré recurrences – the local dimension d and the inverse persistence θ. Previous work empirically shows that forecast errors are not uniform across the dynamical regimes characterized by d and θ, but instead concentrate disproportionately in the higher-d and higher-θ states [12]; of the two, the association with d is stronger and more robust. The local dimension d measures how the invariant measure scales within a small neighborhood of a given state or, equivalently, how the frequency with which the trajectory recurs near that state scales with the size of the neighborhood [11, 23]. This recurrence-based definition gives d a clear physical meaning tied to the geometry of the attractor: low d marks geometrically dense, frequently revisited regions with many historical analogues, whereas high d marks sparse, rarely visited regions with few such analogues, where the local dynamics are more complex and harder to resolve. The local dimension thus provides a model-free, a priori measure of dynamical complexity, computed once from the historical trajectory and requiring no model feedback. The underlying framework of Poincaré recurrences has since been extended to spatiotemporal data [24] and leveraged to develop predictability indicators [25, 26] and to understand weather pattern changes [27]. Moreover, the same construction applies uniformly across systems, from low-dimensional attractors such as Lorenz-63 to high-dimensional geophysical fields [23]. Building on this idea, we introduce Dynamics-Aware Weighting (DAW), a data-centric reweighting framework. DAW leverages the local dimension d to reshape the loss landscape. By assigning higher weight to rare, high-d regimes, DAW encourages the network to devote more capacity to dynamically complex states, where forecast errors tend to be larger. We evaluate DAW on the chaotic Kuramoto-Sivashinsky (KS) equation against three baselines that share the same backbone and training budget: uniform training, statistical density weighting (DenseWeight [15]), and a shuffled-weight ablation (RandomWeight). Over autoregressive rollouts, DAW attains the lowest error and the slowest loss of spatial correlation, delaying spatial correlation collapse the longest while leaving the intrinsic limits of chaotic predictability intact. Moreover, the event-level analysis suggests that DAW achieves this by effectively suppressing the localized error jumps incurred at sharp increases in d, which, for KS, coincide with physical processes such as wave-merging. This advantage is not specific to the KS geometry. On the low-dimensional Lorenz-63 system, the same ordering of methods holds, and DAW delays correlation collapse by roughly 80% relative to uniform training (Appendix F). A practical strength of DAW is its plug-and-play nature. Since d is computed offline, it introduces no architectural change and no inference overhead, leaving the surrogate as lightweight as its unweighted counterpart and ready to be combined with a range of neural architectures. 2DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems 
+
+# 2 Methodology 
+
+In the following, we introduce the local dimension (Section 2.1), which is then used to construct DAW (Section 2.2), together with its theoretical motivation (Section 2.3). 
+
+2.1 Phase Space Recurrence and Local Dimensions d
+
+To quantitatively isolate dynamically critical regimes from trivial backgrounds, we characterize the system’s dynamics in phase space through the local dimension indicator d. Formally, the local dimension dμ(x) of an invariant measure μ
+
+at a state x in the phase space M is defined as 
+
+dμ(x) = lim 
+
+> r→0
+
+log μ(B(x, r )) log r , (1) where B(x, r ) denotes a ball centered at x with radius r (see also Ref. [23]). This quantity describes how the probability mass of the invariant measure scales within a small neighborhood around the state x.In practice, observational data and numerical simulations are inherently finite. Therefore, d is estimated by combining the Poincaré recurrence theorem with Extreme Value Theory (EVT). For a given reference state z (e.g., a specific spatiotemporal snapshot) and a system trajectory x(t), the negative logarithmic distance is defined as: 
+
+g(x(t)) = − log  dist (x(t), z ). (2) Requiring that a point on the orbit falls within a small ball of radius e−u around the reference state z is equivalent to requiring that g(x(t)) exceeds a high threshold u(q), corresponding to a high quantile q, which is set to 0.99 in this work. The probability of these threshold exceedances converges to the Generalized Pareto Distribution (GPD) family: 
+
+X = g(x(t)) ,μ (X − u(q)) > y | X ≥ u(q) ≈ exp 
+
+
+
+− yσ
+
+
+
+, (3) where the scale parameter σ depends explicitly on the reference state z (see also Refs. [23, 11]). The local dimension d,inversely related to the scale parameter of Eq. (3), is finally defined as: 
+
+d(z) = 1
+
+σ . (4) We emphasize that Eq. (4) is a finite-resolution estimate at the working quantile q rather than the limit in Eq. (1): for ergodic measures with exact dimension that limit is constant almost everywhere, so the state dependence exploited here reflects the local geometry of the attractor at the scales resolved by the data. By definition, d measures the geometric sparsity of the attractor around the reference state z. Smaller values of d correspond to regions of the attractor that are geometrically dense and frequently revisited; here few degrees of freedom are active, and the local dynamics remain comparatively simple. Larger values of d instead mark sparse regions with fewer historical analogues, where more degrees of freedom are simultaneously active and the local dynamics are correspondingly more complex and harder to resolve. This asymmetry carries over directly to neural surrogates. Low-d states form highly recurrent regimes whose bulk dynamics dominate the trajectory by frequency of occurrence; owing to this abundance, networks learn to represent them with ease, and may even overfit to their simplicity and redundancy. High-d states, by contrast, occupy the right tail of the dimension distribution: precisely the configurations that demand the most representational capacity are also those most easily neglected under uniform training objectives, leading to systematically higher forecast errors [12]. 
+
+2.2 Dynamics-Aware Weighting (DAW) 
+
+The construction of Dynamics-Aware Weighting (DAW) proceeds in four steps and leverages the local dimension d just introduced. 
+
+Step 1: Density Estimation of the Local Dimension d. Let D = {(xi, y i)}Ni=1 be the training set. For each sample i, we define a localized dynamics indicator di ∈ R by concatenating the input-output pair (xi, y i) into a higher-dimensional phase space and computing its local dimension via Eq. (4). The indicator di thus quantifies the dynamical complexity of each sample pair. We then estimate the empirical probability density function (PDF) P (d) over the training set using Kernel Density Estimation (KDE): 
+
+P (d) = 1
+
+N h 
+
+> N
+
+X
+
+> i=1
+
+K
+
+ d − di
+
+h
+
+
+
+, (5) 3DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems where K(·) is the Gaussian kernel and h is the bandwidth, set by Silverman’s rule of thumb as in Section 3.3. To ensure numerical stability, the density is min-max normalized to bounded values P ′(d) ∈ [0 , 1] . The resulting density characterizes how local dimension is distributed across the training set, exposing its inherent imbalance. 
+
+Proposition 1 (Invariance of the local dimension under input–output pairing) . Let μ be the invariant measure on the attractor A ⊂ M and let f be Lipschitz on A with constant Lf ≥ 1. Define the lift Φ( x) = ( x, f (x)) and let ν = Φ ∗μ
+
+be the pushforward of μ onto the graph of f . Then, for every x ∈ A at which dμ(x) exists 
+
+dν
+
+ Φ( x) = dμ(x).
+
+Proof. Equip the product space with the metric ρ (u, u ′), (v, v ′) = max {dist( u, v ), dist( u′, v ′)}. For u, v ∈ A 
+
+dist( u, v ) ≤ ρ Φ( u), Φ( v) ≤ Lf dist( u, v ),
+
+where the upper bound uses the Lipschitz property of f . Consequently 
+
+B(x, r/L f ) ⊆ Φ−1
+
+Bρ
+
+ Φ( x), r 
+
+⊆ B(x, r ),
+
+and, since ν(E) = μ Φ−1(E)
+
+μ B(x, r/L f ) ≤ ν
+
+
+
+Bρ
+
+ Φ( x), r 
+
+≤ μ B(x, r ).
+
+Taking logarithms and dividing by log r < 0 reverses the inequalities. The right bound converges to dμ(x) by assumption. For the left bound, set s = r/L f and write log μ(B(x, s )) / log r = log μ(B(x, s )) / log s · log s/ log r,where log s/ log r = 1 − log Lf / log r → 1 as r → 0. Both bounds therefore converge to dμ(x), and the limit defining dν (Φ( x)) exists and equals dμ(x). Since all norms on the finite-dimensional product are equivalent, the same conclusion holds for the Euclidean metric on the concatenated vector used in practice. Proposition 1 shows that the lift Φ is bi-Lipschitz onto the graph of f and therefore preserves the pointwise local dimension; in this sense, the pairing is asymptotically redundant. At the finite scales probed by the estimator, however, the paired and state-only indicators may differ. 
+
+Step 2: Base Density Weighting on d. To counteract the under-representation of low-density samples, we first assign each sample a base weight that decreases affinely with its normalized probability density, following the density-based formulation of DenseWeight [15] (the DenseWeight baseline is defined in Section 3.3): 
+
+wbase  
+
+> i
+
+= max 
+
+
+
+1 − αP ′(di), ϵ 
+
+
+
+, (6) where α ≥ 0 is the intensity parameter controlling how aggressively low-density regions are upweighted, and ϵ ≪ 1
+
+is a small constant preventing zero weights. For all main results we use the same parameter α = 1 .0 for both DAW and the baseline DenseWeight (the default value used in the original DenseWeight work [15]; the optimal α is task dependent). A sensitivity analysis over α is included in Appendix B. 
+
+Step 3: Weight Reshaping with Right-Tail (high-d) Focus. Because the the density-based weight in Step 2 acts on the empirical distribution P (d), it indiscriminately up-weights not only the rare high-d states associated with critical transitions but also the infrequent quiescent low-d states that carry little dynamical complexity. To align the weighting with the physical meaning of d, we tilt it toward the high-d tail by multiplying each base weight with the min-max normalized local dimension ˜di ∈ [0 , 1] :
+
+˜di = di − dmin 
+
+dmax − dmin 
+
+, (7a) 
+
+wreshaped  
+
+> i
+
+= max  wbase  
+
+> i
+
+˜di, ϵ . (7b) Since ˜di is smallest for the most quiescent states and approaches one for the rarest high-d states, the tilt in Eq. (7b) suppresses the left tail of P (d) while leaving the weights of critical transitions, such as wave-merging events, essentially unchanged; after renormalization, the training emphasis thus shifts toward the high-d tail, although the combined weight need not be monotone in d near the mode of P (d), as visible in Fig. 1. The floor in Eq. (7b), applied before the global normalization of Step 4 with the same ϵ = 10 −8 used throughout, guarantees strictly positive weights, so every sample, including the state attaining dmin , retains a small but nonzero contribution to the loss. 4DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems 
+
+Step 4: Global Weight Normalization. Finally, to preserve the global gradient scale and maintain the stability of optimizers, the reshaped weights are explicitly normalized so that their expectation over the training dataset equals 1.0:
+
+wi = wreshaped 
+
+> i
+> 1
+> N
+
+PNj=1 wreshaped 
+
+> j
+
+. (8) The final calibrated objective for the neural surrogates ˆfθ is the sample-wise weighted MSE: 
+
+LDAW (θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+wi · ˆfθ (xi) − yi
+
+> 22
+
+. (9) Fig. 1 illustrates the empirical density P (d) with the weight profiles over different α. The distribution P (d) is sharply peaked over the recurrent low-d bulk and trails off into a thin high-d tail, where the increasing weight is assigned. At 
+
+α = 0 , the allocation reduces to the linear ˜d-tilt; as α increases, the density term progressively withdraws weight from the over-represented states near the mode of P (d) and redirects it toward the sparse high-d tail. 
+
+Figure 1: Visualization of DAW weight distribution. The left axis displays the empirical probability density P (d) of the local dimension d, highlighting the severe imbalance between highly recurrent, low-complexity states and the sparse, right-skewed tail of extreme topological transitions. The right axis shows the corresponding loss weights allocated by different strategies. The Standard baseline applies a naive uniform weight across all regimes, and density-only weighting attempts purely statistical balancing that elevates both tails of P (d), whereas DAW anchors the loss landscape to the underlying dynamical complexity. As the intensity parameter α increases from DAW ( α = 0 .0) to DAW ( α = 1 .0), the density-weighting component is progressively engaged on top of the ˜d-tilt, concentrating loss mass onto the high-d tail and increasingly amplifying rare topological transitions relative to the recurrent low-d bulk. 
+
+2.3 Theoretical Motivation for DAW: Error Propagation and Imbalanced Regression 
+
+The theoretical construction in this section motivates the design of DAW and delimits its scope; it does not directly derive the specific weighting rule of Section 2.2, which remains an empirical construction guided by it. We start from defining useful quantities. More specifically, let f be the true one-step flow map and ˆf the surrogate map learned by the neural network, and let {xk} be a reference trajectory of the system, with xk+1 = f (xk). An autoregressive forecast 
+
+{ˆxk} is produced by iterating ˆxk+1 = ˆf (ˆ xk) from an initial condition ˆx0 = x0.
+
+Proposition 2 (Finite-horizon error decomposition) . Let U be a compact convex subset of the discretized state space 
+
+Rm, containing the reference trajectory {xk}nk=0 and the rollout {ˆxk}nk=0 , and let f ∈ C2(U ) with sup U ∥Df ∥ ≤ 
+
+Λ and sup U ∥D2f ∥ ≤ K, where ∥ . . . ∥ denotes the Euclidean norm. Define forecast error at the k-th step as 
+
+δk = ∥ ˆxk − xk∥, the one-step model error at the visited state ˜εk = ˆf (ˆ xk) − f (ˆ xk) and the time-ordered cocycle 
+
+Mk→n = Df (xn−1) Df (xn−2) · · · Df (xk+1 ), with the empty product equal to the identity. Then, for every n ≥ 1
+
+δn =
+
+> n−1
+
+X
+
+> k=0
+
+Mk→n
+
+ ˜εk + Rk
+
+, ∥Rk∥ ≤ K 
+
+> 2
+
+∥δk∥2, (10) 5DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems 
+
+and consequently 
+
+∥δn∥ ≤ 
+
+> n−1
+
+X
+
+> k=0
+
+Mk→n
+
+
+
+∥˜εk∥ + K 
+
+> 2
+
+∥δk∥2
+
+. (11) 
+
+Proof. By definition, δk+1 = ˆf (ˆ xk) − f (xk) = ˜ εk + f (ˆ xk) − f (xk). Since U is convex, the segment joining 
+
+xk and ˆxk lies in U , and Taylor’s theorem with integral remainder gives f (ˆ xk) − f (xk) = Df (xk) δk + Rk with 
+
+∥Rk∥ ≤ K 
+
+> 2
+
+∥δk∥2. Hence δk+1 = ˜ εk + Rk + Df (xk) δk, and the claim follows by induction on n from δ0 = 0 , using 
+
+Mk→n+1 = Df (xn) Mk→n for k ≤ n − 1 and Mn→n+1 = I. The bound is the triangle inequality. 
+
+Corollary 1 (Validity horizon of the linear regime) . Assume Λ > 1 (note that ∥Mk→m∥ ≤ Λm−1−k for all k < m ≤ n
+
+follows from sup U ∥Df ∥ ≤ Λ by submultiplicativity), let ¯ε = max k<n ∥˜εk∥, and set Sm = Λm−1Λ−1 . If 2K ¯ε S 2 
+
+> n
+
+≤ 1,then ∥δm∥ ≤ 2¯ ε S m for all m ≤ n. In particular, the linearized decomposition dominates the remainder for horizons 
+
+n ≲ log(1 /¯ε)2 log Λ .Proof. Induction on m. The claim holds at m = 0 . If it holds for all j < m , then by Proposition 2 
+
+∥δm∥ ≤ 
+
+> m−1
+
+X
+
+> k=0
+
+Λm−1−k
+
+¯ε + K 
+
+> 2
+
+· 4¯ ε2S2
+
+> k
+
+
+
+≤ ¯ε S m
+
+ 1 + 2 K ¯ε S 2
+
+> n
+
+ ≤ 2¯ ε S m,
+
+using Sk ≤ Sn and Pm−1 
+
+> k=0
+
+Λm−1−k = Sm.
+
+Remark 1. Proposition 2 is stated with the one-step error at the predicted state, ˜εk, whereas the discussion below and the empirical premise use the error at the reference state, εk = ˆf (xk) − f (xk). If the residual ˆf − f is Lipschitz on U
+
+with constant Lg , then ∥˜εk − εk∥ ≤ Lg ∥δk∥. The substitution is therefore controlled only when the surrogate is close to f in the C1 sense, so that Lg ∥δk∥ remains small relative to ∥εk∥ over the horizon of Corollary 1, and we use the reference-state error in the discussion under this condition. Equation (10) separates two logically distinct contributions to the forecast error. The factor ∥εk∥ measures where large one-step errors occur , and is a property of the trained surrogate. The cocycle norm ∥Mk→n∥ measures how strongly an error injected at time k is amplified afterwards , and is a property of the dynamics alone, independent of the surrogate. Any state-dependent loss weight must be understood through which of these two factors it acts upon. The empirical premise of this work is that the one-step error ∥εk∥ is systematically larger at states of high local dimension d [12]; we validate this premise directly on the KS system through the dimension-binned ( d-binned) one-step error analysis reported in Section 4. These rare, geometrically complex states (regime transitions, wave-merging events) are visited infrequently. Therefore, under the uniform mean-squared objective, the loss is dominated by the dense, low-d majority and the surrogate underfits the high-d states. In other words, training the neural network with a uniform mean-squared loss yields an under-resolved map that smooths high-d excursions toward the behavior of the abundant neighboring states. The role of dynamics-aware weighting is to reduce ∥εk∥ at exactly the times k where it is largest, namely the high-d
+
+states, and thereby to shrink every term of the sum in Eq. (10) that originates there. The amplification factors ∥Mk→n∥
+
+along the reference trajectory are fixed by the true flow and cannot be altered by any choice of training loss; DAW therefore acts only on the injected one-step errors. We note that Eq. (10) also admits a distributional reading. Averaged over many rollouts, the expected forecast error weights each state by how often it is visited (the invariant measure μ) and by how much its one-step error contributes downstream. Training under the uniform objective minimizes Eμ∥ε∥2 and therefore spends model capacity in proportion to μ, that is, on the low-d bulk. The distribution that actually governs rollout accuracy is tilted toward states whose one-step errors are large and systematic, which the premise above identifies with the rare high-d states. Dynamics-aware weighting reshapes the effective training measure toward these states, partially correcting the covariate shift between the sampling measure and the rollout-relevant measure [28]. The local dimension d thus serves as an a priori , model-free, and inference-free proxy for where the one-step error will be large, computed once from the geometry of the dynamical system. 6DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems 
+
+# 3 Experimental Setup 
+
+3.1 Data 
+
+We evaluate the proposed method on the one-dimensional Kuramoto-Sivashinsky (KS) equation, a canonical model of spatiotemporal chaos that exhibits diverse dynamics, including quiescent (near-laminar) regimes, traveling waves, and transient wave-merging events. The KS equation is 
+
+∂u ∂t + u ∂u ∂x + ∂2u∂x 2 + ∂4u∂x 4 = 0 , (12) where u denotes the observable, t is time, and x is the spatial coordinate defined over the periodic domain [0 , L ).The complexity and effective dimensionality of the KS dynamics are controlled by the domain size L. In this work, we set L = 22 , following the configuration of [1]. For L = 22 , the smallest domain at which the KS equation sustains spatiotemporal chaos, the flow is organized by a small set of invariant solutions: relative equilibria (traveling waves) and relative periodic orbits, connected by heteroclinic orbits between equilibria [29]. Quiescent intervals correspond to passages near these invariant solutions, while transient wave-merging events mark fast excursions between them. We discretize the spatial domain into Nx = 64 uniformly spaced grid points. We generate in total 2,500 ,000 samples using a small integration step dt = 0 .01 to ensure numerical stability, and then discard the first 10 ,000 steps to remove transients and allow the trajectory to settle onto the attractor. Next, the generated data is downsampled to dt = 0 .25 for the forecasting task. The final length of the total data is 100 ,000 (around 1200 Lyapunov time), and the length of the training split is around 70 ,000 (around 850 Lyapunov time), which enables a robust d estimation on both distribution shape and relative magnitude, as shown in Appendix A. Before training, the data is standardized via Z-score normalization using statistics computed on the training split, and the same statistics are applied to the validation and test splits. 
+
+3.2 Model configuration and Training 
+
+The network, optimizer, learning-rate schedule, batch size, and maximum number of training epochs are identical across all methods. We use a multilayer perceptron (MLP) surrogate implemented in PyTorch, with 6 hidden layers and 128 neurons in each hidden layer. We optimized the model using the Adam optimizer with a batch size of 128, an initial learning rate of 5 × 10 −4, and a weight decay of 1 × 10 −9. The total number of training epochs for each run is fixed at 1000. The objective of all experiments can be unified as a weighted mean-squared error (WMSE), 
+
+L = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+wi ℓ(yi, ˆyi), ℓ(yi, ˆyi) = ˆyi − yi
+
+> 22
+
+, (13) where yi and ˆyi are the ground-truth and predicted states for training sample i, and the non-weighted baseline can be recovered exactly by setting wi = 1 ∀i. The definition of the weight construction is detailed in Section 3.3. To preserve the global gradient scale, every weighting scheme is normalized so that the expected weight over all training data is unity, Ei[wi] = 1 .0.At evaluation, the trained model is tested in closed loop. Its prediction is fed back as the input for the next step, producing an autoregressive rollout. 
+
+3.3 Baselines 
+
+To assess the efficacy of DAW, we compare it against three baselines that share the identical backbone, optimizer, and training budget as described in Section 3.2 and differ only in the sample-weighting function wi applied in Eq. (13). 
+
+Standard. Standard training treats all samples equally, implicitly assuming all regimes are uniformly informative: 
+
+wStandard  
+
+> i
+
+= 1 .0, ∀i ∈ { 1, . . . , N }. (14) 
+
+DenseWeight. DenseWeight is a state-of-the-art deep imbalanced regression (DIR) method that reweights samples by the statistical rarity of their target value [15]. It applies kernel density estimation (KDE) to a scalar target feature zi.The bandwidth was determined via Silverman’s rule of thumb, h = 1 .06ˆ σn −1/5, where ˆσ is the standard deviation of 7DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems the sample and n is the sample size. For a multivariate field such as KS, we take the spatial L2-norm of the target state to obtain its empirical density P (zi), and assign weights decrease affinely to the normalized density: 
+
+wDenseWeight  
+
+> i
+
+∝ max 
+
+
+
+1 − α ˜P (zi), ϵ 
+
+
+
+, (15) where ˜P (zi) ∈ [0 , 1] is the min-max-normalized P (zi), α is a weighting intensity factor, and we use ϵ = 10 −8 as a floor that prevents zero weights. This baseline directly tests whether emphasizing statistical rarity in target space improves model performance. 
+
+RandomWeight. RandomWeight is designed as a shuffled-weight ablation of DAW, isolating whether DAW’s effect comes from the precise alignment of high weights with dynamically complex states, or merely from the increased variance of the gradient landscape that any non-uniform weighting may induce. To test this, we take the exact set of weights produced by DAW, WDAW = {wDAW  
+
+> 1
+
+, . . . , w DAW  
+
+> N
+
+}, and reassign them to samples through a uniformly random permutation πwRandomWeight  
+
+> i
+
+= wDAW  
+
+> π(i)
+
+, π ∼ Permutation (N ). (16) By construction, RandomWeight shares the identical marginal weight distribution as DAW, but the correspondence between high weights and high-d regimes is destroyed. Any advantage of DAW over RandomWeight therefore cannot be attributed to the weight magnitudes alone and must instead reflect the alignment of weight with the local geometry of the attractor, noting that second-order quantities depending on the weight-loss covariance, such as the variance of the weighted gradients, are not exactly matched by a permutation. 
+
+3.4 Evaluation Metrics 
+
+We quantify predictive accuracy and spatial-correlation consistency with two complementary primary metrics, the Mean Absolute Error (MAE) and the spatial Pearson Correlation Coefficient, and report two auxiliary event-level diagnostics that probe robustness during the system’s transitions. Throughout, y denotes the ground-truth state and ˆy the model prediction over the autoregressive rollout. 
+
+Mean Absolute Error (MAE). MAE measures the average point-wise magnitude of the prediction error over the full spatiotemporal evaluation domain, providing a direct measure of absolute deviation from the true dynamics: MAE = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ˆyi − yi , (17) where i indexes the N evaluated state entries (all spatial grid points across all rollout steps). A lower MAE indicates higher point-wise accuracy. 
+
+Spatial Pearson Correlation Coefficient (Correlation). Because point-wise distance alone does not capture whether a prediction preserves the shape of the field, we additionally report the spatial Pearson correlation, which measures how well the surrogate reproduces the spatial pattern, traveling-wave patterns, and phase alignment of the dynamics: Correlation =
+
+PNi=1 (yi − ¯y)(ˆ yi − ¯ˆy)
+
+qPNi=1 (yi − ¯y)2
+
+qPNi=1 (ˆ yi − ¯ˆy)2
+
+, (18) where ¯y and ¯ˆy are the means of the ground truth and predictions over the evaluated domain. The correlation lies in 
+
+[−1, 1] , with values near 1.0 indicating strong spatial pattern consistency. 
+
+Cumulative Error (CE) and Overall Win Rate. To evaluate robustness specifically during the most dynamically complex regimes (the upper quartile of d) that may drive catastrophic error growth, we introduce two event-level diagnostics. We first identify extreme events along the autoregressive rollout as contiguous intervals in which the local dimension d
+
+exceeds a high-quantile threshold (the 75 th percentile). For each such interval we locate the time index of peak local dimension, tpeak , which marks the core of the topological transition (e.g. a wave merge), and extract a window of n = 3 
+
+steps on either side of the peak. The Cumulative Error (CE) of an event is the sum of absolute point-wise errors over this window: CE =
+
+> tpeak +n
+
+X
+
+> t=tpeak −nNx
+
+X
+
+> i=1
+
+ˆyi,t − yi,t , (19) where yi,t and ˆyi,t are the ground-truth and predicted states at spatial grid point i and time step t. Computing CE for every method (DAW, DenseWeight, RandomWeight, and Standard) across all extracted high-d windows, we define the 
+
+Overall Win Rate of a method as the percentage of event windows in which it attains the lowest CE. Together, CE and the Overall Win Rate quantify each method’s comparative ability to suppress error accumulation during the system’s most demanding regimes. 8DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems 
+
+# 4 Results 
+
+We first validate the empirical premise stated in Section 2.3, that the one-step error ∥εk∥ is systematically larger at states of high local dimension d. Fig. 2 partitions the test set into five equal-mass bins of increasing d, each containing 
+
+20% of the samples. For all four objectives, the mean one-step MAE rises monotonically across the bins, confirming that the states carrying the largest one-step error are the rare, geometrically complex ones. Within every bin, both density-aware objectives (DAW and DenseWeight) reduce error across the full range of d relative to uniform training (Standard) and the shuffled-weight ablation (RandomWeight). Two features stand out. First, DAW’s reduction is not confined to the high-d tail it explicitly targets but also lowers error in the low-d bulk, so the reweighting sharpens the surrogate globally rather than trading bulk accuracy for tail accuracy. Second, RandomWeight, which inherits DAW’s exact weight magnitudes but not their alignment with d, remains closest to Standard among the weighted objectives, indicating that the alignment between weight and topology, rather than weight magnitude alone, drives most of the one-step improvement. MAE 
+
+> Bins
+
+d
+
+> (0-20%)
+> (20-40%)
+> (40-60%)
+> (60-80%)
+> (80-100%)
+
+Figure 2: One-step forecast error binned by local dimension d. The test set is partitioned into five equal-mass bins of increasing d (each containing 20% of states); bars show the mean one-step MAE of each method within each bin. For every training objective the error increases monotonically from the low-d bulk to the high-d tail, validating the premise of Section 2.3 that one-step error concentrates at high-d states. DAW attains the lowest error in every bin and reduces error across the full range of d – including the low-d bulk – relative to Standard and RandomWeight. Table 1: Model evaluation results (mean ± std over three independent runs). The best-performing method for each metric at every forecast horizon is highlighted in bold .
+
+Step Method MAE ↓ Correlation ↑
+
+DAW 0.0032 ± 0.0000 1.0000 ± 0.0000 
+
+DenseWeight 0.0032 ± 0.0001 1.0000 ± 0.0000 
+
+RandomWeight 0.0047 ± 0.0001 1.0000 ± 0.0000 
+
+1Standard 0.0058 ± 0.0006 1.0000 ± 0.0000 
+
+DAW 0.1109 ± 0.0084 0.9876 ± 0.0020 
+
+DenseWeight 0.1320 ± 0.0195 0.9825 ± 0.0050 RandomWeight 0.1586 ± 0.0053 0.9736 ± 0.0031 20 (0.25 LT) Standard 0.2988 ± 0.0534 0.9193 ± 0.0247 DAW 0.2993 ± 0.0233 0.8874 ± 0.0170 
+
+DenseWeight 0.3766 ± 0.0692 0.8330 ± 0.0542 RandomWeight 0.4328 ± 0.0189 0.7759 ± 0.0283 40 (0.5 LT) Standard 0.7049 ± 0.0835 0.5503 ± 0.0690 DAW 0.7779 ± 0.0306 0.4153 ± 0.0353 
+
+DenseWeight 0.8656 ± 0.0959 0.3224 ± 0.1077 RandomWeight 0.9537 ± 0.0174 0.2269 ± 0.0476 80 (1.0 LT) Standard 1.0635 ± 0.0184 0.1419 ± 0.0468 Tab. 1 summarizes the aggregate performance at four representative rollout horizons. At the single-step horizon (Step 1), DAW and DenseWeight perform on par within run-to-run variability and both improve on Standard and RandomWeight, 9DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems while all four methods retain near-unity spatial correlation. This near-parity is expected, as one-step accuracy on the training distribution is governed by the quality of the overall learned map rather than by differential coverage of the rare, high-d regimes, which have yet to shape a single-step prediction. The separation between methods emerges monotonically as the closed-loop rollout extends. By 0.25 LT (Step 20), DAW already leads on both metrics, whereas Standard has degraded markedly, with an MAE nearly triple that of DAW. By 0.5 LT (Step 40) the gap further widens, with DAW preserving a high spatial correlation while Standard falls to the 0.5 predictability threshold, marking the onset of spatial correlation collapse. At 1.0 LT (Step 80), DAW attains both the lowest accumulated MAE and the highest preserved correlation among all four methods, with DenseWeight, RandomWeight, and Standard following in that order. Nonetheless, the intrinsic limits of chaotic predictability still manifest as one should expect, with forecast correlations decaying substantially by 1.0 LT. The benefit of DAW is a systematic delay of spatial correlation collapse rather than its elimination. Exact values at each horizon are reported in Tab. 1. Fig. 3 traces this divergence over the full 1.0 LT rollout. In the MAE panel (left), all methods depart from 
+
+Figure 3: Autoregressive forecasting performance on the test set. DAW (red) is compared against Standard (black), DenseWeight (orange), and RandomWeight (blue). Left: Mean Absolute Error (MAE) at each autoregressive step, averaged over the full test set. Right: Spatial Pearson Correlation Coefficient at each step, averaged over the test set. In both panels, the primary horizontal axis (bottom) gives the discrete step index; the secondary axis (top) indicates the corresponding physical timescale in Lyapunov Time (LT). Solid lines are per-step means across the test set; shaded bands denote ±1 standard deviation across test-set trajectories at each step. In the correlation panel, a horizontal dashed grey line marks the 0.5 predictability threshold; coloured vertical dotted lines indicate the step at which each model’s mean correlation first crosses this threshold. near-zero error and progressively diverge; Standard exhibits the most rapid error accumulation, reaching a plateau near 1.0 by approximately 0.6 LT, while DAW maintains the lowest MAE throughout. The correlation panel (right) quantifies long-term spatial pattern fidelity against the 0.5 predictability threshold, marked by the coloured dotted lines. Standard is the first to lose spatial coherence, crossing the threshold at approximately 0.5 LT. RandomWeight provides only a marginal delay to approximately 0.6 LT. DenseWeight preserves a high spatial correlation for a longer horizon, but still degrades progressively. DAW is the last to cross the 0.5 threshold, sustaining spatial coherence until approximately 0.85 LT, revealed by the rightmost dotted line in Fig. 3 (right). This ordering of methods is stable across the evaluated horizon and is consistent with the aggregate values in Tab. 1. Moreover, while the main results use quantile q = 0 .99 ,we show in Appendix C that DAW remains effective at q = 0 .98 and q = 0 .995 , outperforming baselines in both cases. This indicates that DAW is robust to the choice of quantile. Fig. 4 provides a deeper look into how DAW mitigates the long-term error accumulation. We generated rollout forecasts from 14,778 different initial conditions and have identified in total 21,146 high-d event windows. The pairwise scatter plots in Fig. 4(a) compare, for each of these high-d event windows, the CE of Standard against the ones of DenseWeight, RandomWeight, and DAW, respectively. In the Standard-DAW panel (rightmost scatter), the large majority of events lie 
+
+above the y = x diagonal. This indicates that DAW systematically suppresses per-event error relative to the uniform objective, and that its advantage is not confined to a narrow slice of the CE distribution. The overall win-rate pie chart confirms this observation. DAW achieves the lowest CE among all four methods in 42.4% of the 21,146 event windows, far exceeding DenseWeight (24.4%), RandomWeight (28.1%), and Standard (5.1%). The statistical significance of the win rate is validated with bootstrapping, shown in Appendix E. The spatiotemporal panels in Fig. 4(b) provide a physical perspective into how these event-level differences arise. Across all four test trajectories, sharp spatial error jumps in Standard are both temporally localized and coincident 10 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems Ground truth 
+
+> Standard MAE
+> DAW MAE
+> DenseWeight MAE
+> RandomWeight MAE
+> (a)
+> (b)
+
+Figure 4: Event-level error analysis and spatiotemporal visualization of autoregressive forecasting errors on the KS test set. (a) Left three panels: pairwise log-log scatter plots of the per-event Cumulative Error (CE), defined in Section 3.4 as the sum of absolute point-wise errors over a ±3-step window centered on the peak-d time index of each identified high-d event window. Each scatter plot compares Standard CE ( y-axis) against the CE of one competing method ( x-axis); points above the dashed y = x diagonal indicate events where Standard incurs higher CE (the competing method wins), while points below indicate events where Standard incurs lower CE. Right panel: 
+
+overall win-rate pie chart reporting, across all 21,146 identified high-d event windows, the fraction of windows in which each method achieves the lowest CE among all four competitors. (b) Spatiotemporal MAE contour maps for four representative test trajectories (columns). The top row shows the ground-truth KS field; subsequent rows show the spatial MAE of Standard, DAW, DenseWeight, and RandomWeight. In all panels, the primary horizontal axis (bottom) gives the discrete step index and the secondary axis (top) gives the corresponding LT. The primary vertical axis gives the spatial coordinate x. Overlaid dashed curves trace the temporal evolution of the local dimension d against the secondary vertical axis (right); grey-shaded intervals mark the identified high-d event windows (exceeding the 75th-percentile threshold) at which CE is evaluated. with the grey-shaded high-d windows. These selected windows correspond to wave-merging events in the KS system. Unlike simpler laminar flow and traveling waves, the wave-merging process is characterized by rapid steepening of localized spatial gradients and thus more complex dynamics. Its onset (e.g. the merge of two pairs of red and blue wave packets) is captured by spikes in d, plotted with the black dotted lines. As established by the decomposition in Eq. (10), the cocycle Mk→n amplifies the one-step errors εk; since the largest one-step errors are committed at high-d states, suppressing error there is a direct lever for slowing long-term error growth. As shown in Fig. 4(b), DAW suppresses error accumulation across all four samples by consistently mitigating the error jumps at the high-d windows. In contrast, DenseWeight and RandomWeight achieve only partial or inconsistent mitigation at these critical junctures, as documented by their win rates and aggregate metrics. Moreover, the choice of factor space is likewise not critical. An ablation over the factor space – input-only d(x),target-only d(y), and paired d(x, y ) (Appendix D) – shows that d(x) and d(x, y ) perform on par across the full rollout, and both slightly outperform d(y). Proposition 1 gives this equivalence for d(x, y ) versus d(x); for d(y), the targets 11 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems 
+
+yi = xi+1 sample the same invariant measure one step downstream, so all three indicators estimate the same local-dimension field asymptotically. The slight disadvantage of d(y) is a finite-scale effect rather than a difference in the information contained. Additionally, to test whether DAW’s advantage reflects a general property of the reweighting rather than a feature of the KS geometry, we repeat the study on the Lorenz-63 system – a low-dimensional chaotic attractor whose dynamics are largely distinct from the spatiotemporal KS field. Here the rare, high-d excursions correspond to lobe-switching transitions and the edge of the attractor rather than wave-merging events, yet the same imbalance between recurrent bulk states and sparse transitions persists. As shown in Fig. 9 (Appendix F), DAW attains the lowest rollout MAE and the slowest correlation decay over the four methods, followed by DenseWeight, RandomWeight, and Standard. Measured against the 0.5 correlation threshold, DAW extends the predictability horizon from ≈ 2.3 LT (Standard) to 
+
+≈ 4.1 LT, with the purely statistical (DenseWeight) and shuffled-weight (RandomWeight) baselines falling in between. This result is consistent with KS, indicating that DAW’s benefit derives from aligning representational capacity with local dynamical complexity, rather than from any property specific to the KS system. 
+
+# 5 Discussion 
+
+Recent advances in Scientific Machine Learning (SciML) have largely pursued model-centric innovations, including physics-informed neural networks, operator learning [30, 31, 32], and the architectural embedding of inductive biases [33]. By contrast, the role of the empirical data distribution in shaping long-term forecast accuracy has received comparatively little attention. The sample-wise uniform Mean Squared Error (MSE) objective treats all states as equally informative, driving the surrogate toward a statistical shortcut that fits the recurrent low-d bulk of data while under-representing the rare, dynamically complex states that may trigger large rollout error accumulation. Existing imbalanced-regression remedies calibrate the loss purely through observable target-space statistics, without leveraging sound physical insight. Dynamics-Aware Weighting (DAW) reframes the problem as one of data-centric distribution reshaping rather than architecture design by using the local dimension d as an a priori measure of dynamical complexity. In this context, d reshapes the optimization landscape toward the high-d tail and forces the network to allocate representational capacity where forecast errors are systematically large. Our control experiments indicate that the gain stems primarily from where weight is placed. RandomWeight, which applies non-uniform weights without regard to the dynamics, does improve on uniform training over autoregressive rollouts (Tab. 1) and at the event level (Fig. 4), so non-uniform weighting alone already contributes; it nonetheless remains well behind DAW at every horizon, indicating that the alignment of weight with the local dimension supplies the larger share of the gain. DenseWeight, which places weight by statistical rarity of the target alone, improves on uniform training but degrades faster than DAW at long autoregressive horizons (Section 4). Target rarity is thus an unreliable proxy for chaotic dynamical systems; DAW’s advantage comes from aligning the weight with the local dimension along the trajectory. This alignment acts where the decomposition of Eq. (10) says it matters, and we stress that the theory of Section 2.3 motivates this placement rather than deriving the weighting rule itself. By reducing one-step errors at high-d states, DAW shrinks the terms that the cocycle subsequently amplifies, and thereby suppresses the localized error jumps that occur when the trajectory enters high-d regimes. The net effect is a systematic delay in the loss of spatial coherence and improved long-term accuracy relative to both uniform training and purely density-based weighting, not a removal of the intrinsic limits of chaotic predictability. A practical strength of DAW is its plug-and-play nature. Because d is computed offline from the historical trajectory, the framework introduces no architectural change and no inference overhead, leaving the trained surrogate as lightweight as its unweighted counterpart while curbing rollout error growth and preserving spatial-pattern consistency. In this work, we restrict our experiments to the KS and Lorenz-63 systems. While the DAW objective is agnostic to the state dimension and to the network architecture, the cost of robustly estimating the a priori signal d scales with the effective dimension of the attractor. A reliable GPD fit requires a trajectory whose length grows with that effective dimension, so care is needed when scaling to higher-dimensional systems. 
+
+# Data and Code Availability 
+
+The source code and datasets used in this study will be made publicly available upon publication. 12 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems (a)  (b) 
+
+Figure 5: Convergence and Robustness of the d Estimation. (a) Probability density functions of the standardized dL
+
+across varying observation lengths (from 50 LT to 1200 LT). (b) Consistency comparison of the d estimated at 850 LT versus 1200 LT. A perfect fit is shown with the dashed diagonal line. 
+
+# Appendix A Convergence and Consistency of Local Dimension d
+
+To ensure the reliability of the local dimension ( d) as a dynamical indicator for the DAW framework, we validated the trajectory length required for a robust estimation. Fig. 5 illustrates the convergence and consistency of d across varying trajectory lengths. Panel (a) shows the probability density functions of the local dimension dL under Z-score normalization, (dL − μdL )/σ dL . It exhibits significant fluctuations at shorter sequence lengths (e.g., 50 to 200 LT). However, as the observation length increases, the distribution systematically converges under Z-score normalization, stabilizing effectively at 850 LT. To further verify this consistency of magnitude across samples, we conducted a point-wise comparison of the d estimates obtained using 850 LT against a longer 1200 LT baseline, as shown in Panel (b). The strong linear consistency observed between the two configurations confirms that extending the sequence beyond 850 LT yields negligible changes to the relative dynamical complexity assigned to each state. Consequently, the 850 LT configuration adopted throughout our experiments robustly extracts local dimensions, which is necessary for accurate density-based weighting. 13 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems 
+
+# Appendix B Sensitivity of αStep 40 (0.5 LT)  Step 80 (1.0 LT)  
+
+> MAE MAE
+> Step 1 Step 20 (0.25 LT)
+
+Figure 6: Hyperparameter sensitivity analysis of the weighting intensity parameter α. The plots display the Mean Absolute Error (MAE) evaluated at four autoregressive forecasting horizons: Step 1, Step 20 (0.25 LT), Step 40 (0.5 LT), and Step 80 (1.0 LT). The red solid line represents the DAW model (mean ± std over three independent runs). The horizontal grey dashed line and orange dash-dotted line indicate the performance of the Standard baseline and the DenseWeight ( α = 1 .0) baseline, respectively. At extended forecast horizons (0.5 LT and 1.0 LT), DAW demonstrates a broad and robust performance basin, consistently outperforming both baselines across a wide range of α values, confirming that its efficacy is not contingent upon narrow hyperparameter tuning. To rigorously evaluate the robustness of the proposed Dynamics-Aware Weighting (DAW) framework, we conduct a hyperparameter sensitivity analysis on the weighting intensity parameter, α. This parameter controls the magnitude of the loss penalty applied to high-d (dynamically complex) regimes. We evaluate the model’s performance across a broad spectrum of intensities, ranging from pure linear ˜d-tilt ( α ≈ 0.0) to aggressive penalization ( α = 2 .0). Fig. 6 illustrates the evolution of the Mean Absolute Error (MAE) at four distinct autoregressive forecasting horizons: Step 1, Step 20 (0.25 LT), Step 40 (0.5 LT), and Step 80 (1.0 LT). The horizontal lines denote the performance of the unweighted Standard baseline (grey dashed) and the DenseWeight ( α = 1 .0) baseline (orange dash-dotted). At the initial forecast step (Step 1), the predictive errors are universally low, and variations in α yield negligible differences. However, as the forecast horizon extends to 0.5 LT and 1.0 LT, the critical importance of dynamics-aware calibration becomes evident. As expected, when α → 0, the density term disengages and DAW reduces to the pure 
+
+˜d-tilt of Eq. (7b), which improves on uniform training but accumulates error faster than the full weighting. Conversely, as α increases, the MAE drops significantly, forming a robust performance basin. Crucially, across a wide range (from α = 0 .5 to α = 2 .0), the DAW method consistently outperforms both the Standard and DenseWeight baselines at long forecast horizons. The optimal performance is observed around α = 1 .0. The existence of this broad and stable basin demonstrates that DAW is highly robust; its superior long-term stability is fundamentally rooted in its phase-space topological alignment, rather than relying on brittle, fine-tuned hyperparameter artifacts. 14 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems 
+
+# Appendix C Comparison of d quantile 
+
+Beyond the weighting intensity α, the quantile q is the principal free parameter in the estimation of the local dimension 
+
+d. To verify that DAW does not rely on a finely tuned threshold, we evaluate its performance under three settings, 
+
+q ∈ { 0.98 , 0.99( main text ), 0.995 }.By construction, the Standard (uniform) and DenseWeight (target-space density) baselines are independent of q, we therefore retain the Standard and DenseWeight results from the main text and retrain only DAW and RandomWeight, recomputing d at q = 0 .98 and q = 0 .995 while holding all remaining settings fixed. Fig. 8 and Fig. 7 report the autoregressive rollouts for q = 0 .98 and q = 0 .995 , respectively. Across both settings, DAW attains the lowest MAE and the slowest decay of spatial correlation, delaying the crossing of the 0.5 predictability threshold the longest. This result indicates that the performance gain of DAW does not rely on a fine-tuned threshold, and the estimate of d is sufficiently robust over the tested range of q to leave the relative ranking of dynamically complex states, and hence the induced weighting essentially unchanged. 
+
+Figure 7: Autoregressive forecasting performance on the test set ( q = 0 .995 ). DAW (red) is compared against Standard (black), DenseWeight (orange), and RandomWeight (blue). Left: Mean Absolute Error (MAE) at each autoregressive step, averaged over the full test set. Right: Spatial Pearson Correlation Coefficient at each step, averaged over the test set. In both panels, the primary horizontal axis (bottom) gives the discrete step index; the secondary axis (top) indicates the corresponding physical timescale in Lyapunov Time (LT). Solid lines are per-step means across the test set; shaded bands denote ±1 standard deviation across test-set trajectories at each step. In the correlation panel, a horizontal dashed grey line marks the 0.5 predictability threshold; coloured vertical dotted lines indicate the step at which each model’s mean correlation first crosses this threshold. 15 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems 
+
+Figure 8: Autoregressive forecasting performance on the test set ( q = 0 .98 ). DAW (red) is compared against Standard (black), DenseWeight (orange), and RandomWeight (blue). Left: Mean Absolute Error (MAE) at each autoregressive step, averaged over the full test set. Right: Spatial Pearson Correlation Coefficient at each step, averaged over the test set. In both panels, the primary horizontal axis (bottom) gives the discrete step index; the secondary axis (top) indicates the corresponding physical timescale in Lyapunov Time (LT). Solid lines are per-step means across the test set; shaded bands denote ±1 standard deviation across test-set trajectories at each step. In the correlation panel, a horizontal dashed grey line marks the 0.5 predictability threshold; coloured vertical dotted lines indicate the step at which each model’s mean correlation first crosses this threshold. 
+
+# Appendix D Comparison of using d(x, y ), d(x) and d(y)
+
+In the main text, the local dimension is estimated on the one-step map: for each sample we concatenate the input–output pair (xi, y i) into a higher-dimensional phase space and compute d(x, y ). Proposition 1 shows that, in the vanishing-radius limit, this pairing leaves the local dimension unchanged, so that d(x, y ) and the state-only indicator d(x) coincide asymptotically; at the finite quantile q used in practice, however, the paired and state-only estimates need not agree. To identify which factor space the weighting should be built on, we recompute d from the input state alone ( d(x)) and from the target state alone ( d(y)), holding the DAW construction of Section 2.2 and all training settings fixed, and varying only the indicator that enters the density estimate. The autoregressive results are reported in Tab. 2. Two observations follow. First, d(x) and d(x, y ) are statistically indistinguishable across the full rollout: their MAE and spatial correlation agree to within run-to-run variability at every horizon, from the single-step prediction (Step 1) through 1.0 LT (Step 80). This is consistent with Proposition 1 – once the recurrence geometry of the input state is retained, the target component adds no separable information at the resolved scales. Second, both the paired and the input-only indicators outperform the target-only d(y), and the margin grows with the forecast horizon. At 1.0 LT, 
+
+d(x, y ) and d(x) reach an MAE of 0.778 and 0.779 against 0.794 for d(y), and a preserved correlation of 0.415 and 
+
+0.417 against 0.393 . The recurrence geometry of the input state thus carries essentially all of the signal that DAW exploits, whereas the target-only indicator is the weakest of the three. These results support the choice adopted in the main text and, at the same time, indicate that DAW is not sensitive to it. Because d(x) recovers the performance of d(x, y ) while requiring only the input state, it constitutes an equally valid and fully a priori construction – the indicator can be obtained from the historical trajectory without reference to the one-step target, so the reweighting remains a function of the state recurrence dimension alone. 16 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems Table 2: Factor-space ablation results (mean ± std over three independent runs). The best-performing method for each metric at every forecast horizon is highlighted in bold .
+
+Step Method MAE ↓ Correlation ↑
+
+d(x) 0.0033 ± 0.0001 1.0000 ± 0.0000 
+
+d(x, y ) 0.0032 ± 0.0000 1.0000 ± 0.0000 1
+
+d(y) 0.0033 ± 0.0001 1.0000 ± 0.0000 
+
+d(x) 0.1171 ± 0.0021 0.9867 ± 0.0001 
+
+d(x, y ) 0.1109 ± 0.0084 0.9876 ± 0.0020 20 (0.25 LT) 
+
+d(y) 0.1210 ± 0.0059 0.9856 ± 0.0010 
+
+d(x) 0.3085 ± 0.0070 0.8875 ± 0.0041 
+
+d(x, y ) 0.2993 ± 0.0233 0.8874 ± 0.0170 40 (0.5 LT) 
+
+d(y) 0.3191 ± 0.0180 0.8741 ± 0.0137 
+
+d(x) 0.7793 ± 0.0174 0.4174 ± 0.0173 
+
+d(x, y ) 0.7779 ± 0.0306 0.4153 ± 0.0353 80 (1.0 LT) 
+
+d(y) 0.7939 ± 0.0146 0.3930 ± 0.0210 
+
+# Appendix E Statistical significance of the win rate with bootstrapping 
+
+E.1 Method 
+
+The Overall Win Rate in Fig 4 is reported over the 21 ,146 high-d event windows extracted from the autoregressive rollouts. However, these windows are not mutually independent: windows drawn from the same rollout share an initial condition and are close in time, so treating each window as an independent sample may understate the sampling variability of the win rate. To obtain faithful confidence intervals, we therefore conduct a cluster (block) bootstrap at the level of the trajectories rather than the windows, i.e., we first compute the win rate over each trajectory, then aggregate over trajectories with resampled initial conditions [34]. Let T index the T = 13 ,111 test trajectories that contribute at least one high-d window; trajectories without an event carry no information about the win rate and are excluded. For each trajectory t ∈ T we precompute two sufficient statistics per method m ∈ { DAW , DenseWeight , RandomWeight , Standard }: the number of its windows won by 
+
+m, Wt,m , and its total number of windows, Et. A window is won by the method of lowest Cumulative Error (CE); exact ties, which are negligible for continuous CE, are split fractionally across the tied methods so that each window contributes unit mass. The point estimate recovers the value reported in the main text, brm = P 
+
+> t
+
+Wt,m / P 
+
+> t
+
+Et.We then draw B = 10 ,000 bootstrap replicates. Each replicate samples T trajectories from T with replacement and forms the win rate r(b) 
+
+> m
+
+= P 
+
+> t∈S b
+
+Wt,m 
+
+ P  
+
+> t∈S b
+
+Et, where Sb is the resampled index set. Because both wins and events are aggregated to the trajectory before resampling, an entire trajectory – with all of its within-cluster correlation intact – is included or omitted as a unit, and each replicate reduces to a pair of sums. The 95% confidence interval for each method is the 2.5th– 97 .5th percentile of {r(b) 
+
+> m
+
+}Bb=1 .The four win rates are compositional: they sum to one and are consequently negatively correlated, so a per-method interval alone does not establish that DAW ranks first. We therefore test each pairwise contrast directly. For every replicate we form the difference ∆(b) 
+
+> m
+
+= r(b)DAW − r(b) 
+
+> m
+
+against each baseline m and report its 95% percentile interval. An interval lying entirely above zero indicates that DAW attains the higher win rate in essentially every resample, and thus a statistically significant advantage over that baseline. The procedure is pure post-processing of the stored CE values and requires no model retraining. 
+
+E.2 Results 
+
+Table 3 reports the bootstrapped win rates and the pairwise contrasts against DAW. The per-method intervals are narrow – each spanning less than 1.4 percentage points – confirming that the point estimates are stable rather than artifacts of the particular test set. The intervals do not overlap across methods, so the ordering DAW > RandomWeight >
+
+DenseWeight > Standard by event-level win rate is unambiguous at the 95% level. In particular, the DAW win rate of 42 .4% (95% CI [41 .7, 43 .1] ) sits well above the 25% rate expected under chance among four competitors. The pairwise contrasts place the main-text claim on a tested footing. DAW exceeds DenseWeight by 18 .0 points (95% CI [16 .8, 19 .2] ), RandomWeight by 14 .3 points ( [13 .0, 15 .5] ), and Standard by 37 .3 points ( [36 .5, 38 .2] ); all three intervals exclude zero by a wide margin. The advantage is therefore both statistically significant and of a magnitude 17 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems Table 3: Cluster (block) bootstrap of the Overall Win Rate over the 21 ,146 high-d event windows, resampling the 
+
+T = 13 ,111 event-bearing test trajectories with replacement ( B = 10 ,000 ). Win rates are given with 95% percentile confidence intervals; the last column reports the paired difference DAW − method with its 95% interval. All contrasts against DAW exclude zero. Method Win rate (%) [95% CI] ∆ vs. DAW (%) [95% CI] DAW 42 .4 [41 .7, 43 .1] —RandomWeight 28 .1 [27 .5, 28 .8] +14 .3 [+13 .0, +15 .5] 
+
+DenseWeight 24 .4 [23 .8, 25 .0] +18 .0 [+16 .8, +19 .2] 
+
+Standard 5.1 [ 4 .8, 5.4] +37 .3 [+36 .5, +38 .2] 
+
+far larger than the sampling uncertainty, even for the closest competitor. This upgrades the reported 42 .4% win rate from a point estimate to a tested statement, and corroborates the central finding that DAW suppresses per-event error accumulation at the system’s most demanding high-d regimes more reliably than uniform training, purely statistical density weighting, or the shuffled-weight ablation. 
+
+# Appendix F Additional results on Lorenz 
+
+To test whether DAW’s advantage is specific to spatiotemporal chaos, we repeat the study on the Lorenz-63 system – a low-dimensional chaotic attractor whose geometry is largely distinct from the KS field. 
+
+F.1 Experimental setup 
+
+The Lorenz-63 system is governed by 
+
+˙x = σ(y − x), ˙y = x(ρ − z) − y, ˙z = xy − βz, (20) with the canonical parameters (σ, ρ, β ) = (10 , 28 , 8/3) , for which the system is chaotic with leading Lyapunov exponent λmax ≈ 0.906 (Lyapunov time LT = 1 /λ max ≈ 1.10 ). Trajectories are integrated with a fourth-order Runge-Kutta scheme at dt = 0 .01 . The total trajectory spans around 5000 LT, with a 70%/15%/15% training/validating/testing split. All data is standardized via Z-score normalization using training-split statistics. The local dimension d is estimated with the identical pipeline as the KS, applied here to the three-dimensional state; the rare, high-d excursions correspond to lobe-switching transitions between the two wings of the attractor – the low-dimensional analogue of the KS wave-merging events. For the Lorenz system, we adopt a simpler MLP with 4 hidden layers and 64 neurons in each hidden layer. The remaining configurations, and the four weighting schemes (Standard, DAW, DenseWeight, RandomWeight) are identical to Section 3.2. 18 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems 
+
+F.2 Results 
+
+Figure 9: Autoregressive forecasting performance on the test set for Lorenz. DAW (red) is compared against Standard (black), DenseWeight (orange), and RandomWeight (blue). Left: Mean Absolute Error (MAE) at each autoregressive step, averaged over the full test set. Right: Pearson correlation across the three state components at each step, averaged over the test set. In both panels, the primary horizontal axis (bottom) gives the discrete step index; the secondary axis (top) indicates the corresponding physical timescale in Lyapunov Time (LT). Solid lines are per-step means across the test set; shaded bands denote ±1 standard deviation across test-set trajectories at each step. In the correlation panel, a horizontal dashed grey line marks the 0.5 predictability threshold; coloured vertical dotted lines indicate the step at which each model’s mean correlation first crosses this threshold. Fig. 9 reports the closed-loop rollout performance. The ordering of methods established on KS is preserved across both metrics: DAW attains the lowest MAE and the slowest correlation decay throughout, followed by DenseWeight, RandomWeight, and Standard. Measured against the 0.5 predictability threshold, DAW extends the horizon to ≈ 4.1 LT, compared with ≈ 3.7 LT for DenseWeight, ≈ 3.4 LT for RandomWeight, and ≈ 2.3 LT for Standard – an increase of roughly 80% over the uniform objective. As on KS, all methods eventually lose coherence under the intrinsic limits of chaotic predictability; the benefit of DAW is again a systematic delay of collapse rather than its elimination. 
+
+# References 
+
+[1] Jaideep Pathak, Brian Hunt, Michelle Girvan, Zhixin Lu, and Edward Ott. Model-Free Prediction of Large Spatiotemporally Chaotic Systems from Data: A Reservoir Computing Approach. Physical Review Letters ,120(2):024102, 2018. [2] Markus Reichstein, Gustau Camps-Valls, Bjorn Stevens, Martin Jung, Joachim Denzler, and Nuno Carvalhais. Deep learning and process understanding for data-driven Earth system science. Nature , 566(7743):195–204, 2019. [3] Ashesh Chattopadhyay, Pedram Hassanzadeh, and Devika Subramanian. Data-driven predictions of a multiscale Lorenz 96 chaotic system using machine-learning methods: Reservoir computing, artificial neural network, and long short-term memory network. Nonlinear Processes in Geophysics , 27(3):373–389, 2020. [4] Stephan Rasp, Peter D. Dueben, Sebastian Scher, Jonathan A. Weyn, Soukayna Mouatadid, and Nils Thuerey. WeatherBench: A benchmark dataset for data-driven weather forecasting. Journal of Advances in Modeling Earth Systems , 12(11):e2020MS002203, 2020. [5] Andrea Lario, Romit Maulik, Oliver T Schmidt, Gianluigi Rozza, and Gianmarco Mengaldo. Neural-network learning of spod latent dynamics. Journal of Computational Physics , 468:111475, 2022. [6] Xin Wang, Juntao Yang, Jeff Adie, Simon See, Kalli Furtado, Chen Chen, Troy Arcomano, Romit Maulik, and Gianmarco Mengaldo. CondensNet: Enabling stable long-term climate simulations via hybrid deep learning models with adaptive physical constraints. arXiv preprint arXiv:2502.13185 , 2025. [7] Annalisa Bracco, Julien Brajard, Henk A Dijkstra, Pedram Hassanzadeh, Christian Lessig, and Claire Monteleoni. Machine learning for the physics of climate. Nature Reviews Physics , 7(1):6–20, 2025. [8] Jared Willard, Xiaowei Jia, Shaoming Xu, Michael Steinbach, and Vipin Kumar. Integrating Scientific Knowledge with Machine Learning for Engineering and Environmental Systems. ACM Computing Surveys , 55(4):66, 2023. 19 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems [9] Xinquan Huang and Paris Perdikaris. Physicscorrect: A training-free approach for stable neural pde simulations. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, pages 22057–22065, 2026. [10] Georg Kohl, Li-Wei Chen, and Nils Thuerey. Benchmarking autoregressive conditional diffusion models for turbulent flow simulation. Neural Networks , page 108641, 2026. [11] Davide Faranda, Gabriele Messori, and Pascal Yiou. Dynamical proxies of North Atlantic predictability and extremes. Scientific Reports , 7(1):41278, 2017. [12] Zhou Fang and Gianmarco Mengaldo. Dynamical errors in machine learning forecasts. Chaos, Solitons & Fractals ,201:117376, 2025. [13] Tommaso Alberti, Davide Faranda, Valerio Lucarini, Reik V Donner, Berengere Dubrulle, and François Davi-aud. Scale dependence of fractal dimension in deterministic and stochastic Lorenz-63 systems. Chaos: An Interdisciplinary Journal of Nonlinear Science , 33(2), 2023. [14] Yuzhe Yang, Kaiwen Zha, Yingcong Chen, Hao Wang, and Dina Katabi. Delving into deep imbalanced regression. In International conference on machine learning , pages 11842–11851. PMLR, 2021. [15] Michael Steininger, Konstantin Kobs, Padraig Davidson, Anna Krause, and Andreas Hotho. Density-based weighting for imbalanced regression. Machine Learning , 110(8):2187–2211, 2021. [16] Noah C Puetz, Jens U Brandt, Marc Hilbert, Elena Raponi, Thomas Bäck, and Thomas Bartz-Beielstein. Decon-structing deep imbalance regression: a comprehensive review and experimental evaluation. Artificial Intelligence Review , 2026. [17] Angelos Katharopoulos and François Fleuret. Not all samples are created equal: Deep learning with importance sampling. In International conference on machine learning , pages 2525–2534. PMLR, 2018. [18] Guillaume Alain, Alex Lamb, Chinnadhurai Sankar, Aaron Courville, and Yoshua Bengio. Variance reduction in sgd by distributed importance sampling. arXiv preprint arXiv:1511.06481 , 2015. [19] Zhenghao Lin, Zhibin Gou, Yeyun Gong, Xiao Liu, Ruochen Xu, Chen Lin, Yujiu Yang, Jian Jiao, Nan Duan, Weizhu Chen, et al. Not all tokens are what you need for pretraining. Advances in Neural Information Processing Systems , 37:29029–29063, 2024. [20] Sören Mindermann, Jan M Brauner, Muhammed T Razzak, Mrinank Sharma, Andreas Kirsch, Winnie Xu, Benedikt Höltgen, Aidan N Gomez, Adrien Morisot, Sebastian Farquhar, et al. Prioritized training on points that are learnable, worth learning, and not yet learnt. In International Conference on Machine Learning , pages 15630–15649. PMLR, 2022. [21] Paula Branco, Luís Torgo, and Rita P Ribeiro. SMOGN: a pre-processing approach for imbalanced regression. In First international workshop on learning with imbalanced domains: Theory and applications , pages 36–50. PMLR, 2017. [22] Jiawei Ren, Mingyuan Zhang, Cunjun Yu, and Ziwei Liu. Balanced mse for imbalanced visual regression. In 
+
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 7926–7935, 2022. [23] Davide Faranda, Gabriele Messori, Tommaso Alberti, Carmen Alvarez-Castro, Théophile Caby, Leone Cavicchia, Erika Coppola, Reik V Donner, Berengere Dubrulle, Vera Melinda Galfi, et al. Statistical physics and dynamical systems perspectives on geophysical extreme events. Physical Review E , 110(4):041001, 2024. [24] Chenyu Dong, Gabriele Messori, Davide Faranda, Adriano Gualandi, Valerio Lucarini, and Gianmarco Mengaldo. Spatio-temporal dynamical indices for complex systems. Chaos, Solitons & Fractals , 201:117248, 2025. [25] Chenyu Dong, Davide Faranda, Adriano Gualandi, Valerio Lucarini, and Gianmarco Mengaldo. Time-lagged recurrence: A data-driven method to estimate the predictability of dynamical systems. Proceedings of the National Academy of Sciences , 122(20):e2420252122, 2025. [26] Yuxuan Yang, Chenyu Dong, and Gianmarco Mengaldo. Hierarchy of extreme-event predictability in turbulence revealed by machine learning. arXiv preprint arXiv:2603.13789 , 2026. [27] Chenyu Dong, Robin Noyelle, Gabriele Messori, Adriano Gualandi, Lucas Fery, Pascal Yiou, Mathieu Vrac, Fabio D’andrea, Suzana J Camargo, Erika Coppola, et al. Indo-pacific regional extremes aggravated by changes in tropical weather patterns. Nature Geoscience , 17(10):979–986, 2024. [28] Hidetoshi Shimodaira. Improving predictive inference under covariate shift by weighting the log-likelihood function. Journal of statistical planning and inference , 90(2):227–244, 2000. [29] Predrag Cvitanovi´ c, Ruslan L Davidchack, and Evangelos Siminos. On the state space geometry of the Kuramoto– Sivashinsky flow in a periodic domain. SIAM Journal on Applied Dynamical Systems , 9(1):1–33, 2010. 20 DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems [30] Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Fourier neural operator for parametric partial differential equations. arXiv preprint arXiv:2010.08895 , 2020. [31] Lu Lu, Pengzhan Jin, Guofei Pang, Zhongqiang Zhang, and George Em Karniadakis. Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators. Nature machine intelligence ,3(3):218–229, 2021. [32] Hao Wu, Yuan Gao, Fan Xu, Fan Zhang, Qingsong Wen, Kun Wang, Xiaomeng Huang, and Xian Wu. Differential-Integral Neural Operator for Long-Term Turbulence Forecasting. arXiv preprint arXiv:2509.21196 , 2025. [33] Ying-Xin Wu, Xiang Wang, An Zhang, Xiangnan He, and Tat-Seng Chua. Discovering invariant rationales for graph neural networks. arXiv preprint arXiv:2201.12872 , 2022. [34] Bradley Efron and Robert J. Tibshirani. An Introduction to the Bootstrap . Number 57 in Monographs on Statistics and Applied Probability. Chapman & Hall/CRC, New York, 1993. 21

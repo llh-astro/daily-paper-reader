@@ -1,0 +1,477 @@
+Title: A score-based particle flow filter for non-Gaussian data assimilation in high-dimensional chaotic systems
+
+URL Source: https://arxiv.org/pdf/2608.22454v1
+
+Published Time: Tue, 25 Aug 2026 01:31:40 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES) 
+
+# A score-based particle flow filter for non-Gaussian data assimilation in high-dimensional chaotic systems 
+
+Zheqi Shen 1, Youmin Tang 1,2and Yuewei Fang 1,3
+
+> 1
+
+College of Oceanography, Hohai University, Nanjing, China. 
+
+> 2
+
+Department of Geography, Earth and Environmental Sciences, University of Northern British Columbia, Canada 
+
+> 3
+
+State Key Laboratory of Satellite Ocean Environment Dynamics, Second Institute of Oceanography, Ministry of Natural Resources, Hangzhou, China 
+
+Key Points:  
+
+> •
+
+Score-PFF replaces Gaussian prior gradients with neural network-learned score functions to better characterize non-Gaussian attractor structures in chaotic sys-tems  
+
+> •
+
+The learned score captures multimodal and skewed prior distributions, yielding substantial RMSE reduction over Gaussian-based methods on the Lorenz-96 sys-tem  
+
+> •
+
+Neural network inference replaces SVD-based covariance inversion, eliminating the computational bottleneck of Gaussian PFF in high-dimensional systems 
+
+Corresponding author: Youmin Tang, ytang@hhu.edu.cn 
+
+–1– arXiv:2608.22454v1 [physics.ao-ph] 23 Aug 2026 manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES) 
+
+Abstract 
+
+Current particle flow filters rely on Gaussian prior assumptions that fail to capture the non-Gaussian attractor structure of chaotic systems. This study proposes a Score-based Particle Flow Filter (Score-PFF) that replaces the parametric prior gradient with a neu-ral network-learned score function via denoising score matching. This enables flexible characterization of multimodal, skewed, and complex prior distributions in chaotic dy-namics. Pure prior adjustment experiments demonstrate correct gradient directions to-ward the attractor (26.9%–29.0% error reduction over Gaussian priors). Under linear ob-servations, Score-PFF significantly outperforms both Gaussian PFF and EAKF (Cohen’s d = 1.03 and 1.40), preserving non-Gaussian structure that EAKF progressively Gaus-sianizes. Under nonlinear observation operators, Score-PFF maintains robust performance with up to 60% RMSE reduction in strongly non-Gaussian regimes. On the 1000-dimensional Lorenz-96 system, Score-PFF achieves 49.5% RMSE reduction over PFF while reduc-ing per-assimilation cost by replacing SVD-based covariance inversion with neural net-work inference. Score-PFF establishes a computationally tractable, non-Gaussian data assimilation framework suitable for high-dimensional geophysical systems. 
+
+Plain Language Summary 
+
+Weather and ocean forecasting rely on combining computer models with real-world observations—a process called data assimilation. Traditional methods assume that fore-cast errors follow Gaussian (bell-shaped) distributions, which fails for complex chaotic systems like the atmosphere. Particle flow filters can handle non-Gaussian distributions but rely on expensive matrix calculations that become increasingly cumbersome in high dimensions. This study introduces Score-PFF, a new method that trains a neural net-work to learn the patterns of forecast errors from model simulations. Instead of perform-ing slow matrix inversion operations, the trained network directly predicts how to ad-just forecasts. Tests on a simplified atmospheric model show that this approach is more accurate than existing methods, especially when observations are nonlinear. The method also reduces computational bottlenecks by replacing matrix inversion with neural net-work inference, making it suitable for future operational weather forecasting systems. 
+
+1 Introduction 
+
+Data assimilation is a technique that combines numerical models with observational data to provide optimal estimates of initial conditions for numerical prediction, reduce uncertainties in model parameters, and generate reanalysis datasets to support scientific research and artificial intelligence model training. Traditional methods based on vari-ational theory or sequential estimation—including three-dimensional variational (3D-Var), optimal interpolation (OI), and the Kalman filter (KF)—have been extensively studied and widely applied in operational systems. These methods heavily rely on linear numer-ical models and Gaussian assumptions. Variational methods such as 3D-Var and OI as-sume Gaussian prior, posterior, and likelihood functions; the KF assumes linear dynam-ics and Gaussian distributions, with the extended Kalman filter (EKF) introducing tan-gent linear approximations for weakly nonlinear systems that suffer from truncation er-rors. The ensemble Kalman filter (EnKF) addresses the computational limitations of EKF by employing Monte Carlo methods to avoid explicit storage of the background error co-variance matrix while maintaining flow-dependent error evolution (Evensen, 2003); how-ever, it still relies on Gaussian assumptions for probability density functions. Under strongly nonlinear and non-Gaussian scenarios, the effectiveness of these methods is significantly limited. The particle filter (PF) provides a nonlinear assimilation method free of Gaussian assumptions (Van Leeuwen et al., 2019). Its fundamental idea is to approximate Bayesian filtering through importance sampling and resampling. However, PF suffers from severe  
+
+> –2– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES)
+
+particle degeneracy: in high-dimensional systems, most particle weights become vanish-ingly small, causing performance to deteriorate sharply. The probability of this phenomenon increases exponentially with dimensionality, making the ”curse of dimensionality” un-avoidable even with increased ensemble size (Bengtsson et al., 2008). To alleviate this curse, researchers have proposed equal-weight particle filters, lo-calized particle filters, and hybrid filters(Snyder et al., 2008; Poterjoy et al., 2018; Robert & K¨ unsch, 2017). These improve high-dimensional performance through optimized pro-posal distributions, localization, or hybridizing EnKF and PF analysis steps (Shen & Tang, 2015; Shen et al., 2017). Nevertheless, such improvements still rely on resampling or Gaus-sian approximations and may face limitations in accuracy, parameter sensitivity, or com-putational efficiency under extreme non-Gaussian scenarios. The particle flow filter (PFF) offers a fundamentally different approach: it drives particles to evolve from prior to posterior through continuous-time differential equations, circumventing resampling and maintaining diversity in high dimensions. The theoret-ical foundation was established by Daum et al. (2011) with the Exact Daum-Huang Fil-ter (EDH). Subsequent developments include Stein variational gradient descent (Liu & Wang, 2016) and the mapping particle filter (Pulido & van Leeuwen, 2019), which em-bed particle updates in reproducing kernel Hilbert spaces (RKHS). The current state-of-the-art in geophysical applications is the matrix-valued kernel PFF of Hu and van Leeuwen (2021), which achieves efficient assimilation in 10 5–10 6 dimensional systems through lo-cally adaptive bandwidth matrices and implementation within the Data Assimilation Re-search Testbed (DART) (Hu et al., 2024). However, Hu and van Leeuwen (2021) still relies on the Gaussian prior assumption, computing the prior gradient as −B−1loc (x − ¯x). This linearization struggles to capture the non-Gaussian attractor structure of chaotic systems such as Lorenz-96. Moreover, the Gaussian parameterization necessitates explicit covariance inversion: O(n3
+
+> x
+
+) for un-localized matrices, or O(rn 2
+
+> x
+
+) with truncated SVD where r is the effective rank (typi-cally r ∼ 10–50). This SVD-based computation suffers from numerical instabilities, sen-sitive tuning of localization parameters, and poor GPU utilization, creating practical bot-tlenecks for high-dimensional applications. To address these limitations, this study proposes a score-based particle flow filter (Score-PFF): retaining the differential equation-driven framework of PFF, but replac-ing the Gaussian prior with score functions learned by deep neural networks (Vincent, 2011; Song et al., 2021). This modification overcomes the fundamental limitation of char-acterizing non-Gaussian priors (multimodal, skewed distributions) inherent in chaotic dynamics. The neural network prior gradient also replaces the SVD-based covariance in-version required by Gaussian PFF, eliminating the dominant computational bottleneck that constrains scalability to high-dimensional operational systems. Recently, diffusion models have emerged as an alternative for data assimilation, with approaches ranging from GraphCast-based post-processing (Huang et al., 2024) to score-based state generation (Rozet & Louppe, 2023; Yang et al., 2025; Shen, 2025). These methods demonstrate the representational power of score functions for geophysical states, but they largely operate outside the probabilistic Bayesian assimilation framework, as standalone generative pipelines that forgo the sequential posterior update and rigorous uncertainty quantification guaranteed by Bayes’ theorem in traditional filtering. Score-PFF builds on this insight by integrating neural network-learned score functions within the established PFF framework, using sθ (x) as a plug-in replacement for the Gaussian prior gradient while retaining sequential Bayesian structure. This strategy explores the potential of score-based models as enhancements to operational systems, rather than com-plete replacements.  
+
+> –3– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES)
+
+Numerical experiments on the Lorenz-96 system demonstrate superior accuracy and efficiency compared to both Hu and van Leeuwen (2021) and the Ensemble Adjustment Kalman Filter (Anderson, 2001, 2003, EAKF). The remainder of this paper is organized as follows: Section 2 introduces the methodology; Section 3 presents numerical exper-iments based on the Lorenz-96 model; and finally, conclusions and future perspectives are provided. 
+
+2 Method 
+
+2.1 Particle Flow Filter Foundation 
+
+Traditional particle filters suffer from weight degeneracy in high dimensions, ne-cessitating resampling that destroys particle diversity. The PFF circumvents this by trans-porting particles continuously from prior to posterior through a velocity field, preserv-ing the ensemble size without resampling. Here, ”particles” refer to possible realizations of the system state, i.e., sample points in the state space; ”particle flow” describes the continuous evolution trajectory of these sample points in pseudo-time s ∈ [0 , 1], which parametrizes the interpolation from prior (s = 0) to posterior ( s = 1) independently of physical model time. To derive a tractable velocity field, the particle flow is embedded in a reproducing kernel Hilbert space, where the optimal update is obtained by minimizing the Kullback-Leibler divergence between the prior and posterior distributions: 
+
+dds xs = fs(xs) (1) where fs(xs) is the particle flow velocity field, with the specific form derived in Hu and van Leeuwen (2021, Appendix A): 
+
+fs(x) = D
+
+ 1
+
+NpNp
+
+X
+
+> i=1
+
+ K(xis, x)∇xis log p(xis|y) + ∇xis · K(xis, x) (2) In Eq. (2), D is a positive definite preconditioning matrix (typically the localized prior covariance Bloc ) that scales the update magnitude; K is the kernel function encoding inter-particle interactions; ∇ log p(x|y) is the posterior log-gradient driving particles to-ward high-probability regions; and the kernel divergence term ∇ · K generates repul-sive forces to maintain particle diversity, where the index i = 1 , . . . , N p denotes the i-th particle in the ensemble. 
+
+2.2 Matrix-Valued Kernel Improvement and Its Limitations 
+
+To alleviate marginal collapse, Hu and van Leeuwen (2021) proposed matrix-valued kernel functions that assign dimension-specific bandwidths: 
+
+K(x, z) = diag ( k1(x, z), . . . , k nx (x, z)) (3) where kj (x, z) = exp 
+
+
+
+− (xj −zj )2
+
+> 2ασ 2
+> j
+
+
+
+, with σj being the prior standard deviation of the 
+
+j-th dimension and α a global scaling hyperparameter. This anisotropic structure allows independent adaptation to local density variations in each dimension, enabling PFF to scale to systems with 10 5–10 6 state variables. Despite this architectural advance, existing PFF frameworks remain constrained by Gaussian assumptions in the prior representation. By Bayes’ theorem, the posterior log-gradient decomposes as: 
+
+∇x log p(x|y) = ∇x log p(y|x)
+
+| {z }
+
+> likelihood gradient
+
++ ∇x log p(x)
+
+| {z }
+
+> prior gradient
+
+(4)  
+
+> –4– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES)
+
+For Gaussian observation errors, the likelihood gradient is analytically tractable: 
+
+∇x log p(y|x) = HTR−1(y − H(x)) (5) However, the prior gradient in Hu and van Leeuwen (2021) explicitly assumes a Gaus-sian prior: 
+
+∇x log p(x) = −B−1(x − ¯x) (6) where B is the prior covariance matrix (typically the localized covariance Bloc in prac-tice), and ¯ x is the (prior) ensemble mean. This parametric form cannot characterize non-Gaussian structures (multimodal or skewed distributions) inherent in chaotic dynamics. Furthermore, the explicit covariance inversion required by the Gaussian parameteriza-tion becomes prohibitive for large nx, even with localization. 
+
+2.3 Score-PFF: Score-Based Particle Flow Filter 
+
+To address the dual limitations of Gaussian prior assumptions and computational bottlenecks in existing PFF, this study proposes the Score-PFF. The new method re-tains the matrix-valued kernel framework and Bayesian gradient decomposition of Hu and van Leeuwen (2021), but replaces the parametric Gaussian prior gradient (Eq. (6)) with a non-parametric score function learned by deep neural networks. This modifica-tion eliminates explicit covariance matrix construction and inversion, reducing compu-tational complexity while enabling characterization of non-Gaussian, multimodal prior structures. 
+
+2.3.1 Score Network Training 
+
+The score network is trained on state samples generated from free runs of the tar-get dynamical model. Given a training sample x0, noise is injected at multiple scales σ ∈{σ1, . . . , σ L} to produce perturbed states xσ = x0 + σz with z ∼ N (0, I), where σ is sampled from the predefined set of L noise levels. A conditional network sθ (x, σ ) learns to predict the score function: 
+
+sθ (x, σ ) ≈ ∇ x log p(x) (7) via denoising score matching (DSM): 
+
+L(θ) = Ex0,σ, z
+
+
+
+sθ (x0 + σz, σ ) + z
+
+σ
+
+> 22
+
+
+
+. (8) The multi-scale noise conditioning enables the network to capture both coarse and fine structures of the data distribution. Network architecture selection depends on the structure of the target dynamical system. For the Lorenz-96 model used in this study, three architectures are evaluated: multilayer perceptrons (MLP) as a generic baseline; Fourier Neural Operators (FNO) that exploit the cyclic symmetry of the latitude-circle discretization through spectral con-volutions; and Graph Neural Networks (GNN) that explicitly model local neighbor in-teractions in the state space. These choices allow assessment of how inductive biases af-fect data efficiency and assimilation accuracy. Training protocols and hyperparameter settings are detailed in Section 3. 
+
+2.3.2 Score-PFF Inference 
+
+During online assimilation, the trained score network replaces the Gaussian prior gradient (Eq. (6)). The posterior log-gradient combines the exact likelihood gradient with the neural network-approximated prior gradient: 
+
+∇x log p(x|y) = HTR−1(y − H(x)) 
+
+| {z }
+
+> likelihood gradient (exact)
+
++ sθ (x, σ min )
+
+| {z }
+
+> prior gradient (learned)
+
+(9) 
+
+> –5–
+
+manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES) 
+
+Algorithm 1: Score-based Particle Flow Filter (Score-PFF) 
+
+Require: Prior particle set {xi
+
+> 0
+
+}Np
+
+> i=1
+
+, observation y, observation operator H,observation error covariance R, trained score network sθ , pseudo time step ∆ s, number of iterations Ns
+
+Ensure: Posterior particle set {xiNs }Np 
+
+> i=1
+> 1
+
+Initialization: Compute prior mean xb = 1
+
+> Np
+
+PNp 
+
+> i=1
+
+xi
+
+> 0
+
+, estimate preconditioning matrix D = Bloc ; 
+
+> 2
+
+for s = 1 to Ns do  
+
+> 3
+
+for each particle i = 1 , . . . , N p in parallel do  
+
+> 4
+
+gi 
+
+> obs
+
+← H⊤R−1(y − H(xis−1)); ▷ Likelihood gradient  
+
+> 5
+
+gi 
+
+> prior
+
+← sθ (xis−1, σ min ); ▷ Prior gradient via score network  
+
+> 6
+
+∇ log pi ← gi 
+
+> obs
+
++ gi
+
+> prior
+
+; ▷ Total posterior gradient  
+
+> 7
+
+for each particle i = 1 , . . . , N p in parallel do  
+
+> 8
+
+Compute matrix-valued kernel K(xis−1, xjs−1) for j = 1 , . . . , N p via Eq. (3);  
+
+> 9
+
+f i ← D
+
+h 1
+
+> Np
+
+PNp
+
+> j=1
+
+
+
+K(xjs−1, xis−1)∇ log pj + ∇xjs−1
+
+· K(xjs−1, xis−1)
+
+i 
+
+;
+
+▷ Particle flow velocity  
+
+> 10
+
+xis ← xis−1 + ∆ s · f i; ▷ Particle update  
+
+> 11
+
+return {xiNs }Np
+
+> i=1
+
+;where σmin is the minimum noise level from training (0.01 in this study). At this scale, the perturbed training distribution p(x0 + σmin z) closely approximates the true data distribution p(x0), enabling accurate score estimation for clean states encountered dur-ing inference. This modification eliminates the SVD-based covariance inversion required by the Gaussian prior gradient. The prior gradient is obtained via a single network forward pass, avoiding the numerical instabilities and parameter sensitivity of truncated SVD. While the nominal asymptotic complexity remains comparable for localized matrices, the neu-ral network replaces sequential matrix factorization with dense linear algebra that is amenable to GPU acceleration, offering potential for further speedup in GPU-equipped operational settings. Substituting Eq. (9) into the particle flow equation (Eq. (2)), particles initial-ized from the prior ensemble are driven toward the posterior through Ns pseudo-time integration steps. The complete Score-PFF procedure is detailed in Algorithm 1 .
+
+3 Numerical Experiments and Results 
+
+3.1 Experimental Design 
+
+3.1.1 Dynamical Model 
+
+Numerical experiments employ the Lorenz-96 model as the testbed. Proposed by Lorenz (1996), this model constitutes a multiscale chaotic system representing a low-order approximation of zonal atmospheric dynamics. Its governing equations are: dxk
+
+dt = −xk−1 (xk−2 − xk+1 ) − xk + F, k = 1 , . . . , K (10) where xk denotes the state variable of the k-th sector after dividing the latitude circle into K equal sectors, with periodic boundary conditions ( x0 = xK , x−1 = xK−1, xK+1 =
+
+x1). The three terms on the right-hand side represent advective transport, damping dis-sipation, and external forcing, respectively. When the forcing parameter F = 8, the sys-
+
+–6– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES) 
+
+tem exhibits chaotic behavior with an error doubling time of approximately 0.4 time units (TU), corresponding to roughly 5 days of atmospheric predictability (Lorenz & Emanuel, 1998). Model integration employs the fourth-order Runge-Kutta scheme with a time step ∆t = 0 .01 TU. 
+
+3.1.2 Observations and Observation Operators 
+
+Following the experimental design of Hu and van Leeuwen (2021), observations are constructed as follows. First, starting from random initial conditions, the model is in-tegrated for 1000 steps (10 TU) to eliminate transient effects and allow the system to reach statistical equilibrium; subsequent integration serves as the true trajectory xt. Ob-servations are then sampled from this trajectory. This study adopts a spatially sparse observation strategy: one observation is placed every 4 grid points, yielding an obser-vation coverage of 25%. For the 40-dimensional system, the number of observed variables is 10; for the 1000-dimensional system, it is 250. The observation interval is 20 model time steps (0.2 TU), corresponding to an observation frequency of approximately 1 day. Under the linear observation operator, observations are generated by superimpos-ing Gaussian white noise onto the true values: 
+
+yk = H(xk) + εk, εk ∼ N (0 , σ 2 
+
+> o
+
+)where σo is the observation error standard deviation. Beyond the standard linear oper-ator H(x) = x, three nonlinear observation operators are designed to test performance under strongly non-Gaussian conditions:  
+
+> •
+
+Absolute-value observation : H(x) = |x| 
+
+> •
+
+Squared observation : H(x) = x2 
+
+> •
+
+Exponential observation : H(x) = exp( x/ 6) 
+
+3.1.3 Assimilation Configuration 
+
+This study designs two complementary experiments to validate distinct aspects of the proposed method. The 40-dimensional experiment ( K = 40, each grid point cor-responding to a 9 ◦ longitude band) focuses on verifying Score-PFF’s capability to char-acterize non-Gaussian distributions. The 1000-dimensional experiment ( K = 1000 ) tests the practical computational benefits of eliminating SVD-based covariance inversion in high-dimensional sparse observation scenarios, where this operation becomes a severe bot-tleneck for Gaussian PFF. The 40-dimensional experiments employ 30 ensemble members to ensure robust per-formance across all methods under nonlinear observation conditions. The 1000-dimensional experiments employ 20 ensemble members, consistent with Hu and van Leeuwen (2021) for direct comparability. All methods utilize the Gaspari-Cohn localization function, with localization radius rloc = 4 grid points for the 40-dimensional system and rloc = 12 grid points for the 1000-dimensional system. Specifically, PFF employs localized B for three purposes: (i) prior gradient computation via −B−1loc (x − ¯x), (ii) preconditioning matrix D = Bloc in Eq. (2), and (iii) kernel bandwidth σ2 
+
+> j
+
+= diag( Bloc )j in Eq. (3). Score-PFF retains only (ii)–(iii), replacing (i) with the neural network-learned score sθ (x). EAKF requires a multiplicative inflation factor of 1.25 applied to the localized back-ground error covariance matrix to maintain ensemble spread; in contrast, both PFF vari-ants operate without inflation, as particle flow dynamics inherently preserve ensemble diversity through kernel-mediated particle interactions.  
+
+> –7– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES)
+
+3.2 Results for the 40-Dimensional System 
+
+Based on the experimental configuration in Section 3.1, this section presents a de-tailed analysis of the 40-dimensional assimilation results. We first examine the score net-work’s capability to characterize non-Gaussian attractor structure through a pure prior adjustment experiment without observations. We then proceed to data assimilation ex-periments under linear and nonlinear observation operators. 
+
+3.2.1 Pure Prior Adjustment Experiment 
+
+The score network is trained using DSM. Training data are generated from free runs of the 40-dimensional Lorenz-96 model, comprising 500 trajectories with 1 million state samples. Each trajectory consists of 2000 steps collected after a 1000-step spin-up. The network architecture is a four-layer MLP with hidden layer dimensions [128 , 256 , 256 , 128], which is independent of the state dimension nx. The network takes the noise-perturbed state xσ = x0+σz and the noise level σ as inputs to learn the score function sθ (xσ , σ ) ≈∇x log p(x), with the target −z/σ derived from the known noise realization z ∼ N (0, I). Training employs the Adam optimizer with an initial learning rate of 10 −3 and a cosine annealing schedule, a batch size of 256, and early stopping. The model converges after 39 epochs. To verify the score network’s capability to characterize non-Gaussian attractor fea-tures independently of observation information, this study designs a pure prior adjust-ment experiment using the trained network with 30 particles and 30 iterations without observations. The results are shown in Figure 1. Two initializations are tested: (i) skewed, where all particles are placed on one side of the truth, and (ii) offset Gaussian, where the center is displaced from the truth. For the skewed initialization (Figure 1a), the Gaussian prior fails to reduce the er-ror, which remains at 3.52, as its gradient points toward the sample mean. In contrast, the neural network prior reduces the error to 2.57, representing a 26.9% improvement. For the offset Gaussian initialization with an offset distance of 4.0 (Figure 1b), the Gaus-sian prior again fails with an error of 4.02, whereas the network prior achieves an error of 2.85, a 29.0% improvement. This advantage scales with the offset distance (Figure 1c): the improvement is 24% at an offset of 2.0 and rises to 37% at an offset of 6.0. Gradient analysis (Figure 1d) reveals the underlying mechanism. The score net-work prior produces gradients concentrated near zero (mean magnitude 1.24), computed by neural network forward pass sθ (x). The Gaussian prior yields broadly dispersed gra-dients (mean magnitude 5.84), computed analytically as −B−1(x− ¯x). This disparity demonstrates that the score network learns the true climatological distribution, provid-ing precise gradient directions toward the attractor, whereas the Gaussian prior merely pulls particles toward the sample mean. 
+
+3.2.2 Assimilation Results under Linear Observations 
+
+Building on the validation of the score network’s non-Gaussian characterization ca-pability, we proceed to data assimilation experiments with observations. For fair com-parison, all experiments employ identical Gaussian-perturbed initial ensembles x(i)0 =
+
+xtrue +ϵi, where ϵi ∼ N (0, 2I), consistent with Hu and van Leeuwen (2021) to ensure flow-dependent initial covariance structure. Particle flow parameters are uniformly set: maximum pseudo-time steps 50, initial step length 0.05, adaptive shrinkage factor 1.5, stopping threshold 5%, and kernel bandwidth α = 1 /N p. To enhance numerical sta-bility, we introduce several algorithmic modifications. Gradient clipping limits the L2
+
+norm of gradients to 50. Adaptive step-size scales the step size by 2/3 when the L2 norm exceeds 50. SVD truncated inversion removes singular values below 10 −5 relative to the largest. State constraints bound variables to [ −20 , 20]. Each configuration comprises 20 
+
+> –8–
+
+manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES) 
+
+Figure 1. Pure prior adjustment experiment comparing Gaussian and neural network priors on the 40-dimensional Lorenz-96 system. (a) Skewed initialization: all particles initialized on one side of the truth; (b) Offset Gaussian initialization: Gaussian distribution with center offset by 4.0 from the truth; (c) Improvement rate as a function of initial offset distance (2.0 to 6.0); (d) Gradient norm distribution for the neural network prior and Gaussian prior. –9– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES) 
+
+independent replicate trials. Performance is evaluated by time-averaged RMSE, with paired 
+
+t-tests at α = 0 .05 and Cohen’s d effect sizes for statistical validation (Cohen, 1992). Small, medium, and large effects are defined as |d| < 0.2, 0 .5 ≤ | d| < 0.8, and |d| ≥ 
+
+0.8, respectively. Figure 2 presents statistical comparison across three observation error levels on the 40-dimensional Lorenz-96 system. The error levels are σ = 0 .3, 0 .5, and 0 .8, with 20 trials and 10 assimilation cycles for each configuration. At σ = 0 .3, corresponding to strong observations, PFF and Score-PFF achieve lower median RMSE than EAKF with overlapping distributions, as shown in Figure 2a. The strong likelihood constraints at this level reduce the influence of prior gradient quality. At σ = 0 .5, corresponding to moderate observations, PFF exhibits elongated boxes with higher median, indicating nu-merical instability. In contrast, Score-PFF maintains a tight distribution with the low-est median, demonstrating that accurate non-Gaussian prior gradient estimation becomes critical when likelihood constraints are moderate. At σ = 0 .8, corresponding to weak observations, all three methods converge as observation information becomes insufficient to distinguish prior quality. Paired t-tests, shown in Figure 2b, indicate that Score-PFF significantly outper-forms EAKF at σ = 0 .3 and σ = 0 .5 with p < 0.001, and PFF at σ = 0 .5 with p =0.018. Effect sizes, presented in Figure 2c, confirm large advantages at σ = 0 .5, with 
+
+d = 1 .03 versus PFF and d = 1 .40 versus EAKF. These results demonstrate that Score-PFF’s neural network-learned prior gradients provide decisive advantages when obser-vation constraints are moderate, enabling effective guidance of particles toward high pos-terior probability regions that Gaussian priors cannot capture. To diagnose the source of PFF-class advantages over EAKF, we examine ensem-ble distribution evolution using quantile-quantile (Q-Q) plots. Departures from the di-agonal reference line indicate non-Gaussianity, and R2 quantifies the degree of Gaussian-ity, with values near 1 indicating Gaussian structure and lower values indicating non-Gaussian structure (Wilk & Gnanadesikan, 1968). Figure 3 presents Q-Q plots for DA1 and DA5 at grid point 11 with observation error σ = 0 .3. At DA1, all methods share identical non-Gaussian priors, exhibiting a marked S-shaped curvature with skewness of approximately 1.31. By DA5, EAKF Gaussianizes the ensemble (skewness near −0.25, 
+
+R2 ≈ 0.98), while PFF and Score-PFF retain non-Gaussian structure (absolute skew-ness exceeding 0.7, R2 ≈ 0.86), demonstrating that particle flow methods preserve the L96 attractor’s non-Gaussianity whereas EAKF’s linear updates progressively erase it. 
+
+3.2.3 Assimilation Results under Nonlinear Observations 
+
+This experiment employs three nonlinear observation operators to further exam-ine method performance: absolute-value H(x) = |x|, squared H(x) = x2, and expo-nential H(x) = exp( x/ 6). All three methods conduct assimilation experiments with sta-bility measures as indicated in Section 3.2.2. Notably, the squared observation operator poses inherent challenges near |x| ≈ 10. The gradient dH/dx = 2 x reaches ±20, and the double-valued mapping x = ±√y in-troduces sign ambiguity, easily causing particle trajectory divergence. Targeted enhance-ment strategies are therefore implemented for this operator. Gradient clipping is tight-ened to limit the L2 norm to 10, versus the default limit of 50. Particle flow iterations are extended to 100 steps, versus the default 50, with more conservative adaptive step-size using an initial length of 0.005 halved after 20 steps, versus the default 0.05. State constraints are tightened to bound variables to [ −15 , 15], versus the default [ −20 , 20]. Additionally, prior score update frequency is increased to every 2 steps in Score-PFF. To verify method robustness under nonlinear observation conditions, each config-uration comprises 20 independent replicate trials, with significance assessed via paired 
+
+> –10–
+
+manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES) 
+
+Figure 2. Statistical comparison of EAKF, PFF, and Score-PFF on the 40-dimensional Lorenz-96 system with 30 ensemble members over 20 independent trials. (a) RMSE distribution boxplots under three observation error levels; (b) Relative improvement percentage of Score-PFF over EAKF and PFF, with significance levels annotated (* p < 0.05, ** p < 0.01, *** p < 0.001; ns = not significant); (c) Effect sizes for Score-PFF comparisons, with reference lines marking small, medium, and large effects. –11– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES)     
+
+> Figure 3. Evolution of Q-Q plots for three assimilation methods in the Lorenz-96 system, with observation error σ= 0 .3. Top row shows state distributions at assimilation cycle 1, bottom row at assimilation cycle 5.
+
+t-tests. Assimilation results in Figure 4 demonstrate that both PFF variants significantly outperform EAKF across all six experimental conditions, validating the fundamental ad-vantage of particle flow methods in handling strongly non-Gaussian posteriors. In Figure 4a, exponential observations show the largest improvement of PFF over EAKF at approximately 60%. Squared observations, which produce a bimodal poste-rior, follow with approximately 50% improvement. Absolute-value observations show rel-atively smaller improvement at approximately 34%. Notably, EAKF errors under squared and exponential observations even exceed the no-assimilation baseline, indicating severe failure of Gaussian assumptions in these scenarios. At σ = 0 .3, no significant difference exists between the two PFF variants. However, in Figure 4b with σ = 0 .5, Score-PFF marginally outperforms PFF for absolute-value observations and shows marginal significance for exponential observations. Yet no significant difference remains for squared observations, possibly due to the ag-gressive stability measures employed by both methods in this challenging scenario. This comparison suggests that when observation error is moderately larger, neural network priors slightly enhance PFF assimilation performance under nonlinear observations, though the difference is less pronounced than in linear scenarios. 
+
+3.2.4 Impact of Training Data Volume and Model Architecture 
+
+The above experiments demonstrate that Score-PFF significantly improves assim-ilation accuracy through neural network-learned non-Gaussian priors, yet its performance depends on score network training quality. The preceding results were obtained with 1 million training samples, whereas in practical Earth system applications, high-fidelity model runs are computationally expensive, making such large-scale datasets difficult to                   
+
+> –12– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES)
+> Figure 4. RMSE comparison under nonlinear observations (absolute-value, squared, expo-nential) for EAKF, PFF, and Score-PFF. Based on 20 replicate experiments per configuration. Statistical significance (paired t-test) is annotated above comparison bars: *** p<0.001, **
+> p<0.01, * p<0.05. Non-significant comparisons ( p≥0.05) are omitted from the figure for clarity. (a) σ= 0 .3; (b) σ= 0 .5.
+
+generate. Therefore, we investigate the impact of network architecture design on data efficiency under limited training data. Four configurations are compared. The MLP trained with 1 million samples (500 trajectories of length 2000) serves as the baseline. MLP, FNO, and GNN are subsequently trained with 20,000 samples (10 trajectories of length 2000). The FNO uses 32 Fourier modes and width 128, while the GNN employs 4-layer graph convolution with hidden dimension 128. These architectures exploit the cyclic symmetry and local graph struc-ture of L96, respectively (Figure 5). Under early stopping, FNO converges in 10 epochs, GNN in approximately 30 epochs, while MLP 20k requires 97 epochs with higher val-idation loss (Figure 6c). Experimental results based on 20 independent trials (Figure 6) show that FNO 20k achieves the lowest median RMSE (approximately 1.73) with a concentrated distribu-tion, followed by GNN 20k (approximately 1.79). MLP 20k performs worst with notable outliers. Compared to the MLP 1M baseline, MLP 20k suffers 10.3% RMSE degrada-tion due to insufficient data, whereas FNO 20k and GNN 20k maintain favorable accu-racy, achieving improvements of 4.9% and 1.3%, respectively. However, FNO has 2.72M parameters (16 times the MLP parameter count), while GNN has 467K parameters (2.8 times the MLP parameter count), suggesting FNO may become a bottleneck for high-dimensional scaling. These results demonstrate that domain-specific architectural choices critically af-fect data efficiency. FNO 20k achieves optimal performance and training efficiency through frequency-domain modeling, with 10-epoch convergence and the lowest validation loss (32.03). This highlights the advantage of physics-informed architectures in small-sample scenarios. GNN 20k offers a favorable balance between accuracy and model complexity. MLP 20k suffers from low data efficiency due to lacking structural priors. For high-dimensional scaling, GNN or MLP 1M may represent more robust choices. 
+
+> –13–
+
+manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES) 
+
+Figure 5. Score network architectures for Score-PFF. (a) MLP: fully connected layers [128, 256, 256, 128]. (b) FNO: spectral convolution with 32 Fourier modes and width 128, leveraging cyclic symmetry. (c) GNN: 4-layer graph convolution with hidden dimension 128, encoding lo-cal grid interactions. Inputs are noise-perturbed state xσ and noise level σ; output is the score estimate sθ (xσ , σ ). –14– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES) 
+
+Figure 6. Comparison of neural network architectures for score-based particle flow filtering on the 40-dimensional Lorenz-96 system with linear observations at σ = 0 .5 . (a) RMSE distribution over 20 trials. The dashed line marks the MLP 1M baseline. (b) Relative improvement over the MLP 1M baseline. (c) Training efficiency: epochs to convergence and final validation loss. (d) Model parameter count. –15– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES) 
+
+3.3 Results for the 1000-Dimensional System 
+
+For the 1000-dimensional Lorenz-96 system, this study employs GNN as the score model architecture to verify data efficiency under training data constraints. Unlike the 1 million samples used in the 40-dimensional experiments, this experiment uses only 100,000 samples (50 trajectories of length 2000 collected after a 2000-step spin-up). This reduced sample size simulates the realistic constraint in Earth system applications where high-fidelity model runs are computationally expensive. GNN explicitly models local neigh-borhood interactions in Lorenz-96, capturing adjacent grid point correlations under pe-riodic boundary conditions through circular padding one-dimensional convolution lay-ers. The network configuration comprises a 4-layer encoder-decoder architecture with hidden dimension 128 and approximately 470K total parameters. Residual connections and layer normalization stabilize deep training. We employ the same DSM loss function as the 40-dimensional experiments, with 20 noise levels logarithmically sampled in σ ∈
+
+[0 .01 , 1.0]. The batch size is 64, and the Adam optimizer is used with learning rate 10 −3
+
+and weight decay 10 −5. GNN converges in approximately 30 epochs under early stop-ping. This study compares PFF and Score-PFF under linear observation operator H(x) = 
+
+x with 25% observation coverage and observation error standard deviation 0.5. Both meth-ods employ identical assimilation configurations: ensemble size 20, assimilation interval of 20 time steps for 15 assimilations total, maximum pseudo-time iterations 20, initial step length ϵ = 0 .02, convergence threshold set to 0.1 times the gradient norm, and Gaspari-Cohn localization radius 12. Neither method uses covariance inflation. The sole differ-ence lies in prior gradient computation: PFF uses the Gaussian assumption −B−1loc (x−
+
+¯x), while Score-PFF employs the neural network-learned score function sθ (x). Based on 20 independent runs (Figure 7), Score-PFF significantly outperforms PFF in both assimilation accuracy and computational efficiency. Score-PFF achieves a final RMSE of 1 .604 ±0.155, representing a 49.5% reduction compared to PFF’s 3 .177 ±0.141, and a 55.4% reduction compared to the no-assimilation Free Run (3 .595 ±0.111). The difference is statistically significant. In total computational time, Score-PFF requires 6.3 seconds compared to 10.1 sec-onds for PFF, yielding a speedup factor of 1.6 (Figure 7b). This efficiency gain stems from replacing the SVD-based covariance inversion in PFF (7.4s, 73.3% of total time) with neural network inference (4.7s). The elimination of SVD reduces the dominant com-putational bottleneck, enabling practical deployment in high-dimensional operational sys-tems without sacrificing accuracy. Beyond the raw speedup, Score-PFF offers several practical advantages over local-ized PFF. First, the Gaussian prior gradient −B−1loc (x−¯x) requires careful tuning of the localization radius rloc : too small suppresses true long-range correlations, while too large introduces spurious correlations and degrades filter performance. This parameter sen-sitivity demands extensive trial-and-error calibration for each new system. Moreover, with-out localization, the full covariance inversion incurs O(n3
+
+> x
+
+) complexity, which is compu-tationally prohibitive for operational systems with nx ∼ 10 5–10 6. Second, even with localization, the truncated SVD introduces numerical instabilities sensitive to the effec-tive rank r, whose optimal value varies with system dimension and correlation structure. Third, the explicit construction and storage of Bloc consumes O(n2
+
+> x
+
+) memory regardless of localization, limiting scalability. In contrast, Score-PFF bypasses these issues entirely: the score network requires no localization parameter tuning, no rank truncation, and no dense covariance storage. The prior gradient is obtained from a single forward pass with fixed architecture, offering predictable and robust performance across different problem settings.    
+
+> –16– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES)
+> Figure 7. Performance comparison on 1000D Lorenz-96. (a) RMSE over 15 assimilation cycles. (b) Computational time breakdown.
+
+The 1000-dimensional experiments were conducted on an Intel Xeon Platinum 8276 processor with 256GB system memory. The software environment was Python 3.9 and NumPy 1.24. The neural network forward pass is amenable to GPU acceleration, which may yield further speedup for larger network architectures or batch processing scenar-ios. 
+
+4 Conclusion 
+
+This study presents the Score-PFF, a novel data assimilation framework that ad-dresses two fundamental limitations of existing particle flow methods: (1) restrictive Gaus-sian prior assumptions that fail to capture non-Gaussian attractor structures in chaotic systems, and (2) prohibitive computational bottlenecks arising from SVD-based covari-ance inversion. By replacing the parametric Gaussian prior gradient −B−1loc (x−¯x) with a neural network-learned score function sθ (x, σ min ) trained via denoising score matching, Score-PFF achieves three key advances: First, the score network captures multimodal, skewed, and complex prior distri-butions that Gaussian parameterizations cannot. Pure prior adjustment experiments demon-strate that the score network provides correct gradient directions toward the climato-logical attractor regardless of initial ensemble configuration, achieving 26.9%–29.0% er-ror reduction over Gaussian priors when ensembles are offset from the attractor. Under linear observations with moderate error ( σ = 0 .5), Score-PFF significantly outperforms both Gaussian-based PFF and EAKF, with Cohen’s d effect sizes of 1.03 and 1.40 re-spectively. Quantile-quantile analysis confirms that Score-PFF preserves non-Gaussian  
+
+> –17– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES)
+
+structure over successive assimilation cycles, whereas EAKF progressively Gaussianizes the ensemble. Second, under nonlinear observation operators (absolute-value, squared, exponen-tial), Score-PFF maintains robust performance with up to 60% RMSE reduction rela-tive to EAKF in strongly non-Gaussian regimes. The neural network prior eliminates the sign ambiguity and gradient explosion issues that challenge Gaussian approximations, enabling stable assimilation where EAKF fails entirely. Third, the elimination of SVD-based covariance inversion reduces the dominant com-putational bottleneck of Gaussian PFF. On the 1000-dimensional Lorenz-96 system, Score-PFF achieves a speedup factor of 1.6 (6.3s versus 10.1s per 20-run experiment) by re-placing SVD inversion (7.4s, 73.3% of PFF time) with neural network inference (4.7s). Beyond raw speedup, Score-PFF avoids the parameter sensitivity of localization radius tuning, the numerical instabilities of truncated SVD rank selection, and the O(n2
+
+> x
+
+) mem-ory requirement of dense covariance storage. The neural network forward pass is amenable to GPU acceleration, offering potential for further speedup in accelerated computing en-vironments. Domain-specific architectures critically affect data efficiency: Fourier Neural Op-erators achieve optimal accuracy with minimal training data by exploiting cyclic sym-metry, while Graph Neural Networks offer favorable accuracy–complexity trade-offs for high-dimensional scaling. These results demonstrate that incorporating physics-informed inductive biases is essential for operational deployment under realistic training constraints. Several challenges remain for operational deployment. First, Score-PFF requires offline training on model simulations, which may be computationally expensive for high-fidelity Earth system models. The 1000-dimensional experiments used 100,000 training samples (50 trajectories), but operational weather and ocean models may require sub-stantially more data to capture multi-scale variability. Second, the score network may suffer from generalization degradation when system parameters (e.g., forcing F in Lorenz-96) deviate significantly from training conditions. Online adaptation strategies using stream-ing assimilation data warrant investigation. Third, the current stability safeguards—gradient clipping, adaptive step-size, and state constraints—are empirically tuned for Lorenz-96. Automated or learned stability policies would enhance robustness across different dy-namical systems. Fourth, while the GNN architecture scales favorably in our experiments, the O(Ln 2
+
+> x
+
+) complexity of fully connected layers in MLP-based score networks may be-come prohibitive for million-dimensional operational systems; sparse or factorized archi-tectures require further exploration. Finally, the current experiments employ perfect-model assumptions; real-world applications must account for model error, which may degrade score network performance if training and operational model configurations diverge. Future work will address these limitations through: (1) online adaptation of score networks using cycling assimilation data; (2) extension to coupled ocean-atmosphere sys-tems with 10 6–10 7 state variables; (3) integration with differentiable numerical models for end-to-end learning of physics-informed priors; and (4) validation in real-world satel-lite altimetry and sea surface temperature assimilation systems. In conclusion, Score-PFF establishes a new paradigm for high-dimensional non-Gaussian data assimilation by synergistically combining the mathematical rigor of particle flow methods with the representational power of score-based generative models. The demon-strated accuracy gains in non-Gaussian regimes—together with practical computational efficiency and elimination of sensitive tuning parameters—position this framework as a viable pathway toward next-generation operational assimilation systems that can fully exploit the non-Gaussian information content of geophysical flows.  
+
+> –18– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES)
+
+Open Research Section 
+
+The software underlying this research is available on GitHub at https://github .com/curian127/score-pff . The repository includes: (1) the complete Python imple-mentation of Score-PFF, including the particle flow filter framework, score network ar-chitectures (MLP, FNO, GNN), and training scripts; (2) experiment reproduction code for all results reported in this paper; (3) Jupyter notebooks for figure generation; and (4) pre-trained score network weights for both 40-dimensional and 1000-dimensional Lorenz-96 systems. All simulation data in this study are deterministically generated from the Lorenz-96 model (Eq. 10) using the provided scripts. The 40-dimensional training dataset (1 million samples from 500 trajectories) and the 1000-dimensional training dataset (100,000 samples from 50 trajectories) can be reproduced by running generate training data.py with the random seeds specified in the repository documentation. Assimilation exper-iment outputs (ensemble trajectories, RMSE time series) can be reproduced by running the corresponding experiment scripts with documented hyperparameters. Key depen-dencies include Python 3.9, PyTorch 2.7.1, NumPy 1.24, and SciPy 1.10. The 1000-dimensional experiments were conducted on an Intel Xeon Platinum 8276 processor with 256GB sys-tem memory. 
+
+Acknowledgments 
+
+The authors acknowledge the use of Kimi K2.6 (Moonshot AI) for assistance with plot-ting code generation and language editing. The scientific content, methodology design, data analysis, and interpretations are solely the authors’ own. This study was supported by the National Natural Science Foundation of China (42450178), and grants from the National Key Research and Development Program under contract No. 2025YFF0517203. 
+
+References 
+
+Anderson, J. L. (2001). An ensemble adjustment kalman filter for data assimilation. 
+
+Monthly weather review , 129 (12), 2884–2903. Anderson, J. L. (2003). A local least squares framework for ensemble filtering. 
+
+Monthly weather review , 131 (4), 634–642. Bengtsson, T., Bickel, P., & Li, B. (2008). Curse-of-dimensionality revisited: Col-lapse of the particle filter in very large scale systems. In Institute of mathe-matical statistics collections (p. 316–334). Beachwood, Ohio, USA: Institute of Mathematical Statistics. Retrieved from http://projecteuclid.org/ euclid.imsc/1207580091 doi: 10.1214/193940307000000518 Cohen, J. (1992). A power primer. Psychological Bulletin , 112 (1), 155–159. doi: 10 .1037/0033-2909.112.1.155 Daum, F., Huang, J., & Noushin, A. (2011). Exact particle flow for nonlinear fil-ters. In Signal processing, sensor fusion, and target recognition XX (Vol. 7697, p. 769704). doi: 10.1117/12.853786 Evensen, G. (2003). The ensemble kalman filter: Theoretical formulation and practi-cal implementation. Ocean Dynamics , 53 (4), 343–367. Hu, C.-C., & van Leeuwen, P. J. (2021). A particle flow filter for high dimensional system applications. Quarterly Journal of the Royal Meteorological Society ,
+
+147 (737), 2352–2374. doi: 10.1002/qj.4028 Hu, C.-C., van Leeuwen, P. J., & Anderson, J. L. (2024). An implementation of the particle flow filter in an atmospheric model. Monthly Weather Review ,
+
+152 (10), 2247–2264. doi: 10.1175/MWR-D-24-0006.1 Huang, L., Gianinazzi, L., Yu, Y., Dueben, P. D., & Hoefler, T. (2024). Diffda: a diffusion model for weather-scale data assimilation. arXiv preprint . doi: arXiv: 2401.05932 Liu, Q., & Wang, D. (2016). Stein variational gradient descent: A general purpose Bayesian inference algorithm. In D. D. Lee, M. Sugiyama, U. V. Luxburg,  
+
+> –19– manuscript submitted to Journal of Advances in Modeling Earth Systems (JAMES)
+
+I. Guyon, & R. Garnett (Eds.), Advances in neural information processing sys-tems 29 (pp. 2378–2386). Barcelona, Spain: Curran Associates, Inc. Retrieved from http://papers.nips.cc/paper/6338-stein-variational-gradient -descent-a-general-purpose-bayesian-inference-algorithm.pdf 
+
+(arXiv:1608.04471) Lorenz, E. N. (1996). Predictability: A problem partly solved. In Proc. seminar on predictability (Vol. 1, p. 1–18). Shinfield Park, Reading: ECMWF. Lorenz, E. N., & Emanuel, K. A. (1998). Optimal sites for supplementary weather observations: Simulation with a small model. JOURNAL OF THE ATMO-SPHERIC SCIENCES , 55 , 16. Poterjoy, J., Wicker, L., & Buehner, M. (2018). Progress toward the application of a localized particle filter for numerical weather prediction. Monthly weather re-view (2018). Pulido, M., & van Leeuwen, P. J. (2019). Sequential Monte Carlo with kernel embedded mappings: The mapping particle filter. Journal of Computational Physics , 396 , 400–415. doi: 10.1016/j.jcp.2019.06.060 Robert, S., & K¨ unsch, H. R. (2017). Localization in high-dimensional monte carlo filtering. In R. Argiento, E. Lanzarone, I. Antoniano Villalobos, & A. Mattei (Eds.), Bayesian statistics in action (Vol. 194, p. 79–89). Cham: Springer In-ternational Publishing. Retrieved from http://link.springer.com/10.1007/ 978-3-319-54084-9 8 doi: 10.1007/978-3-319-54084-9 8 Rozet, F., & Louppe, G. (2023). Score-based data assimilation. In A. Oh, T. Nau-mann, A. Globerson, K. Saenko, M. Hardt, & S. Levine (Eds.), Advances in neural information processing systems (Vol. 36, p. 40521–40541). Curran Asso-ciates, Inc. Retrieved from https://proceedings.neurips.cc/paper files/ paper/2023/file/7f7fa581cc8a1970a4332920cdf87395-Paper-Conference .pdf 
+
+Shen, Z. (2025). Conditional denoising score matching for sequential data assimila-tion. Ocean-Land-Atmosphere Research , 4 (0103). Retrieved from https://spj .science.org/doi/10.34133/olar.0103 doi: 10.34133/olar.0103 Shen, Z., & Tang, Y. (2015). A modified ensemble kalman particle filter for non-gaussian systems with nonlinear measurement functions. Journal of Advances in Modeling Earth Systems , 7 (1), 50–66. doi: 10.1002/2014MS000373 Shen, Z., Tang, Y., & Li, X. (2017). A new formulation of vector weights in localized particle filter. Quarterly Journal of the Royal Meteorological Society , 143 (709), 3268–3278. doi: 10.1002/qj.3180 Snyder, C., Bengtsson, T., Bickel, P., & Anderson, J. (2008). Obstacles to high-dimensional particle filtering (Vol. 136) (No. 12). Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., & Poole, B. (2021). Score-based generative modeling through stochastic differential equa-tions. In International conference on learning representations. 
+
+Van Leeuwen, P. J., K¨ unsch, H. R., Nerger, L., Potthast, R., & Reich, S. (2019). Particle filters for high-dimensional geoscience applications: A review. Quar-terly Journal of the Royal Meteorological Society , 145 (723), 2335–2365. doi: 10.1002/qj.3551 Vincent, P. (2011). A connection between score matching and denoising autoen-coders. Neural Computation , 23 (7), 1661–1674. Wilk, M. B., & Gnanadesikan, R. (1968). Probability plotting methods for the anal-ysis of data. Biometrika , 55 (1), 1–17. doi: 10.1093/biomet/55.1.1 Yang, S., Nai, C., Liu, X., Li, W., Chao, J., Wang, J., . . . Pan, B. (2025). Gen-erative assimilation and prediction for weather and climate. arXiv preprint ,
+
+2503.03038v1 . doi: https://doi.org/10.48550/arXiv.2503.03038

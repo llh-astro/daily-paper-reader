@@ -1,0 +1,889 @@
+Title: NestyNet. III. Symbolic Regression from Analytic Neural Surrogates
+
+URL Source: https://arxiv.org/pdf/2608.21051v1
+
+Published Time: Mon, 24 Aug 2026 00:47:56 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+> Draft version August 24, 2026
+> Typeset using L ATEX twocolumn style in AASTeX7.0.1
+
+NestyNet. III. Symbolic Regression from Analytic Neural Surrogates 
+
+Rodrigo Ibata ,1 Wassim Tenachi ,2, 3, 4 Foivos Diakogiannis ,5 Neil Ibata ,6 and Anirudh Shankar 1
+
+> 1Universit´ e de Strasbourg, CNRS, Observatoire astronomique de Strasbourg, UMR 7550, F-67000 Strasbourg, France
+> 2Mila - Quebec Artificial Intelligence Institute
+> 3D´ epartement de physique, Universit´ e de Montr´ eal
+> 4Ciela - Montreal Institute for Astrophysical Data Analysis and Machine Learning
+> 5Technology, Commonwealth Scientific and Industrial Research Organisation (CSIRO), Kensington, WA 6151, Australia
+> 6Department of Human Evolutionary Biology, Harvard University, Cambridge, MA, USA
+
+ABSTRACT Many physical laws are simple only after the right representation, decomposition or internal coor-dinate has been found, but discovering that structure from data is combinatorially hard. This task is symbolic regression (SR), the search for closed-form expressions that fit data without assuming a fixed model class. Here we present NestyNet-SR. A neural surrogate with analytic derivatives is used to detect separability, recursively reducing multivariate problems to simpler neural atoms. These atoms are distilled into closed form by a tiered symbolic-search stack, whose final tier is a novel factorized symbolic search that separates structure from calibration. Composing candidate internal coordinates freely, it scores each coordinate by how well calibrated functions of it (e.g., polynomials, power laws, sinusoids) fit the data, so the constants of those calibrated maps, however deeply nested in the final expression, are fitted rather than searched. The method supports multi-dataset regression, auto-mated feature discovery, and dimensional-analysis pruning. On the SRBench AI Feynman benchmark, NestyNet-SR achieves exact symbolic recovery of all 120 noiseless equations, the first such result, and under noise a statistical audit certifies which structures survive. As a real-data vignette, given only the separate mass-model components of SPARC-survey galaxies, the algorithm discovers the baryonic acceleration coordinate, reproduces the established mass-to-light and acceleration scales and the non-unique form of the radial acceleration relation, and adds held-out-galaxy generalization, a calibrated symmetry abstention, and a posterior for the local slope of the law. Analytic derivatives thus provide a practical route from neural surrogates to interpretable closed-form empirical laws. 
+
+Keywords: Astronomy data analysis (1858) — Neural networks (1933) — Regression (1914) — Com-putational methods (1965) — Galaxy rotation curves (619) — Galaxy dynamics (591) 
+
+1. INTRODUCTION Is it hubris to expect that all interesting laws of na-ture, at all physical scales, governing all physical or even abstract structures, are discoverable through direct hu-man intuition? Or might machine-assisted exploration help us survey a much vaster range of possibilities than our unaided minds, to uncover empirical relations that can be verified on held-out data, and yet still provide accurate predictions in new regimes beyond the original data range? Such empirical laws might then be studied to yield a theoretical understanding that could lead to the discovery of new underlying natural laws. This is 
+
+> Email: rodrigo.ibata@astro.unistra.fr
+
+one of the motivations behind symbolic regression (SR), the search for functions that fit data without assuming a prescribed model class. The difficulty with SR is that the space of candidate expressions is combinatorially vast, so practical methods must exploit strong inductive biases to cut the search down to a manageable size. Separability is an espe-cially powerful such bias, since many scientific models decompose into additive, multiplicative, or compound-coordinate structure, and recognizing this decomposi-tion turns an n-variable problem into a sequence of sim-pler, lower-dimensional subproblems. Another bias, which one can perhaps view as the foun-dational assumption of physics, is that interesting nat-ural laws are simple when interpreted correctly, for in-arXiv:2608.21051v1 [astro-ph.IM] 21 Aug 2026 2 Ibata et al. 
+
+stance in an appropriate coordinate system. This prin-ciple motivates a search not only over expressions but also over representations . A relationship that appears intractable in its raw form may become trivially sepa-rable after a change of output variable, a reparameter-ization of the inputs, or the recognition of a compound coordinate. This decomposition viewpoint was crystallized by the AI Feynman team (S.-M. Udrescu & M. Tegmark 2020; S.-M. Udrescu et al. 2020), which showed that symme-try, separability, and graph modularity can recursively reduce symbolic regression problems to simpler subprob-lems. We adopt that perspective directly in the present work. Our first contribution is to make decomposition motifs reliable in practice using analytic derivatives, and to extend the search to richer internal coordinates than the original motif set. Several other lines of work attack the same problem. Genetic-programming (GP) systems (J. R. Koza 1992; M. Schmidt & H. Lipson 2009) evolve populations of expression trees through mutation and crossover. The Eureqa system (M. Schmidt & H. Lipson 2009) famously rediscovered Hamiltonians, Lagrangians, and conserva-tion laws from pendulum data, and modern variants such as PySR (M. Cranmer 2023) couple GP with gradient-based coefficient optimization on a Pareto fron-tier. Reinforcement-learning approaches (B. K. Petersen et al. 2021; W. Tenachi et al. 2023) cast token generation as a sequential decision process built on REINFORCE-style estimators (R. J. Williams 1992), and dimensional-analysis constraints can be directly embedded into the prior (W. Tenachi et al. 2023). Neural-guided meth-ods (M. Cranmer et al. 2020) extract symbolic expres-sions from learned graph-network representations, and mixed-integer nonlinear optimization (V. Austel et al. 2020) or Monte Carlo tree search (F. Sun et al. 2023) navigate the expression-tree space with varying degrees of guidance. A common feature is that these approaches entangle structural search with coefficient fitting. Con-stants are proposed as discrete tokens or optimized one finished candidate at a time, so a correct inner struc-ture earns no credit until its constants have also been found. Some recent work (W. Li et al. 2023) frames the problem as skeleton recovery followed by coefficient optimization, a factorization the present work pushes considerably further. The challenge, as we found early in this work, is that reliable separability tests require accurate function values and accurate mixed second derivatives, whereas standard neural surrogates are generally insufficiently accurate for this purpose, leading to both false posi-tives and false negatives in structure detection. Solving this issue was one of the motivations for the develop-ment and design of the NestyNet algorithm (R. A. Ibata et al. 2026a, hereafter Paper I), which is able to provide very accurate numerical representations of functions and their derivatives. Likewise, converting a trained surro-gate into a compact closed-form expression poses a com-binatorial challenge of its own, one that we quantify in the next section. Here we introduce NestyNet-SR, a symbolic regres-sion framework that uses accurate NestyNet surrogate models as differentiable empirical representations from which symbolic structure can be extracted. Our sec-ond contribution is the factorized symbolic search (FSS) layer at its core, motivated by the observation that many scientific expressions are difficult not because their fi-nal outer form is complicated, but because the correct internal coordinate is hidden. Once a carrier such as 
+
+x0x1, x0/x 1, x0 − x1, or a low-depth composition is found, the remaining map from carrier to target is of-ten polynomial, rational, trigonometric, exponential, or a low-dimensional calibrated variant thereof. NestyNet-SR therefore searches over carriers and scores entire fam-ilies of outer renderings at once. To organize that search it fingerprints the residual of each partially fitted candi-date (that is, it reduces the residual to a compact, hash-like signature), groups candidates with similar failure modes into residual basins, and reuses them as seeds for mutation and repair. The remainder of this paper is organized as fol-lows. Section 3 lays out the overall two-stage design, in which a surrogate-decomposition stage (Stage A) reduces the problem to simple neural building blocks and a symbolic-rewrite stage (Stage B) distills them into closed form, together with the abstract-syntax-tree (AST) representation that underpins all our symbolic expressions. Section 4 describes the Stage A separabil-ity detection algorithms. We turn to the core analyti-cal discovery machinery in §5, which presents the fac-torized symbolic-search layer. Section 6 then develops a generalized-symmetry layer that unifies the Stage A coordinate detectors under a single determining oper-ator and can supply internal coordinates to the fac-torized search, while §7 describes the complementary Stage B rewrite rules. Section 8 covers the automated feature discovery that guides Stage B, and §9 discusses the Y-transforms mechanism. Section 10 discusses di-mensional analysis and units enforcement. We present benchmarks in §11, both of the full pipeline and of the factorized search in isolation, together with a real-data vignette recovering the baryonic acceleration coordinate from SPARC galaxies, and conclude with a summary and discussion of future directions in §12. NestyNet. III. Symbolic Regression from Analytic Surrogates 3 
+
+> 2.
+
+THE SYMBOLIC REGRESSION PROBLEM Symbolic regression, stated formally, seeks a vector-valued function f ∗ ∈ F mapping inputs x ∈ Rn to outputs y ∈ RM that minimizes reconstruction error while maintaining low complexity, 
+
+f ∗ = arg min  
+
+> f∈F
+> N
+
+X
+
+> i=1
+
+∥yi − f (xi)∥2 + λ C (f ) (1) where F is the space of mathematical expressions (typ-ically represented as expression trees, one per output component) and C(f ) measures complexity (tree depth, number of operations, and so forth). In the scalar case 
+
+M = 1 each expression tree maps Rn → R. For vector-valued problems ( M > 1), the outputs may share struc-ture or be discovered independently. The challenge is that F is enormous. On the AI Feynman benchmark, the longest target expression contains 40 nodes in a standard binary expression-tree representation. Label-ing even that fixed tree from the benchmark’s operators and variables already yields ≈ 1.4 × 10 32 candidates, and the space is vastly larger if the tree structure itself is allowed to vary. Symbolic regression in this general form has in fact been proven NP-hard (M. Virgolin & S. P. Pissis 2022). Intelligent decomposition is therefore essential. 2.1. Separability: The Key to Tractability 
+
+Physical equations very often exhibit separability in a broad sense. Their dependence can be organized into lower-dimensional modules, as in the clean addi-tive and multiplicative splits f (x) = g(u) + h(v) and 
+
+f (x) = g(u) h(v) for disjoint variable groups u and v,or into a simpler internal coordinate z(x). Our search treats separability as a spectrum of structural simpli-fications. We allow approximate and overlapping de-compositions, so a variable may appear in more than one factor when that better reflects the governing law, and we search for mixed cases in which an internal co-ordinate renders the remaining dependence effectively univariate or of low arity (depending on few input argu-ments). For instance, f (x1, x 2, x 3) = x1 g(x1x2/x 3) is not classically separable, but it becomes tractable once the internal coordinate is identified. Recursive applica-tion of this principle reduces many complicated multi-variate expressions to simple low-dimensional functions that the pipeline then rewrites analytically ( §3). 2.2. The Derivative Accuracy Problem 
+
+Separability detection relies fundamentally on deriva-tive analysis. In essence, if f = g(u) + h(v) for two variable groups u and v, then the mixed partials coupling one variable from u and one from v van-ish. Multiplicative separability f = g(u) h(v) implies that ∂(log f )/∂x i is independent of variables outside the group of xi, and compound-coordinate dependence induces low-rank or aligned derivative structure. For example, if f = g(Q 
+
+> k
+
+xak 
+
+> k
+
+), then the weighted gradi-ents xi∂f /∂x i are collinear with the exponent vector (a1, . . . , a n), while affine, radial, and centered coordi-nates likewise leave characteristic signatures in the gra-dient field. All of these tests require either accurate second derivatives (for additive separability) or accu-rate gradient-ratio and gradient-alignment information (for multiplicative, generalized-additive, and compound structure). As we demonstrated in Paper I, on the AI Feynman benchmark NestyNet improves over Adam-trained (D. P. Kingma & J. Ba 2015) dense networks (multilayer perceptrons, MLPs) by median factors of approximately 2 100 × (540 × after L-BFGS refinement) for function values, 1 400 × (450 ×) for first derivatives, and 780 × (250 ×) for coordinate second derivatives, with parenthetical values giving the comparison after full-batch L-BFGS refinement (J. Nocedal 1980; D. C. Liu & J. Nocedal 1989) initialized from Adam. For the opera-tor probes most directly tied to separability and resid-ual tests, the corresponding Adam (L-BFGS-refined) improvements are approximately 1 400 × (400 ×) for di-rectional derivatives, 1 200 × (370 ×) for mixed partials, 780 × (250 ×) for directional curvature, and 870 × (260 ×)for Laplacians. When Hessian elements carry ∼10% relative error, testing whether ∂2f /∂x i∂x j ≈ 0 becomes unreliable, and the false positives and negatives noted above cor-rupt the downstream search.  
+
+> 3.
+
+DESIGN We exploit these analytic derivatives in a two-stage pipeline that separates concerns. Figure 1 gives an overview of the architecture. In the first block (Stage A) we train a NestyNet surrogate ˆf (x) to fit the data, com-pute mixed partial derivatives analytically, test for ad-ditive, multiplicative, and compound separability, and build an Abstract Syntax Tree (AST) that records the detected structure. We then apply this procedure re-cursively to each subproblem until every branch of the tree terminates in a univariate neural atom, or until no further simplification is found. The second block (Stage B) then rewrites these neural atoms into closed-form analytical expressions by orches-trating two complementary mechanisms. The first is a library of specialized rewrite rules and template fits for structures such as separability within composites, homo-geneous scaling, ratio invariance, and other analytic mo-4 Ibata et al. NestyNet surrogate ˆf                                 
+
+> analytic ∇ˆf,∇2ˆf
+> compound coordinates z(xi)
+> e.g., monomial ·affine ·radial
+> separability tests
+> e.g., additive ·multiplicative ·offset
+> Stage A — structure discovery
+> each new atom re-enters the loop
+> rewrite rules
+> cheap, high-confidence motifs
+> factorized symbolic search
+> skeletons + calibrated outer maps
+> LM refit + acceptance gates
+> parameter-aware thresholds stubborn atoms escalate
+> Stage B — analytic closure
+> accepted rewrites restart the cascade
+> data (xi, y i)
+> + units
+> closed-form expression
+> y=f(x)AST of neural atoms generalized symmetries (optional)
+> determining operator →z(xi)coordinates carrier seeds Stage A ↔Stage B feedback outer peel: retry under a y-transform ˜ y=T(y)dimensional analysis: level 1 local Π-gates ·level 2 global RREF feasibility (“Buckingham–Sudoku”) neural atom analytic leaf compound coordinate escalation search dimensional analysis
+
+Figure 1. Overview of the NestyNet-SR pipeline. Stage A trains a NestyNet surrogate and uses its analytic derivatives to detect separability and compound coordinates, recursing until every branch of the AST terminates in a low-arity neural atom. Stage B then closes the surviving atoms analytically, giving first priority to cheap rewrite rules and escalating stubborn atoms to the factorized symbolic search ( §5). The optional generalized-symmetry layer ( §6, dashed) supplies coordinates to Stage A and carrier seeds to the search, dimensional gates ( §10) prune candidates in both stages, and the Y-transforms loop ( §9) retries the pipeline under a transformed output variable. 
+
+tifs. These form the cheap, high-confidence first line of attack. The second is factorized symbolic search , which acts as the general escalation layer for neural atoms that resist those structured proposals, scoring coefficient-free skeletons by the calibrated outer maps they admit ( §5). These two routes share one acceptance loop, so a stub-born neural atom escalates as soon as its cheaper candi-dates are exhausted. For multi-dataset runs we option-ally apply a post-Stage-B joint refinement on the fixed AST ( §7.10). The final output is a human-readable an-alytical expression. Underlying both stages is a single representation. Ev-ery symbolic expression is a native AST that integrates directly with the Levenberg–Marquardt (LM) solver (K. Levenberg 1944; D. W. Marquardt 1963). Structural nodes (binary Add and Mul, and a Pow node carrying a fixed numeric exponent) and unary nodes (logs, expo-nentials, trigonometric and inverse-trigonometric func-tions, and a small complex-aware family) compose with three leaf families, namely input coordinates, fixed con-stants, and a single atom node. That atom is a neu-ral atom while it wraps a NestyNet surrogate (its state throughout Stage A and in the unresolved branches of Stage B) and an analytical leaf once it has been rewrit-ten in closed form. Compound coordinates need no sep-arate node type. Every atom carries an explicit tuple of input expressions, each itself an AST of structural and unary nodes (with no trainable constants inside a coordinate), so a leaf such as g(x20/x 1, x 2) is assembled from ordinary Mul and Pow nodes, and raw coordinates, monomials, ratios, radial groups, and trigonometric ar-guments share one compilation path. The AST supplies analytic gradients and Hessians for separability detec-tion and Jacobian-vector/vector-Jacobian products for the LM solver, and when the tree is transformed dur-ing Stage B, leaf modules from compatible subtrees are reused, and incompatible ones warm-start their replace-ments, so earlier fitting work is preserved. This separation of concerns lets each stage be devel-oped independently, with the AST of neural atoms pro-viding a clean handoff between surrogate-based struc-ture discovery and symbolic simplification. A useful consequence is that Stage A is not tied to our particu-lar Stage B. Because it emits a decomposition into low-dimensional neural atoms together with their discovered internal coordinates, it can serve as a derivative-based preprocessing front-end for any downstream symbolic regression engine (genetic programming, reinforcement-NestyNet. III. Symbolic Regression from Analytic Surrogates 5neural atom analytic leaf compound coordinate    
+
+> U(μ, B x, B y, B z)(i) trained surrogate: one 4-variable atom
+
+×   
+
+> U1(μ)U2(Bx, B y, B z)(ii) multiplicative split
+
+×       
+
+> U1(μ)U3(z)
+> z=B2
+> x+B2
+> y+B2
+> z
+> (iii) radial compound coordinate
+
+×         
+
+> c μ a√z
+> z=B2
+> x+B2
+> y+B2
+> z
+> (iv) analytic closure:
+> y=μ
+
+√B2                           
+
+> x+B2
+> y+B2
+> z
+> ˆf ∂ 2
+> ij ˆf−∂iˆf ∂ jˆf≈0across {μ} | { B}∇Bˆf‖B
+> ⇒propose z=|B|2Stage B closures:
+> U17→c μ ,U37→a√z
+
+Figure 2. The decomposition cascade on AI Feynman problem #90, y = μpB2 
+
+> x
+
++ B2 
+
+> y
+
++ B2 
+
+> z
+
+. The multiplicative separability test ( §4) splits the four-variable neural atom into U1(μ) U2(Bx, B y , B z ). The radial gradient-alignment probe then replaces the three field components with the compound coordinate z = B2 
+
+> x
+
++ B2 
+
+> y
+
++ B2 
+
+> z
+
+(its signature is that the gradient restricted to the field components, ∇B ˆf , is parallel to B at every sample, as the chain rule requires for any g(|B|2)), and Stage B closes the remaining univariate atoms as a monomial and a power law. Blue atoms are neural, aqua leaves are analytic, and violet cards are discovered internal coordinates (the same color roles are used in Figure 1). 
+
+learning, or transformer-based), handing each solver a simpler sub-problem than the original multivariate tar-get. Following W. Tenachi et al. (2023), NestyNet-SR is able to use physical units to constrain the search, and it is able to simultaneously fit several datasets at once (W. Tenachi et al. 2024), each potentially a different exper-iment of the same phenomenon. The algorithm can search for class-specific parameters (e.g., gravitational acceleration g) as well as experiment specific parame-ters (e.g., the experiment’s spring constant). This multi-dataset setting also provides a natu-ral bridge from ordinary symbolic regression to small theory-discovery case studies. In the vignette of §11.3 an ensemble of galactic hosts plays the role that the en-semble of experiments plays in class symbolic regression. Our algorithm also supports differential-equation dis-covery, but we report that capability separately in the companion paper (R. A. Ibata et al. 2026b, hereafter Pa-per IV) so that the present article can focus on symbolic regression proper. 
+
+4. STAGE A: SEPARABILITY DETECTION Stage A trains the neural surrogate and uses its an-alytic derivatives to decompose the target into struc-turally simpler pieces, detecting additive, multiplicative, and compound-variable separability. Figure 2 previews the resulting cascade on a concrete benchmark equation. We describe each step in turn. 4.1. Neural Surrogate Training 
+
+We fit the data with a NestyNet segmented surrogate, whose architecture and closed-form derivative formulas are given in Paper I. Throughout the present contribu-tion we use a dual-layer composition f = f (1) ◦ f (0) ,where f (0) : Rn → RM maps the inputs to an intermedi-ate representation and f (1) : RM → RO maps that rep-resentation to the outputs, with intermediate dimension set to M = n + 2. This two-layer composition pro-vides substantially greater expressiveness while preserv-ing closed-form derivative access. 4.2. Classical Decomposition Motifs 
+
+Following S.-M. Udrescu & M. Tegmark (2020); S.-M. Udrescu et al. (2020), we test for additive separabil-ity, multiplicative separability, and generalized additiv-ity. The novelty here is not the motif set itself but the use of analytic NestyNet derivatives to evaluate it. For additive separability we test whether the mixed Hessian block vanishes across a candidate partition, i.e. whether ∂2f /∂x i∂x j ≈ 0 for i ∈ S1, j ∈ S2. For multi-plicative separability f = g(xS1 ) h(xS2 ), differentiating twice gives the equivalent criterion 
+
+f ∂2f∂x i∂x j
+
+− ∂f ∂x i
+
+∂f ∂x j
+
+≈ 0 , i ∈ S1, j ∈ S2 , (2) which sets to zero the mixed second derivative of log |f |.The implementation evaluates that derivative directly as a rational expression in f and its first two derivatives (no logarithm is taken, so sign changes in f are harmless) and masks samples where |f | is small. For generalized additivity in the sense of S.-M. Udrescu et al. (2020), we test a derivative criterion equivalent to the gradient-ratio field s(x1, x 2) = ( ∂f /∂x 1) / (∂f /∂x 2) factorizing across variable groups, which indicates a wrapped addi-tive inner structure. This probe is applied to the sur-6 Ibata et al. 
+
+viving two-variable atoms during the Stage B rewrites rather than in the initial Stage A cascade. We also test for variable non-dependence, the degen-erate case of separability in which one or more coordi-nates do not affect the current leaf. Operationally, for each neural atom we measure the normalized gradient magnitude in each effective input direction. If ∂f /∂x j is negligible across the sampled domain, we propose a pro-jected neural atom with that coordinate removed, and the proposal is validated by refitting the full AST. We extend these classical motifs in several practical ways. First, non-active coordinates are frozen to dataset medians during the tests, which suppresses sample-dependent offsets and substantially improves numerical stability. Second, we support approximate and overlap-ping splits rather than only clean disjoint partitions, so the search can preserve shared variables that later get resolved by subsequent rewrites. We also detect offset-multiplicative structure of the form f (x) = c + g(xS1 )h(xS2 ). The offset ˆ c is estimated by robust aggregation across cross-variable derivative pairs and is accepted only when its scatter is sufficiently small. This simple extension turns out to be important in practice for expressions such as 1 + x1x2, which are invisible to a pure multiplicative test. 4.3. Monomial Compound Coordinates 
+
+Beyond the classical decomposition motifs, Stage A searches for internal coordinates z(x) that reduce the remaining dependence to a simpler univariate or lower-arity problem. We begin with monomial compounds, which extend the pairwise product and ratio motifs of S.-M. Udrescu et al. (2020) to general power-law coor-dinates 
+
+z = Y
+
+> i
+
+xai 
+
+> i
+
+. (3) If f (x) = g(z), then 
+
+xi
+
+∂f ∂x i
+
+= g′(z) z a i , (4) so the weighted gradients ui := xi∂f /∂x i are collinear with the exponent vector a. We therefore form the sam-pled weighted gradient matrix U ∈ RN ×n and test it for rank 1 via a singular value decomposition (SVD), ac-cepting when σ2/σ 1 falls below a threshold. The dom-inant right singular vector yields a continuous estimate of a, after which we snap to nearby integer exponent patterns and validate them by direct fit quality (half-integer powers are recovered downstream, by the uni-variate monomial screen and the Stage B templates). This exponent snapping favors physically natural coor-dinates such as x21/x 2 over arbitrary real powers, reflect-ing the strong prior that exponents in physical laws are typically small integers or simple fractions. We also use a log-derivative variant, vi =
+
+∂ log |f |/∂ log |xi| = ( xi/f )∂f /∂x i, which is more robust when f spans a wide dynamic range or when an outer monomial prefactor distorts the raw weighted-gradient test. 4.4. Generalized Compound-Coordinate Search 
+
+Another Stage-A extension beyond the motif set of S.-M. Udrescu et al. (2020) is an explicit search over richer internal coordinates, since the useful coordinate is often not a pure monomial but an affine combination, a ra-dius, a centered coordinate, or a mixed form with shared outer factors. Each family has a clean derivative signa-ture. An affine coordinate z = P 
+
+> i
+
+cixi (with f = g(z)) makes the sampled gradients rank 1 along c, general-izing the binary xi ± xj motifs to multi-axis integer-affine forms. A radial group has its restricted gradient 
+
+∇S f parallel to xS , the signature of g(P 
+
+> i∈S
+
+x2 
+
+> i
+
+). A
+
+preferred-origin probe fits ∂j f ≈ β0 + β1xj and seeds the centered coordinate z = xj − x0 with x0 = −β0/β 1.When a full-variable test fails on a leaf of three or more inputs, we retry on prioritized subsets (recovering cases where an outer prefactor shares variables with an in-ternal compound, such as f = x0 g(x0x1/(x2x3))) and probe difference-product coordinates ( xi−xj )xk through the slopes of pairwise gradient ratios. Competing pro-posals are ranked by structural payoff (a visible pref-actor, the support they explain, and the arity they leave behind), with confidence as the final tie-break, each with a small kind-aware family of wrappers (square or absolute value, rational stabilization, trigonometric sin / cos), and a separability-aware heuristic prefers the variant that most cleanly exposes later decomposition. These coordinate families are each the invariant of a one-parameter point symmetry of the target, a view we develop into a generalized-symmetry layer in §6.  
+
+> 5.
+
+FACTORIZED SYMBOLIC SEARCH Conventional symbolic regression engines search di-rectly over complete expressions f (x), so that the in-ner coordinate, the outer nonlinearity, and all numerical constants are entangled in one discrete tree. The central idea of factorized symbolic-search (FSS) is to factor the problem into three separate sub-problems (this factor-ization is the sense in which the search is “factorized”). A skeleton search proposes a constant-free symbolic car-rier 
+
+s = s(x0, . . . , x m−1) ,
+
+an outer scoring step fits the best of a small family of nuisance mappings Mθ ∈ M on s, possibly augmented NestyNet. III. Symbolic Regression from Analytic Surrogates 7by a low-complexity additive residual head h ∈ H , and a final continuous refinement step sharpens the most promising candidates. The search loss is 
+
+L(s) = min   
+
+> Mθ∈M , h ∈H
+
+∥y−Mθ (s(x)) −h(x)∥2+λ C (s, M θ , h ) ,
+
+so expressions that differ only by a calibrated outer map are scored through the same underlying carrier rather than being treated as unrelated trees. In the configura-tion used throughout this paper λ is zero and parsimony acts lexicographically instead: among candidates whose errors agree to within a small factor, the simpler map-ping and the smaller tree are preferred. As a concrete illustration, suppose the target is 
+
+y = 2 sin(3 x0x1 + 0 .4) + 0 .1 x2 .
+
+A direct tree search must discover the product x0x1,the sinusoidal wrapper, and the frequency, phase, am-plitude, offset, and additive correction in one coupled expression. In the factorized symbolic-search layer, the carrier s = x0x1 already scores well. A carrier is never evaluated on its own. Its score is the loss L(s) above, obtained after fitting the best outer map and residual head. Here that inner fit is trivial (a sinusoidal outer map fits A sin( ωs + ϕ) + c and the residual head absorbs the simple 0 .1 x2 correction), so the correct carrier is rewarded even though the full expression has not yet been assembled. A useful consequence is that the fitted nuisance parameters, here the frequency ω and phase ϕ,are later promoted to numerical constants of the final accepted symbolic form, even though they were never proposed as discrete tokens during tree search. More generally, scale, shift, frequency, exponent, and rational-map parameters can be fitted once a promising coordi-nate has been exposed, so that constants that end up deeply nested inside the final expression need never be discovered by the discrete layer. Figure 3 illustrates the factorization on this example. Distinct trees sharing the carrier collapse onto one skeleton, the outer-map bat-tery calibrates the rendering, and residual fingerprints organize the archive. This factorization also supplies the steering signal for the search. A skeleton receives partial credit whenever some fitted outer map and residual head explain the tar-get well. The remaining residual is then fingerprinted so that archive entries with similar failure modes are grouped into the same residual basin. Phase 2 samples from this archive using a mixture of high-performing and under-visited residual basins, while edit actions are selected by an upper-confidence-bound (UCB) rule (P. Auer et al. 2002) whose reward is the log-improvement in effective mean-squared error (MSE), optionally aug-mented by a bonus for entering a new residual basin. Residual repair proposes additive terms aligned with the current residual, and inverse repair constructs lo-cal pseudo-targets for subtrees of near-miss expressions. Thus the search is not driven only by whole-expression fitness, but by a hierarchy of partial-credit signals that point toward missing structure before an algebraically correct expression has appeared. 5.1. Scoring: Outer Maps, Residual Heads, and Residual Basins 
+
+For each candidate skeleton s(x), the factorized symbolic-search layer evaluates it on a fit split and a held-out probe split. Let p = s(x) denote the raw skele-ton output and let y denote the target values. The scorer then fits a small battery of outer mappings. (i) A polyno-mial map y ≈ Pdk=0 ckzk with z = ( p − μp)/σ p is fitted by ordinary least squares. (ii) A power law y ≈ a p b is fitted by log-linear regression under a consistent-sign as-sumption. (iii) A Pad´ e rational y ≈ P (z)/Q (z), where 
+
+P, Q are low-degree polynomials with Q(0) = 1, is fit-ted by a Sanathanan–Koerner weighted least-squares loop (C. K. Sanathanan & J. Koerner 1963). (iv) A 
+
+sinusoidal map y ≈ A sin( ωz )+ B cos( ωz )+ c has its fre-quency ω selected by coarse-to-fine grid search and its linear coefficients ( A, B, c ) solved analytically. (v) An 
+
+exponential map y ≈ a exp( bz ) + c has b selected by a coarse-to-fine grid search and ( a, c ) by a linear solve. The scorer is selective. The cheap families (polyno-mial, power, and Pad´ e) act as a prescreen, while the more expensive sinusoidal and exponential fits are in-voked only when hints or competitiveness thresholds jus-tify the additional cost. This reduces wasted work on obviously poor candidates while preserving the ability to recover periodic and exponential atoms. The scorer may also attach a small additive linear head 
+
+h(x) = b0 +
+
+> K
+
+X
+
+> j=1
+
+aj tj (x) , (5) where the terms tj are simple unit-consistent raw vari-ables or a few selected pool terms. This is primarily a scoring augmentation , since it lets partial skeletons receive credit when the missing structure is a simple ad-ditive correction. After fitting the outer map (and any residual head), the search engine fingerprints the probe residual. Can-didates with the same residual signature are treated as belonging to the same residual basin, and the archive retains a small elite set per residual basin while pre-ferring simpler representatives when probe error is ef-fectively tied. This fingerprinting mechanism is essen-tial for keeping the search focused on genuinely new 8 Ibata et al. 2 sin(3 s+0 .4) (s − 1) 2 e−2s/20 sin (·)2 exp                 
+
+> x0x1x0x1x0x1
+> carrier s=x0x1
+> one skeleton, scored once
+> (a) distinct trees, same carrier
+> −2−1012
+> −202
+> sinusoidal map, RMSE 0 .07 polynomial, RMSE 1 .19 exponential RMSE 1 .27
+> carrier value s=x0x1
+> y
+> residual head absorbs the 0.1x2correction
+> (b) score = best calibrated outer map on s
+> residual-basin archive
+> near-flat residual exploit: best basin periodic residual missing trig term drift residual explore: under-visited
+> UCB allocates the edit budget across basins
+> (c) residual fingerprints group candidates into basins
+
+Figure 3. The skeleton–mapping factorization of the FSS method, shown on the worked example y = 2 sin(3 x0x1 + 0 .4) + 0 .1 x2
+
+of §5. (a) Expression trees that differ only in their outer rendering share the carrier s = x0x1 and are scored through one skeleton. (b) The carrier is scored after fitting the best calibrated outer map ( §5.1). The fitted sinusoidal map alone attains a root-mean-square error (RMSE) of 0 .07, the floor set by the not-yet-modeled 0 .1 x2 term, which the additive residual head subsequently absorbs, while the best cubic-polynomial and exponential maps plateau near RMSE 1 .2. (c) Probe residuals are fingerprinted and grouped into residual basins, and the UCB rule ( §5.3) splits the mutation budget between top-performing and under-visited basins. Color roles as in Figure 2. 
+
+structural directions rather than rediscovering equiva-lent rewrites through different mutation paths. 5.2. Phase 1: Budget-Limited Shallow Enumeration 
+
+Phase 1 performs a brute-force sweep over shallow coefficient-free expression trees and seeds the archive with easy exact or near-exact structures. Trees are gen-erated incrementally, depth by depth. At depth 1 the tree set consists of the m input variables {x0, . . . , x m−1}.At each subsequent depth d + 1, we apply every unary operator (neg, sin, cos, exp, log, √·, ( ·)2) to each depth-
+
+d tree, and every binary operator (+ , −, ×, ÷) to each pair of trees with depth ≤ d. Algebraically equivalent trees (e.g. x0 +x1 and x1 +x0) are identified by a canon-ical string representation and deduplicated, which keeps the combinatorial explosion in check. The enumeration is budget-limited rather than exhaustively fixed-depth, stopping once the next depth frontier would exceed the configured expression budget. Each candidate is sim-plified, scored on the fit/probe split, and inserted into the residual-basin archive. If a structurally satisfactory result is found early, the explorer terminates before en-tering the stochastic phase. When physical units are available, Phase 1 generates only dimensionally valid trees. Trees are bucketed by their output dimension vector. Unary operators that re-quire dimensionless arguments (sin, cos, exp, log) draw only from the dimensionless bucket, addition combines same-dimension trees, and multiplication and division combine trees whose dimensions sum or subtract to the target. This dramatically prunes the search space. In a typical problem with three input dimensions, the valid fraction of depth-3 trees may be less than 5% of all syn-tactically valid trees. Before the general tree enumeration, Phase 1 also runs a battery of lightweight “peel” passes that ex-ploit dimensional constraints to collapse certain two-layer searches into one-layer searches. Each pass iden-tifies a small set of dimensionless monomial carriers u
+
+or variable-ratio pairs, divides out a known outer factor (Lorentz 1 /√1 − u2, Planck 1 /(e su −1), Gaussian e −su 2
+
+,hyperbolic sech/tanh), and searches for the remaining numerator via monomial or affine fits. An inverse-trig peel applies sin( y) or cos( y) to the target and enumer-ates inner expressions at low depth. Thanks to dimen-sional filtering, the carrier set is typically reduced to 2–4 candidates, so the entire presearch battery adds negligi-ble cost but recovers expressions that are otherwise out of reach of budget-limited tree enumeration. 5.3. Phase 2: Archive-Guided Mutation and Repair 
+
+Phase 2 extends the search beyond the brute-force pro-posals by mutating and repairing promising archive en-tries. At each iteration, a parent skeleton is drawn from the archive using a UCB-guided mixture of exploitation (sampling from top-performing residual basins) and ex-ploration (biasing toward less-visited residual basins). The exploration term is what lets the search escape the local minima that are the perennial difficulty in sym-bolic regression. By deliberately budgeting attempts on under-visited residual basins, the method keeps probing structurally distinct hypotheses instead of polishing a single locally-optimal skeleton. The core discrete actions NestyNet. III. Symbolic Regression from Analytic Surrogates 9                        
+
+> Table 1. Mutation and repair actions available in Phase 2 of the factorized symbolic search ( §5.3).
+> Action Operation
+> Replace Replace a random subtree with a new depth-bounded tree
+> WrapUnary Apply a unary operator at a random node
+> AddRand Add a random term, ( s, t )7→s±t
+> MulRand Multiply by a random factor, ( s, t )7→
+> s×t
+> Prune Remove an internal node, keeping one child
+> Residual Add the pool term most correlated with the residual
+> Boost Greedily append the pool terms that most reduce the residual
+> Crossover Splice adonor subtree from another archive elite
+
+are summarized in Table 1, and Algorithm 1 summarizes the complete search. We emphasize that, despite the “action” and “reward” vocabulary, Phase 2 is not reinforcement learning. The actions are selected by the fixed UCB rule of Eq. (6), not by a trained policy network, and no learned policy weights enter the action selection. The bandit merely allocates a fixed edit budget across mutation types based on their observed track record on the current problem. The Residual action implements the partial-credit steering signal introduced at the start of this section. It scores a pre-evaluated pool of simple candidate terms against the current residual and proposes the best-aligned additive repair. We select among these actions using a UCB multi-armed bandit, UCB( a | s) = ¯ r(s, a ) + cucb 
+
+s
+
+ln ns
+
+ns,a + 1 , (6) where ¯ r(s, a ) is the mean reward of action a applied to skeleton s, ns is the total visit count for s, ns,a is the count for action a, and cucb is the exploration constant. The reward for a mutation that transforms parent MSE 
+
+ℓp into child MSE ℓc is r = log( ℓp/ℓ c), with an optional additive bonus + β for a previously unseen residual basin (β = 0 in the runs reported here). An ε-greedy override (a fixed fraction ε = 0 .10 of random action choices) en-sures continued exploration. For difficult near-miss candidates, factorized symbolic search can switch from global mutation to more tar-geted local repair routes. Inverse steering chooses a cut path, approximately inverts the surrounding context to construct a pseudo-target for that subtree, and ranks local repairs against that pseudo-target before rescor-ing the full expression globally. This local inversion can be applied recursively to nested subtrees, each time fix-ing the surrounding tree and solving the resulting sub-problem by local symbolic regression. A separate hole-search mechanism maintains a frontier of partial repair opportunities and can be mediated by a route scheduler that decides whether to spend the next budget unit on build, repair, or abstraction. Because Phase 2 is stochastic, the method is typi-cally run from multiple random seeds and the duplicate hits are pooled before Stage B acceptance. This multi-plicity is inexpensive in practice. As reported in §11.2, nearly half of the problems are solved by the determinis-tic presearch in under ten seconds, so the seed replicates matter only for the minority of hard atoms that reach the mutation search, and the seeds are trivially parallel. The search engine monitors stall windows and performs soft restarts while preserving the archive when progress plateaus. 5.4. Closure-Native Proposal Layer 
+
+For atoms involving higher-level operator families (a carrier inside an envelope, or a numerator–denominator pair), reasoning directly over expression trees is cumber-some. We therefore let the search work with typed struc-tural roles (carrier, envelope, numerator, denominator), enumerating role-to-expression assignments under di-mension and depth constraints. Each assignment is scored by building the corresponding design matrix and solving the assignment’s outer head analytically against the true target y. Successful proposals are admitted into a shared intermediate representation on which a fi-nal linear head is refitted globally and then pruned, so no AST is rendered prematurely. The same representa-tion is also used for additive-residual scoring ( §5.1) and for continuous skeleton refinement ( §5.5), so the three mechanisms communicate through a common object. 5.5. Continuous Skeleton Refinement 
+
+Discrete search proposes structure , while the continu-ous skeleton-refinement stage sharpens promising struc-tures continuously. Given a candidate skeleton, this stage introduces a small number of learnable scale and frequency parameters at sensitive internal nodes, opti-mizes them with L-BFGS, and solves the remaining lin-ear coefficients analytically at each step. Solving the linear coefficients in closed form leaves only a hand-ful of nonlinear parameters to optimize (a variable-projection reduction), and on this small, dense, and sometimes non-least-squares reduced objective a quasi-Newton method (L-BFGS) is a more natural fit than 10 Ibata et al. 
+
+the Levenberg–Marquardt solver used for the structured full-AST least-squares fits elsewhere, since it needs only gradients and no assembled Jacobian. We use multiple random restarts because the induced objective is still nonconvex. The refinement is gated. Only candidates that are al-ready competitive enter this stage. The goal is not to replace symbolic search with continuous optimization, but rather to improve the ranking of good structural candidates and to recover forms such as shifted/scaled periodic or exponential atoms that are awkward to dis-cover with purely discrete edits. A later linear combi-nation phase can compress additive basis terms, prune negligible pieces, and return a cleaner symbolic expres-sion. When factorized symbolic search is run jointly across multiple datasets, the continuous refinement stage can share the nonlinear refinement parameters across datasets while fitting linear coefficients separately per dataset. This is particularly useful when the datasets share a structural law but differ by gains, offsets, or other low-order calibrations.  
+
+> 6.
+
+GENERALIZED SYMMETRIES The coordinate families of §4 are each the invariant of a one-parameter point symmetry of the target. Mono-mials arise from scalings, affine coordinates from trans-lations, radii from rotations, and their centered forms from affine conjugates. We have therefore implemented a generalized-symmetry (GS) layer in NestyNet-SR that discovers the symmetries themselves, and with them the reduced coordinates. The layer recovers the Stage A detector families (monomial, affine, radial, indefinite quadratic, difference-product, and centered coordinates) from one operator, replacing a catalog of special cases by geometry. More usefully, it reaches coordinates that lie outside the integer vocabulary of the baseline detectors, and it hands those coordinates to the factorized sym-bolic search of §5 as carrier proposals, closing problems whose internal coordinate the structural search cannot assemble on its own. 6.1. The Determining Operator 
+
+Consider the graph y = f (x) of the surrogate, with 
+
+x ∈ Rn, and the affine vector field 
+
+V = ( Ax + b) · ∇ x + ( α + βy ) ∂y , (7) with an unknown input action ( A, b) and an unknown output action ( α, β ). The field V generates a one-parameter family of transformations that maps the graph of f to itself precisely when V is tangent to the                                                           
+
+> Algorithm 1. Factorized symbolic search as implemented in Stage B.
+> Require: Fit/probe atom data, search budgets, mapping family battery M, optional dimension vectors.
+> 1: Initialize an archive keyed by residual fingerprints, where each residual basin stores a small elite set.
+> 2: Phase 1 (shallow enumeration):
+> 3: Generate shallow coefficient-free trees up to the expres-sion budget (with dimensional filtering if units are avail-able).
+> 4: for each tree sdo
+> 5: Evaluate son fit/probe splits and optionally pre-screen.
+> 6: Fit the best outer mapping in Mand, if helpful, a small additive residual head.
+> 7: Fingerprint the probe residual and insert/update the corresponding residual-basin elites.
+> 8: if a structurally satisfactory candidate is found then
+> 9: return top-karchive rows.
+> 10: end if
+> 11: end for
+> 12: Phase 2 (archive-guided search):
+> 13: for t= 1 , . . . , n iter do
+> 14: Select a parent residual basin using a mixture of low-loss elites and under-visited residual basins.
+> 15: Form the action slate from admissible build, resid-ual, crossover, closure, inverse-repair, and hole-repair routes.
+> 16: Choose an action by UCB using log-MSE improvement and residual-basin novelty as reward, then apply resid-ual, inverse, dimensional, and prescreen gates.
+> 17: Propose a child or local repair, rejecting it if depth or dimensional constraints fail.
+> 18: For closure proposals, build a basis-state candidate, globally refit/prune its head on y, then score it with the same mapping+head pipeline.
+> 19: Harvest unit-compatible subexpressions from compet-itive candidates into an auxiliary atom pool, retain a small registry as future seed blocks, and directly score local linear spans over observed atoms.
+> 20: Optionally run continuous skeleton refinement on competitive candidates and admit any improved refined/basis-transition variants.
+> 21: Update route statistics and perform soft restart if the search stalls.
+> 22: end for
+> 23: return Top-karchive rows, each carrying its skeleton, fitted mapping metadata, and AST embedding.
+
+graph, which is the determining equation of Lie symme-try analysis (P. J. Olver 1993), 
+
+∇f (x) · (Ax + b) − α − βf (x) = 0 . (8) The essential observation is that Eq. (8) is linear in all 
+
+n2+n+2 unknowns jointly, so every sampled point con-tributes one row of a design matrix, and the full Lie al-gebra of affine symmetries of the target is the nullspace NestyNet. III. Symbolic Regression from Analytic Surrogates 11 of the stacked system, obtained by a single SVD. The analytic NestyNet gradients make these rows accurate enough for the construction to be practical. Two safeguards are imposed to ensure the recov-ered algebra is trustworthy. The scientific object is the nullspace subspace , not any individual basis vector (when the nullity exceeds one, an SVD basis is arbi-trary), so all downstream logic operates on the subspace projector, the rank of the pointwise distribution it spans, held-out residuals, and bootstrap principal angles. Acandidate algebra must further pass certificates (closure of the Lie bracket including the output action, a stable distribution rank, a consistent quotient dimension) be-fore any coordinate is built from it. A certified algebra is then compiled into a reduction plan: invariant coordi-nates z(x) spanning the quotient, an orbit coordinate s,and an output normal form. For an accepted generator with V f = α + βf , the target takes the form 
+
+f = − αβ + eβs H(z) (β̸ = 0) ,f = αs + H(z) (β = 0) ,
+
+(9) so a promoted reduction proposes the inner coordinates and the outer structure simultaneously. Promotion itself is gated, so that a reduction enters the active Stage A slate only if it survives a complexity-penalized compar-ison against the unreduced expression at matched held-out accuracy, and under the default policy it only aug-ments the baseline proposals. 6.2. Charts, Composition, and Discovered Warps 
+
+The determining operator is affine, but a fixed change of variables extends its reach. Solving Eq. (8) in the chart ui = log xi (with chain-ruled gradients) turns scal-ings into translations, so monomial coordinates Q 
+
+> i
+
+xai
+
+> i
+
+appear as linear invariant covectors whose components are snapped to small rationals and revalidated against the determining residual. The chart ui = 1 /x i simi-larly exposes coordinates linear in reciprocals, P 
+
+> i
+
+ci/x i.Rather than enumerating charts, a further step discovers 
+
+the per-axis warp that linearizes a hidden generalized-additive symmetry f = g P  
+
+> i
+
+ci φi(xi). The certifi-cate is the normalized off-diagonal Hessian ratio Rij =(∂i∂j f )/(∂if ∂ j f ), which equals g′′ /g ′2 for every pair (i, j ) whenever such a warp exists, a necessary signature that the reconstruction below then confirms. The warps 
+
+φi are then recovered from pairwise log-gradient differ-ences (the whole power family snaps in a single linear fit) and the covector ci falls out of a rank-one test. This reaches mixed-power coordinates such as x20 + x31 + x22
+
+that no fixed chart exposes. On trained surrogates, whose gradients carry relative errors of order 10 −3, the global nullspace solve can lose bracket closure. The layer therefore also composes co-ordinates from pairwise witnesses , one-dimensional scal-ing, translation, rotation, and Lorentz-boost tests that remain reliable at surrogate noise levels, chaining ac-cepted pairs into global monomial, linear, radial, and indefinite-quadratic coordinates such as x20 −x21 −x22 −x23.A promoted coordinate can serve as a virtual axis, so nested forms such as ( x0x1/x 2)−x3 compose as well, and a noise-calibrated tier of acceptance statistics lets certi-fied reductions be promoted from trained surrogates. 6.3. Coordinate Discovery Beyond the Detector Vocabulary 
+
+The baseline Stage A detectors search small integer (or half-integer) coefficient patterns. The GS layer solves for arbitrary real generators, so it can recover coor-dinates the baseline cannot express. For the target sin( √2 x0 − x1) of Figure 4a, the integer-affine detec-tor proposes its best integer ray with a coordinate-angle residual of 0 .17, while the GS affine solve recovers the oblique covector to 5 ×10 −7. On a generic target with no symmetry, the solver correctly proposes no generator at any tested noise level. We distinguish two levels of suc-cess. Recovering a known detector family counts only as 
+
+detector recovery , whereas the oblique case is a genuine 
+
+coordinate discovery , since the coordinate was not in the baseline vocabulary at all. Figure 4b previews the gen-erator flow of the anisotropic tidal invariant discovered in the tidal-radius example of §11.3. 6.4. Supplying Carriers to the Factorized Search 
+
+The factorized search of §5 separates structure from calibration, but it must still assemble the internal coor-dinate by discrete search, and deeply structured carri-ers (signed quadratics, four-variable monomials, mixed-power sums) are exactly where it fails ( §11.2). The GS layer bypasses that assembly. It discovers the coordi-nate from the gradient geometry of the target and seeds it into the search as a carrier, after which the ordinary outer-map battery of §5.1 fits g(z) in closed form. Ta-ble 2 shows illustrative carrier-consumption cases at a matched budget in oracle mode (exact function values, no surrogate, §11.2). In every non-control case FSS con-sumes the discovered carrier and closes the problem at the seeding step. The fifth row is AI Feynman prob-lem #3, one of the targets of the oracle benchmark of 
+
+§11.2. On the non-symmetric control the GS layer emits no seed and FSS continues through its ordinary search path. The seed closes problems of the form y = g(z(x)). When a prefactor multiplies the coordinate, as in 
+
+x0
+
+px21 + x22 + x23 (AI Feynman problem #90), the co-12 Ibata et al. 6 3 0 3 6
+
+x0
+
+> 6
+> 3
+> 036
+> x1
+
+(a) f = sin( √
+
+2 x0 − x1)               
+
+> GS covector (√
+> 2,−1)
+> residual 5×10 −7
+> best integer ray (1 ,−1)
+> residual 0.17
+> 0.0 0.4 0.8 1.2 1.6
+
+Ω
+
+> 0.0 0.4 0.8 1.2 1.6
+
+(b) q = 4Ω 2 − 2  
+
+> Kepler  = Ω
+> flat  = √
+> 2 Ω
+> q = 0
+> q < 0
+> compressive
+> q > 0
+> tidal stripping
+
+V = Ω + 4Ω 
+
+> 1.8
+> 0.0 1.8 3.6 5.4 7.2 9.0 10.8
+> q
+
+Figure 4. The geometry seen by the generalized-symmetry layer. (a) For f = sin( √2 x0 − x1) (gray stripes), the best ray available to the integer-affine detector, (1 , −1) (red, dashed), is misaligned with the stripe normal by ∆ θ ≃ 0.17 rad, while the GS affine solve recovers the oblique covector ( √2, −1) (violet) with determining residual 5 × 10 −7 (§6.3). (b) The (Ω , κ ) plane of the tidal-radius example ( §11.3). The flow of the discovered generator V = κ ∂ Ω + 4Ω ∂κ (streamlines) is everywhere tangent to the level sets of its invariant q = 4Ω 2 − κ2 (blue/red fill), the defining property V q = 0 made visible. Dashed rays mark the Keplerian and flat-rotation-curve limits and the q = 0 cone separating stripping from compressive tidal regimes. 
+
+Table 2. Illustrative GS carriers consumed by factorized symbolic search (oracle mode, 2 500 mutation iterations, sin-gle seed). Values are held-out probe MSE. In each non-con-trol case FSS scores the GS coordinate at the seeding step and the outer-map battery closes the fit. On the control target GS emits no carrier and FSS continues through its ordinary search path.                                          
+
+> Target FSS sin( x20−x21−x22−x23)5.1×10 −13
+> sin( x0x1x2/x 3)1.8×10 −12
+> sin(( x0−x1)2+ ( x2−x3)2)1.1×10 −13
+> sin( x20+x31+x22)6.6×10 −13
+> p(x0−x1)2+ ( x2−x3)21.2×10 −30
+> sin( x0)x1+x2cos( x3) (control) no GS carrier
+
+ordinate alone does not suffice. The full pipeline han-dles that case through the Stage A reduction machinery (prefactor peeling and atom arity reduction), which is how problem #90 is solved in the full-pipeline bench-mark of §11.1. 
+
+7. STAGE B: HYBRID REWRITES AND SEARCH ESCALATION Stage B takes over once Stage A has reduced the problem to neural atoms. It is itself also a tiered symbolic-search system, giving first priority to special-ized rewrite rules for structural patterns that admit cheaper and more reliable targeted proposals than open-ended combinatorial search, and escalating to the factor-ized symbolic-search engine of §5 when those structured routes do not close the problem cleanly. (The Stage A separability tests are reused inside Stage B to expose newly-uncovered structure, but the two stages remain distinct blocks.) 7.1. Two-Phase Iterative Engine 
+
+The Stage B engine runs in two phases that enact an effective Occam’s razor preferring simple separable structure. Phase 1, the “separability loop”, exhaus-tively applies structure-discovering rules until conver-gence, peeling away every additive, multiplicative, sub-tree, counterterm, counterfactor, and log-ratio split it can find, together with the bounded univariate clo-sures (which must be found before a generic approx-imant can consume a leaf), before handing the resid-ual neural atoms on. Phase 2 then applies the special-ized analytical rewrites (multivariate compression, ho-mogeneity peeling, ratio invariance, compound-function macros, outer transforms) to whatever atoms remain neural. Whenever it accepts a rewrite the engine restarts from Phase 1, so newly-exposed structure is fully decom-posed before more complex forms are tried. (These two Stage B phases are unrelated to the two phases of the factorized search of §5.) NestyNet. III. Symbolic Regression from Analytic Surrogates 13 7.2. Rewrite Rules 
+
+In essence, Stage B is implemented as a rule-driven search over AST rewrites. Each rule proposes a finite set of candidate replacements for one (sub)expression, which are then validated by refitting and a parameter-aware acceptance test ( §7.4). The suite includes rules for neural-leaf and subtree separability, homogeneity and product-homogeneity peeling, ratio invariance and coupled-ratio factoring, compound-function macros, ad-ditive polynomial splitting, univariate and multivariate neural-network compression, log-ratio detection, coun-terterm and counterfactor splits, and outer-transform and preconditioner fallbacks. 7.3. Compound-Function Macros 
+
+Many physical expressions involve recognizable ana-lytic motifs that resist decomposition into simple poly-nomial, trigonometric, or rational forms (sinc-like fac-tors, sin( az )/ sin( z) ratios, square-root branch factors √u2 + v2), and which are brittle and combinatorially ex-pensive to assemble from primitives. We therefore keep a small library of compound-function macros , high-payoff templates that expand to ordinary AST expressions but are proposed as atomic rewrite moves, screened by closed-form least squares and confirmed by full LM fits. This plays a role analogous to the fixed special functions of AI Feynman 2.0 (S.-M. Udrescu et al. 2020), except that our motifs are screened template fits rather than brute-force matches. For shared-prefactor templates 
+
+y = p(x) [ b + a m (x) ] + c the screening uses the feature matrix ( p m, p, 1) in y-space, which is a stable three-parameter regression that identifies forms such as y =
+
+p(x)[ p1 + u(x) cos ∆( x) + 1] or y = p(x) sinc 2(ϕ(x)). 7.4. Candidate Acceptance Logic 
+
+Each proposed rewrite becomes a Candidate (new AST, initialization, metadata) that is first screened by static prechecks, rejecting duplicates, non-tree struc-tures, and dimensionally inconsistent forms before any fitting. Survivors are fitted by LM and accepted by a layered rule. With the default heuristic acceptance logic (distinct from the statistical selection of §7.5), a candi-date is accepted unconditionally when the loss improves beyond a tolerance, and separability rewrites are granted a small additional loss budget (of order ten percent), since structure discovery is worth a small accuracy cost. Cosmetic simplifications that cut the parameter count 
+
+Pcand below Pbase are accepted under a parameter-aware ceiling scaled by 10 0.30 max(0 ,log 10 (Pbase /P cand )) , the whole ceiling being clamped to an absolute cap tied to the acceptable-loss scale, and once both losses sit below the noise floor the comparison switches from loss ratios to simplicity, so that near-exact rewrites are not rejected on noise. 7.5. Statistical candidate selection 
+
+By default the code selects competing candidates for simplification based on the measured loss with heuris-tic bonuses for simpler expressions. An optional stricter method is also provided, which replaces the heuristic score by a confidence-aware complexity–accuracy fron-tier. This statistical mode separates discovery from selec-tion. At the outset, an audit sample is sealed and hidden from all proposal and polishing steps. Once the search phase ends, duplicate analytic expressions are merged and the archive is frozen. Every candidate is then scored on each declared independent audit unit using the same bounded loss, with fitted coefficients held fixed and in-valid evaluations receiving a fixed penalty. A complexity vector records expression size, depth, fitted coefficients, and numerical-constant description length. For candidates i and j, we form paired loss differences dij,u = ℓi,u − ℓj,u . Candidate i removes j
+
+from the strict confidence Pareto front only when i is no more complex in every component of the complexity vector and the upper bound on E[dij ] is negative. We permit a strictly simpler expression to dominate when this bound does not exceed a tolerance δ. The bounds are one-sided simultaneous 1 − α bounds ( α = 0 .05) over the pre-declared set of admissible ordered pairs, obtained from a Gaussian-multiplier max-t bootstrap of the paired unit-level differences, with a one-sided Bon-ferroni t1−α/K critical value substituted whenever the unit count or family size lies outside the bootstrap’s cal-ibrated range. A separate identification step reports the final law. Beginning with the simplest candidate in a pre-declared total order (free parameters, then constant description length, node count, and depth), it accepts extra com-plexity only when the lower confidence bound on im-provement, drawn from the same simultaneous family, exceeds δ (the runs reported here adopt δ = 0). Thus the audit is consulted only after the hypotheses are fixed, protecting against selection overfitting. We note that the result is conditional on the frozen archive and searched grammar. 7.6. Committee-of-experts validation mode 
+
+Although the algorithm can make decisions based on a single split of training and validation data, we provide the option to employ a small deterministic committee instead. One reference slice proposes the Stage-A and Stage-B modifications, while the remaining slices act 14 Ibata et al. 
+
+as witnesses that re-evaluate each incumbent–candidate comparison on data the reference never saw (both in-cumbent and candidate are refit on the witness slice). Each witness votes candidate, incumbent, or tie accord-ing to whether ℓcand − ℓinc falls below, above, or within a noise-aware tolerance 
+
+τ = max 
+
+h
+
+η σ 2noise 
+
+q 2 
+
+> Nval
+
+, ϵ rel max( ℓinc , ℓ cand , σ 2noise )
+
+i
+
+,
+
+(10) with η, ϵ rel user constants. Ties never veto, and in the final committee adjudication they are broken toward the simpler expression. When run in combination with the statistical selection of §7.5, the committee only serves to provide additional proposals and diagnostics. The campaigns of §11.1 use eight scout proposers, run on separate data slices, whose candidates join a reservoir that 11 witness slices then evaluate. 7.7. Gauge Fixing and Gauge-Aware Rewrites 
+
+Symbolic decompositions are often non-identifiable, in that many parameter settings, or even many AST rep-resentatives, denote the same function. Left unman-aged this proliferates equivalent candidates and desta-bilizes the fits, so we treat gauge fixing as part of the search space. Scalar gauges are removed by com-piling fitted leaves into reduced parameterizations. Aproduct of trainable factors carries a single shared di-mensionless scale with each factor’s leading coefficient pinned to +1. Exponential-polynomial, rational, and log-polynomial leaves have the analogous multiplicative or quotient gauge, resolved by pinning a constant term or normalizing the denominator on a stable pivot. Ad-ditive sibling leaves with canceling medians are recen-tered to a balanced representative, which also protects the Hessian-based separability tests of §4 from large can-celing offsets. Overlapping decompositions, where two leaves share variables, carry a stronger functional gauge. In 
+
+F (s, u, v ) = g(s, u ) + h(s, v ) any ϕ(s) transfers between the leaves (multiplicatively, g 7 → g ψ (s), h 7 → h/ψ (s)). We anchor these at reference slices (dataset medians), constraining one leaf to vanish or be constant there via a soft penalty ramped after an initial unconstrained fit. Crucially, an overlapping split is pre-tested gauge-invariantly , before any fitting, by the four-corner iden-tity 
+
+F (s, u, v ) − F (s, u, v 0) − F (s, u 0, v ) + F (s, u 0, v 0) ≈ 0(with the ratio analogue 
+
+F − F (s, u, v 0) F (s, u 0, v )/F (s, u 0, v 0) ≈ 0for multiplicative overlaps), the residual normalized by the leaf’s output scale and thresholded against the sur-rogate’s own probe residual, so unsupported splits are rejected cheaply. The rule scheduler is likewise gauge-aware, giving scope-resolving transfers and countert-erm/counterfactor splits priority over leaf-local com-pression so the search does not lock in a neat represen-tative of the wrong global gauge. Together these roles, better conditioning, removal of non-identifiable degrees of freedom, and protection against gauge-equivalent rewrites, keep the search converging on the simplest global structure. 7.8. Univariate NN Compression 
+
+For univariate atoms U(xi) we fit a family of ana-lytical templates spanning monomials and low-degree polynomials, exponential and Planck- and sech-like physics forms, logarithmic and shifted-log forms, alge-braic and rational forms (roots, Pad´ e, exp-polynomial, exp-rational), bounded tanh nonlinearities, and peri-odic (trigonometric) templates, seeded where possible by the Stage-A feature priors of §8. The scaling-feature seeds are not limited to pure monomials. Depending on the inferred homogeneity exponent they propose low-complexity linear, quadratic, half-power, or reciprocal-rational leaves. Each candidate is fitted by LM opti-mization and evaluated by the acceptance logic of §7.4. 7.9. Trapped Variable Factorization 
+
+For multivariate NN atoms where standard separabil-ity fails, we attempt trapped factorization , that is, find-ing a multiplicative decomposition where one factor de-pends on a subset of variables, 
+
+f (x1, x 2, . . . ) = g(x1) · h(x1, x 2, . . . ) . (11) Detection uses polynomial fitting along one-dimensional slices and checking for consistent factorization structure across the domain. It transpires that this “trapped” pattern arises more often than one might expect, be-cause many physical laws contain an envelope factor that depends on fewer variables than the full expres-sion. Alongside trapped factorization, the multivariate compression rule fits quadratic and higher-degree poly-nomials, rational and square-root (rational) forms, log-and exp-rational forms, generalized-additive composi-tions ϕ(NN 1 + NN 2), affine splits, and trigonometric en-velopes and difference forms. 7.10. Post-Stage-B Multi-Dataset Parameter Refinement 
+
+When multiple datasets share the same discovered structure but not necessarily the same constants, we run an optional post-pass after Stage B. The AST struc-ture is kept fixed, and each leaf tag is assigned either NestyNet. III. Symbolic Regression from Analytic Surrogates 15 
+
+class scope (shared across datasets) or experiment scope (dataset-local). By default, the class/experiment split is initialized from per-tag parameter dispersion in the Stage B fits (a coefficient-of-variation threshold), then refined by greedy one-tag-at-a-time acceptance against aggregated validation loss. The joint fit minimizes the residual error, 
+
+Lfit =
+
+> D
+
+X
+
+> d=1
+
+wd ϕ
+
+
+
+y(d)
+
+− ϕ
+
+
+
+ˆy(d) 22
+
+, wd = Nd
+
+P 
+
+> j
+
+Nj
+
+,
+
+(12) where ϕ is the same optional data transform used by Stage B (identity, asinh, etc.), and Nd is the number of points in dataset d.To address reparameterization and gauge effects (sit-uations where physically shared quantities are combina-tions of leaf parameters rather than single leaves) we add a derived-invariant discovery step 7. It scans scalar ref-erences from trainable leaf parameters and fixed scalar buffers and evaluates candidate derived invariants of the forms sasb, sa/s b, and sas2 
+
+> b
+
+/s c across datasets. Low-scatter candidates are retained using a robust median-absolute-deviation (MAD) score and can be enforced as soft constraints, 
+
+L = Lfit + λ 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+1
+
+D
+
+> D
+
+X
+
+> d=1
+
+ I(d) 
+
+> k
+
+− ¯Ik
+
+median j I(j) 
+
+> k
+
++ ϵ
+
+
+
+> 2
+
+. (13) Here I(d) 
+
+> k
+
+is derived invariant k evaluated on dataset d,and ¯Ik is its dataset mean. We found that even a mod-est number of discovered invariants can substantially stabilize the joint fit, particularly when the number of datasets is small relative to the number of free parame-ters.  
+
+> 8.
+
+FEATURE DISCOVERY The rule proposals in Stage B are guided by a battery of cheap structural probes run on the trained surrogate. All share one logic, sampling the surrogate and its an-alytic gradients and emitting a hint only when the rel-evant signature has low scatter across the domain. The exemplar is homogeneity detection over a variable subset 
+
+S, from the restricted Euler relation 
+
+X
+
+> i∈S
+
+xi
+
+∂f ∂x i
+
+≈ kS f , (14) whose pointwise ratio rS (x) =   P  
+
+> i∈S
+
+xi ∂if /f (x) is accepted as a homogeneity degree kS when its relative  
+
+> 7Named “Parameter-SR” in the codebase.
+
+scatter is small. Because the test runs over all subsets, it exposes partial homogeneity such as f = x21 g(x2). A direct rescaling probe complements it, fitting the slope of log( f (λz )/f (z)) against log λ per axis and along any compound coordinate z already introduced by Stage A (including the simple forms xi ± xj , xixj , xi/x j ). The remaining probes follow the same accept-on-low-scatter pattern. Trigonometric detection grids over candidate frequencies, tests sin( ωz ), cos( ωz ), and 1 −
+
+cos( ωz ) carriers, and resolves product- versus difference-argument structure by regressing the per-slice frequency and phase against the partner coordinate. Radial and preferred-origin detection reuse the gradient-alignment and shift-fitting probes of §4, the latter seeding centered-coordinate proposals. Parity is probed independently by reflection tests about each axis median. Saturation de-tection flags monotonic axes that flatten in the tails, sug-gesting rational or tanh rewrites. The scaling, trigono-metric, and saturation hints gate which Stage B rules fire, while the remaining probes are recorded as diag-nostics.  
+
+> 9.
+
+Y-TRANSFORMS When separability detection fails in the original out-put space, transforming the dependent variable can re-veal hidden structure. This situation arises frequently in physics. For example, y = exp( g(x)) is not additively separable in y but becomes so after a logarithmic trans-form. We maintain a registry of 15 output transforma-tions organized into five families: (i) identity (˜ y = y), (ii) power transforms ( √y, y2, 1 /y , and ˜ y = y2 − 1, i.e. y = √1 + ˜ y), (iii) logarithmic transforms (log( y)and log( −y) for negative data), (iv) exponential trans-forms (exp( y) and exp( −y)), and (v) trigonometric and inverse-trigonometric transforms (sin( y), cos( y), tan( y), arcsin( y), arccos( y), arctan( y)). Each transform spec-ifies forward and inverse operations, first and second derivatives for chain-rule propagation through separabil-ity tests, domain constraints (e.g., log requires y > 0), and units compatibility (e.g., log is incompatible with dimensioned quantities). The separability tolerances re-main meaningful across transforms because the tests normalize by the scatter of the transformed output, so a transform that amplifies small variations (such as log y)is judged on its own scale. Rather than retraining un-der every transform, we screen all candidates through a chain-rule virtual model that exposes T (f (x)) and its derivatives from the already-trained identity surrogate, rank the transforms by the structure these screens re-veal, and rerun Stage A only on the leading few. If 16 Ibata et al. 
+
+separability is detected for some T , we discover the ex-pression ˜f (x) and report y = T −1( ˜f (x)).  
+
+> 10.
+
+DIMENSIONAL ANALYSIS NestyNet-SR optionally enforces dimensional consis-tency at two levels. Local checks validate individual operations, and a global constraint propagation system detects dead-end configurations before expensive fitting. We describe each level in turn, beginning with the units specification that both levels share. 10.1. Units Specification 
+
+Each quantity is represented by a dimension vector 
+
+u ∈ QB , where B is the number of base dimensions (e.g. B = 3 for a [ L, T, M ] basis), [y] = [ La1 T a2 M a3 ] ↔ uy = ( a1, a 2, a 3) . (15) The user supplies uy for the target, uxi for each input variable, and optionally uc for free or fixed constants. All exponents are exact rationals, so that fractional pow-ers like √· are handled without floating-point error. 10.2. Local Consistency Checks (Level 1) 
+
+Four local gates validate individual operations dur-ing the search. For addition, both operands must have matching dimensions. For multiplication, dimension ex-ponents add, [parent] = [left] + [right]. For exponen-tiation, [parent] = s · [base] where s ∈ Q is the expo-nent. For transcendental functions (log, exp, sin, cos), the argument must be dimensionless and the output is dimensionless. These checks are applied at each structural deci-sion point: full-AST validation after Stage B rewrites, Buckingham π-count verification for compound-variable proposals, single-node feasibility checks for addi-tive/multiplicative splits, and output-dimension infer-ence for individual atoms. Each gate examines its own local neighborhood (“Is this compound/split/rewrite di-mensionally legal in isolation?”) but it does not ask whether, given this choice, the rest of the tree can still be satisfied.  
+
+> Compound Dimensional Rank Gate. —
+
+When a compound variable z = Q 
+
+> i
+
+xai 
+
+> i
+
+replaces a subset of an atom’s in-puts, it may reduce the dimensional rank of the post-compound variable set. By the Buckingham π theo-rem (E. Buckingham 1914), the resulting function fac-tors as 
+
+f = xb1 
+
+> r1
+
+· · · xbp 
+
+> rp
+
+· g(π1, . . . , π m) , (16) where the xrj are the remaining (non-compound) vari-ables and the πk are dimensionless groups. The mono-mial prefix carries the physical dimensions of the out-put y.Let Dafter be the set of dimension vectors of the post-compound inputs (i.e. [ z] together with any extra vari-ables), and let r = rank Dafter . The monomial prefix in Eq. (16) can only produce dimensions in span Dafter .Therefore the compound is admissible if and only if [yφ] ∈ span Dafter , (17) where [ yφ] is the dimension of the model target after any y-transform φ (identity, log, square, etc.). In prac-tice this is tested by checking whether augmenting Dafter 
+
+with [ yφ] increases the rank. If rank( Dafter ∪{ [yφ]}) = r,the target is reachable and the compound is allowed. Otherwise it is rejected. A rank drop is harmless whenever the lost dimensional directions are not needed by the output (for a dimen-sionless target, [ yφ] = 0 lies in every subspace). 10.3. Global Constraint Propagation (Buckingham–Sudoku, Level 2) 
+
+Local checks can approve a configuration that is glob-ally infeasible. Consider a multiplicative decomposition AST = NN[ x0]×(NN[ x1, x 3]×NN[ x2, x 4]) for a problem where [ x1] = [ x3] = L. A compound proposal z = x1/x 3
+
+is dimensionless, and the local Buckingham check passes (the compound preserves the number of dimensionless degrees of freedom). However, once the inner atom sees only a dimensionless input, it can only produce dimen-sionless output under the span semantics. The outer multiplication then cannot reach the required target di-mension, a dead end that Level 1 discovers only after expensive least-squares fitting. Level 2 detects such dead ends before any fitting by solving the full dimensional constraint system globally. The key insight is that all dimensional constraints are linear over Q, so the entire system can be solved exactly in a single pass.  
+
+> Feasible dimension subspaces. —
+
+The situation is analo-gous to Sudoku. Each node in the expression tree is a cell whose “value” is a dimension vector, the known dimensions of inputs and the target are the given clues, and the operator rules propagate constraints until ev-ery cell is either uniquely determined or shown to be infeasible. Concretely, each AST node is assigned an affine sub-space of dimension-space representing all dimensions the node could take, 
+
+S =  d0 + P 
+
+> i
+
+ci bi ci ∈ Q , (18) where d0 ∈ QB is an offset (particular solution) and 
+
+{bi} is a basis for the free directions. Three special NestyNet. III. Symbolic Regression from Analytic Surrogates 17 states arise naturally: (i) pinned (basis empty), mean-ing the node’s dimension is uniquely determined; (ii) un-constrained , meaning all dimensions are possible; and (iii) empty (system inconsistent), meaning no dimension is feasible, i.e. a dead end. Each AST node type imposes a linear constraint re-lating its dimension to those of its children. This is applied both bottom-up (what a subtree can produce) and top-down (what a child must produce).  
+
+> Algorithm: solve via RREF in one pass. —
+
+Because every constraint is linear over Q, the entire “Sudoku game” reduces to a single linear system. A symbolic traversal of the expression tree assigns each node a dimension expression, [node] = c0 + X
+
+> i
+
+αi Ui , (19) where c0 is a known constant part and each Ui is an unknown dimension vector (one per unconstrained NN atom). Equality constraints from addition nodes, the root target, and the requirement that transcendental arguments be dimensionless form a system A x = b
+
+over Q.Solving via reduced row echelon form (RREF) yields 
+
+x = x0 + X
+
+> j
+
+tj nj , tj ∈ Q , (20) where x0 is a particular solution and {nj } spans ker( A). Each node’s feasible dimension subspace [Eq. (18)] is then obtained by substituting this solution into Eq. (19) and projecting. The offset is obtained by evaluating the node’s dimension expression at x0, and the basis direc-tions are obtained by evaluating its linear part at each null-space vector nj and reducing to an independent set. If RREF reveals an inconsistency (0 = c̸ = 0 in any row), the entire AST is infeasible, a dead end detected without any fitting. The computation is exact (rational arithmetic) and takes O(N A 2B3) time for N nodes, B
+
+base dimensions, and A unknown atom dimensions ( A is at most a handful in practice), typically sub-millisecond for the N ≤ 50 trees encountered. 10.4. Hypothesis Testing (Level 2) 
+
+Level 2 turns this solver into a cheap “what-if” test. To ask whether an atom may take a compound z =
+
+xi/x j , or split additively on a given partition, we build the modified candidate AST, solve its global system from scratch by RREF, and reject the proposal if any node’s feasible subspace comes out empty. Figure 5 shows the canonical case. Level 1 thus acts as an O(1) pre-filter and Level 2 as a global validator, both negligi-ble against the least-squares fits they save. When dimen-sional analysis is active, factorized-search candidates use a scaled parameterization separating unit-carrying scales from a dimensionless core, so the resulting AST satisfies the global system by construction.  
+
+> 11.
+
+BENCHMARKS AND RESULTS We evaluate NestyNet-SR in four settings. The first is the full pipeline (without the factorized symbolic search) on the AI Feynman benchmark, both noiseless and with additive noise ( §11.1). The second is standalone fac-torized symbolic search, which consumes GS carriers, on the same benchmark in oracle mode ( §11.2). The third is an astrophysical theory-discovery example that recovers the galactic tidal-radius law together with its anisotropic tidal invariant, summarized in §11.3 and distributed with the code as a worked example. The fourth is the real-data vignette, the blind recovery of the baryonic acceleration coordinate from SPARC galaxies against a deliberately verified target ( §11.4). 11.1. Full Pipeline (without Factorized Symbolic Search) 
+
+We now evaluate the NestyNet-SR pipeline in the noiseless regime on all 120 AI Feynman equations, but without the factorized symbolic search. The setup uses the SRBench standardization (S.-M. Udrescu & M. Tegmark 2020; W. La Cava et al. 2021), but with each equation only sampled with 2 × 10 3 training and 2 × 10 3
+
+validation points (instead of using the 10 5 points allowed by the benchmark) drawn uniformly from the published domain, with no added noise. We declare success when the discovered expression is algebraically identical to the ground-truth expression. For targets whose |y| spans more than four decades and whose identity-space fit fails or stalls, the surrogate fit is automatically retested un-der an asinh transform of the output. The pipeline recovers all 120 equations exactly, at ev-ery input dimensionality from one to seven-plus vari-ables. To the best of our knowledge, exact symbolic recovery of all 120 equations has not previously been reported on the SRBench-standardized AI Feynman benchmark (S.-M. Udrescu & M. Tegmark 2020; W. La Cava et al. 2021; W. Tenachi et al. 2023), so we re-gard this as a new benchmark for exact recovery in this setting. The full pipeline is also relatively economical. Running on a single CPU core (one thread), it solves each equation in a median wall time of 6 minutes, with 90% of the 120 equations recovered within 1 .1 hours. For each problem the search is driven only by the sam-pled input–output data, the variable ranges and names, and the dimension vectors of the input and output chan-nels, supplied as a units-only manifest released sepa-rately from the answer key. These metadata constrain 18 Ibata et al. given: [y] = L2, [x1] = [ x3] = L, x0, x 2, x 4 dimensionless                      
+
+> ×[y] = L2 (clue)
+> NN[ x0]×
+> NN[ x1, x 3]NN[ x2, x 4]
+> {0}
+> L2∈span {L}✓{0}
+> (a) direct leaves: globally feasible
+> ×[y] = L2 (clue)
+> NN[ x0]×
+> NN[ z]NN[ x2, x 4]
+> {0}
+> z=x1/x 3
+> L2/∈ { 0}⇒∅{0}
+> (b) hypothesis z=x1/x 3: dead end, no fit attempted
+
+Figure 5. Global dimensional feasibility (“Buckingham–Sudoku”, §10.3) on the worked example. (a) With direct leaves the constraint system is solvable, and NN[ x1, x 3] can reach the target dimension L2. (b) The compound z = x1/x 3 passes the local Π-gate (it is dimensionless), but it pins NN[ z] to dimensionless output. The required and achievable subspaces then have empty intersection, and the hypothesis is rejected before any fitting. 
+
+Table 3. Fixed hyperparameter configuration used identi-cally for all 120 AI Feynman equations (and, unless noted, the noisy runs and the tidal-radius example). Values are the pipeline defaults, and the benchmark driver overrides none of them per problem.                                
+
+> Component Setting Surrogate dual-layer NestyNet, f(1) ◦f(0) , inter-mediate dim M=n+ 2, float64, 16–48 segments per layer (progressive growth) Surrogate optimizer Levenberg–Marquardt (direct solve), ≤
+> 2 500 epochs, loss target 10 −7, canoni-cal initialization and segment-prior (ev-idence) mode on Data 2×10 3training / 2 ×10 3validation points, uniform over the published do-main, batch size 2 ×10 3
+> Stage A separability mixed-second-derivative test tolerance 10 −3, monomial rank-1 gate σ2/σ 1≤
+> 0.1 with confidence gate 0 .85 Stage A ↔B loop up to 5 feedback iterations Stage B ≤30 outer iterations, ≤2 000 LM epochs per candidate, 3 backtracks, dy-namic candidate policy, factorized sym-bolic search disabled for this table
+
+which candidate expressions are dimensionally admissi-ble, but do not single out the target form among the ad-missible ones. The target expressions themselves never enter the search. The runs can be reproduced in a blinded mode in which the search process has no file-system access to any file containing a target expression, with algebraic equivalence scored afterwards by a sep-arate program, and blinded and non-blinded runs pro-duce identical discovered expressions. The configuration is fixed: the benchmark driver issues the same command line for every problem, and the main settings are col-lected in Table 3. To assess robustness, we repeat the benchmark with additive Gaussian noise injected at several signal-to-noise ratios, as set by the SRBench rules. The results are listed in Table 4. Noise degrades recovery under ev-ery selection scheme, yet close to half of the problems are successful at the extreme 10% level. In Table 4 we see that statistical selection ( §7.5) yields lower recovery than the heuristic acceptance ( §7.4) at every noise level, as expected of a method that de-clines any candidate it cannot defend on sealed data against a simpler rival. Providing a selection commit-tee ( §7.6) generally overtakes the heuristic because it widens the proposal pool. Each scout and witness slice keeps the 2 000-point training and validation sizes per fit, but the committee draws on eight scout and eleven witness slices, disjoint from the reference run and from each other, and five to eight times the computation of a single-slice run. Its statistical decisions use a separate sealed audit partition of 20 000 rows, and only at 10 −2
+
+noise do the additional proposals fail to survive certifi-cation. 11.2. AI Feynman Symbolic Regression Benchmark (Factorized Search, Oracle Mode) 
+
+To isolate the performance of the factorized symbolic search (FSS) method from the full pipeline, we run it on the AI Feynman benchmark, but restricted to the 115 equations with nvar ≤ 6. The test is an oracle bench-mark without neural surrogate training, to remove that source of uncertainty. The search receives exact function values and dimensional metadata (512 fit points and a 2 048-point search probe), and runs for 1 400 mutation iterations. FSS evaluates exact target gradients solely to propose GS coordinates as carrier seeds. A problem is considered solved using the structural criterion dis-cussed for Table 4. NestyNet. III. Symbolic Regression from Analytic Surrogates 19                
+
+> Table 4. Symbolic recovery on the AI Feynman bench-mark under additive Gaussian noise, with factorized sym-bolic search disabled. A problem is considered solved when the expression matches the target algebraically up to any fitted constants, verified by refitting on noiseless data (toler-ance 10 −10 ). Round parentheses denote the heuristic accep-tance of §7.4, unmarked values correspond to the statistical selection of §7.5, and square brackets add the committee of
+> §7.6. Noise level ( σσy)Solved / 120 Rate 0(120) 120 [120] (100%) 100% [100%] 10 −3(105) 103 [110] (87.5%) 85.8% [91.7%] 10 −2(94) 91 [89] (78.3%) 75.8% [74.2%] 10 −1(56) 54 [62] (46.7%) 45.0% [51.7%]
+
+This ablation removes almost all of the pipeline, in-cluding Stage A separability, the Stage B rewrite rules, and the surrogate-training front end. Because the fitted relation is y = g(z), the dimensions of a carrier z need not equal those of y before the outer map g is known (for example, a square-root map takes L2 to L). The units check on such a carrier is therefore deferred: the carrier is admitted with its internal units certified, and the carrier-to-target relation is validated once the outer map has been fitted. The result is accordingly an exact-oracle-gradient numerical ablation. Table 5 summarizes the results. FSS recovers 88 of the 115 eligible equations (76.5 %). For instance, for AI Feynman problem #3, GS supplies z = ( x0 − x1)2 +(x2 − x3)2, after which the existing power outer map fits an exponent of 0 .5. Its search-probe MSE is 2 .13 ×10 −31 
+
+and its independent dense-holdout MSE is 2 .47 × 10 −31 ,with a runtime of 69.4 s. Across all 115 equations, FSS has median and mean wall times of 30.0 s and 553 s (hard and unsolved mutation-search cases dominate the budget). The remaining unvalidated equations are generally deeply nested five- and six-variable expressions with non-monomial carriers or additive inner structure that resists the current peel decomposition. Note that these results are from a one-shot pass, i.e., the factorized symbolic-search method must solve the problem immediately in its entirety, without recourse to any of the other simpli-fication methods in NestyNet-SR’s extensive arsenal. 11.3. Galactic Tidal-Radius Example 
+
+Before turning to the sky we validated the discov-ery layers end to end on a controlled theory-recovery study, the circular-orbit Jacobi (tidal) radius rJ =
+
+μ/ (4Ω 2 − κ2)1/3 of star clusters in an ensemble of mock galactic hosts, where μ = GM cl for cluster mass 
+
+Mcl , and Ω and κ are the circular and epicyclic fre-quencies of the cluster’s orbit about its host. The generalized-symmetry layer discovers the anisotropic in-variant 4Ω 2 − κ2, and the pipeline assembles the exact law in closed form, unifying the classical Hill/Roche and flat-rotation-curve limits including the cube-root mass exponent. The complete study, including the support-geometry design on which the recovery depends and the measured gradient-noise ladder (symmetry discovery in-herits the surrogate’s derivative quality, certifying only while gradients are accurate to ∼10 −3), is distributed with the code as a worked example. 8
+
+11.4. Blind Recovery of the Baryonic Acceleration Coordinate from SPARC 
+
+As a real-data demonstration we ask whether the sys-tem, given only separate gas and stellar-disk contri-butions to galaxy rotation curves, discovers that disk dynamics scale via a single baryonic acceleration co-ordinate. The SPARC database (F. Lelli et al. 2016) provides Vobs (R) together with the gas and disk con-tributions, with the disk at a nominal Spitzer 3 .6 μmmass-to-light ratio of unity. The radial acceleration relation (RAR; S. S. McGaugh et al. 2016; F. Lelli et al. 2017) is conventionally studied by forming the baryonic acceleration gbar in advance and fitting the one-dimensional relation gobs (gbar ), a problem to which exhaustive symbolic regression has been applied (H. Desmond et al. 2023). Here we take the aggregation it-self as unknown. The inputs are x = ( ggas , g (Υ=1) disk ) with 
+
+gcomp = Vcomp |Vcomp |/R , the target is gobs = V 2obs /R ,and the sought structure is 
+
+z = ggas + Υ d g(Υ=1) disk , gobs = F (z) , (21) where the gas term fixes the scale gauge and Υ d is the stellar disk mass-to-light ratio in solar units at 3 .6 μm. Our choice of scientific problem is deliberate: the Υ d
+
+scale, geometry sensitivities, and form identifiability are externally established, so the literature counterparts must be reproduced blind, and our contribution is the hands-off protocol itself. We first make a selection for kinematic regularity, tak-ing galaxies with quality Q < 3, eV /V < 0.1, no bulge, inclination 40 ◦ ≤ i ≤ 75 ◦, types Sbc–Sm, and contain-ing at least eight radial measurements. This leaves a gold sample of 48 galaxies with 945 points, of which 34 galaxies form the discovery set and 14 are held out en-tirely.    
+
+> 8In the directory examples/jacobi tidal of the NestyNet-SR repository.
+
+20 Ibata et al.                                      
+
+> Table 5. AI Feynman benchmark: solve rate by number of input variables ( nvar ). Full pipeline is the complete Stage A/Stage B stack run on all 120 noiseless equations with factorized symbolic search disabled. The oracle-mode FSS benchmark is run on the 115 equations with nvar ≤6. The counts are structural recoveries under the criterion of Table 4. FSS consumes exact-oracle-gradient GS carrier proposals, with carrier units validated after the outer-map fit as described in the text.
+> Method nvar = 1 234567+ All Rate Full pipeline 1/1 15/15 37/37 32/32 20/20 10/10 5/5 120/120 100%
+> FSS 1/1 15/15 34/37 24/32 13/20 1/10 –88/115 76.5%
+
+The carrier is identified by the class-shared col-lapse, the multi-dataset structure of §7.10 specialized to Eq. (21), with F nonparametric, and each galaxy being a separate experiment. Profiling over the carrier direction with (whole galaxy) bootstraps gives Υ d = 0 .56 +0 .14 
+
+> −0.14
+
+,consistent with the population synthesis expectation of 
+
+≃0.5 at 3 .6 μm adopted by F. Lelli et al. (2016), and the fully held-out prediction error selects the same direc-tion, with the trivial gas-only carrier (Υ d = 0) rejected at 0.34–0.40 dex (Fig. 6a). Generalization provides the decisive test. A one-dimensional law fitted through z on the discovery-set galaxies predicts the held-out galax-ies to within an rms scatter of 0.13 dex in log gobs ,while an unrestricted two-dimensional surrogate trained on the same rows predicts them at 0.65 dex (Fig. 6b), a grouped counterpart of the fundamentality analyses of R. Stiskalek & H. Desmond (2023). The factorized search, run blind on the two components, corroborates this: its leading candidates are the small-rational ren-derings ggas +gdisk /3 and ggas +gdisk /2 at the same held-out level, with non-carrier candidates trailing beyond 0.15 dex. Each galaxy is a thin locus in component-acceleration space, so the transverse derivative is constrained only across galaxies, and at the level of scatter in the catalog (0.12 dex) the surrogate’s transverse gradients are set by its smoothness. A planted-carrier control makes this quantitative. Keeping the real input rows but replac-ing the observed accelerations with a synthetic target, a known law over a planted coordinate (the RAR inter-polating form with Υ d = 0 .5), the determining opera-tor recovers the planted translation algebra of Eq. (21), its smallest singular value falling a factor of 50 below the rest of the spectrum (certification requires a factor of 10), and the gradient readout returns Υ d = 0 .500 exactly, while 0.12 dex of scatter, row-independent or galaxy-correlated, closes that separation and the opera-tor abstains on data that contain the carrier by construc-tion (Fig. 6c,d). The abstention is therefore calibrated, discovery requires cross-galaxy information, and on the clean control the factorized search closes the loop, re-covering the carrier as 2 ggas + g(Υ=1) disk and the planted law at 3 × 10 −4 dex. With the coordinate fixed, candidate outer laws com-pete on the held-out galaxies. The RAR interpolat-ing function of S. S. McGaugh et al. (2016), the sim-ple interpolation function, the superposition F = z +
+
+√g†z, a pure power law, and a log-parabola all land within 0.106–0.116 dex of error-weighted held-out scat-ter, against a galaxy-bootstrap uncertainty of 0.022 dex. None improves on the nonparametric collapse law itself, 0.118 dex on the same metric, by more than that uncertainty. The common acceleration scale is 
+
+g† ≃ 0.96 × 10 −10 m s −2 (Fig. 6e), slightly below the 1.20 × 10 −10 m s −2 of F. Lelli et al. (2017). With the free factorized-search slate included, the complexity– accuracy Pareto front is flat within that uncertainty: no candidate can be isolated, and added structure yields no accuracy improvement on held-out samples. We therefore report the outer law as a family, in agree-ment with H. Desmond et al. (2023), and promote no unique interpolation function. Instead, what the data do identify is delivered through the statistical layer of Paper II (R. A. Ibata et al. 2026c) (the “sister” model). Conditional on the discovered carrier, with Υd and the catalog geometry held fixed, coherent sis-ter model draws of the law and its derivative, with galaxies rather than individual rotation-curve points as the independent units (a sandwich covariance that dis-counts only the correlated component of the residuals within each galaxy), give the posterior of the local slope 
+
+s(z) = d log F/d log z on the domain where its certifi-cates hold. Across the main certified range, 4 × 10 −11 
+
+to 8 × 10 −10 m s −2, s rises from 0 .61 ± 0.02 through 0.70 ±0.02 at 10 −10 m s −2 to 0 .86 ±0.06, and on the certi-fied island at 1 .2 × 10 −11 m s −2 it is 0 .48 ± 0.04 (Fig. 6f). The deep-regime slope of 12 , from which the baryonic Tully–Fisher scaling follows, is recovered as a measure-ment. Distance and inclination move whole galaxies in the acceleration plane, gobs ∝ D−1 sin −2 i with the com-ponents nearly distance-independent (P. Li et al. 2018). Refitting with the distance Dk and inclination ik of each galaxy k as free parameters under Gaussian priors from the catalog uncertainties, with the sample-coherent com-bination constrained to zero mean, reduces the weighted scatter from 0.112 to 0.065 dex, comparable to the 0.057 NestyNet. III. Symbolic Regression from Analytic Surrogates 21 0.0 0.5 1.0 1.5 2.0 2.5 
+
+carrier coefficient d
+
+0.10 0.15 0.20 0.25 0.30 0.35 0.40  
+
+> rms about 1D law [dex]
+> collapse scatter held-out error
+> d
+
+= 0.56 +0.14 0.14 
+
+(a) carrier-direction profile 12.0 11.5 11.0 10.5 10.0 9.5 
+
+log 10 z [m s 2]
+
+11.5 
+
+11.0 
+
+10.5 
+
+10.0 
+
+9.5 
+
+> log 10  gobs  [m s  2]
+> 1D law (fit on discovery set only) RAR interpolation (not fitted)
+
+(b) held-out galaxies on the discovered law 
+
+2 4 6 8
+
+singular-value index 
+
+10 4
+
+10 3
+
+10 2
+
+10 1
+
+10 0
+
+> sk/s1
+> planted, no noise planted, 0.12 dex real SPARC
+> ×50 drop (threshold 10)
+
+(c) symmetry gap exists only in the clean limit 0.0 0.5 1.0 1.5 
+
+recovered d (gradient lane vs collapse)  
+
+> planted, clean planted, 0.12 dex planted, galaxy-corr. real SPARC collapse, real SPARC recovers abstains abstains abstains recovers
+> planted d
+
+(d) abstention is calibrated 
+
+11.5 11.0 10.5 10.0 9.5 
+
+log 10 z [m s 2]
+
+11.0 
+
+10.5 
+
+10.0 
+
+9.5 
+
+9.0 
+
+> log 10  gobs  [m s  2]
+
+(e) outer laws indistinguishable within the band 
+
+> RAR form power law Newton + deep sum sister 68% band sister 99% band
+
+11.5 11.0 10.5 10.0 9.5 
+
+log 10 z [m s 2]
+
+0.2 0.4 0.6 0.8 1.0      
+
+> s(z) =  dlog  F/dlog  z
+> Newtonian s= 1 deep regime s=12
+> grey: audit fails, no claim
+
+(f) what the data identify about the law 
+
+> RAR form power law Newton + deep sum sister posterior
+
+Figure 6. The SPARC vignette (gold sample, whole-galaxy discovery/held-out split, 34/14). (a) Collapse scatter and held-out error select the same carrier direction, Υ d = 0 .56 +0 .14  
+
+> −0.14
+
+(band, whole-galaxy bootstrap). (b) The law fitted on discovery galaxies predicts the held-out galaxies (orange) at 0.13 dex; dashed, the RAR interpolation, not fitted. (c) Determining-operator spectrum. For the planted noise-free carrier the smallest singular value drops a factor of 50 below the rest, a numerically exact symmetry (certification requires a factor of 10); 0.12 dex of scatter (the observed scatter about the law) erases the drop and the operator abstains. (d) Recovered Υ d: the gradient certificate succeeds only in the clean limit; the collapse recovers it from real data. (e) The sister model 68% and 99% bands, with galaxies as the independent units, and the candidate outer laws threaded through them, indistinguishable on held-out galaxies. (f) The slope posterior s(z) on its certified domain (gray, no claim), rising from the deep-regime 12 toward the Newtonian s = 1. 22 Ibata et al. 
+
+dex of P. Li et al. (2018), with unit-variance nuisance pulls. Υ d shifts by +0 .25, well inside the 0.70 full width of the 68% galaxy-bootstrap interval of the released fit, which is wider than the fixed-geometry ±0.14 because the freed geometry absorbs part of the constraint. The discovered coordinate is thus robust to the uncertain galaxy geometry, but an audit against resolved velocity fields (C. Trachternach et al. 2008) is left to future work. Thus every conclusion with a literature counterpart is reproduced blind, and the protocol adds the aggregation question, the held-out scoring, the calibrated abstention, and the certified slope posterior. The law becomes sim-ple only in the discovered coordinate, and every claim is scoped to the domain on which its certificate holds.  
+
+> 12.
+
+CONCLUSIONS The present paper advances symbolic regression by providing derivative-accurate decomposition, and by im-plementing a new symbolic search method. 
+
+Derivative-accurate decomposition engine. All sym-bolic expressions are represented as PyTorch-integrated abstract syntax trees with compound variable support, atom tagging for module reuse, and a comprehensive leaf-type library. We use the accurate gradients and Hessians from NestyNet models to make classical de-composition motifs substantially more reliable, while also extending them to approximate, overlapping, offset-multiplicative, and richer compound-coordinate struc-ture. In the current AI Feynman setting this structured simplification stack already suffices to attain exact sym-bolic recovery. This appears to be the first such result reported in the literature. 
+
+New symbolic-search method. The second contribu-tion is a standalone factorized symbolic-search algo-rithm organized around a skeleton–mapping factoriza-tion, residual basins, archive-guided UCB mutation and repair, closure-native basis proposals, optional continu-ous skeleton refinement, dimensional filtering, and tar-geted peel-presearch for difficult compositional families. On the AI Feynman benchmark in oracle mode, FSS consumes exact-gradient GS carrier proposals and yields 88 recoveries among the 115 eligible equations (76.5 %), in a deliberately hard one-shot challenge. That bench-mark forgoes the Stage A and Stage B simplifications available in the pipeline, as well as problem-specific equation templates and the reinforcement learning and genetic programming on which other SR pipelines are built. We therefore view this factorized symbolic search as a genuine algorithmic result in its own right. Within the full NestyNet-SR pipeline, it serves as the deliberate escalation layer when decomposition and cheaper tar-geted rewrites no longer close the problem cleanly. Its main power over the rewrite tier is that it can form arbi-trary compositions of functions while carrying their non-linear parameters, so constants that many direct tree-search methods generate via tokens or optimize one fin-ished candidate expression at a time are absorbed into the scoring of whole families at once. Note that the AI Feynman benchmark does not provide a favorable show-case of the method, as it contains virtually no param-eters inside nonlinear operators to discover. We expect FSS to shine over competitors in more realistic scenar-ios. Factorized symbolic search is also fast. Because the factorization lets a single carrier stand in for a whole family of calibrated renderings, and because dimensional filtering prunes the enumeration aggressively, nearly half of the AI Feynman targets are solved by the determin-istic presearch in under ten seconds, and the median wall time is 30 s on one CPU core ( §11.2). Computa-tional cost is a central practical bottleneck for symbolic regression, so this efficiency is itself a significant advan-tage. More broadly, we think the right lesson is not that generic search should replace structured rewrites, but that a strong symbolic regression engine should be tiered, by exploiting the cheapest high-confidence scien-tific motifs first, then escalating to broader factorized symbolic search only when the evidence demands it. Two further components support the pipeline: the di-mensional analysis of §10, enforced both locally and by the global “Buckingham–Sudoku” solver, and the post-Stage-B multi-dataset refinement of §7.10, which sep-arates class from experiment parameters and recovers derived invariants. A third layer, the generalized-symmetry operator of 
+
+§6, recovers the Stage A coordinate families from one determining equation and reaches coordinates outside their vocabulary. The same philosophy extends to differential-equation discovery (developed in Paper IV), where on-shell generator recovery, relative-invariance certificates, and symmetry reductions seed the search, and where the generator family broadens beyond the affine case to quadratic point symmetries and to non-canonical Poisson geometry, including its Casimir invari-ants. The galactic tidal-radius example (§11.3) demon-strates that the algorithm can go beyond recovering in-dividual formulas to exposing the meta-structure that links them. Symbolic regression across an ensemble of physical regimes can expose the invariant underlying a family of empirical laws, not just a single static closed-form relation. The SPARC vignette ( §11.4) extends this demonstra-tion to the sky focussing on a research project that has NestyNet. III. Symbolic Regression from Analytic Surrogates 23 already been independently explored. A blind run repro-duces the established results of the radial acceleration relation while adding the aggregation question, held-out-galaxy scoring, planted-truth abstention calibration, and a certified slope posterior, which established analy-ses, with gbar formed in advance, did not pose. The Stage B rewrite rules are heuristic in nature and may miss optimal analytical forms. Factorized symbolic search substantially broadens the search space, but the cases it misses in the AI Feynman benchmark show that deeply nested high-arity expressions remain challenging for such an approach. Computational cost also scales ex-ponentially with the number of variables for exhaustive separability search, which limits the approach to mod-erate dimensionality without further pruning strategies. More systematic use of fixed-AST joint fitting, richer multi-dataset invariants, and stronger guidance for the mutation phase of factorized symbolic search are natu-ral next steps, as are broader benchmark suites beyond AI Feynman. Better criteria for when to escalate from targeted rewrites to the more general search layer are also an obvious next target for the live Stage B con-troller. DATA AVAILABILITY The codebase is available at https://github.com/ RodrigoIbata/NestyNet SR. The benchmark input data are archived at doi:10.5281/zenodo.21390410. The benchmark evidence and reproducibility package can be found at doi:10.5281/zenodo.22027264, which contains the benchmark evidence capsules, and the FSS audit. The Jacobi and SPARC vignette scripts and result sum-maries are distributed with the codebase. ACKNOWLEDGMENTS RI gratefully acknowledges funding in the initial stages of this project from the European Research Council (ERC) under the European Union’s Horizon 2020 re-search and innovation program (grant agreement No. 834148). We gratefully acknowledge the High Perfor-mance Computing center of the Universit´ e de Stras-bourg for a very generous time allocation and for their support over the development of this project. 
+
+# Software: NestyNet (R. A. Ibata et al. 2026a), Py-Torch (A. Paszke et al. 2019), NumPy (C. R. Harris et al. 2020), SciPy (P. Virtanen et al. 2020), SymPy (A. Meurer et al. 2017), Matplotlib (J. D. Hunter 2007). REFERENCES 
+
+> Auer, P., Cesa-Bianchi, N., & Fischer, P. 2002, Machine Learning, 47, 235, doi: 10.1023/A:1013689704352 Austel, V., Cornelio, C., Dash, S., et al. 2020, arXiv preprint arXiv:2006.06813, doi: 10.48550/arXiv.2006.06813 Buckingham, E. 1914, Physical Review, 4, 345, doi: 10.1103/PhysRev.4.345 Cranmer, M. 2023, arXiv preprint arXiv:2305.01582, doi: 10.48550/arXiv.2305.01582 Cranmer, M., Sanchez-Gonzalez, A., Battaglia, P., et al. 2020, Advances in Neural Information Processing Systems, 33, 17429, doi: 10.48550/arXiv.2006.11287 Desmond, H., Bartlett, D. J., & Ferreira, P. G. 2023, Monthly Notices of the Royal Astronomical Society, 521, 1817 Harris, C. R., Millman, K. J., van der Walt, S. J., et al. 2020, Nature, 585, 357, doi: 10.1038/s41586-020-2649-2 Hunter, J. D. 2007, Computing in Science & Engineering, 9, 90, doi: 10.1109/MCSE.2007.55 Ibata, R. A., Tenachi, W., Diakogiannis, F., Ibata, N., & Shankar, A. 2026a, arXiv e-prints, doi: 10.48550/arXiv.2608.05862 Ibata, R. A., Tenachi, W., Diakogiannis, F., Ibata, N., & Shankar, A. 2026b, in preparation Ibata, R. A., Tenachi, W., Diakogiannis, F., Ibata, N., & Shankar, A. 2026c, arXiv e-prints, doi: 10.48550/arXiv.2608.06274 Kingma, D. P., & Ba, J. 2015, in 3rd International Conference on Learning Representations (ICLR), doi: 10.48550/arXiv.1412.6980 Koza, J. R. 1992, Genetic Programming: On the Programming of Computers by Means of Natural Selection (MIT Press) La Cava, W., Orzechowski, P., Burlacu, B., et al. 2021, in Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks, Vol. 1, doi: 10.48550/arXiv.2107.14351 Lelli, F., McGaugh, S. S., & Schombert, J. M. 2016, The Astronomical Journal, 152, 157
+
+24 Ibata et al. 
+
+Lelli, F., McGaugh, S. S., Schombert, J. M., & Pawlowski, M. S. 2017, The Astrophysical Journal, 836, 152 Levenberg, K. 1944, Quarterly of Applied Mathematics, 2, 164, doi: 10.1090/qam/10666 Li, P., Lelli, F., McGaugh, S. S., & Schombert, J. M. 2018, Astronomy & Astrophysics, 615, A3 Li, W., Li, W., Sun, L., et al. 2023, in The Eleventh International Conference on Learning Representations. https://openreview.net/forum?id=ULzyv9M1j5 Liu, D. C., & Nocedal, J. 1989, Mathematical Programming, 45, 503, doi: 10.1007/BF01589116 Marquardt, D. W. 1963, Journal of the Society for Industrial and Applied Mathematics, 11, 431, doi: 10.1137/0111030 McGaugh, S. S., Lelli, F., & Schombert, J. M. 2016, Physical Review Letters, 117, 201101 Meurer, A., Smith, C. P., Paprocki, M., et al. 2017, PeerJ Computer Science, 3, e103, doi: 10.7717/peerj-cs.103 Nocedal, J. 1980, Mathematics of Computation, 35, 773, doi: 10.1090/S0025-5718-1980-0572855-7 Olver, P. J. 1993, Graduate Texts in Mathematics, Vol. 107, Applications of Lie Groups to Differential Equations, 2nd edn. (New York: Springer), doi: 10.1007/978-1-4612-4350-2 Paszke, A., Gross, S., Massa, F., et al. 2019, in Advances in Neural Information Processing Systems 32, 8024–8035, doi: 10.48550/arXiv.1912.01703 Petersen, B. K., Larma, M. L., Mundhenk, T. N., et al. 2021, in International Conference on Learning Representations (ICLR), doi: 10.48550/arXiv.1912.04871 Sanathanan, C. K., & Koerner, J. 1963, IEEE Transactions on Automatic Control, 8, 56, doi: 10.1109/TAC.1963.1105517 Schmidt, M., & Lipson, H. 2009, Science, 324, 81, doi: 10.1126/science.1165893 Stiskalek, R., & Desmond, H. 2023, Monthly Notices of the Royal Astronomical Society, 525, 6130 Sun, F., Liu, Y., Wang, J.-X., & Sun, H. 2023, in The Eleventh International Conference on Learning Representations, doi: 10.48550/arXiv.2205.13134 Tenachi, W., Ibata, R., & Diakogiannis, F. I. 2023, The Astrophysical Journal, 959, 99, doi: 10.3847/1538-4357/ad014c Tenachi, W., Ibata, R., Fran¸ cois, T. L., & Diakogiannis, F. I. 2024, The Astrophysical Journal Letters, 969, L26, doi: 10.3847/2041-8213/ad5970 Trachternach, C., de Blok, W. J. G., Walter, F., Brinks, E., & Kennicutt, R. C. 2008, The Astronomical Journal, 136, 2720 Udrescu, S.-M., Tan, A., Feng, J., et al. 2020, Advances in Neural Information Processing Systems, 33, 4860, doi: 10.48550/arXiv.2006.10782 Udrescu, S.-M., & Tegmark, M. 2020, Science Advances, 6, eaay2631, doi: 10.1126/sciadv.aay2631 Virgolin, M., & Pissis, S. P. 2022, Transactions on Machine Learning Research (TMLR), doi: 10.48550/arXiv.2207.01018 Virtanen, P., Gommers, R., Oliphant, T. E., et al. 2020, Nature Methods, 17, 261, doi: 10.1038/s41592-019-0686-2 Williams, R. J. 1992, Machine Learning, 8, 229, doi: 10.1007/BF00992696

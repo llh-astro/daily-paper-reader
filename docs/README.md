@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-08-16</span>
+      <span class="dpr-home-dashboard-kicker">2026-08-16 ~ 2026-08-25</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 42 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 52 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>29</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>39</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>13</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-08-16 20:44:43 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-08-25 04:15:46 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精读29篇、速读13篇，共42篇论文，其中两篇获满分推荐。最值得关注：熵强化学习驱动的贝叶斯符号回归，以及年轻木星类似天体AF Lep b富硫大气揭示显著固体吸积。若时间有限，可先看速读中湍流通道的机器学习概率分布与可解释量子压缩流体建模。</p>
+<p>今日精读聚焦系外行星大气与早期行星盘结构，速读覆盖生命宜居与星震学统计。最值得关注：JWST在低金属丰度巨行星HATS-6 b上探测到水、甲烷和氨；eDisk系列通过能见度分析系统揭示原行星盘结构。建议优先阅读这两篇精读，后续可关注氦大气生命可行性及行星系统金属丰度阈值研究。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">29 篇</strong>
+    <strong class="dpr-home-dashboard-count">39 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Bayesian Symbolic Regression with Entropic Reinforcement Learning">Bayesian Symbolic Regression with Entropic Reinforcement Learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="A Sulfur-Rich Atmosphere for the Young Jupiter Analog AF Lep b Reveals Significant Solid Accretion">A Sulfur-Rich Atmosphere for the Young Jupiter Analog AF Lep b Reveals Significant Solid Accretion</span></li><li><span class="dpr-home-dashboard-paper-title" title="Atmospheric Diversity of Giant Planet Analogs from 3-5um with SPHEREx">Atmospheric Diversity of Giant Planet Analogs from 3-5um with SPHEREx</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="GEMS JWST: Hold on to your HATS(-6 b), a sub-solar metallicity giant planet with water, methane and ammonia in its atmosphere">GEMS JWST: Hold on to your HATS(-6 b), a sub-solar metallicity giant planet with water, methane and ammonia in its atmosphere</span></li><li><span class="dpr-home-dashboard-paper-title" title="Early Planet Formation in Embedded Disks (eDisk). XXIV: Systematic Investigation of Disk Structures based on Visibility Analysis">Early Planet Formation in Embedded Disks (eDisk). XXIV: Systematic Investigation of Disk Structures based on Visibility Analysis</span></li><li><span class="dpr-home-dashboard-paper-title" title="Asymmetric Aerosol Distribution on the Terminators of the Warm Saturn WASP-69 b Revealed by JWST NIRISS/SOSS">Asymmetric Aerosol Distribution on the Terminators of the Warm Saturn WASP-69 b Revealed by JWST NIRISS/SOSS</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>24</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>4</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>29</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>8</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -87,9 +87,9 @@
     <strong class="dpr-home-dashboard-count">13 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="A machine-learned probability distribution in the phase space of turbulent channel flow for synthetic turbulence and flow reconstruction">A machine-learned probability distribution in the phase space of turbulent channel flow for synthetic turbulence and flow reconstruction</span></li><li><span class="dpr-home-dashboard-paper-title" title="Explainable quantum-compressed machine learning for complex fluid flows">Explainable quantum-compressed machine learning for complex fluid flows</span></li><li><span class="dpr-home-dashboard-paper-title" title="Learning Population-Level Dynamics through a Latent Fokker--Planck Model and Discrepancy Transport Maps">Learning Population-Level Dynamics through a Latent Fokker--Planck Model and Discrepancy Transport Maps</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Complex nonlinear dynamics of area-preserving, active vesicles">Complex nonlinear dynamics of area-preserving, active vesicles</span></li><li><span class="dpr-home-dashboard-paper-title" title="The Viability of Life in Helium-Dominated Exoplanet Atmospheres">The Viability of Life in Helium-Dominated Exoplanet Atmospheres</span></li><li><span class="dpr-home-dashboard-paper-title" title="Planetary systems in the light of asteroseismology: metallicity threshold for the planetary systems and age-metallicity relation">Planetary systems in the light of asteroseismology: metallicity threshold for the planetary systems and age-metallicity relation</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>10</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>2</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>6</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>6</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 </div>
 

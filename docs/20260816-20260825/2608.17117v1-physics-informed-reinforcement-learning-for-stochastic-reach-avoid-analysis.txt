@@ -1,0 +1,1214 @@
+Title: Physics-informed Reinforcement Learning for Stochastic Reach-Avoid Analysis
+
+URL Source: https://arxiv.org/pdf/2608.17117v1
+
+Published Time: Wed, 19 Aug 2026 00:12:14 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+> 1
+
+# Physics-informed Reinforcement Learning for Stochastic Reach-Avoid Analysis 
+
+Hikaru Hoshino, Yorie Nakahira 
+
+Abstract —Stochastic reach-avoid analysis of controlled dy-namical systems is an important tool for safety-critical con-trol under uncertainty, in which the reach-avoid probability is characterized by a Hamilton-Jacobi partial differential equation (PDE). However, solving this PDE using conventional numerical methods becomes computationally intractable as the system dimension increases. Physics-informed neural networks (PINNs) may converge to inaccurate local minima when trained primar-ily through PDE-residual minimization. Reinforcement learning (RL) offers a scalable alternative, but its learned value functions may be inaccurate or inconsistent with the governing PDE. This paper proposes a physics-informed RL (PIRL) framework that combines the complementary strengths of PINNs and RL for stochastic reach-avoid analysis. We develop a scheduled PIRL algorithm in which temporal-difference actor–critic learning first guides the critic toward a meaningful approximation of the reach-avoid value function. PDE-residual and boundary-condition losses are then introduced progressively to enforce consistency with the governing PDE and its boundary conditions. The proposed method mitigates the failure modes of conventional PINN techniques while achieving accuracy comparable to that of successfully trained PINNs. The effectiveness of the proposed framework is demonstrated through two case studies. 
+
+I. I NTRODUCTION 
+
+# STOCHASTIC reach-avoid analysis is crucial for eval-uating safety and synthesizing controllers under uncer-tainty [1]–[3]. Given a target set and an avoid set, the objective is to characterize the set of initial states from which a controlled stochastic system can reach the target before entering the avoid set with probability greater than a prescribed threshold. A special case of these problems reduces to evaluating the reach-avoid probability, which can be computed by solving a Hamilton–Jacobi–Bellman (HJB)-type partial differential equation (PDE) [3]. This formulation naturally captures both reachability and safety of controlled dynamical systems, and is particularly effective for complex dynamical systems operating in unpredictable environments, where noise and uncertainties pose significant concerns in operation and safety. A fundamental challenge in stochastic reach-avoid analy-sis is to accurately approximate the reach-avoid probability, particularly under maximally safe policies. Solving the gov-erning PDE using conventional numerical methods becomes computationally intractable as the system dimension increases. Physics-informed neural networks (PINNs) [4], [5] provide a promising alternative by approximating PDE solutions with neural networks trained through PDE-residual and boundary-condition losses. However, purely residual-based PINN train-ing may be unreliable because the PDE residual can be reduced even when the learned solution converges to a poor local minimum or a nearly trivial solution [6], [7]. Rein-forcement learning (RL), on the other hand, learns policies and value functions directly from sampled trajectories and has achieved remarkable success in high-dimensional optimal control and reachability problems [8]–[11]. However, standard RL provides only temporal-difference (TD) supervision along sampled trajectories, making it difficult to ensure the PDE con-sistency and accuracy of the learned value function. Motivated by these complementary strengths and limitations, this paper proposes a physics-informed reinforcement learning (PIRL) framework that combines trajectory-based actor-critic learning with PDE-based constraints. The proposed approach uses RL to guide the critic toward a meaningful reach-avoid value func-tion and thereby mitigate the failure modes of residual-based PINN training. The PDE residual and boundary-condition losses are then progressively incorporated to improve the PDE consistency and accuracy of the learned value function. 
+
+A. Related work 1) Reachability Analysis Methods: Classical reachability analysis methods require discretization of the state space, and their computational cost grows exponentially with the number of state variables. As a result, their practical application has largely been limited to low-dimensional systems, typically up to four or five state dimensions [12], unless special prob-lem structures are exploited [13]. This scalability limitation has motivated the use of deep RL. Early work introduced RL formulations of deterministic Hamilton-Jacobi reachability problems that enabled Q-learning and TD methods [8]–[10]. Building on this direction, RL has been used to approxi-mate reachability-related value functions, enabling reachability analysis to be applied to higher-dimensional control prob-lems as reviewed in [11]. However, these deterministic meth-ods consider bounded disturbances or adversarial uncertainty, rather than stochastic reach-avoid probabilities governed by diffusion processes. For stochastic systems, several methods have been devel-oped to provide probabilistic safety and reach-avoid guaran-tees. Dynamic-programming and linear-programming formu-lations can directly characterize stochastic reachability and reach-avoid probabilities with rigorous guarantees [1], [2], [14]. However, these approaches rely on gridding or finite basis-function approximations and generally suffer from poor scalability in high-dimensional state spaces. Sampling-based approaches can estimate pointwise stochastic reachability probabilities in high-dimensional systems [15], [16]. However, they do not directly characterize the reach-avoid value func-tion over the state space. For stochastic reach-avoid analy-sis or safe control, underapproximation and certificate-based methods have been proposed, including Lagrangian approx-imations [17], sum-of-squares and semidefinite-programming arXiv:2608.17117v1 [eess.SY] 17 Aug 2026 2
+
+methods [18], and barrier-like conditions that certify lower bounds on reach-avoid probabilities [19]. Learning-based methods based on reach-avoid supermartingales have also been proposed [20]. Although these approaches provide valuable probabilistic guarantees, they typically yield lower-bound cer-tificates or conservative inner approximations of probability-threshold sets, rather than directly approximating the maximal reach-avoid probability over the state-time domain. 
+
+2) Physics-informed Reinforcement Learning (PIRL): The term PIRL has been used broadly to refer to RL methods that incorporate physical knowledge into the learning pro-cess. As reviewed in [21], existing PIRL methods exploit such knowledge in various forms, including state and action representations, reward design, policy regularization, safety constraints, and model learning. Most of these approaches use physics to regularize policy learning or improve model prediction, rather than to exploit the PDE characterization of the optimal value function in RL. A more closely related direction is PIRL methods based on PINNs [4], which incorporate PDE constraints into neural-network training by penalizing differential-equation residuals and boundary-condition errors. In the optimal control litera-ture, PINNs have been used to approximate value functions and solve HJB-type equations. PINN-based policy iteration methods have been developed for optimal regulator prob-lems [22], [23], while PDE-based value-function losses have also been incorporated into model-free RL in [24]. These ap-proaches demonstrate the benefit of combining value-function learning with PDE constraints, but do not specifically address the optimization failure modes of residual-based training. PINN training is known to suffer from such difficulties, includ-ing poor local minima and trivial solutions [6], [7]. This issue is particularly relevant to reach-avoid problems, where value information must be propagated from the boundary conditions rather than from interior rewards. In such problems, residual-based PINN training may converge to an incorrect or nearly trivial value function despite achieving a small PDE residual, as illustrated later in the numerical experiments (Fig. 2). 
+
+B. Contributions 
+
+Motivated by these limitations, this paper proposes a PIRL framework for stochastic reach-avoid analysis of controlled dynamical systems that combines trajectory-based RL with physics-informed value-function learning. The main method-ological contributions are summarized as follows. First, we establish an RL formulation for stochastic reach-avoid analysis that directly represents the reach-avoid probabil-ity under maximally safe policies. The reach-avoid objective is naturally expressed as a max-multiplicative cost function [1], [2], which is not directly compatible with standard RL al-gorithms based on additive cumulative rewards. We show that, by augmenting the state with the remaining horizon and introducing absorbing target and avoid sets, this max-multiplicative reach-avoid probability can be transformed into an equivalent additive-reward RL problem (Proposition 1). Unlike RL formulations developed for deterministic reach-avoid problems [8]–[10], the proposed formulation applies to stochastic reach-avoid probabilities and enables standard actor-critic methods to learn both the maximal probability and its op-timizing policy. Moreover, rather than providing only a lower bound or a conservative inner approximation of a probability-threshold set, as in certificate-based approaches [17]–[20], it directly approximates the underlying maximal reach-avoid probability. We further establish the continuous-time charac-terization of the resulting RL value function, showing that it converges to the stochastic reach-avoid value function charac-terized by the corresponding HJB equation (Theorem 1). The residual-based PINN error analysis of [25] is then applied to the policy-evaluation PDE associated with the learned policy, which yields an approximation-error bound in terms of the PDE residual and boundary-condition mismatch (Corollary 1). This bound provides a theoretical interpretation of the physics-informed losses used in the proposed framework. Second, we develop a PIRL algorithm that combines TD learning from sampled trajectories with PDE residual and boundary-condition losses. While related PIRL approaches incorporate PINN-based losses into value-function learn-ing [22]–[24], our approach specifically addresses the failure modes of residual-based PINN training through a sched-uled transition between trajectory-based and physics-informed learning. The proposed algorithm emphasizes TD learning in the initial stage to guide policy optimization and steer the critic toward a meaningful reach-avoid solution, and then gradually introduces the PDE residual and boundary-condition losses during continuation training. This scheduling prevents the physics-informed losses from dominating before a meaningful solution has been learned, thereby mitigating the incorrect or nearly trivial solutions associated with residual-based physics-informed value-function learning (Fig. 2). We also introduce a large language model (LLM)-guided outer-loop procedure for automatically adjusting the continuation schedule based on the outcomes of completed training runs (Fig. 4). The proposed PIRL is evaluated in both a one-dimensional benchmark and a nonlinear vehicle drifting problem [26]. The one-dimensional example shows that the scheduled PIRL method avoids the failure modes of PINN-based policy iter-ation and accurately recovers the reach-avoid value function. The drifting example demonstrates applicability to an eight-dimensional time-augmented state space, beyond the dimen-sional range typically addressed by grid-based PDE solvers without special structure. The learned value function captures the recoverable region around the unstable drift equilibrium and is consistent with both projected phase-space structures and closed-loop stochastic rollout outcomes (Figs. 6 and 7). These results demonstrate that the proposed method can recover meaningful reach-avoid structures in a challenging nonlinear control problem that cannot be fully characterized through individual low-dimensional projections. Preliminary versions of this work partly appeared in [27] and [28]. Compared with [27], the present paper extends the framework from invariance-based maximal safety probability estimation to stochastic reach-avoid analysis of controlled dynamical systems and newly demonstrates residual-based PINN training can suffer from nearly trivial solutions. Com-pared with [28], which used Deep Q-Network (DQN) [29]-3
+
+based PIRL algorithm for vehicle drifting, the present paper develops a Twin-Delayed Deep Deterministic Policy Gradient (TD3) [30]-based PIRL algorithm with a new loss scheduling strategy, and validates the resulting physics-informed value function in both benchmark and drifting examples. 
+
+C. Notation 
+
+Let R and R+ be the sets of real and nonnegative real numbers, respectively, and let Z+ be the set of nonnegative integers. For a set A, Ac and ∂A are its complement and boundary, respectively. The indicator of a set A is denoted by 1A(x), which equals 1 if x ∈ A and 0 otherwise. The Euclidean norm is denoted by ∥ · ∥ , and ⌊a⌋ represents the greatest integer less than or equal to a ∈ R. For a random variable Z, E[Z] is its expectation, and E[Z | Y = y] is the conditional expectation given Y = y. Similarly, P(E | Y = y)
+
+denotes the conditional probability of an event E given Y = y.Uppercase letters denote random variables or stochastic pro-cesses, whereas the corresponding lowercase letters denote their realizations. For a sufficiently smooth scalar function 
+
+φ, ∂tφ, ∂xφ, and ∂2
+
+> x
+
+φ are its time derivative, gradient with respect to x, and Hessian with respect to x, respectively. For a matrix M , Tr( M ) represents its trace. The spaces of 
+
+k-times continuously differentiable functions and continuous functions are denoted by Ck and C0, respectively, while C1,2
+
+denotes the space of functions that are once continuously differentiable in time and twice continuously differentiable in the state variables. II. P ROBLEM STATEMENT 
+
+This section introduces the foundations of our problem setting. The stochastic system dynamics considered in this paper are defined in Sec. II-A. The stochastic reach-avoid problem is introduced in Sec. II-B. The PDE characterization of the value function is presented in Sec. II-C. 
+
+A. System Dynamics 
+
+Let (Ω , F, F, P) be a filtered probability space where the filtration F = {F t}t≥0 satisfies the usual conditions [31], i.e. ,
+
+Ft is right-continuous and F0 contains all the P-negligible events in F, and let {Wt}t≥0 be a w-dimensional {F t}-standard Brownian motion with W0 = 0. We consider a stochastic dynamical system defined over an open domain 
+
+X ⊂ Rn, whose state process {Xt}t≥0 evolves according to the following stochastic differential equation (SDE): 
+
+dXt = f (Xt, U t)d t + σ(Xt, U t)d Wt, (1) where f : Rn × Rm → Rn and σ : Rn × Rm → Rn×w. The control process u = {Ut}t≥0 takes values in a compact set 
+
+U ⊂ Rm, and is assumed to be an F-progressively measurable process. We denote by U the set of all such admissible control processes. Throughout this paper, we assume that the functions 
+
+f and σ are continuous and satisfy a uniform Lipschitz condition with respect to the first argument (state), uniformly over the second argument (control input). These regularity conditions ensure that the SDE (1) admits a unique strong solution [32, Sec. IV.2]. We denote this strong solution by 
+
+{X(x, u) 
+
+> t
+
+}t≥0 to explicitly indicate its dependence on the initial state x, and the control process u.
+
+B. Stochastic Reach-Avoid Problem 
+
+Safety analysis of dynamical systems typically relies on two notions: reachability , which concerns the property of a system reaching desirable states, and invariance , which ensures that the system avoids unsafe regions. These two properties can be seen as dual aspects of safety, and their relationship has been extensively studied in both deterministic settings [33], [34] and stochastic settings [3], [14]. A unified formulation that captures both aspects is the so-called reach-avoid problem, and our treatment follows the framework developed in [3], where stochastic reach-avoid problems are formulated in terms of exit-time problems with discontinuous payoff functions. Let A, B ⊂ X be disjoint sets, where A is the target set and B is the avoid set. For a fixed time horizon T > 0, the reach-avoid set with a threshold p ∈ [0 , 1] is defined as the set of initial states from which the system can reach A before entering B within [0 , T ] with probability greater than p:
+
+RA( A, B ; p) := 
+
+n
+
+x ∈ X ∃u ∈ U such that 
+
+P
+
+h
+
+∃s ∈ [0 , T ] : X(x, u) 
+
+> s
+
+∈ A and 
+
+X(x, u) 
+
+> r
+
+/∈ B, ∀r ∈ [0 , s ]
+
+i
+
+> p 
+
+o
+
+. (2) The probability described above can be equivalently charac-terized using the exit-time formulation. In [3], this problem is studied by formulating a family of subproblems starting from arbitrary initial time t ∈ [0 , T ]. For each t, they construct a corresponding subfiltration Ft and define a SDE whose solution evolves from initial state Xt = x over the time interval [t, T ]. Following this approach, we denote by 
+
+{X(x, u) 
+
+> s,t
+
+}s≥t the strong solution to the SDE starting at time t
+
+from state x, under control process u ∈ U t, where Ut stands for the set of Ft-progressively measurable maps into U. Using this notation, the reach-avoid value function is defined as 
+
+V (t, x ) := sup 
+
+> u∈U t
+
+E
+
+h
+
+1A
+
+
+
+X(x, u)
+
+> texit ,t
+
+
+
+Xt = x, u
+
+i
+
+(3) with texit := min( τA∪B , T ), where τA∪B stands for the first entry time to A ∪ B. It is shown in [3, Proposition 3.3] that if 
+
+A and B are disjoint closed sets, the reach-avoid set can be expressed as the superlevel set of the value function: 
+
+RA( A, B ; p) = {x ∈ X | V (0 , x ) > p } . (4) This formulation establishes a direct connection between the reach-avoid problem and stochastic optimal control. In partic-ular, the function V (t, x ) can be interpreted as the maximal probability that the system reaches the target A before entering the avoid set B within the horizon [t, T ].
+
+Remark 1. Note that invariance properties requiring the state to remain in a safe set C over the entire time horizon [0 , T ]
+
+can also be expressed within the same reach-avoid structure by setting A := C and B := X \ C, and additionally requiring that the reach condition be satisfied at the terminal time 4
+
+T only. This formulation allows invariance problems to be analyzed using the same value-function characterization and computational framework developed in the following sections. 
+
+C. PDE Characterization 
+
+The value function defined in Eq. (3) plays a central role in characterizing the stochastic reach-avoid set. To analyze its properties and develop computational methods, we consider its characterization as the solution of a HJB partial differ-ential equation. To proceed, we introduce a set of technical assumptions under which the value function is characterized as a viscosity solution to the HJB equation. 
+
+Assumption 1. We stipulate that (a) The domain X ⊂ Rn is a bounded open set, and the set 
+
+O := X \ (A ∪ B) has a boundary ∂O that is a manifold of class C3.(b) The controlled process is uniformly non-degenerate on 
+
+X, i.e. , there exists δ > 0 such that for all (x, u ) ∈ X×U
+
+and ξ ∈ Rn, ξ⊤σ(x, u )σ⊤(x, u )ξ ≥ δ|ξ|2.Under Assumption 1, it follows from [3, Theorem 4.7] that the function V (t, x ) is a (discontinuous) viscosity solution to the following HJB equation: 
+
+−∂tV (t, x ) − sup 
+
+> u∈U
+
+HuV (t, x ) = 0 , on [0 , T ) × O (5) with boundary and terminal conditions 
+
+V (t, x ) = 1A(x),
+
+for (t, x ) ∈ [0 , T ) × ∂O ∪ { T } × O, (6) where the operator Hu is given by 
+
+Huϕ(t, x ) := f (x, u )⊤∂xϕ(t, x )+ 12 Tr σ(x, u )σ(x, u )⊤∂2
+
+> x
+
+ϕ(t, x ) . (7) 
+
+Remark 2. In the case of an invariance problem, the HJB equation (5) is recovered by choosing the domain O = X\B =
+
+C, with the boundary conditions 
+
+V (t, x ) = 0 , (t, x ) ∈ [0 , T ) × ∂C, (8) 
+
+V (T, x ) = 1 , x ∈ C, (9) which correspond to requiring that the system remain in the safe set throughout the time horizon T .Although the viscosity solution framework provides a com-plete characterization of the reach-avoid value function, the discontinuous boundary condition (6) prevents the associated HJB problem from admitting a classical solution. To obtain a smooth HJB problem suitable for the subsequent physics-informed learning framework, we adopt the smoothed reach-avoid formulation proposed in [3]. Specifically, the target set 
+
+A is replaced by a smaller set Aϵ ⊂ A, defined as 
+
+Aϵ := {x ∈ A | dist( x, A c) ≥ ϵ} , (10) where dist( x, A ) := inf y∈A ∥x − y∥. This modification intro-duces a margin around the boundary of A, thereby avoiding discontinuities in the terminal condition of the value function. For example, one can define a continuous approximation of the indicator function 1A as follows: 
+
+lϵ(x) = max 
+
+
+
+1 − dist( x, A ϵ)
+
+ϵ , 0
+
+
+
+, (11) which is Lipschitz continuous and takes values in [0 , 1] . It is shown in [3, Theorem 5.1] that the modified value function 
+
+Vϵ(t, x ) := sup 
+
+> u∈U t
+
+E
+
+h
+
+lϵ
+
+
+
+X(x, u)
+
+> texit ,t
+
+
+
+Xt = x, u
+
+i
+
+, (12) with the function lϵ(x) chosen as in (11) is continuous and V (t, x ) = lim ϵ→0 Vϵ(t, x ). To further ensure classical solvability, we henceforth consider a sufficiently smooth ap-proximation lϵ satisfying the following assumptions: 
+
+Assumption 2. We stipulate that (a ′) The domain X ⊂ Rn is a bounded open set, and the set 
+
+Oϵ has a boundary ∂O ϵ that is a manifold of class C3.(c) The smoothed indicator function lϵ is chosen such that 
+
+1A(x) = lim ϵ→0 lϵ(x) and lϵ ∈ C3(X). Furthermore, lϵ
+
+satisfies necessary parabolic compatibility conditions of order 1 on the corner manifold {T } × ∂O ϵ.(d) The functions f and a := σσ ⊤, together with their first and second partial derivatives with respect to the state, are continuous on X × U .Under Assumptions 1 and 2, it follows from standard results in stochastic control theory (e.g., [32, Sec. IV.4, Theorem 4.1]) that the value function Vϵ is the unique classical solution to the associated HJB equation. Furthermore, in this classical setting, a measurable maximizing selector μ : [0 , T ) × X → U exists such that 
+
+μ(t, x ) ∈ arg max  
+
+> u∈U
+
+HuVϵ(t, x ). (13) Under the uniformly parabolic assumptions, the correspond-ing optimal Markov control can be constructed as in [32, Sec. IV.4]. We henceforth restrict our attention to measurable Markov policies and denote the set of such policies by UM .III. RL C HARACTERIZATION OF REACH -A VOID PROBLEM 
+
+While the HJB formulation presented in the previous section provides a complete characterization of the reach-avoid value function, directly solving the HJB equation remains computa-tionally challenging for high-dimensional systems. RL offers a scalable alternative by approximating value functions from sampled trajectories. The main result of this section is that the reach-avoid probability admits an exact RL characterization: by reformulating the reach-avoid objective as an equivalent additive reward, the reach-avoid value function is shown to coincide exactly with the RL value function. This equivalence provides the theoretical foundation of the proposed physics-informed RL framework. We begin by introducing a discrete-time formulation of the original non-smooth reach-avoid problem with a constant step size ∆t under piecewise constant control processes. For 0 = 
+
+t0 < t 1 < · · · < t k < . . . , where tk := k∆t, k ∈ Z+, by 5
+
+defining the discrete-time state Xk := Xtk with an abuse of notation, the discretized system can be written as 
+
+Xk+1 = F μ(Xk, ∆Wk), (14) where ∆Wk := {Wt}t∈[tk ,t k+1 ) is a disturbance signal, and 
+
+F μ stands for the state transition map derived from the SDE (1) under a Markov control policy μ. Note that using a piece-wise constant control process with a Markov policy μ implies that the control process is given as Ut = μ(δ(t), X δ(t)), for 
+
+t ∈ R+, where δ(t) := ⌊t/ ∆t⌋∆t, and the discretized system (14) has the Markov property at the discrete times as discussed in [35]. Then, for an arbitrarily chosen horizon length τ ∈
+
+R+, consider the reach-avoid problem where the goal is to reach the target set A within Nτ := {0, . . . , N (τ )}, where 
+
+N (τ ) := ⌊τ / ∆t⌋, before entering the avoid set B. Under the discretized dynamics (14) and a given control policy μ, the associated reach-avoid probability is defined as 
+
+Ψμ
+
+> RA
+
+(τ, x ) := P
+
+h
+
+∃k ∈ N τ such that Xk ∈ A and 
+
+Xj /∈ B, ∀j ∈ { 0, . . . , k } X0 = x, μ 
+
+i
+
+.
+
+(15) The objective is to compute the maximal reach-avoid proba-bility, defined as 
+
+Ψ∗
+
+> RA
+
+(τ, x ) := sup 
+
+> μ∈U M
+
+Ψμ
+
+> RA
+
+(τ, x ). (16) 
+
+Remark 3. The objective in (16) can be naturally viewed as a stochastic optimal control problem with a max-multiplicative cost structure, since the cost can be rewritten as 
+
+Ψμ
+
+> RA
+
+(τ, x ) = E
+
+ max 
+
+> k∈N τ
+> k
+
+Y
+
+> j=0
+
+1Bc (Xj )1A(Xk) X0 = x, μ 
+
+ .
+
+(17) Such multiplicative formulations have been studied in [1], [2], where Bellman equations (or dynamic programming equa-tions) for max-multiplicative cost-to-go functions are derived for stochastic reach-avoid analysis. This Bellman formulation has also served as the basis for verification methods that con-struct conservative lower bounds of the reach-avoid probability (e.g., [17]–[20]). However, these multiplicative formulations are not directly compatible with standard RL algorithms, which assume additive cumulative rewards and form the basis of temporal-difference learning. The following construction transforms the problem (16) into an equivalent additive reward representation. The key idea is to augment the state with the remaining time until the horizon is reached and to make the target and avoid sets absorbing. Specifically, we first introduce an auxiliary variable Tk that represents the remaining outlook horizon, i.e. ,
+
+T0 = τ, Tk+1 = Tk − ∆t, ∀k ∈ Z+. (18) Next, consider the auxiliary dynamics 
+
+˜Xk+1 = ˜F μ( ˜Xk, ∆Wk), (19) where 
+
+˜F μ( ˜Xk, ∆Wk) := 
+
+(
+
+F μ( ˜Xk, ∆Wk), ˜Xk /∈ A ∪ B, 
+
+˜Xk, ˜Xk ∈ A ∪ B. (20) Thus, the sets A and B become absorbing. The augmented state space is defined by Y := R×X ⊂ Rn+1 with augmented state 
+
+Yk = [ Tk, ˜X⊤ 
+
+> k
+
+]⊤. (21) The corresponding augmented dynamics are 
+
+Yk+1 = Gμ(Yk, ∆Wk), (22) where 
+
+Gμ(Yk, ∆Wk) = 
+
+ Tk − ∆t
+
+˜F μ( ˜Xk, ∆Wk)
+
+
+
+. (23) The following proposition shows that the resulting additive reward formulation is exactly equivalent to the original reach-avoid problem. 
+
+Proposition 1. Consider the system (22) starting from an initial state y = [τ, x ⊤]⊤ ∈ Y and the reward function 
+
+r : Y → R given by 
+
+r(Yk) := 1T (Tk) 1A( ˜Xk) (24) 
+
+with T := [0 , ∆t). Then, for a given control policy μ ∈ U M,the RL value function vμ 
+
+> RL
+
+defined by 
+
+vμ
+
+> RL
+
+(y) := E
+
+" ∞X
+
+> k=0
+
+r(Yk) Y0 = y, μ 
+
+#
+
+(25) 
+
+takes a value in [0 , 1] and is equivalent to the reach-avoid probability Ψμ
+
+> RA
+
+, i.e., 
+
+vμ
+
+> RL
+
+(y) = Ψ μ
+
+> RA
+
+(τ, x ). (26) 
+
+Proof. See Appendix A. 
+
+Remark 4. The proposed RL formulation can also be applied to stochastic invariance problems. As discussed in Remark 1, invariance can be formulated as a reach-avoid problem by setting A := C, B := X\C, and requiring that the target set be reached only at the terminal time. In the augmented dynamics, this is achieved by modifying the absorbing dynamics so that only the avoid set B is treated as absorbing, while trajectories reaching the safe set A continue to evolve until the remaining time reaches zero. The resulting additive reward representation follows from the same argument as in Proposition 1. A detailed proof is available in our previous conference publication [27]. 
+
+Remark 5. Proposition 1 allows the reach-avoid problem to be solved using standard RL algorithms such as Deep Q-Network (DQN) [29], Deep Deterministic Policy Gradient (DDPG) [36], and Twin-Delayed Deep Deterministic Policy Gradient (TD3) [30]. In practical implementations, the ab-sorbing states corresponding to the target and avoid sets are naturally treated as terminal states of an episode. Moreover, since the cumulative reward in (25) takes values only in [0 , 1] 
+
+and at most one nonzero reward is accumulated along each trajectory, the discount factor can be chosen as γ = 1 .6
+
+The previous results establish that the original non-smooth reach-avoid probability can be represented exactly as an RL value function. To connect this RL formulation with the HJB framework, we next consider the smoothed reach-avoid prob-lem introduced in Sec. II-C, where the target set is replaced by Aϵ and the auxiliary dynamics are defined accordingly: 
+
+vμ
+
+> RL ,ϵ
+
+(y) := E
+
+" ∞X
+
+> k=0
+
+rϵ(Yk) Y0 = y, μ 
+
+#
+
+, (27) where the reward function is given by 
+
+rϵ(Yk) := 1T (Tk) lϵ( ˜Xk). (28) The following theorem establishes that, in the limit as ∆t → 0,the smoothed RL value function converges to the classical solution of the corresponding parabolic PDE. 
+
+Theorem 1. Consider the augmented system (22) starting from an initial state y = [ τ, x ⊤]⊤ ∈ Y , and the smoothed RL value function vμ 
+
+> RL ,ϵ
+
+defined in (27) . Suppose that Assumptions 1 and 2 hold. Then the following statements hold. 
+
+(i) For each Markov policy μ satisfying the regularity conditions required for classical solvability, the limit 
+
+vμϵ (τ, x ) := lim  
+
+> ∆t→0
+
+vμ
+
+> RL ,ϵ
+
+(y) (29) 
+
+exists uniformly on compact subsets of [0 , T ]×Oϵ, where 
+
+Oϵ := X\(Aϵ ∪B). Moreover, vμϵ is the unique classical solution of the linear parabolic PDE 
+
+Lμvμϵ (τ, x ) = 0 , (τ, x ) ∈ (0 , T ] × Oϵ, (30) 
+
+with the initial and lateral boundary conditions 
+
+vμϵ (τ, x ) = lϵ(x), (τ, x ) ∈ { 0} × Oϵ ∪ (0 , T ] × ∂O ϵ,
+
+(31) 
+
+where Lμ is induced by the Markov policy μ from the controlled differential operator Lu defined by 
+
+Luϕ(τ, x ) := − ∂τ ϕ(τ, x ) + f (x, u )⊤∂xϕ(τ, x )+ 12 Tr  σ(x, u )σ(x, u )⊤∂2
+
+> x
+
+ϕ(τ, x ) .
+
+(32) (ii) Furthermore, the optimal value function satisfies 
+
+v∗ 
+
+> ϵ
+
+(τ, x ) = lim  
+
+> ∆t→0
+
+sup 
+
+> μ∈U M
+
+vμ
+
+> RL ,ϵ
+
+(y), (33) 
+
+where the limit is uniform on compact subsets of [0 , T ]×
+
+Oϵ. Moreover, v∗ 
+
+> ϵ
+
+is the unique classical solution of the nonlinear parabolic PDE 
+
+sup 
+
+> u∈U
+
+Luv∗ 
+
+> ϵ
+
+(τ, x ) = 0 , (τ, x ) ∈ (0 , T ] × Oϵ, (34) 
+
+with the boundary condition (31) .Proof. See Appendix B. 
+
+Remark 6. In Theorem 1, (33) establishes that the optimal value function in the discrete-time RL setting converges to the solution of the continuous-time PDE (34) as ∆t → 0.The limiting value function v∗ 
+
+> ϵ
+
+(τ, x ) corresponds to the time-reversed form of the HJB solution Vϵ(t, x ) introduced in Sec. II-C, via the relation 
+
+v∗ 
+
+> ϵ
+
+(τ, x ) = Vϵ(T − τ, x ). (35) As a result, the terminal condition at t = T in (6) is transformed into an initial condition in (31). IV. P ROPOSED PHYSICS -INFORMED RL F RAMEWORK 
+
+Based on the RL formulation developed in the previous section, this section presents the proposed PIRL algorithm. Section IV-A introduces the hybrid TD and PINN learning objective. Section IV-B presents the scheduled PIRL training algorithm. Finally, Section IV-C discusses the approximation guarantee of the learned value function. 
+
+A. Hybrid TD-PINN Learning 
+
+Rather than solving the HJB equation using PINN-based policy iteration [22], [23], the proposed framework combines trajectory-based RL with PDE-constrained value-function ap-proximation. The key idea is to optimize the value function using both trajectory samples collected through interaction with the environment and collocation points sampled from the state space. The former provides temporal-difference (TD) supervision not only for policy learning but also for guiding the optimization toward meaningful value-function approx-imations, whereas the latter enforces consistency with the governing PDE and its boundary conditions. As demonstrated in Sec. V, this trajectory-based supervision helps avoid unde-sirable failure modes that may arise when the PDE residual is minimized alone. The proposed framework is applicable to a broad class of actor-critic algorithms. The actor is responsible for policy im-provement through interaction with the environment, whereas the critic approximates the reach-avoid value function. In this work, we employ TD3 as a representative deterministic actor-critic algorithm, although the proposed learning framework is not restricted to this particular algorithm. Let Qθ (y, u )
+
+represent the critic network with parameters θ, where the augmented state is given by y = [ τ, x ⊤]⊤. Following the TD3 framework, two critic networks Qθ1 and Qθ2 are maintained to mitigate overestimation bias. Each critic is trained using the temporal-difference loss: for i = 1 , 2,
+
+LTD ,i = E(y, u, r, y ′)
+
+h
+
+(Qθi (y, u ) − Qtarget )2i
+
+, (36) and the target value is given by 
+
+Qtarget = r + (1 − d)γ min  
+
+> i=1 ,2
+
+Qθ−
+
+> i
+
+ y′, π ϕ− (y′) + ϵn
+
+ , (37) where d is the terminal indicator, the networks πϕ− and Qθ−
+
+> i
+
+denote the target actor and target critics, respectively, and ϵn
+
+denotes the clipped noise added to the target action for target policy smoothing in TD3. To enforce consistency with the governing PDE, collocation states {y(j)}NPDE  
+
+> j=1
+
+are sampled from a prescribed distribution over the state domain. For each collocation state, the action 7
+
+Algorithm 1 Scheduled Physics-Informed RL  
+
+> 1:
+
+Input: Initial actor πϕ, critics Qθ1 , Q θ2 , replay buffer B,scheduling parameters {winit  
+
+> i
+
+, w final  
+
+> i
+
+, c, α }, policy update frequency dup  
+
+> 2:
+
+Initialize target networks πϕ− , Qθ−
+
+> 1
+
+, Qθ− 
+
+> 2
+> 3:
+
+for k = 1 , . . . , K do  
+
+> 4:
+
+Receive trajectory samples from parallel rollout workers and store them in B 
+
+> 5:
+
+Sample a minibatch of transitions from B 
+
+> 6:
+
+Sample collocation points for the PDE residual and boundary losses  
+
+> 7:
+
+Compute LTD , LPDE , and LBC  
+
+> 8:
+
+Update critics by minimizing Lcritic in (41)  
+
+> 9:
+
+if k ≡ 0 (mod dup ) then  
+
+> 10:
+
+Update actor using Lactor in (42)  
+
+> 11:
+
+Update target networks  
+
+> 12:
+
+end if  
+
+> 13:
+
+Update wTD (k), wPDE (k), and wBC (k) 
+
+> 14:
+
+end for 
+
+used to evaluate the PDE residual is generated by perturbing the output of the target actor as 
+
+u(j) = πϕ− (y(j)) + ϵ(j)pde , (38) where ϵ(j)pde denotes clipped noise, analogous to target pol-icy smoothing in TD3, introduced to stabilize the physics-informed critic update. The corresponding PDE loss for each critic is defined as 
+
+LPDE ,i = 1
+
+NPDE 
+
+> NPDE
+
+X
+
+> j=1
+
+
+
+Lu(j)
+
+Qθi (y(j), u (j))
+
+2
+
+, (39) where Lu stands for the differential operator defined in (32). In practice, the action components of the collocation points may be chosen from the current actor or from a neighborhood of the actor output, which improves the local consistency of the critic around the policy being learned. In addition, the parabolic boundary condition of the smoothed reach-avoid problem is enforced by introducing the boundary loss 
+
+LBC ,i = 1
+
+NBC 
+
+> NBC
+
+X
+
+> j=1
+
+
+
+Qθi
+
+
+
+y(j)BC , π ϕ− (y(j)BC )
+
+
+
+− lϵ(x(j)BC )
+
+2
+
+,
+
+(40) where y(j)BC = (τ (j)BC , x (j)BC ) is sampled from the parabolic boundary {0} × Oϵ ∪ (0 , T ] × ∂O ϵ.Consequently, the critic is trained by minimizing the weighted sum of these three objectives, 
+
+Lcritic ,i = wTD LTD ,i + wPDE LPDE ,i + wBC LBC ,i . (41) The actor is updated according to the policy optimization step of the underlying RL algorithm, and the actor loss is given by 
+
+Lactor = −Ey [Qθ1 (y, π ϕ(y))] . (42) 
+
+B. Scheduled Training Algorithm 
+
+The hybrid objective in (41) introduces a trade-off between trajectory-based RL and PDE-constrained value-function ap-proximation. At the early stage of training, the critic is typically inaccurate, making the trajectory-based TD supervi-sion essential for learning an effective policy and obtaining a coarse approximation of the value function. As training progresses, however, the PDE residual and boundary losses become increasingly important for improving the accuracy and physical consistency of the learned value function. Motivated by this observation, we gradually shift the learning objective from RL-based supervision to PDE-based supervision during training. Specifically, the loss weights are updated according to the sigmoid scheduling function 
+
+η(k) = 11 + exp[ −α(k − c)] , (43) where k stands for the training iteration, c is the center of the transition, and α determines its steepness. The weight associated with each loss component is then given by 
+
+wi(k) = winit  
+
+> i
+
++  wfinal  
+
+> i
+
+− winit 
+
+> i
+
+ η(k), (44) where i ∈ { TD , PDE , BC }. The parameters winit  
+
+> i
+
+, wfinal  
+
+> i
+
+, c,and α determine the transition between trajectory-based and PDE-based supervision. These parameters may be selected manually or determined automatically using an external hyper-parameter optimization procedure. In this work, the scheduling parameters are automatically adapted through an LLM-guided iterative search, as demonstrated in the drift example in Sec. V. The overall training procedure is summarized in Algo-rithm 1. Trajectory samples are collected asynchronously by parallel rollout workers and accumulated in a replay buffer, while the learner updates the actor and critic networks inde-pendently. At each learning iteration, a minibatch of transitions is sampled from the replay buffer to evaluate the TD loss, and collocation points are independently sampled from the state-time domain to evaluate the PDE residual and boundary losses. The critic is updated by minimizing the hybrid objective in (41). Following the underlying actor-critic algorithm, the actor and target networks are updated only once every dup 
+
+critic updates. Finally, the loss weights are updated according to the scheduling rule described above, and the resulting weights are used in the next learning iteration. 
+
+Remark 7. Condition (34) corresponds to the Bellman op-timality equation, where purely sample-based evaluations are known to induce overestimation bias under function approx-imation. While our framework mitigates this bias using TD3 and PDE residual regularization, other existing techniques can be modularly integrated during the initial phase. For instance, one could smoothly interpolate between the expectation and max operators [37], building on the expectile parameter of Implicit Q-Learning [38], or via soft non-expansion operators such as Mellowmax [39]. 
+
+C. Approximation Guarantee 
+
+A key advantage of incorporating physics-informed con-straints into the critic network is that the approximation 8
+
+accuracy can be related to the governing PDE. Recall from Theorem 1 that the optimal smoothed reach-avoid value func-tion v∗ 
+
+> ϵ
+
+is the unique classical solution of the PDE (34) with the boundary condition (31). For notational simplicity, define the parabolic domain and its boundary by 
+
+Dϵ := (0 , T ) × Oϵ, (45) 
+
+∂pDϵ := {0} × Oϵ ∪ (0 , T ] × ∂O ϵ. (46) Let vθ (τ, x ) be the approximated value function represented by the critic and actor networks after training. Applying the PINN error analysis of [25] to the policy-evaluation PDE associated with the learned policy yields the following approximation-error bound. 
+
+Corollary 1. Suppose vθ ∈ C1,2(Dϵ) ∩ C0(Dϵ), and let 
+
+Zint and Zbd be uniformly distributed over Dϵ and ∂pDϵ,respectively. Assume that 
+
+E [|vθ (Zbd ) − lϵ(xbd )|] ≤ δBC , (47) 
+
+E [|L μϕ vθ (Zint )|] ≤ δPDE , (48) 
+
+where Zbd = ( τbd , x bd ). Assume further that vθ and Lμϕ vθ
+
+are Lipschitz continuous on Dϵ and Dϵ, respectively. Then there exists a constant C > 0, depending only on the geometry of the domain and the regularity of the parabolic operator, such that 
+
+vθ (τ, x ) ≤ v∗ 
+
+> ϵ
+
+(τ, x ) + eδBC + CeδPDE , (τ, x ) ∈ D ϵ, (49) 
+
+where eδBC and eδPDE are constants obtained from δBC and 
+
+δPDE through L1-to-L∞ estimate for Lipschitz functions un-der uniform sampling. Furthermore, if the learned policy is optimal, i.e., μϕ = μ∗, then 
+
+|vθ (τ, x ) − v∗ 
+
+> ϵ
+
+(τ, x )| ≤ eδBC + CeδPDE , (τ, x ) ∈ D ϵ. (50) 
+
+Proof. See Appendix C. 
+
+Remark 8. The inequality (49) bounds the learned value relative to the optimal reach-avoid value v∗ 
+
+> ϵ
+
+. A complementary two-sided guarantee can be obtained for the value of the learned policy itself. Let vμϕ 
+
+> ϵ
+
+denote the reach-avoid value function under μϕ. By applying the PINN error estimate in [25] to the linear policy-evaluation PDE associated with 
+
+μϕ, the assumptions in Corollary 1 imply 
+
+vθ (τ, x ) − vμϕ 
+
+> ϵ
+
+(τ, x ) ≤ eδBC + CeδPDE , (τ, x ) ∈ Dϵ. (51) Thus, even when the learned policy is suboptimal, sufficiently small PDE residual and boundary mismatch guarantee that the critic accurately approximates the reach-avoid probability achieved by that policy. The above corollary provides a theoretical justification for incorporating the PDE residual into critic training. This ap-proximation guarantee is unavailable in standard RL, where the critic is supervised only through temporal-difference tar-gets. Note that the TD loss introduced in the proposed PIRL framework is not required for the above error bound. Instead, its role is to improve the optimization process by providing trajectory-based supervision, thereby mitigating poor local minima that may satisfy the PDE residual approximately while failing to recover the correct value function. V. N UMERICAL EXPERIMENTS 
+
+This section evaluates the proposed PIRL framework through numerical experiments. We first consider a one-dimensional stochastic reachability problem in Sec. V-A, for which an analytical solution is available. This example enables a direct comparison of the learned value functions and is used to investigate the learning behavior of TD3, PINN-based policy iteration, and the proposed PIRL. We then consider a reach-avoid control problem for vehicle drifting in Sec. V-B, which demonstrates the applicability of the proposed method to a higher-dimensional and practically challenging control problem. The source code and numerical results are publicly available at https://github.com/hoshino06/ProbReachPIRL. 
+
+A. 1D Reachability Problem 
+
+We first consider a one-dimensional stochastic reachability problem to illustrate the learning behavior of the proposed method in a setting where the ground-truth solution is avail-able. The system dynamics are given by 
+
+dXt = Utdt + d Wt, (52) where Ut ∈ [−1, 1] is the control input and Wt is a standard Brownian motion. We consider a finite-horizon reachability problem with a time horizon of T = 2 , in which the target set is defined as 
+
+A = {x ∈ R | x ≥ 2}. (53) No avoid set is introduced in this example, and therefore the problem reduces to a pure reachability problem. Since moving toward larger values of x always increases the probability of reaching the target, the optimal policy is simply u∗(x) = 1 
+
+for all states. The corresponding reachability probability can be obtained analytically [40]: 
+
+v(τ, x ) = P(τA ≤ τ | X0 = x), (54) where τA = inf {t ≥ 0 | Xt ≥ 2} is the first hitting time of the target set. The accuracy of the proposed PIRL framework was eval-uated by comparing the learned value function with the analytical solution. The actor had two hidden layers with 32 neurons each, while the critics had three hidden layers with 32 neurons each. The networks were trained using the Adam optimizer with a learning rate of 10 −4. For computing the PDE residual and boundary losses, 1000 interior collocation points and 100 points on each boundary were sampled at every update. The loss weights were scheduled according to Eq. (44), gradually transitioning from (wTD , w HJB , w BC ) = (1 , 0, 0) to 
+
+(0 , 1, 1) with c = 5 × 10 4 and α = 10 −4. Figure 1 compares the value function obtained after 2 × 10 5 update steps with the analytical solution. The learned value function closely matches the ground-truth solution over the entire state-time domain except in the vicinity of the singularity of the ground truth at (t, x ) = (0 , 2) . The heatmap of the absolute error further confirms that the approximation error remains small throughout the domain away from this singular region. These results verify that the proposed framework successfully learns 90.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00 
+
+> T
+> 2.0
+> 1.5
+> 1.0
+> 0.5
+> 0.0 0.5 1.0 1.5 2.0
+> x
+> 0.0 0.2 0.4 0.6 0.8 1.0 Reach probability
+> Learned value (Scheduling)
+> 0.2 0.4 0.6 0.8
+
+(a) Learned value function 0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00  
+
+> T
+> 2.0
+> 1.5
+> 1.0
+> 0.5
+> 0.0 0.5 1.0 1.5 2.0
+> x
+> 0.0 0.2 0.4 0.6 0.8 1.0 Reach probability
+> Ground truth
+> 0.0 0.2 0.4 0.6 0.8
+
+(b) Ground truth 0.0 0.5 1.0 1.5 2.0         
+
+> T
+> 2.0
+> 1.5
+> 1.0
+> 0.5
+> 0.0 0.5 1.0 1.5 2.0
+> x
+> Learned value
+> 0.0 0.5 1.0 1.5 2.0
+> T
+> Ground truth
+> 0.0 0.5 1.0 1.5 2.0
+> T
+> Absolute error
+> 0.0 0.2 0.4 0.6 0.8 1.0 Reach probability
+> 0.0 0.2 0.4 0.6 0.8 1.0 Reach probability
+> 0.0 0.2 0.4 0.6 0.8 |Vlearned  Vtrue |
+
+(c) Heatmaps of learned value, ground truth, and absolute error 
+
+Fig. 1: Learned value function for 1D reachability problem both the reachability probability and the associated optimal policy. To further investigate the learning characteristics of TD3, PINN-based policy iteration (PINN-PI) [22], [23], and the proposed PIRL, they were evaluated over ten random seeds. Figure 2 compares the control performance and value-function accuracy obtained by the three approaches. As shown in Fig. 2a, TD3 successfully learns the task for all ten runs. By contrast, PINN-PI exhibited a pronounced failure mode: four runs achieved rewards comparable to those of TD3, whereas the remaining six converged to solutions with substantially lower rewards. The proposed PIRL achieved near-optimal re-wards in all ten runs, indicating that the inclusion of trajectory-based TD learning prevents the collapse observed in PINN-PI. The mean-squared errors with respect to the analytical value function are shown in Fig. 2b. Although TD3 reliably learned the optimal policy, its value-function error was larger than those of the successful PINN-PI and PIRL runs. The proposed PIRL achieved an error comparable to that of successful PINN-PI while retaining the reliable policy learning observed in TD3. This relationship is summarized more directly in Fig. 2c, where each small marker represents an individual run and each large marker represents the corresponding group average. The proposed PIRL consistently occupies the lower-right region, demonstrating that it combines the policy-learning robustness of TD3 with the value-function accuracy of successful PINN-PI training. To examine the mechanism underlying these differences, Fig. 3 compares the evolution of the HJB, boundary, and TD losses. The HJB losses of the failed PINN-PI runs are not larger than those of the successful runs. Similarly, their bound-ary losses decrease to levels comparable to those obtained in successful PINN-PI training. Thus, small physics-informed losses do not necessarily imply that the learned value function is meaningful. PDE residual-based optimization can instead converge to a nearly trivial value function that approximately satisfies the sampled HJB residual and boundary conditions (n=10) (n=4) (n=6) (n=10) 0.0 0.1 0.2 0.3 0.4 0.5 Average reward success fail TD3 PINN-PI PIRL 
+
+(a) Average rewards (n=10) (n=4) (n=6) (n=10) 0.00 0.01 0.02 0.03 0.04 Mean squared error success fail TD3 PINN-PI PIRL (b) Mean-squared errors 0.1 0.2 0.3 0.4 0.5 Average reward 10 3 
+
+> 10 2
+> Mean squared error
+> higher reward lower error
+> TD3 PINN-PI (success) PINN-PI (fail) PIRL (ours)
+
+(c) Average reward vs. mean-squared error 
+
+Fig. 2: Comparison of performance over ten random seeds 
+
+Fig. 3: Evolution of losses during training while failing to recover the correct reachability structure. The distinction becomes clearer in the TD loss. When all trained networks are evaluated using trajectory-based TD targets, the failed PINN-PI runs exhibit a substantially larger TD loss than the other groups. Their critics are therefore inconsistent with the returns observed along sampled trajectories, even though their HJB and boundary losses are not large. The TD ob-jective provides complementary information that distinguishes these inaccurate solutions and guides learning toward a value function associated with an effective policy. By first using TD learning to establish the coarse reachability structure and then introducing the physics-informed losses, the proposed scheduling strategy avoids the failure mode of PINN-PI while reducing the value-function error of pure TD3. 10 
+
+B. Reach-Avoid Control of Vehicle Drifting 1) Problem setup: We next consider a stochastic reach-avoid control problem for autonomous vehicle drifting. The vehicle is modeled by a nonlinear path-relative dynamic bicy-cle model adapted from [26], which describes both the vehicle motion and its evolution relative to a reference path. The lateral tire forces are represented by a nonlinear Fiala tire model, including the reduction in the rear lateral-force capacity caused by the longitudinal driving force. The state is given by 
+
+x = ey eψ vx vy r δ μ⊤ , (55) where ey and eψ stand for the lateral position and heading errors with respect to the reference path, vx and vy are the longitudinal and lateral velocities, r is the yaw rate, δ is the steering angle, and μ is the road friction coefficient. The friction coefficient μ is treated as an episode-wise constant parameter and included in the state, allowing the policy to account for variations in road friction within a single policy. In this study, μ was varied over the range [0 .5, 0.6] during training. The remaining horizon τ is augmented to the state as described in Sec. III. The control input is 
+
+u =  ˙δ Fx
+
+⊤ , (56) where ˙δ is the steering-rate command and Fx is the longitu-dinal force. To formulate a stochastic reach-avoid problem, additive Brownian disturbances are introduced into the vehicle dynam-ics. The disturbances represent modeling errors and external uncertainties affecting the vehicle motion during drifting. The target set is a neighborhood of a drift equilibrium. Following [26], the equilibrium is specified by a desired longitudinal speed, sideslip angle, and friction coefficient, and the re-maining equilibrium quantities are computed from the steady-state model equations. The avoid set represents loss-of-control conditions, including road departure, excessive heading error, excessive sideslip, excessive yaw rate, loss of forward speed, steering saturation, and friction values outside the admissible range. This construction yields a physically meaningful reach-avoid problem: the controller must drive the vehicle toward an unstable drift operating point while avoiding states that correspond to spinout, departure, or loss of control. 
+
+2) Training process: We first trained a TD3 agent with an actor consisting of two hidden layers of 32 neurons each and critics consisting of three hidden layers of 64 neurons each. In preliminary experiments, however, starting TD3 training directly from a broad initial-state distribution in the entire eight-dimensional hypercube was not effective, because most rollouts terminated without reaching the drift target and there-fore provided little information about recoverable trajectories. We therefore employed a curriculum over the initial-state distribution. The spread of the sampled initial states around the drift equilibrium was controlled by a scalar sampling scale. TD3 was first trained with sampling scale 0.4 for 10 6
+
+learner updates so that the policy learned to recover from local perturbations around the drift equilibrium. The sampling scale was then increased to 1.0, and the initial states were sampled from a mixture of the β–r plane, the ey –eψ plane, 
+
+Fig. 4: Evolution of losses in drifting example and the full state space, with mixture probabilities 0.3, 0.3,and 0.4, respectively. This second TD3 stage was continued until 5 × 10 6 updates, allowing the policy to gradually extend its recovery behavior toward the reach-avoid boundary. From a resulting TD3 checkpoint, we continued training with the PIRL objective. The continuation consisted of a PIRL transition stage from 5 × 10 6 to 10 7 updates followed by a refinement stage, as illustrated in Fig. 4. The continuation was controlled by an outer-loop optimization based on an LLM-based coding agent (OpenAI codex was used in our experiment). At each round, a Python orchestration script summarized the completed training runs, constructed a scheduling prompt, invoked the coding agent, parsed the resulting scheduling decision, and launched several candidate PIRL continuations. Each candi-date was trained for 10 6 updates before the next scheduling decision. The scheduling prompt combined a fixed template with an interactively updated context block providing phase-specific guidance, together with a summary of the accumulated experimental results. The prompt template used for the exper-iment is provided in Appendix D. The LLM coding agent was guided by several qualitative observations obtained from preliminary manual trials and pre-ceding outer-loop experiments. Throughout the PIRL continu-ation, the TD loss was kept active with wTD = 1 , while wHJB 
+
+and wBC were introduced gradually. Increasing the physics-informed weights too rapidly was found to degrade the policy and, in some cases, drive the critic toward a nearly trivial value function, as in the failure mode observed in Sec. V-A. The scheduling candidates were therefore designed to increase the physics-informed weights conservatively while preserving the average reward and the Monte Carlo estimate of the reach-avoid probability achieved by the TD3 checkpoint. Preliminary trials also showed that the initialization of the remaining horizon τ in RL rollouts was important. We evaluated TD3 checkpoints trained with either a fixed initial horizon τ = T
+
+or horizons randomized over [0 , T ]. The fixed-horizon TD3 11 TD3 fixed ¿ 
+
+> 10M TD3 random ¿
+> 10M PIRL 10M PIRL 15M 10 −1
+> 10 0
+> loss
+> HJB BDR
+
+(a) HJB and boundary loss closest                
+
+> d= 0 :14
+> n= 101
+> near
+> d= 0 :20
+> n= 100
+> moderate
+> d= 0 :25
+> n= 101
+> far
+> d= 0 :30
+> n= 100
+> farthest
+> d= 0 :41
+> n= 101
+> 0.00 0.02 0.04 0.06 0.08 0.10 0.12 0.14 0.16
+> value-function MSE  [( V ¡ ^pMC )2]
+> near TD3 support extrapolation region
+> sparse TD3 support
+> TD3 fixed ¿10M TD3 random ¿10M PIRL 10M PIRL 15M
+
+(b) Value-function accuracy 
+
+Fig. 5: PDE consistency and value-function accuracy achieved better control performance and was therefore used to initialize PIRL as shown in Fig. 4. However, continuing PIRL with the same fixed-horizon rollout made the transition less stable. In this case, the TD samples were concentrated along trajectories initialized at τ = T , whereas the HJB residual was evaluated over the broader time-augmented domain. This mismatch between the trajectory-based and physics-informed supervision became pronounced as the HJB weight increased and led to critic collapse and degraded policy performance. We therefore randomized the initial horizon over [0 , T ] during PIRL continuation, thereby broadening the TD-sample distri-bution and improving its overlap with the domain on which the HJB residual was enforced. The distinction between the transition and refinement stages in Fig. 4 primarily reflects how the HJB collocation distri-bution was expanded during the outer-loop search. In the transition stage, the HJB collocation points were sampled mainly from the replay-buffer distribution, because the policy and critic inherited from TD3 were reliable primarily around the regions visited by the closed-loop trajectories. Applying the HJB loss uniformly over the full state domain at this stage introduced strong supervision in regions not yet supported by trajectory data and often destabilized the continuation. Replay-based collocation instead imposed local PDE consis-tency around the reach-avoid structure already established by TD learning, allowing the physics-informed weights to be increased without abruptly altering the learned policy-value relationship. Once the average reward and Monte Carlo reach-avoid probability had stabilized, the outer-loop search entered the refinement stage, in which the collocation distribution was gradually expanded away from the replay-buffer samples and uniformly sampled points were increasingly incorporated. This expansion was intended to improve PDE consistency in regions less frequently visited by the current policy while retaining the control performance obtained during the transition. As shown in Fig. 4, the HJB loss decreases substantially during the refinement stage, whereas the TD loss remains at approx-imately the same level and the boundary loss remains small, indicating that the critic’s PDE and boundary consistency was improved without substantially disrupting the trajectory-based value structure. 
+
+3) Learning results: Figure 5 summarizes the validation results for the learned value functions. Figure 5a compares the validation HJB and boundary-condition losses of the fixed-and random-horizon TD3 baselines with those of PIRL at the end of the transition stage ( 10 M updates) and after refinement (15 M updates). PIRL achieves lower HJB and boundary-condition losses than both TD3 baselines, and the refinement stage further improves HJB consistency. Figure 5b evaluates the accuracy of the learned value by comparing it with the empirical reach-avoid probability estimated from Monte Carlo closed-loop simulations under each trained policy. The evaluation states are grouped according to their distance from the states visited by the TD3 policy. The closest and near groups correspond to regions well covered by TD3 trajecto-ries, whereas the moderate and far groups require increasing extrapolation beyond the TD3 visitation distribution. Near the TD3 trajectories, the TD3 baselines achieve lower value-function errors, whereas the advantage of PIRL becomes apparent as the evaluation states move away from the TD3 visitation distribution. In particular, PIRL at 15 M updates achieves the lowest MSE in the moderate and far groups. When averaged over all evaluation states, the MSE values are 0.0657 , 0.0636 , 0.0617 , and 0.0586 for fixed-horizon TD3, random-horizon TD3, PIRL at 10 M, and PIRL at 15 M, respectively. The errors decrease in the farthest group for all four models, because the reach-avoid probability is close to zero for many states in this region and is therefore relatively easy to approximate. Overall, PIRL improves value-function accuracy, particularly outside the region well supported by TD3 trajectories, suggesting improved generalization beyond the TD3 visitation distribution. Finally, to provide a physical interpretation of the learned value function, Fig. 6 shows the reachability value learned by PIRL at 15 M updates on two representative two-dimensional slices of the state space. The arrows represent the projected closed-loop vector field. Such phase-portrait visualizations are widely used in vehicle dynamics because they provide an intuitive picture of the direction of motion, equilibrium structure, and stable operating regions in low-dimensional projections [41]. In both the β–r and ey –eψ planes, the learned value function forms a high-value region around the drift equilibrium and extends along the direction suggested by the projected closed-loop vector field. However, the reachability value cannot be fully interpreted from a two-dimensional projected vector field, because reachability also depends on the coupled evolution of the remaining state variables and the avoid-set constraints. Consequently, even when the projected arrows point toward a high-value region on a given slice, the learned value does not necessarily become large. Figure 7 complements this interpretation by showing stochastic closed-loop rollouts from three representative initial conditions in the β–r plane. The resulting trajectories are projected onto the β–r and ey –eψ planes and overlaid on the learned value contours. The comparison between the two projections reveals recovery and failure mechanisms that cannot be inferred from a single projected phase portrait. For example, the orange initial state appears recoverable in the β–r plane because the projected trajectories move toward the high-value region. In the ey –eψ plane, however, the same trajectories leave the path-relative region from which the drift target can be reached. This 12 0.5 0.0 0.5   
+
+> β[rad] 2
+> 1
+> 012
+> r [rad/s]
+> 0.2 0.4 0.6 0.8
+> target set equilibrium 0.000 0.125 0.250 0.375 0.500 0.625 0.750 0.875 1.000 learned reachability value  V(x)
+
+(a) β–r plane 2 1 0 1 2   
+
+> ey[m] 0.2
+> 0.0 0.2 0.4 0.6 0.8
+> eψ [rad]
+> 0.2 0.2 0.4 0.4 0.6 0.6 0.8 0.8
+> target set equilibrium 0.000 0.125 0.250 0.375 0.500 0.625 0.750 0.875 1.000 learned reachability value  V(x)
+
+(b) ey –eψ plane 
+
+Fig. 6: Learned value on two-dimensional slices with μ = 0 .55 
+
+(a) Trajectories on β–r plane (b) Trajectories on ey –eψ plane 
+
+Fig. 7: Closed-loop rollout results explains why the learned value assigned to this initial condition does not become large, even though the projected flow in the 
+
+β–r plane points toward the high-value region. These results show that the learned critic appropriately captures the reach-avoid structure of the closed-loop phase space, including as-pects that cannot be inferred from individual low-dimensional projections in classical vehicle dynamics analysis. VI. C ONCLUSIONS 
+
+This paper proposed a PIRL framework for stochastic reach-avoid set characterization. We first established an equivalent RL formulation of the stochastic reach-avoid probability and then developed a scheduled PIRL algorithm that combines TD-based actor-critic learning with HJB residual and boundary-condition losses. The learned critic can be related to the HJB residual and boundary mismatch, giving a residual-based interpretation of the value-function error. Numerical experiments demonstrated the effectiveness of the proposed framework. In the one-dimensional reachability problem, PIRL achieved accuracy comparable to successful PINN training while avoiding the failure modes observed in PINN-based policy iteration. In the drifting example, PIRL learned a reach-avoid value function consistent with both projected phase por-traits and closed-loop rollout outcomes. These results indicate that combining trajectory-based RL with physics-informed losses is a promising approach for learning high-dimensional stochastic reach-avoid value functions. Future work includes extending the proposed framework to more complex high-dimensional safety-critical systems, such as power grids, and using the learned reach-avoid value function for safe controller design. APPENDIX 
+
+A. Proof of Proposition 1 Proof. To begin the proof, we characterize the event asso-ciated with the probability Ψμ
+
+> RA
+
+(τ, x ) using the augmented system (22). Let us define the following event E1:
+
+E1 :=   
+
+> N(τ)
+
+[
+
+> j=0
+
+{ ˜Xj ∈ A} ∩ 
+
+> j−1
+
+\
+
+> k=0
+
+{ ˜Xk /∈ A ∪ B}
+
+!
+
+. (57) The event E1 directly represents the probability Ψμ
+
+> RA
+
+(τ, x )
+
+defined in (15), since it describes the scenario in which the process enters the target set A for the first time at some time 
+
+j ∈ N τ , while avoiding the unsafe set B at all previous steps 
+
+k < j . Note that, by the absorbing structure introduced in (20), the state ˜Xk evolves identically to the original system state Xk as long as the trajectory remains outside A ∪ B, and it follows that ˜Xk = Xk for all k ≤ j on E1. Therefore, 
+
+Ψμ
+
+> RA
+
+(τ, x ) = P(E1 | Y0 = y, μ ). (58) Next, we show that the event E1 is equivalent to the following event E2:
+
+E2 := ˜XN (τ ) ∈ A. (59) First, suppose that ω ∈ E 1. Then, by definition, there exists some j ∈ N τ such that ˜Xj ∈ A and ˜Xk /∈ A∪B for all k < j .By the absorbing property of the system, the state remains in 
+
+A for all k > j . Thus, ˜XN (τ ) ∈ A, and hence ω ∈ E 2.Conversely, suppose that ω ∈ E 2, i.e. , ˜XN (τ ) ∈ A. Then, by the absorbing property, there must exist some j ≤ N (τ )
+
+such that ˜Xj ∈ A and ˜Xk /∈ A ∪ B for all k < j . Indeed, if the trajectory had ever entered B, then the state would be absorbed in B and could not reach A thereafter; and if it had entered A earlier, the state would have remained in A up to time N (τ ). Let j∗ be the smallest index such that ˜Xj∗ ∈ A.Then ˜Xk /∈ A∪B for all k < j ∗, and hence ω ∈ E 1. Therefore, 
+
+E1 = E2, and we have 
+
+Ψμ
+
+> RA
+
+(τ, x ) = P( ˜XN (τ ) ∈ A | Y0 = y, μ ). (60) Now, consider the value function vμ
+
+> RL
+
+(y) defined in (25). Since Tk = τ −k∆t, we have Tk ∈ T if and only if k = N (τ ).Therefore, only one term in the summation is non-zero: 
+
+vμ
+
+> RL
+
+(y) = E
+
+h
+
+1A( ˜XN (τ )) Y0 = y, μ 
+
+i
+
+. (61) Therefore, from (60) and (61), we conclude 
+
+vμ
+
+> RL
+
+(y) = Ψ μ
+
+> RA
+
+(τ, x ). (62) Since r(Yk) ∈ { 0, 1}, the value function vμ
+
+> RL
+
+(y) lies in [0 , 1] .
+
+B. Proof of Theorem 1 Proof. We first prove statement (i). Fix μ ∈ U M and ∆t > 0.Since the reward rϵ(Yk) is nonzero only when Tk ∈ [0 , ∆t),we have 
+
+vμ
+
+> RL ,ϵ
+
+(y) = E
+
+h
+
+lϵ
+
+ eXN (τ )
+
+
+
+Y0 = y, μ 
+
+i
+
+. (63) 13 
+
+By construction, { eXk}k≥0 is a time-discretized approximation of the controlled SDE under the piecewise-constant feedback introduced in Sec. III, with the sets Aϵ and B treated as absorbing sets. Let { ˆXs}s≥0 be the corresponding continuous-time process. Standard time-discretization results for stopped diffusions imply that the approximation error vanishes as 
+
+∆t → 0. Thus, for any compact set K ⊂ [0 , T ] × Oϵ,
+
+lim  
+
+> ∆t→0
+
+sup 
+
+> (τ,x )∈K
+
+E
+
+h eXN (τ ) − ˆXτ
+
+i
+
+= 0 , (64) where we used N (τ )∆ t → τ . Since lϵ is Lipschitz continuous, this implies 
+
+sup 
+
+> (τ,x )∈K
+
+vμ
+
+> RL ,ϵ
+
+(y) − E
+
+h
+
+lϵ( ˆXτ ) ˆX0 = x, μ 
+
+i
+
+(65) 
+
+≤ Lϵ sup 
+
+> (τ,x )∈K
+
+E
+
+h eXN (τ ) − ˆXτ
+
+i
+
+→ 0, (66) where Lϵ is a Lipschitz constant of lϵ. Therefore, the limit 
+
+vμϵ (τ, x ) := E
+
+h
+
+lϵ( ˆXτ ) ˆX0 = x, μ 
+
+i
+
+(67) exists uniformly on compact subsets of [0 , T ]×Oϵ. Finally, by the stochastic representation of solutions to the Kolmogorov backward equation for the stopped diffusion, vμϵ is the unique classical solution of the linear PDE (30) with the boundary condition (31). We next prove statement (ii). First, since every piecewise-constant feedback control used in the discrete-time RL for-mulation is an admissible control for the continuous-time diffusion, we have 
+
+v∗
+
+> RL ,ϵ
+
+(y) ≤ v∗ 
+
+> ϵ
+
+(N (τ )∆ t, x ). (68) Here, the right-hand side is the optimal continuous-time value with remaining horizon N (τ )∆ t. Since N (τ )∆ t → τ as 
+
+∆t → 0 and v∗ 
+
+> ϵ
+
+is continuous, it follows that, for every compact set K ⊂ [0 , T ] × Oϵ,
+
+lim sup 
+
+> ∆t→0
+
+sup 
+
+> (τ,x )∈K
+
+ v∗
+
+> RL ,ϵ
+
+(y) − v∗ 
+
+> ϵ
+
+(τ, x ) ≤ 0. (69) Conversely, let μ∗ ∈ U M be an optimal Markov policy for the continuous-time smoothed reach-avoid problem. Such a policy exists under the classical solvability assumptions stated in Sec. II-C, and it satisfies vμ∗ 
+
+> ϵ
+
+= v∗ 
+
+> ϵ
+
+. On the other hand, by the definition of the discrete-time optimal RL value function, 
+
+v∗
+
+> RL ,ϵ
+
+(y) ≥ vμ∗
+
+> RL ,ϵ
+
+(y). (70) By statement (i), vμ∗ 
+
+> RL ,ϵ
+
+converges uniformly on compact subsets of [0 , T ] × Oϵ to vμ∗ 
+
+> ϵ
+
+= v∗ 
+
+> ϵ
+
+. Hence 
+
+lim inf  
+
+> ∆t→0
+
+inf 
+
+> (τ,x )∈K
+
+ v∗
+
+> RL ,ϵ
+
+(y) − v∗ 
+
+> ϵ
+
+(τ, x ) ≥ 0. (71) Combining inequalities (69) and (71) yields 
+
+lim  
+
+> ∆t→0
+
+sup 
+
+> (τ,x )∈K
+
+v∗
+
+> RL ,ϵ
+
+(y) − v∗ 
+
+> ϵ
+
+(τ, x ) = 0 . (72) Finally, by the dynamic programming principle and the verifi-cation theorem for the smoothed continuous-time reach-avoid problem, v∗ 
+
+> ϵ
+
+is the unique classical solution of (34) with the boundary condition (31). 
+
+C. Proof of Corollary 1 Proof. The proof follows the same argument as the error analysis in [25]. Specifically, the comparison principle for uniformly parabolic equations is first applied to relate the approximation error to the boundary mismatch and the PDE residual associated with the learned policy. The desired upper bound (49) is then obtained by noting that the value function under any admissible policy does not exceed the optimal reach-avoid value function. If μϕ = μ∗, the policy evaluation equation coincides with the optimal HJB equation, and the corresponding PINN approximation estimate gives the two-sided error bound (50). 
+
+D. Prompt for LLM-Guided PIRL Scheduling 
+
+The prompt consisted of three components: a fixed schedul-ing template, a user-provided context block containing phase-specific guidance and observations from previous trials, and an automatically generated JSON summary of the completed runs. The coding agent was required to return only a JSON scheduling plan, which was parsed and executed by the orchestration script. The prompt template was as follows.                                                                                                                                                        
+
+> You are controlling the next round of PIRL weight and collocation-distribution scheduling. Objective: -Treat {target_total_updates} total updates as the first milestone, not ahard stop. -By that milestone, outperform the TD3 baseline from {baseline_checkpoint}. -If reward and MC reachability remain stable, keep progressing beyond the milestone. -Keep final reward no worse than TD3 while reducing value calibration error mean|MC-V|. Output: -Write ONLY valid JSON to: {next_plan_path} -Return exactly {max_parallel_candidates} candidate(s). Schema: {"round_note": "brief rationale", "candidates": [{"name": "short_unique_name", "start_checkpoint": "path/to/ckpt-N", "schedule_initial": [1.0, hjb0, bdr0], "schedule_final": [1.0, hjb1, bdr1], "schedule_center": 500000, "schedule_sharpness": 1e-5, }]}Selection rules: -Continue from the best safe checkpoint when reward and MC are stable. -If reward or meanMC degraded, reduce weights or slow the schedule before trying larger weights. -Increase HJB/BDR gradually. -Increase replay_expand jitter gradually; prefer holding or backing off jitter before increasing HJB/BDR when reward or meanMC weakens. -Candidate-level pinn_* fields are optional; omitted fields inherit [training_env] defaults from the TOML config. -Use at most one TD3-restart control per round, unless all scheduling checkpoints collapsed. -Do not repeat an existing start_checkpoint +schedule_initial +schedule_final +pinn_expand_jitter_final combination unless round_note explains why. {context_block} Completed results JSON: {completed_results_json}
+
+ACKNOWLEDGMENT 
+
+The authors would like to thank Naoki Hashima and Eiko Furutani for discussions on the interpretation of the RL char-14 
+
+acterization of the reach-avoid problem, and Yuxuan Zhu for reporting the PINN failure mode in PIRL experiments. REFERENCES [1] A. Abate, M. Prandini, J. Lygeros, and S. Sastry, “Probabilistic reacha-bility and safety for controlled discrete time stochastic hybrid systems,” 
+
+Automatica , vol. 44, no. 11, pp. 2724–2734, Nov. 2008. [2] S. Summers and J. Lygeros, “Verification of discrete time stochastic hybrid systems: A stochastic reach-avoid decision problem,” Automatica ,vol. 46, no. 12, pp. 1951–1961, Dec. 2010. [3] P. Mohajerin Esfahani, D. Chatterjee, and J. Lygeros, “The stochastic reach-avoid problem and set characterization for diffusions,” Automatica ,vol. 70, pp. 43–56, 2016. [4] M. Raissi, P. Perdikaris, and G. E. Karniadakis, “Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations,” J. Comput. Phys. , vol. 378, pp. 686–707, Feb. 2019. [5] K. Luo, J. Zhao, Y. Wang, J. Li, J. Wen, J. Liang, H. Soekmadji, and S. Liao, “Physics-informed neural networks for pde problems: a comprehensive review,” Artificial Intelligence Review , vol. 58, no. 10, p. 323, 2025. [6] R. Leiteritz and D. Pflüger, “How to avoid trivial solutions in physics-informed neural networks,” arXiv preprint arXiv:2112.05620 , 2021. [7] S. Wang, S. Sankaran, H. Wang, and P. Perdikaris, “An expert’s guide to training physics-informed neural networks,” arXiv preprint arXiv:2308.08468 , 2023. [8] A. K. Akametalu, S. Ghosh, J. F. Fisac, and C. J. Tomlin, “A minimum discounted reward hamilton-jacobi formulation for computing reachable sets,” arXiv preprint arXiv:1809.00706 , 2018. [9] J. F. Fisac, N. F. Lugovoy, V. Rubies-Royo, S. Ghosh, and C. J. Tomlin, “Bridging Hamilton-Jacobi safety analysis and reinforcement learning,” in 2019 International Conference on Robotics and Automation (ICRA) ,May 2019, pp. 8550–8556. [10] K.-C. Hsu, V. Rubies-Royo, C. J. Tomlin, and J. F. Fisac, “Safety and liveness guarantees through Reach-Avoid reinforcement learning,” 
+
+arXiv: 2112.12288 [cs.LG] , Dec. 2021. [11] M. Ganai, S. Gao, and S. L. Herbert, “Hamilton-Jacobi reachability in reinforcement learning: A survey,” IEEE Open Journal of Control Systems , vol. 3, pp. 310–324, 2024. [12] I. Mitchell, A. Bayen, and C. Tomlin, “A time-dependent Hamilton-Jacobi formulation of reachable sets for continuous dynamic games,” 
+
+IEEE Transactions on Automatic Control , vol. 50, no. 7, pp. 947–957, 2005. [13] S. Bansal, M. Chen, S. Herbert, and C. J. Tomlin, “Hamilton-Jacobi reachability: A brief overview and recent advances,” in 2017 IEEE 56th Annual Conference on Decision and Control (CDC) , Dec. 2017, pp. 2242–2253. [14] N. Schmid and J. Lygeros, “Probabilistic reachability and invariance computation of stochastic systems using linear programming,” in 22nd IFAC World Congress , 2023, pp. 11 229–11 234. [15] A. J. Thorpe and M. M. K. Oishi, “Model-free stochastic reachability using kernel distribution embeddings,” IEEE Control Systems Letters ,vol. 4, no. 2, pp. 512–517, 2020. [16] A. J. Thorpe, K. R. Ortiz, and M. M. Oishi, “State-based confidence bounds for data-driven stochastic reachability using hilbert space em-beddings,” Automatica , vol. 138, p. 110146, 2022. [17] J. D. Gleason, A. P. Vinod, and M. M. K. Oishi, “Underapproximation of reach-avoid sets for discrete-time stochastic systems via lagrangian methods,” in 2017 IEEE 56th Annual Conference on Decision and Control (CDC) , 2017, pp. 4283–4290. [18] B. Xue, R. Li, N. Zhan, and M. Fränzle, “Reach-avoid analysis for stochastic discrete-time systems,” in 2021 American Control Conference (ACC) , 2021, pp. 4879–4885. [19] B. Xue, “Sufficient and necessary barrier-like conditions for safety and reach-avoid verification of stochastic discrete-time systems,” Automat-ica , vol. 187, p. 112919, 2026. [20] Ð. Žikeli´ c, M. Lechner, T. A. Henzinger, and K. Chatterjee, “Learning control policies for stochastic systems with reach-avoid guarantees,” in 
+
+Proceedings of the AAAI Conference on Artificial Intelligence , vol. 37, no. 10, 2023, pp. 11 926–11 935. [21] C. Banerjee, K. Nguyen, C. Fookes, and M. Raissi, “A survey on physics informed reinforcement learning: Review and open problems,” Expert Systems with Applications , vol. 287, p. 128166, 2025. [22] Y. Meng, R. Zhou, A. Mukherjee, M. Fitzsimmons, C. Song, and J. Liu, “Physics-informed neural network policy iteration: algorithms, convergence, and verification,” in Proceedings of the 41st International Conference on Machine Learning , 2024. [23] Y. Wang and Z. Wu, “Physics-informed reinforcement learning for optimal control of nonlinear systems,” AIChE Journal , vol. 70, no. 10, p. e18542, 2024. [24] A. Mukherjee and J. Liu, “Bridging physics-informed neural networks with reinforcement learning: Hamilton-Jacobi-Bellman proximal policy optimization (HJBPPO),” in ICML Workshop on New Frontiers in Learning, Control, and Dynamical Systems , 2023. [25] Z. Wang, A. Chern, and Y. Nakahira, “Generalizable physics-informed learning for stochastic safety-critical systems,” IEEE Transactions on Automatic Control , vol. 71, no. 4, pp. 2155–2170, 2026. [26] R. Y. Hindiyeh and J. Christian Gerdes, “A controller framework for autonomous drifting: Design, stability, and experimental validation,” J. Dyn. Syst. Meas. Control , vol. 136, no. 5, p. 051015, Jul. 2014. [27] H. Hoshino and Y. Nakahira, “Physics-informed RL for maximal safety probability estimation,” in 2024 American Control Conference (ACC) ,2024, pp. 3576–3583. [28] H. Hoshino, J. Li, A. Menon, J. M. Dolan, and Y. Nakahira, “Au-tonomous drifting based on maximal safety probability learning,” in 
+
+2024 IEEE 27th International Conference on Intelligent Transportation Systems (ITSC) , 2024, pp. 3930–3935. [29] V. Mnih, K. Kavukcuoglu, D. Silver, A. A. Rusu, J. Veness, M. G. Bellemare, A. Graves, M. Riedmiller, A. K. Fidjeland, G. Ostrovski, S. Petersen, C. Beattie, A. Sadik, I. Antonoglou, H. King, D. Kumaran, D. Wierstra, S. Legg, and D. Hassabis, “Human-level control through deep reinforcement learning,” Nature , vol. 518, pp. 529–533, 2015. [30] S. Fujimoto, H. Hoof, and D. Meger, “Addressing function approxi-mation error in actor-critic methods,” in International conference on machine learning . PMLR, 2018, pp. 1587–1596. [31] I. Karatzas and S. Shreve, Brownian motion and stochastic calculus ,2nd ed. Springer, 1998. [32] W. H. Fleming and H. M. Soner, Controlled Markov Processes and Viscosity Solutions , 2nd ed. Springer, 2006. [33] J. Lygeros, “On reachability and minimum cost optimal control,” Auto-matica , vol. 40, no. 6, pp. 917–927, 2004. [34] W. Liao, T. Liang, X. Wei, and J. L. and, “A novel unified framework for solving reachability and invariance problems,” International Journal of Control , vol. 96, no. 6, pp. 1436–1447, 2023. [35] X. Mao, “Stabilization of continuous-time hybrid stochastic differen-tial equations by discrete-time feedback control,” Automatica , vol. 49, no. 12, pp. 3677–3681, 2013. [36] T. P. Lillicrap, J. J. Hunt, A. Pritzel, N. Heess, T. Erez, Y. Tassa, D. Silver, and D. Wierstra, “Continuous control with deep reinforcement learning,” arXiv preprint arXiv:1509.02971 , 2015. [37] M. Omura, K. Ota, T. Osa, Y. Mukuta, and T. Harada, “Gradual transition from bellman optimality operator to bellman operator in online reinforcement learning,” in Proceedings of the 42nd International Conference on Machine Learning , ser. Proceedings of Machine Learning Research, vol. 267, 2025. [38] I. Kostrikov, A. Nair, and S. Levine, “Offline reinforcement learning with implicit Q-learning,” in International Conference on Learning Representations (ICLR) , ser. Proceedings of Machine Learning Research, 2022. [39] K. Asadi and M. L. Littman, “An alternative to softmax in reinforcement learning,” in Proceedings of the 34th International Conference on Ma-chine Learning (ICML) , ser. Proceedings of Machine Learning Research, 2017, pp. 243–252. [40] A. Chern, X. Wang, A. Iyer, and Y. Nakahira, “Safe control in the presence of stochastic uncertainties,” in 2021 60th IEEE Conference on Decision and Control (CDC) , 2021, pp. 6640–6645. [41] C. G. Bobier-Tiu, C. E. Beal, J. C. Kegelman, R. Y. Hindiyeh, and J. C. Gerdes, “Vehicle control synthesis using phase portraits of planar dynamics,” Vehicle System Dynamics , vol. 57, no. 9, pp. 1318–1337, 2019.
