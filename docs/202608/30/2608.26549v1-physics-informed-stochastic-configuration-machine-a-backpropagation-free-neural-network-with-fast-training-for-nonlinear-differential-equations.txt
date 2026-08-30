@@ -1,0 +1,2612 @@
+Title: Physics-Informed Stochastic Configuration Machine: A Backpropagation-Free Neural Network with Fast Training for Nonlinear Differential Equations
+
+URL Source: https://arxiv.org/pdf/2608.26549v1
+
+Published Time: Fri, 28 Aug 2026 00:25:52 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+> 1
+
+# Physics-Informed Stochastic Configuration Machine: A Backpropagation-Free Neural Network with Fast Training for Nonlinear Differential Equations 
+
+Yuehao Song, Zhong Chen, Lihui Cen, Liang Wu, and Kai Zhang 
+
+Abstract —While Physics-Informed Neural Networks (PINNs) have emerged as a transformative paradigm for solving complex differential equations, their reliance on backpropagation-based gradient descent and automatic differentiation (AD) imposes significant computational bottlenecks and severe non-convex optimization challenges. To overcome these fundamental limita-tions, we propose the Physics-Informed Stochastic Configuration Machine (PI-SCM), a novel backpropagation-free framework for both forward and inverse problems in differential equations. The core mathematical contribution lies in the analytical eval-uation of local Jacobians for nonlinear differential operators, which facilitates a linearized representation of the physical loss and projects it into a unified, linearized algebraic subspace. This reformulation allows for the explicit determination of optimal network weights via a sequence of generalized linear least squares solvers, effectively bypassing the iterative traps of traditional nonlinear optimizers. We develop a progressive algorithmic suite—comprising localized construction (PI-SC-I), sliding-window updating (PI-SC-II), and global updating (PI-SC-III)—and rigorously establish their universal approximation properties. Extensive experiments demonstrate that PI-SCM achieves high-fidelity predictive accuracy and robust parameter identification while accelerating the training process by orders of magnitude compared to standard PINNs. Our work provides a highly efficient and scalable foundation for next-generation, real-time Scientific Machine Learning applications. 
+
+Index Terms —Nonlinear Differential Equations, Scientific Ma-chine Learning, Physics-Informed Neural Networks, Stochastic Configuration Networks, Backpropagation-free. 
+
+I. I NTRODUCTION 
+
+# NONLINEAR differential equations, encompassing both ordinary differential equations (ODEs) and partial dif-ferential equations (PDEs), serve as the fundamental mathe-matical language for describing complex dynamical systems across diverse scientific and engineering disciplines. Tradi-tionally, solving these governing equations relies on classical numerical techniques, such as the finite element method (FEM) and high-order Runge-Kutta solvers. While mathematically rigorous, these traditional solvers often encounter significant 
+
+Yuehao Song, Zhong Chen, and Lihui Cen are with the School of Automation, Central South University, 932 South Lushan Road, Chang-sha 410083, China (e-mails: yh.song@csu.edu.cn; zhongchen@csu.edu.cn; lhcen@csu.edu.cn). Liang Wu is with Johns Hopkins University, Baltimore, MD 21218, USA (e-mail: wliang14@jh.edu). Kai Zhang is with the State Key Laboratory of Simulation and Regulation of Water Cycle in River Basin, China Institute of Water Resources and Hydropower Research, Beijing 100038, China (e-mail: zhangkai@iwhr.com). Corresponding author: Lihui Cen (e-mail: lhcen@csu.edu.cn). 
+
+computational bottlenecks when confronted with the “curse of dimensionality” or complex geometric domains. To circumvent these limitations, Scientific Machine Learn-ing (SciML) has emerged as a transformative computational paradigm. As a burgeoning field, SciML seeks to integrate machine learning-derived methodologies into traditional en-gineering frameworks, thereby leveraging domain knowledge and known physical constraints to inform and regularize the learning process [1]. At the forefront of this revolution are Physics-Informed Neural Networks (PINNs) [2]. By embed-ding the physical governing equations directly into the loss function of deep neural networks, PINNs utilize established physical laws to drive the optimization process, enabling robust, mesh-free approximations. Consequently, PINNs have seen widespread and highly successful applications across varied engineering domains. For instance, Schiassi et al. [3] employed PINNs to learn the state–costate dynamics satisfying optimality conditions, enabling efficient solutions to complex optimal control problems such as orbital transfers. Shukla et al. [4] utilized PINNs to identify and characterize surface-breaking cracks in metal plates. Berkhahn et al. [5] utilized PINNs to model COVID-19 infection and hospitalization scenarios. Diao et al. [6] applied PINNs to tackle intricate boundary conditions in multi-material problems within solid mechanics. However, despite these remarkable successes, the standard PINN architecture is fundamentally constrained by severe computational bottlenecks. Relying heavily on backpropagation-based gradient descent algorithms—such as Adam and L-BFGS [7]—to minimize a composite loss function, this optimization paradigm encounters two critical mathematical challenges when applied to highly nonlinear dynamical systems. First, from an optimization perspective, the incorporation of nonlinear differential operators induces a highly nonconvex optimization landscape [8]. This intricate topology frequently triggers severe gradient pathologies, where competing gradient magnitudes and directions from different loss components hin-der effective weight updates. Consequently, iterative gradient-based optimizers are highly susceptible to becoming trapped in sub-optimal local minima, manifesting as residual stagnation and degraded predictive accuracy. Second, from a computational perspective, the inherent mechanics of backpropagation impose a severe efficiency bot-tleneck. Evaluating the physical loss necessitates computing derivatives with respect to the spatio-temporal coordinates via arXiv:2608.26549v1 [math.NA] 27 Aug 2026 2
+
+automatic differentiation (AD). Continuously traversing the deep computational graph backward to update weights entails a massive memory footprint and incurs an exorbitant com-putational cost per iteration [8]. This fundamental limitation results in slow convergence speeds and prohibitive overall training times, rendering standard PINNs impractical for real-time applications or large-scale parametric studies. Therefore, developing a robust, backpropagation-free learn-ing paradigm that bypasses non-convex optimization traps and the heavy computational overhead imposed by iterative gradient updates and AD to guarantee numerical stability and efficiency remains an urgent challenge in the SciML community. In this context, randomized learning methods have emerged as a promising alternative, offering a fundamental departure from the gradient descent paradigms used in conventional neural networks. These models typically rely on a two-step training strategy: first, hidden-layer weights and biases are randomly assigned; second, the output weights are determined through analytical computation. Early manifestations of this concept include the Random Vector Functional Link Network (RVFLN) [9] and feed forward neural networks with ran-dom weights proposed by Schmidt et al. [10]. Subsequently, Extreme Learning Machines (ELM) [11] gained widespread traction in machine vision and industrial processes due to their remarkable learning speed and ease of implementation. To address the issues of node quality and network scale con-figuration inherent in static randomized networks, incremental construction methods such as Incremental Random Weight Neural Networks (IRWNN) [12] were developed to build architectures node by node. Building upon these foundations, Stochastic Configuration Networks (SCNs) [13] introduced a rigorous supervisory mechanism for parameter allocation. Unlike earlier randomized models, SCNs randomly config-ure hidden parameters within data-dependent adaptive ranges under an inequality constraint, which guarantees the univer-sal approximation property. By combining this constructive strategy with an analytical linear least squares solver for out-put weights, SCNs enable exceptionally fast modeling while maintaining strong generalization capabilities. The efficacy of this framework has inspired numerous advancements, in-cluding DeepSCN [14], algorithmic optimizations via genetic algorithms [15] or Monte Carlo tree search [16], [17], and successful applications across diverse domains [18], [19], [20], [21], [22]. However, standard SCNs are inherently purely data-driven architectures, limiting their direct applicability in SciML sce-narios where high-quality data is scarce and systems are governed by strict physical laws. To bridge this gap, Xu et al. [23] introduced a Physics-Informed Stochastic Configu-ration Network (PISCN). Yet, this framework suffers from two fundamental limitations. First, during the critical hidden node configuration phase, the node selection process does not incorporate physical information constraints. Second, the subsequent training process reverts to traditional gradient descent, abandoning the analytical linear least squares solver of the original SCN framework. This significantly degrades its modeling efficiency and negates the primary computational advantage of randomized networks. In addition, operator-theoretic learning approaches, such as Koopman operator theory, provide computationally effi-cient methods for modeling large-scale nonlinear systems. Within this framework, Wu et al. proposed a parallelizable multi-step EDMD method that decomposes the least-squares identification problem across prediction horizons and state coordinates, enabling efficient offline modeling [24]. However, the method remains data-driven and does not incorporate physical constraints. To retain the computational efficiency of SCNs in unsu-pervised and semi-supervised physics-informed learning, this paper proposes a novel, backpropagation-free framework: the 
+
+Physics-Informed Stochastic Configuration Machine (PI-SCM) . Our approach fundamentally restructures the optimiza-tion paradigm for solving complex differential equations. The main contributions of this work are summarized as follows: 1) At the core of PI-SCM is a local linearization of the nonlinear differential operator. The operator Jacobians with respect to the state variables and their derivatives are evaluated analytically, allowing the physical residual to be expressed in terms of increments in the network approximation. The resulting linearized physical equations are then combined with the observational constraints to form a unified linearized algebraic system .2) At each construction or update step, the output coeffi-cients are computed using a pseudoinverse-based linear least-squares solver. Because the required derivatives are evaluated analytically, the procedure does not rely on automatic differ-entiation. PI-SCM therefore provides a backpropagation-free training mechanism while retaining the governing equations as explicit constraints on the learned solution. 3) The framework comprises three progressive algorithms. PI-SC-I performs a localized update when a new hidden node is added, PI-SC-II updates the nodes within a sliding window, and PI-SC-III globally updates all constructed nodes. These al-gorithms offer different trade-offs between computational cost and approximation accuracy. Under the stated assumptions and acceptance conditions, their update rules ensure mono-tonic residual reduction , while the accompanying universal approximation property provides a theoretical foundation for the framework. 4) The same linearized formulation is also extended to in-verse problems. By updating physical parameters together with the network approximation, PI-SCM supports state recon-struction and parameter identification without introducing a separate backpropagation-based optimization procedure. The remainder of this paper is organized as follows. Section II introduces the preliminary concepts, defining the network architecture and formulating the forward and inverse physical problems. Section III establishes the theoretical and algo-rithmic foundations of the PI-SCM framework, rigorously proving its universal approximation property and outlining the hyperparameter configuration strategy. Section IV presents comprehensive numerical experiments to validate the predic-tive accuracy and computational efficiency of the proposed framework against backpropagation-based PINNs on bench-mark physical systems. Finally, Section V summarizes the core 3
+
+findings of this study and discusses potential avenues for future research. II. P RELIMINARIES OF THE PI-SCM F RAMEWORK AND 
+
+PROBLEM STATEMENT 
+
+A. Network Architecture of PI-SCM 
+
+The fundamental distinction between the proposed Physics-Informed Stochastic Configuration Machine (PI-SCM) and conventional backpropagation-based networks lies in its con-structive, backpropagation-free architecture. Unlike standard deep neural networks with fixed topologies, PI-SCM con-structs a single-hidden-layer neural network incrementally node-by-node. Suppose the network has generated L hidden nodes. For a given input coordinate vector x = ( x1, x 2, . . . , x n)⊤, the output of the k-th hidden node ( k = 1 , 2, . . . , L ) is defined as 
+
+hk(x) = g(w⊤ 
+
+> k
+
+x + bk), (1) where g(·) denotes an activation function, wk ∈ Rn are the hidden weights, and bk ∈ R is the corresponding hidden bias. Let βk ∈ Rm denote the output weights. The global state approximation of the PI-SCM with L hidden nodes, denoted as uL(x), is computed as: 
+
+uL(x) = 
+
+> L
+
+X
+
+> k=1
+
+βkhk(x). (2) In standard PINNs, the parameters {wk, b k, βk} are up-dated simultaneously via gradient descent. In contrast, the PI-SCM framework randomly assigns the hidden parameters wk
+
+and bk within a problem-dependent adaptive range [−τ, τ ].These parameters are fixed once assigned. The optimal output weights βk are determined analytically via pseudo-inverse solvers. This architecture serves as the foundation for solving the problems defined below. 
+
+B. Forward Problem 
+
+We formulate the proposed framework for a general non-linear differential system of order q ≥ 1.Consider an open bounded domain Ω ⊂ Rn governing the underlying physical mechanisms, and let ∂Ω denote its boundary. The physical state of the system is characterized by an unknown vector-valued function u : Ω → Rm. To represent its high-order differential state, we introduce a multi-index 
+
+γ = ( γ1, γ 2, . . . , γ n) ∈ Nn 
+
+> 0
+
+, with |γ| = Pnj=1 γj , and define: 
+
+Dγ u(x) = ∂|γ|u(x)
+
+∂x γ1 
+
+> 1
+
+∂x γ2 
+
+> 2
+
+· · · ∂x γn
+
+> n
+
+, D0u(x) = u(x). (3) For any nonnegative integer s, let Is = {γ ∈ Nn 
+
+> 0
+
+: |γ| ≤ s}
+
+denote the set of all derivative indices up to order s. The corresponding generalized differential state is defined as 
+
+D(s)u(x) := {Dγ u(x)}γ∈I s . (4) Consequently, the generalized mapping of the nonlinear high-order physical system can be formulated as 
+
+F
+
+
+
+x, D(q)u(x)
+
+
+
+= 0, ∀x ∈ Ω, (5) subject to the initial/boundary conditions 
+
+B
+
+
+
+x, D(qb)u(x)
+
+
+
+= 0, ∀x ∈ ∂Ω, (6) where 0 ≤ qb ≤ q, F is a nonlinear differential operator, and B
+
+represents the specific boundary or initial constraint operators. Evaluating these continuous residuals computationally re-quires discretization. Let Ωp ⊂ Ω denote the finite set of interior physical collocation points, Ωb ⊂ ∂Ω denote the boundary/initial training points, and Ωd ⊂ Ω denote the set of observational data points (in semi-supervised scenarios). Consequently, the objective of the forward problem is to determine the optimal set of network parameters 
+
+{wk, b k, βk}Lk=1 such that the state approximation uL(x)
+
+simultaneously satisfies the governing physical equations (Eq. (5)) over Ωp, the initial/boundary conditions (Eq. (6)) over Ωb, and the empirical measurements over Ωd.
+
+C. Inverse Problem 
+
+In many practical scientific and engineering scenarios, the governing differential equations are characterized by unknown physical parameters that need to be inferred from empirical measurements. This constitutes the inverse problem. To formulate the inverse physical system, we modify the nonlinear high-order differential operator to explicitly incor-porate an unknown parameter vector λ ∈ Rnp . The governing equation is extended as: 
+
+F
+
+
+
+x, D(q)u(x); λ
+
+
+
+= 0, ∀x ∈ Ω. (7) Accordingly, the inverse problem tasks the network with simultaneously determining the optimal network parameters 
+
+{wk, b k, βk}Lk=1 and identifying the underlying physical pa-rameter λ. The optimal joint configuration must ensure that the state approximation satisfies the parameterized physical laws governing the system while accurately fitting the empirical measurements. III. P HYSICS -I NFORMED STOCHASTIC CONFIGURATION 
+
+MACHINE 
+
+A. Forward Problem 
+
+The fundamental challenge in optimizing standard PINNs lies in the highly non-convex loss landscape induced by nonlinear differential operators. PI-SCM circumvents this bot-tleneck by decoupling the nonlinearity through local Taylor expansions, transforming the optimization into a sequence of linear least squares problems. We begin with the base localized optimization algorithm, denoted as PI-SC-I . Suppose the network has generated L − 1
+
+hidden nodes, and the current state approximation is given by 
+
+uL−1(x) = PL−1 
+
+> k=1
+
+βkhk(x), where βk ∈ Rm denotes the output weight vector, hk(x) = g(w⊤ 
+
+> k
+
+x + bk) represents the output of the k-th hidden node, g(·) is the activation function, and wk, b k are the randomly configured input weights and bias, respectively. When evaluating the addition of the L-th node hL(x), the updated state becomes uL(x) = uL−1(x) + 
+
+βLhL(x).4
+
+Evaluating at the unified collocation points denoted by x,let us define the physical residual at the L-th step as: 
+
+epL := F
+
+
+
+x, D(q)uL
+
+
+
+. (8) Similarly, the corresponding initial/boundary condition residual evaluated at x is defined as: 
+
+ebL := B
+
+
+
+x, D(qb)uL
+
+
+
+. (9) By examining the residual difference between step L and step L − 1, we obtain: 
+
+epL − epL−1 = F
+
+
+
+x, D(q)(uL−1 + βLhL)
+
+
+
+− F
+
+
+
+x, D(q)uL−1
+
+
+
+,
+
+ebL − ebL−1 = B
+
+
+
+x, D(qb)(uL−1 + βLhL)
+
+
+
+− B 
+
+
+
+x, D(qb)uL−1
+
+
+
+.
+
+(10) It becomes evident that if the underlying PDE system F is nonlinear with respect to any component of the generalized differential state D(q)u, the residual difference in the above equation is inherently nonlinear with respect to the newly added output weight βL. This nonlinearity directly precludes the use of standard linear least squares algorithms for explicitly determining βL.To decouple this nonlinearity and project it into a linear subspace, we apply the functional first-order Taylor expansion around the previously established generalized state D(q)uL−1.By analytically evaluating the local Jacobians of the differen-tial operator with respect to every derivative component up to order q, the physical residual is linearized as 
+
+epL = F
+
+
+
+x, D(q)uL
+
+
+
+≈ F
+
+
+
+x, D(q)uL−1
+
+
+
++ X
+
+> γ∈I q
+
+JDγ u(uL−1) ( Dγ uL − Dγ uL−1) , (11) where the local Jacobian matrices evaluated at the complete previous differential state are mathematically denoted as: 
+
+JDγ u(uL−1) = ∂F
+
+∂(Dγ u) D(q)u=D(q)uL−1
+
+, γ ∈ I q ,
+
+(12) each yielding a matrix in Rm×m. In particular, the zero-order case γ = 0 gives JD0u = Ju.Because βL is independent of x, the differential increment associated with every multi-index satisfies: 
+
+Dγ uL − Dγ uL−1 = βLDγ hL(x), γ ∈ I q . (13) Substituting (13) into the linearized expansion yields 
+
+epL ≈ epL−1 + AL(x)βL, (14) where 
+
+AL(x) = X
+
+> γ∈I q
+
+JDγ u(uL−1)Dγ hL(x). (15) The highly nonlinear high-order local residual evaluation is thus reduced to a purely linear mapping with respect to βL.Regarding the initial/boundary conditions, we assume B can be formulated as a generalized high-order boundary operator: 
+
+B
+
+
+
+x, D(qb)u
+
+
+
+= X
+
+> γ∈I qb
+
+Pγ (x)Dγ u − gbc (x) = 0, (16) where Pγ (x) denotes the coefficient matrix associated with the derivative Dγ u, and gbc (x) represents the prescribed boundary data. For qb = 1 , selecting the derivative coeffi-cients along the outward normal direction yields the standard Robin condition. Taking the difference between the boundary residuals of step L and step L − 1, we have: 
+
+ebL − ebL−1 =
+
+ X
+
+> γ∈I qb
+
+Pγ (x)Dγ hL(x)
+
+ βL. (17) It is evident that this formulation is strictly linear with respect to βL, which yields 
+
+ebL = ebL−1 + CL(x)βL, (18) where CL(x) = P
+
+> γ∈I qb
+
+Pγ (x)Dγ hL(x).Furthermore, to empower the framework with semi-supervised learning capabilities by integrating sparse obser-vational data, the data residual evaluated at the points denoted by x is defined as 
+
+edL := udata (x) − uL(x), (19) where udata (x) denotes the observations. The difference be-tween the data residuals at step L and step L − 1 is computed as: 
+
+edL − edL−1 = udata (x) − uL−1(x) − βLhL(x)
+
+− (udata (x) − uL−1(x)) = −hL(x)ImβL.
+
+(20) Thus, we have: 
+
+edL = edL−1 + DL(x)βL, (21) where DL(x) = −hL(x)Im.Assuming that at the L-th incremental step, we aim to simultaneously minimize the physical residual epL, the bound-ary residual ebL, and the data residual edL, the comprehensive optimization objective for the PI-SC-I algorithm is formulated as the following linear least squares loss function: 
+
+L(βL) = 1
+
+Np
+
+AL(x)βL + epL−1
+
+> 2Ωp
+
++ ωbc 
+
+Nb
+
+CL(x)βL + ebL−1
+
+> 2Ωb
+
++ ωdata 
+
+Nd
+
+DL(x)βL + edL−1
+
+> 2Ωd
+
+,
+
+(22) where ωbc and ωdata are the penalty parameters balancing the initial/boundary conditions and the observational data against the physical domain. The notations ∥ · ∥ 2Ωp , ∥ · ∥ 2Ωb , and ∥ · ∥ 2Ωd
+
+represent the standard discrete squared L2 norms evaluated over Ωp = {xpi }Np
+
+> i=1
+
+, Ωb = {xbi }Nb
+
+> i=1
+
+, and Ωd = {xdi }Nd
+
+> i=1
+
+,respectively, where Np, Nb, and Nd are the corresponding numbers of physical, boundary, and data points. 5
+
+At the L-th step, the weighted generalized residual vector is defined as 
+
+˜eL =
+
+
+
+1
+
+pNp
+
+col 
+
+> i=1 ,...,N p
+
+(epL(xpi )) 
+
+r ωbc 
+
+Nb
+
+col 
+
+> i=1 ,...,N b
+
+ ebL(xbi )r ωdata 
+
+Nd
+
+col 
+
+> i=1 ,...,N d
+
+ edL(xdi )
+
+. (23) where col( ·) denotes the vertical concatenation operator. The three residual blocks in (22) can be combined into a unified linear least squares system. Let us define the weighted design matrix ML and the corresponding target vector vL as 
+
+ML =
+
+
+
+1
+
+pNp
+
+col 
+
+> i=1 ,...,N p
+
+(AL(xpi )) 
+
+r ωbc 
+
+Nb
+
+col 
+
+> i=1 ,...,N b
+
+ CL(xbi )r ωdata 
+
+Nd
+
+col 
+
+> i=1 ,...,N d
+
+ DL(xdi )
+
+, vL = −˜eL−1.
+
+(24) Accordingly, the objective in (22) can be written as 
+
+L(βL) = ∥MLβL − vL∥22 . (25) Consequently, the minimum-norm solution of the linearized least squares problem is explicitly computed as bβL = M†
+
+> L
+
+vL.To control the Taylor truncation error of the true nonlinear high-order residual, the adopted output-weight increment is defined as 
+
+β∗ 
+
+> L
+
+= αM†
+
+> L
+
+vL, (26) where † denotes the Moore-Penrose pseudo-inverse operator, and α ∈ (0 , 1] acts as a damping factor. When α = 1,(26) coincides with the optimal linearized solution; when 
+
+α < 1, it represents a damped step along the same analytical direction. As will be rigorously established in the subsequent theoretical analysis, introducing this parameter guarantees the existence of a feasible parameter configuration that enforces strict monotonic descent of the true residual. Furthermore, to ensure numerical stability against poten-tial ill-conditioning of the localized Jacobian evaluations, we compute the pseudo-inverse via the Truncated Singular Value Decomposition (TSVD). By dynamically filtering out unstable singular components below a relative condition threshold η
+
+(e.g., η = 10 −10 ), this approach effectively circumvents the numerical instability induced by matrix ill-conditioning. To rigorously guarantee the effectiveness of the configured nonlinear parameters and the asymptotic convergence of the algorithm, we introduce a supervisory node selection mech-anism. Using the weighted residual vector defined in (23), the comprehensive residual norm at the L-th step is given by E2 
+
+> L
+
+= ∥˜eL∥2. In the PI-SC-I algorithm, we establish a contraction evaluation metric ξL:
+
+ξL = ( r + μL)E2 
+
+> L−1
+
+− E 2
+
+> L
+
+, (27) where r ∈ (0 , 1) , and μL = 1−rL+1 . During the generation of the L-th hidden node, we perform Tmax independent trials by randomly sampling the hidden parameters ( wL, b L) and calculating their corresponding optimal output weights β∗
+
+> L
+
+.Full candidate configurations satisfying ξL > 0 are deposited into a feasible pool. The algorithm ultimately selects the optimal parameter set that maximizes ξL, thereby completing the algorithm of PI-SC-I and enforcing the steepest residual descent. 
+
+Remark 1: It is imperative to emphasize that the physical residual epL utilized in computing E2 
+
+> L
+
+represents the true physi-cal residual, rather than its linearized Taylor approximation. As will be rigorously proven in Theorem 1, adhering to this true residual is the fundamental prerequisite for guaranteeing the universal approximation property of the PI-SC-I framework. In the original SCN framework [13], a global evaluation of the output weights was designed after the local node selection to overcome the slow convergence caused by the strictly local constructive scheme. Here, we adopt an anal-ogous global updating mechanism for the proposed frame-work, establishing the PI-SC-III algorithm. Let HL(x) = [h1(x)Im, h2(x)Im, . . . , hL(x)Im] denote the global hidden layer output matrix, and the global output weight vector is denoted as βglob = [ β⊤ 
+
+> 1
+
+, β⊤ 
+
+> 2
+
+, . . . , β⊤ 
+
+> L
+
+]⊤. The globally updated state approximation is denoted as uL(x) = HL(x)βglob .The physical residual at the L-th step is thus given by: 
+
+epL = F
+
+
+
+x, D(q)(HL(x)βglob )
+
+
+
+. (28) Similarly, considering the nonlinearity of the differential op-erator F with respect to βglob , we apply the first-order Taylor expansion around the locally constructed generalized baseline state D(q)uloc . Specifically, let β∗ 
+
+> loc
+
+= [ β⊤ 
+
+> 1
+
+, β⊤ 
+
+> 2
+
+, . . . , (β∗
+
+> L
+
+)⊤]⊤
+
+denote the configuration achieved by the PI-SC-I algorithm at the current step, yielding the local state approximation 
+
+uloc (x) = HL(x)β∗ 
+
+> loc
+
+and its corresponding physical residual 
+
+eploc .Recalling the local Jacobian matrices defined in Eq. (12), we evaluate them directly at the current localized configuration 
+
+uloc (x). The physical residual is thereby linearized via these Jacobian operators as 
+
+epL ≈ eploc + X
+
+> γ∈I q
+
+JDγ u(uloc )  Dγ HL(x)βglob − Dγ uloc (x)
+
+= Aglob (x)βglob − b(x),
+
+(29) where 
+
+Aglob (x) = X
+
+> γ∈I q
+
+JDγ u(uloc )Dγ HL(x),
+
+b(x) = X
+
+> γ∈I q
+
+JDγ u(uloc )Dγ uloc (x) − eploc . (30) Following the same rationale, the initial/boundary condition residual is globally formulated as 
+
+ebL = X
+
+> γ∈I qb
+
+Pγ (x)Dγ HL(x)βglob − gbc (x)= Cglob (x)βglob − gbc (x),
+
+(31) where Cglob (x) = P
+
+> γ∈I qb
+
+Pγ (x)Dγ HL(x).The data residual is globally formulated as: 
+
+edL = udata (x) − HL(x)βglob 
+
+= udata (x) − Dglob (x)βglob , (32) 6
+
+where Dglob (x) = HL(x).Building upon these global algebraic formulations, the com-prehensive objective function for the PI-SC-III algorithm is constructed as a linear least squares problem: 
+
+Lglob (βglob ) = 1
+
+Np
+
+Aglob (x)βglob − b(x) 2Ωp
+
++ ωbc 
+
+Nb
+
+Cglob (x)βglob − gbc (x) 2Ωb
+
++ ωdata 
+
+Nd
+
+Dglob (x)βglob − udata (x) 2Ωd
+
+.
+
+(33) The three terms in (33) can be combined into a unified linear least squares system. The corresponding weighted global design matrix Mglob and target vector vglob are given below: 
+
+Mglob =
+
+
+
+1
+
+pNp
+
+col 
+
+> i=1 ,...,N p
+
+(Aglob (xpi )) 
+
+r ωbc 
+
+Nb
+
+col 
+
+> i=1 ,...,N b
+
+ Cglob (xbi )r ωdata 
+
+Nd
+
+col 
+
+> i=1 ,...,N d
+
+ Dglob (xdi )
+
+. (34a) 
+
+vglob =
+
+
+
+1
+
+pNp
+
+col 
+
+> i=1 ,...,N p
+
+(b(xpi )) 
+
+r ωbc 
+
+Nb
+
+col 
+
+> i=1 ,...,N b
+
+ gbc (xbi )r ωdata 
+
+Nd
+
+col 
+
+> i=1 ,...,N d
+
+ udata (xdi )
+
+. (34b) Accordingly, the objective in (33) can be written as 
+
+Lglob (βglob ) = Mglob βglob − vglob  
+
+> 22
+
+. (35) In practice, as the hidden layer incrementally expands, the global design matrix Mglob becomes increasingly susceptible to severe ill-conditioning. Consequently, the output weights for the entire PI-SC-III network are determined by extending the aforementioned TSVD strategy to evaluate the global pseudo-inverse: ˜β∗ 
+
+> glob
+
+= M†
+
+> glob
+
+vglob . (36) This unified pseudo-inverse approach thoroughly recalcu-lates the entire hidden layer’s output configuration. However, because ˜β∗ 
+
+> glob
+
+is analytically optimal exclusively within the linearized subspace, the nonlinear nature of the underlying PDE operator might occasionally induce a severe Taylor truncation penalty. Applying this full step blindly could lead to an unexpected surge in the true nonlinear residual. To guarantee the monotonic convergence of the network within PI-SC-III, we introduce a discrete line search mecha-nism. We define the global search direction as ∆β = ˜β∗ 
+
+> glob
+
+−
+
+β∗
+
+> loc
+
+, yielding a parameterized weight trajectory for a scaling factor α ∈ [0 , 1] :
+
+β(α) = β∗ 
+
+> loc
+
++ α∆β. (37) Let E2
+
+> L
+
+(α) denote the comprehensive true residual norm evaluated with the candidate weights β(α). The algorithm computes in parallel a discrete set of uniformly distributed candidate step sizes, denoted as A ⊂ [0 , 1] , which includes the boundary limits 1.0 and 0.0.The best scaling factor α∗ within A is selected as 
+
+α∗ = arg min 
+
+> α∈A
+
+E2
+
+> L
+
+(α). (38) The configuration corresponding to this α∗ is then adopted as the final updated weight vector β∗ = β(α∗).Although the global updating mechanism of PI-SC-III achieves higher accuracy, the computational complexity grows rapidly with the number of hidden nodes. Consequently, for large-scale data analysis or complex physical simulations requiring dense node configurations, this exhaustive recalcu-lation incurs substantial computational overhead. To strike a balance between approximation accuracy and computational efficiency, a sliding-window strategy, as originally proposed in the SCN literature [13], can be integrated into the framework to formulate the PI-SC-II algorithm. Specifically, given a window size W < L , the update in PI-SC-II is restricted to the most recent W nodes while freezing the preceding L − W nodes. Following the conventional SC-II partitioning scheme, we decompose the hidden layer matrix and weights as HL(x) = [ Hpre (x), Hwin (x)] and βglob =[β⊤
+
+> pre
+
+, β⊤
+
+> win
+
+]⊤, respectively. The frozen state is thus fixed as 
+
+uL−W (x) = Hpre (x)βpre .To extend this block-wise projection principle to our physics-informed setting, we first systematically analyze the remaining discrepancies across the computational domains. Instead of re-evaluating the entire network, the active window aims to fit the gap between the global targets ( b, gbc , udata )and the contributions already provided by the frozen state 
+
+uL−W . These residual target vectors are explicitly evaluated over their respective domains as: 
+
+rpL−W (x) = b(x) − X
+
+> γ∈I q
+
+JDγ u(uloc )Dγ uL−W (x),
+
+rbL−W (x) = gbc (x) − X
+
+> γ∈I qb
+
+Pγ (x)Dγ uL−W (x),
+
+rdL−W (x) = udata (x) − uL−W (x).
+
+(39) Concurrently, applying the linearized operators exclusively to the windowed hidden nodes Hwin yields: 
+
+AW (x) = X
+
+> γ∈I q
+
+JDγ u(uloc )Dγ Hwin (x),
+
+CW (x) = X
+
+> γ∈I qb
+
+Pγ (x)Dγ Hwin (x),
+
+DW (x) = Hwin (x).
+
+(40) The comprehensive objective function is constructed as a unified least squares problem: 
+
+Lwin (βwin ) = 1
+
+Np
+
+AW (x)βwin − rpL−W (x) 2Ωp
+
++ ωbc 
+
+Nb
+
+CW (x)βwin − rbL−W (x) 2Ωb
+
++ ωdata 
+
+Nd
+
+DW (x)βwin − rdL−W (x) 2Ωd
+
+.
+
+(41) 7
+
+The three terms in (41) can be combined into a unified linear least squares system. The corresponding weighted windowed design matrix MW and target vector vW are given below: 
+
+MW =
+
+
+
+1
+
+pNp
+
+col 
+
+> i=1 ,...,N p
+
+(AW (xpi )) 
+
+r ωbc 
+
+Nb
+
+col 
+
+> i=1 ,...,N b
+
+ CW (xbi )r ωdata 
+
+Nd
+
+col 
+
+> i=1 ,...,N d
+
+ DW (xdi )
+
+. (42a) 
+
+vW =
+
+
+
+1
+
+pNp
+
+col 
+
+> i=1 ,...,N p
+
+ rpL−W (xpi )r ωbc 
+
+Nb
+
+col 
+
+> i=1 ,...,N b
+
+ rbL−W (xbi )r ωdata 
+
+Nd
+
+col 
+
+> i=1 ,...,N d
+
+ rdL−W (xdi )
+
+. (42b) Accordingly, the objective in (41) can be written as 
+
+Lwin (βwin ) = ∥MW βwin − vW ∥22 . (43) Consistent with our strategy to suppress potential ill-conditioning, the output weights for the current window are evaluated via the TSVD pseudo-inverse: 
+
+β∗ 
+
+> win
+
+= M† 
+
+> W
+
+vW . (44) Finally, the complete window-updated weight vector is explicitly reassembled as: 
+
+˜β∗ 
+
+> win
+
+=
+
+βpre 
+
+β∗
+
+> win
+
+
+
+. (45) This sliding-window scheme bounds the number of columns of the design matrix MW to mW , regardless of the total network width L. By dynamically replacing the full-batch recalculation with this windowed block-wise pseudo-inverse, the PI-SC-II framework reduces the computational burden while still reliably preserving the accelerated convergence benefits. However, similar to the global approach in PI-SC-III, because ˜β∗ 
+
+> win
+
+is analytically optimal exclusively within the linearized subspace, applying this windowed step blindly could induce a severe Taylor truncation penalty. To guarantee the monotonic convergence of the network within PI-SC-II, we introduce the same discrete line search mechanism. The search direction and its associated weight trajectory are defined as 
+
+∆β = ˜β∗ 
+
+> win
+
+− β∗
+
+> loc
+
+, β(α) = β∗ 
+
+> loc
+
++ α∆β. (46) Once this windowed direction is constructed, the step size 
+
+α∗ and the final updated weight vector β∗ = β(α∗) are determined using the same method described for PI-SC-III. 
+
+B. Inverse Problem 
+
+To extend the PI-SCM framework to inverse problems, we define the governing equation as F(x, D(q)u; λ) = 0. Within the localized construction phase ( PI-SC-I ), the incremental updating objective is formulated to jointly estimate the local output weight βL and the physical parameter λ.To achieve this joint evaluation, we build upon the high-order linearization strategy established in Section III-A. By performing a simultaneous first-order Taylor expansion with respect to both D(q)u and λ around the previous configuration 
+
+(D(q)uL−1, λL−1), the linearized physical equation governing the current step is explicitly derived as 
+
+AL(x)βL+Jλ(x; uL−1, λL−1)( λL−λL−1) ≈ − epL−1, (47) where epL−1 and AL are defined in (14) and (15), and the pa-rameter Jacobian evaluated at the previous generalized state is defined as Jλ(x; uL−1, λL−1) = ∂F 
+
+> ∂λD(q)u=D(q)uL−1,λ=λL−1
+
+.To evaluate the parameter increment directly, we define 
+
+∆λL = λL − λL−1. This yields the linearized unified system: 
+
+AL(x)βL + Jλ(x; uL−1, λL−1)∆ λL ≈ − epL−1. (48) We define the localized joint update vector as θL =[β⊤ 
+
+> L
+
+, ∆λ⊤ 
+
+> L
+
+]⊤. Casting the equation into a unified matrix-vector product yields the augmented design matrix AL,aug (x) = [AL(x), Jλ(x; uL−1, λL−1)] . Since the boundary constraints and observational data are inherently independent of the physical parameters, their forward design matrices ( CL and 
+
+DL, inherited from (18) and (21)) are systematically zero-padded, yielding CL,aug (x) = [ CL(x), 0] and DL,aug (x) = [DL(x), 0]. The joint parameter identification is rigorously formulated as a linear least-squares minimization problem: 
+
+L(θL) = 1
+
+Np
+
+∥AL,aug (x)θL + epL−1∥2Ωp
+
++ ωbc 
+
+Nb
+
+∥CL,aug (x)θL + ebL−1∥2Ωb
+
++ ωdata 
+
+Nd
+
+∥DL,aug (x)θL + edL−1∥2Ωd .
+
+(49) Solving this linear least squares problem via TSVD yields the candidate joint solution bθL. Consistent with the forward PI-SC-I algorithm, the adopted configuration is damped as 
+
+θ∗ 
+
+> L
+
+= αbθL, from which β∗ 
+
+> L
+
+and ∆λ∗ 
+
+> L
+
+are extracted. Subsequently, these candidate configurations are rigorously filtered through the established supervisory node selection mechanism to guarantee monotonic residual descent. Upon successful addition of the L-th node, the absolute local base-line is established as (uloc , λloc ), where λloc = λL−1 + ∆ λ∗
+
+> L
+
+.Updating λ strictly based on a localized node addition restricts identification accuracy. To overcome this limitation, we extend the established PI-SC-III algorithm for the precise joint identification of global output weights and parameters. Specifically, we perform the Taylor expansion around the newly established intermediate baseline (D(q)uloc , λloc ). Let 
+
+∆λglob = λ−λloc denote the parameter increment. The global augmented joint vector is defined as θglob = [ β⊤
+
+> glob
+
+, ∆λ⊤
+
+> glob
+
+]⊤.Building upon the algebraic formulations derived in the for-ward PI-SC-III algorithm, the expanded global linearized physical equation becomes: 
+
+Aglob (x)βglob + Jλ(x; uloc , λloc )∆ λglob ≈ b(x), (50) where Aglob and b are defined in (29) and (30), and 
+
+Jλ(x; uloc , λloc ) = ∂F 
+
+> ∂λD(q)u=D(q)uloc ,λ=λloc
+
+.Let Jλ,loc (x) = Jλ(x; uloc , λloc ). We define the global augmented matrices as Aglob,aug (x) = [ Aglob (x), Jλ,loc (x)] ,
+
+Cglob,aug (x) = [Cglob (x), 0], and Dglob,aug (x) =8
+
+[Dglob (x), 0]. The joint update is formulated as the following linear least-squares problem: 
+
+Lglob (θglob ) = 1
+
+Np
+
+∥Aglob,aug (x)θglob − b(x)∥2Ωp
+
++ ωbc 
+
+Nb
+
+∥Cglob,aug (x)θglob − gbc (x)∥2Ωb
+
++ ωdata 
+
+Nd
+
+∥Dglob,aug (x)θglob − udata (x)∥2Ωd .
+
+(51) Solving this linear least squares problem via TSVD yields the candidate joint solution ˜θ∗ 
+
+> glob
+
+= [( ˜β∗
+
+> glob
+
+)⊤, (∆ ˜λ∗
+
+> glob
+
+)⊤]⊤.To alleviate the computational bottleneck of this full-batch joint inversion, the PI-SC-II algorithm is similarly adapted. Given a predefined window size W , we define the windowed parameter increment as ∆λwin = λ − λloc and construct 
+
+θwin = [β⊤
+
+> win
+
+, ∆λ⊤
+
+> win
+
+]⊤. By extracting AW , CW , and 
+
+DW defined in (40), we construct the windowed augmented matrices as AW,aug (x) = [ AW (x), Jλ,loc (x)] , CW,aug (x) = [CW (x), 0], and DW,aug (x) = [ DW (x), 0]. The joint update is formulated as the following linear least-squares problem: 
+
+Lwin (θwin ) = 1
+
+Np
+
+∥AW,aug (x)θwin − rpL−W (x)∥2Ωp
+
++ ωbc 
+
+Nb
+
+∥CW,aug (x)θwin − rbL−W (x)∥2Ωb
+
++ ωdata 
+
+Nd
+
+∥DW,aug (x)θwin − rdL−W (x)∥2Ωd .
+
+(52) Solving this linear least squares problem via TSVD yields the candidate joint solution θ∗ 
+
+> win
+
+= [( β∗
+
+> win
+
+)⊤, (∆ ˜λ∗
+
+> win
+
+)⊤]⊤.To guarantee the monotonic decrease of the residual se-quence during this joint parameter-weight update, we extend the discrete line search mechanism to the inverse problem. We define the absolute joint configuration vector as Θ =[β⊤, λ⊤]⊤. Let Θ∗ 
+
+> loc
+
+= [β∗⊤  
+
+> loc
+
+, λ⊤
+
+> loc
+
+]⊤ denote the absolute baseline joint configuration secured by PI-SC-I. Depending on the utilized algorithm, ˜Θ∗ is explicitly re-assembled as: 
+
+˜Θ∗ =
+
+" ˜β∗
+
+> glob
+
+λloc + ∆ ˜λ∗
+
+> glob
+
+#
+
+, for PI-SC-III 
+
+
+
+βpre 
+
+β∗
+
+> win
+
+λloc + ∆ ˜λ∗
+
+> win
+
+ , for PI-SC-II 
+
+. (53) We then establish a linear search path governed by a scaling factor α ∈ [0 , 1] as: 
+
+Θ(α) = Θ∗ 
+
+> loc
+
++ α( ˜Θ∗ − Θ∗
+
+> loc
+
+). (54) By computing in parallel the comprehensive true residual norm E2
+
+> L
+
+(α) across the discrete candidate set A, the optimal scaling factor α∗ is determined via explicit minimization: 
+
+α∗ = arg min 
+
+> α∈A
+
+E2
+
+> L
+
+(α). (55) The optimally scaled absolute configuration is then adopted as the final updated vector Θ∗ = Θ(α∗).To synthesize the mathematical formulations derived for both forward and inverse learning tasks, the comprehensive training strategies of the PI-SCM framework are summarized in the following algorithms. Algorithm 1 details the fundamen-tal localized construction process (PI-SC-I), while Algorithm 2 and Algorithm 3 describe the advanced sliding-window (PI-SC-II) and global updating (PI-SC-III) mechanisms, respec-tively. 
+
+C. Universal Approximation Property 
+
+Building upon the algorithmic formulations established in Section III-A and Section III-B, this section constructs a unified theoretical foundation for the PI-SCM framework. We rigorously establish the universal approximation property of the proposed algorithms, proving that PI-SC-I, PI-SC-II, and PI-SC-III inherently guarantee the asymptotic convergence of the nonlinear residuals to zero. While the ensuing explicit proofs are formulated within the context of the forward problem, the residual-convergence guarantees extend to the inverse problem under the same augmented-feature conditions. As established in Section III-B, defining θL maps the joint parameter identification into an identical linearized subspace. This algebraic structure pre-serves the underlying contraction argument, provided that the augmented Jacobian satisfies the required non-orthogonality condition. Unique recovery of λ additionally requires the conventional local identifiability condition on the parameter Jacobian. Before proceeding, we formally articulate a standard regu-larity assumption regarding the differential operator. 
+
+Assumption 1: Let 
+
+z = col 
+
+> γ∈I q
+
+(Dγ u) = col 
+
+
+
+D(q)u
+
+
+
+. (56) The activation function satisfies g ∈ Cq (R). The differential operator F is assumed to be twice continuously Fr´ echet differentiable ( C2) with respect to z. Consequently, its second Fr´ echet derivative is locally bounded. As the convergence of entire PI-SCM architecture relies on the stability of incremental node additions, we initially prove the universal approximation property for the PI-SC-I algorithm, which serves as the convergent baseline for all subsequent schemes. To facilitate a concise derivation, we recall the weighted generalized residual vector ˜eL, its comprehensive norm E2
+
+> L
+
+,the weighted design matrix ML, and the target vector vL =
+
+−˜eL−1 established in Section III-A. By applying the first-order Taylor expansion to ˜eL, we have 
+
+˜eL = ˜ eL−1 + MLβL + rvec (βL) = MLβL − vL + rvec (βL).The Taylor truncation error originates exclusively from the nonlinear physical residual. The true nonlinear residual norm at the L-th step is thus given by: 
+
+E2 
+
+> L
+
+= ∥MLβL − vL∥2 + RT aylor (βL), (57) where RT aylor (βL) is defined as: 
+
+RT aylor (βL) = 2( MLβL − vL)⊤rvec (βL) + ∥rvec (βL)∥2.
+
+(58) As shown in (58), RT aylor (βL) represents the omitted second-order Taylor remainder. Beyond operator regularity, 9
+
+Algorithm 1 Training strategy of PI-SC-I 
+
+Input: Given coordinates x = ( x1, . . . , x n)⊤ partitioned into collocation sets Ωp, Ωb, Ωd; Sparse observational target 
+
+udata ; The differential operator F and initial/boundary operator B; Initialized Lmax , T max ; Error tolerance ϵ;Three sets of scalars Υ = {τ1, . . . , τ end }, R =
+
+{r1, . . . , r end }, A1 = {α1,1 : ∆ α1 : α1,end }; Penalty weights ωbc , ω data .
+
+Output: Hidden parameters {w∗
+
+> L
+
+, b ∗
+
+> L
+
+}Lend  
+
+> L=1
+
+, output weights 
+
+{β∗
+
+> L
+
+}Lend  
+
+> L=1
+
+(and identified physical parameter λ∗ for in-verse tasks).  
+
+> 1:
+
+Initialize L = 1 , u0 = 0. If inverse problem, initialize λ0. 
+
+> 2:
+
+Evaluate initial residuals ep
+
+> 0
+
+, eb
+
+> 0
+
+, ed 
+
+> 0
+
+and comprehensive norm E20 . 
+
+> 3:
+
+while L ≤ Lmax and E2 
+
+> L−1
+
+> ϵ do  
+
+> 4:
+
+Initialize two empty sets P and Ω1. 
+
+> 5:
+
+for α1 ∈ A 1 do  
+
+> 6:
+
+for τ ∈ Υ do  
+
+> 7:
+
+for k = 1 , 2, . . . , T max do  
+
+> 8:
+
+Randomly sample hidden parameters wL ∼
+
+[−τ, τ ]n and bL ∼ [−τ, τ ]. 
+
+> 9:
+
+For forward tasks, assemble ML, vL by (24) and compute β∗ 
+
+> L
+
+by (26). For inverse tasks, solve (49) via TSVD to obtain bθL, and set 
+
+θ∗ 
+
+> L
+
+= α1bθL. 
+
+> 10:
+
+Extract β∗ 
+
+> L
+
+(and ∆λ∗ for inverse tasks).  
+
+> 11:
+
+Update uL = uL−1 + β∗
+
+> L
+
+hL. 
+
+> 12:
+
+Evaluate E2
+
+> L
+
+. 
+
+> 13:
+
+Calculate ξL = ( r +μL)E2 
+
+> L−1
+
+−E 2
+
+> L
+
+, where μL =(1 − r)/(L + 1) . 
+
+> 14:
+
+if ξL > 0 then  
+
+> 15:
+
+Save wL, b L, β∗ 
+
+> L
+
+(and ∆λ∗ for inverse tasks) in P, ξL in Ω1. 
+
+> 16:
+
+end if  
+
+> 17:
+
+end for  
+
+> 18:
+
+if P is not empty then  
+
+> 19:
+
+Find wL, b L, β∗ 
+
+> L
+
+(and ∆λ∗ for inverse tasks) that maximize ξL in Ω1. 
+
+> 20:
+
+Update uL, epL, ebL, edL, E2 
+
+> L
+
+(and set λ∗ 
+
+> L
+
+=
+
+λL−1 + ∆ λ∗
+
+> L
+
+).  
+
+> 21:
+
+Break (go to Step 27).  
+
+> 22:
+
+else  
+
+> 23:
+
+Update r to the subsequent value in R. 
+
+> 24:
+
+Continue  
+
+> 25:
+
+end if  
+
+> 26:
+
+end for  
+
+> 27:
+
+end for  
+
+> 28:
+
+L ← L + 1 . 
+
+> 29:
+
+end while  
+
+> 30:
+
+return {w∗
+
+> L
+
+, b ∗
+
+> L
+
+}Lend  
+
+> L=1
+
+, {β∗
+
+> L
+
+}Lend  
+
+> L=1
+
+(and λ∗ for inverse tasks). convergence requires the admissible hidden-node family Γ to provide a nonorthogonal linearized direction for every nonzero discrete residual, as formalized below. 
+
+Algorithm 2 Training strategy of PI-SC-II 
+
+Input: The inputs of Algorithm 1; Window size W < L max ;
+
+A2 = {α2,1 : ∆ α2 : α2,end }.
+
+Output: Hidden parameters {w∗
+
+> L
+
+, b ∗
+
+> L
+
+}Lend  
+
+> L=1
+
+, output weights 
+
+{β∗
+
+> L
+
+}Lend  
+
+> L=1
+
+(and identified parameter λ∗ for inverse tasks).  
+
+> 1:
+
+Initialize L = 1 , u0 = 0. If inverse problem, initialize λ0. 
+
+> 2:
+
+Evaluate initial residuals ep
+
+> 0
+
+, eb
+
+> 0
+
+, ed 
+
+> 0
+
+and comprehensive norm E20 . 
+
+> 3:
+
+while L ≤ Lmax and E2 
+
+> L−1
+
+> ϵ do  
+
+> 4:
+
+Execute Step 4-27 of Algorithm 1 to secure w∗
+
+> L
+
+, b ∗ 
+
+> L
+
+and 
+
+β∗ 
+
+> loc
+
+(or Θ∗ 
+
+> loc
+
+for inverse tasks).  
+
+> 5:
+
+if L ≤ W then  
+
+> 6:
+
+For forward tasks, assemble Mglob , vglob by (34) and compute ˜β∗ by (36). For inverse tasks, solve (51) via TSVD to obtain ˜θ∗
+
+> glob
+
+. 
+
+> 7:
+
+else  
+
+> 8:
+
+Retrieve βpre = [ β∗⊤  
+
+> 1
+
+, . . . , β∗⊤  
+
+> L−W
+
+]⊤. 
+
+> 9:
+
+Calculate rpL−W , rbL−W , rdL−W by (39).  
+
+> 10:
+
+For forward tasks, assemble MW , vW by (42) and compute β∗ 
+
+> win
+
+by (44).  
+
+> 11:
+
+For inverse tasks, solve (52) via TSVD to obtain 
+
+θ∗
+
+> win
+
+. 
+
+> 12:
+
+For forward tasks, let ˜β∗ = [ β⊤
+
+> pre
+
+, (β∗
+
+> win
+
+)⊤]⊤. 
+
+> 13:
+
+end if  
+
+> 14:
+
+Initialize an empty set Ω2. 
+
+> 15:
+
+Obtain ∆β = ˜β∗ − β∗ 
+
+> loc
+
+(or obtain ˜Θ∗ by (53), ∆Θ =˜Θ∗ − Θ∗ 
+
+> loc
+
+for inverse tasks).  
+
+> 16:
+
+for α2 ∈ A 2 do  
+
+> 17:
+
+Calculate β(α2) = β∗ 
+
+> loc
+
++ α2∆β (or Θ(α2) for in-verse tasks) and corresponding E2
+
+> L
+
+(α2). Save E2
+
+> L
+
+(α2)
+
+to Ω2. 
+
+> 18:
+
+end for  
+
+> 19:
+
+Find α∗ 
+
+> 2
+
+that minimizes E2
+
+> L
+
+(α2) in Ω2 and adopt β∗ =
+
+β(α∗
+
+> 2
+
+) (or Θ∗ = Θ(α∗
+
+> 2
+
+) for inverse tasks).  
+
+> 20:
+
+Extract β∗ (and λ∗ for inverse tasks).  
+
+> 21:
+
+Update uL, epL, ebL, edL, E2 
+
+> L
+
+(and set λ∗ 
+
+> L
+
+= λ∗).  
+
+> 22:
+
+L ← L + 1 . 
+
+> 23:
+
+end while  
+
+> 24:
+
+return {w∗
+
+> L
+
+, b ∗
+
+> L
+
+}Lend  
+
+> L=1
+
+, {β∗
+
+> L
+
+}Lend  
+
+> L=1
+
+(and λ∗ for inverse tasks). 
+
+Assumption 2: At each incremental step L, the admissible hidden-node family Γ is residual-complete in the sense that, for every nonzero vector ˜e in the discrete generalized residual space, there exists an h ∈ Γ whose weighted design matrix 
+
+ML(h) satisfies 
+
+ML(h)⊤˜e̸ = 0. (59) Under these assumptions, we now establish the universal approximation property of the PI-SC-I algorithm. 
+
+Theorem 1: Suppose that Assumptions 1 and 2 hold, and the generalized residuals are bounded. Given r ∈ (0 , 1) and a nonnegative real number sequence {μL} with lim L→+∞ μL =0 and μL ≤ (1 − r), let the threshold sequence be defined as 
+
+δL = (1 − r − μL)E2
+
+> L−1
+
+. Then, there exists a candidate hidden 10 
+
+Algorithm 3 Training strategy of PI-SC-III 
+
+Input: The inputs of Algorithm 1; A2 = {α2,min : ∆ α2 :
+
+α2,max }.
+
+Output: Hidden parameters {w∗
+
+> L
+
+, b ∗
+
+> L
+
+}Lend  
+
+> L=1
+
+, output weights 
+
+{β∗
+
+> L
+
+}Lend  
+
+> L=1
+
+(and identified parameter λ∗ for inverse tasks).  
+
+> 1:
+
+Initialize L = 1 , u0 = 0. If inverse problem, initialize λ0. 
+
+> 2:
+
+Evaluate initial residuals ep
+
+> 0
+
+, eb
+
+> 0
+
+, ed 
+
+> 0
+
+and comprehensive norm E20 . 
+
+> 3:
+
+while L ≤ Lmax and E2 
+
+> L−1
+
+> ϵ do  
+
+> 4:
+
+Execute Step 4-27 of Algorithm 1 to secure w∗
+
+> L
+
+, b ∗ 
+
+> L
+
+and 
+
+β∗ 
+
+> loc
+
+(or Θ∗ 
+
+> loc
+
+for inverse tasks).  
+
+> 5:
+
+For forward tasks, assemble Mglob , vglob by (34) and compute ˜β∗ 
+
+> glob
+
+by (36). For inverse tasks, solve (51) via TSVD to obtain ˜θ∗
+
+> glob
+
+. 
+
+> 6:
+
+Initialize an empty set Ω2. 
+
+> 7:
+
+Obtain ∆β = ˜β∗ 
+
+> glob
+
+− β∗ 
+
+> loc
+
+(or obtain ˜Θ∗ by (53), 
+
+∆Θ = ˜Θ∗ − Θ∗ 
+
+> loc
+
+for inverse tasks).  
+
+> 8:
+
+for α2 ∈ A 2 do  
+
+> 9:
+
+Calculate β(α2) = β∗ 
+
+> loc
+
++ α2∆β (or Θ(α2) for in-verse tasks) and corresponding E2
+
+> L
+
+(α2). Save E2
+
+> L
+
+(α2)
+
+to Ω2. 
+
+> 10:
+
+end for  
+
+> 11:
+
+Find α∗ 
+
+> 2
+
+that minimizes E2
+
+> L
+
+(α2) in Ω2 and adopt β∗ =
+
+β(α∗
+
+> 2
+
+) (or Θ∗ = Θ(α∗
+
+> 2
+
+) for inverse tasks).  
+
+> 12:
+
+Extract β∗ (and λ∗ for inverse tasks).  
+
+> 13:
+
+Update uL, epL, ebL, edL, E2 
+
+> L
+
+(and set λ∗ 
+
+> L
+
+= λ∗).  
+
+> 14:
+
+L ← L + 1 . 
+
+> 15:
+
+end while  
+
+> 16:
+
+return {w∗
+
+> L
+
+, b ∗
+
+> L
+
+}Lend  
+
+> L=1
+
+, {β∗
+
+> L
+
+}Lend  
+
+> L=1
+
+(and λ∗ for inverse tasks). node hL ∈ Γ and a scaling factor ¯α ∈ (0 , 1] , such that for any 
+
+α ∈ (0 , ¯α), the output weight vector, defined as 
+
+βL(α) = αM†
+
+> L
+
+vL, (60) guarantees that the following inequality holds: 
+
+E2 
+
+> L−1
+
+− E 2 
+
+> L
+
+≥ δL. (61) By accepting the node and the output weights that satisfy (61), the sequence of {E 2
+
+> L
+
+} monotonically decreases, satisfying 
+
+lim L→+∞ E2 
+
+> L
+
+= 0 .
+
+Proof: If ˜eL−1 = 0, the desired residual convergence has already been achieved. Otherwise, ˜eL−1̸ = 0. According to Assumption 2, there exists an admissible hidden node hL ∈ Γ
+
+such that M⊤ 
+
+> L
+
+˜eL−1̸ = 0. Since vL = −˜eL−1, it follows that 
+
+M⊤ 
+
+> L
+
+vL̸ = 0.Then, we consider the output weight vector βL(α) defined in (60) and define PL = MLM†
+
+> L
+
+. It satisfies P⊤ 
+
+> L
+
+= PL
+
+and P2 
+
+> L
+
+= PL. Hence, MLβL(α) − vL = ( αPL − I)vL.Substituting this relation into the true residual expansion, we define ∆E2(α) as the reduction in the true residual norm: 
+
+∆E2(α) = E2 
+
+> L−1
+
+− E 2
+
+> L
+
+= α(2 − α)∥PLvL∥2 − R T aylor (αM†
+
+> L
+
+vL). (62) Because M⊤ 
+
+> L
+
+vL̸ = 0, PLvL is nonzero, guaranteeing that 
+
+∥PLvL∥2 > 0.According to Assumption 1, the remainder is bounded. Since the generalized residuals are assumed to be globally bounded, the absolute magnitude of the expanded scalar penalty, denoted as |R T aylor |, inherently inherits this quadratic bound. Thus, for every accepted hidden node there exists a finite constant ˜CL > 0 yielding |R T aylor | ≤ α2 ˜CL∥M†
+
+> L
+
+vL∥2.We apply −R T aylor ≥ −|R T aylor | to (62), yielding: 
+
+∆E2(α) ≥ α(2 − α)∥PLvL∥2 − α2 ˜CL∥M†
+
+> L
+
+vL∥2. (63) Since α > 0, to guarantee ∆E2(α) > 0, the inequality requires: 
+
+(2 − α)∥PLvL∥2 − α ˜CL∥M†
+
+> L
+
+vL∥2 > 0. (64) Because we have ∥PLvL∥2 > 0, ∥PLvL∥2 + ˜CL∥M†
+
+> L
+
+vL∥2
+
+is guaranteed to be positive. Thus, we can obtain the upper bound for α, denoted as ¯α:
+
+¯α = min 
+
+(
+
+1, 2∥PLvL∥2
+
+∥PLvL∥2 + ˜CL∥M†
+
+> L
+
+vL∥2
+
+)
+
+, 0 < α < ¯α. 
+
+(65) This construction inherently ensures ¯α > 0. Consequently, for any assigned α within the constructed interval α ∈ (0 , ¯α),we have ∆E2(α) = c > 0.As the relaxation parameter r approaches 1, the threshold 
+
+δL = (1 −r −μL)E2 
+
+> L−1
+
+approaches 0. Thus, since c > 0, there always exists an r ∈ (0 , 1) such that δL ≤ c. This ensures that the descent inequality ∆E2(α) ≥ δL can always be rigorously satisfied. Consequently, we obtain: 
+
+E2 
+
+> L
+
+≤ E 2 
+
+> L−1
+
+− δL = ( r + μL)E2
+
+> L−1
+
+. (66) Note that lim L→+∞ μL = 0 . By utilizing (66), it strictly follows that lim L→+∞ E2 
+
+> L
+
+= 0 .
+
+Remark 2: In PI-SC-I, explicitly computing ¯α is unnec-essary. Instead, α can be dynamically adapted utilizing a decay strategy analogous to the relaxation parameter r. No-tably, in most empirical scenarios—particularly during the initial phases of training—the first-order linear descent heav-ily dominates the second-order remainder bound, yielding 
+
+∥PLvL∥2 ≫ ˜CL∥M†
+
+> L
+
+vL∥2. Under this condition, the optimal 
+
+α converges to 1. Consequently, the framework simply initial-izes α = 1 and decays it exclusively when the candidate nodes fail to achieve residual descent, thereby guaranteeing feasible node configuration with minimal computational overhead. Building upon the universal approximation property of the PI-SC-I algorithm established in Theorem 1, we now extend our theoretical analysis to the globally updated PI-SC-III algorithm. Recalling the optimal localized configuration β∗ 
+
+> loc
+
+and the global configuration ˜β∗ 
+
+> glob
+
+established in Section III-A, let 
+
+E2
+
+> L
+
+(β) = ∥˜eL(β)∥2 denote the comprehensive true resid-ual norm evaluated at any candidate configuration β. Con-sequently, the local residual norm is explicitly defined as 
+
+E2 
+
+> L,loc
+
+= E2
+
+> L
+
+(β∗
+
+> loc
+
+).
+
+Theorem 2: Suppose the conditions of Theorem 1 hold. We define the global search direction as ∆β = ˜β∗ 
+
+> glob
+
+− β∗
+
+> loc
+
+.11 
+
+Then, there exists a scaling factor ¯α ∈ [0 , 1] such that for any 
+
+α ∈ [0 , ¯α], the adopted configuration, defined as 
+
+β = β∗ 
+
+> loc
+
++ α∆β, (67) guarantees that the following inequality holds: 
+
+E2
+
+> L
+
+(β) ≤ E 2
+
+> L,loc
+
+. (68) By accepting the configuration that satisfies this inequality, the sequence of {E 2
+
+> L
+
+} monotonically decreases, satisfying 
+
+lim L→+∞ E2 
+
+> L
+
+= 0 .
+
+Proof: If ˜β∗ 
+
+> glob
+
+= β∗
+
+> loc
+
+, we have ∆β = 0. Consequently, the step size inherently yields E2
+
+> L
+
+(β) = E2 
+
+> L,loc
+
+for any assigned 
+
+α. In this scenario, taking α∗ = 0 constitutes a valid trivial solution that satisfies the acceptance criterion. If ˜β∗
+
+> glob
+
+̸ = β∗
+
+> loc
+
+, ∆β constitutes a strict descent direction for the linearized least-squares objective. Analogous to the proof of Theorem 1, the first-order linear descent dominates the bounded second-order remainder for sufficiently small α > 
+
+0. This guarantees the existence of a positive upper bound ¯α ∈
+
+(0 , 1] such that for all α ∈ (0 , ¯α], we have E2
+
+> L
+
+(β) < E2
+
+> L,loc
+
+.If the two configurations attain the same minimum value of the linearized objective, taking ¯α = 0 satisfies the acceptance criterion. Since the boundary case α = 0 inherently satisfies the equality E2
+
+> L
+
+(β) = E2
+
+> L,loc
+
+, the inequality described in (68) holds for all α ∈ [0 , ¯α].Recalling from (66) that E2 
+
+> L,loc
+
+≤ (r + μL)E2
+
+> L−1
+
+. Thus, we have: 
+
+E2 
+
+> L
+
+≤ E 2 
+
+> L,loc
+
+≤ (r + μL)E2
+
+> L−1
+
+. (69) Using the same arguments established in the proof of Theorem 1, we conclude that lim L→+∞ E2 
+
+> L
+
+= 0 .Following the theoretical guarantees of PI-SC-III, we now extend our theoretical analysis to the PI-SC-II algorithm. Since this algorithm employs an identical discrete line search mechanism, for brevity, we omit the proof and directly present its universal approximation theorem. We recall the windowed configuration ˜β∗ 
+
+> win
+
+defined in Section III-A. 
+
+Theorem 3: Suppose the conditions of Theorem 1 hold. We define the windowed search direction as ∆β = ˜β∗ 
+
+> win
+
+− β∗
+
+> loc
+
+.Then, there exists a scaling factor ¯α ∈ [0 , 1] such that for any 
+
+α ∈ [0 , ¯α], the adopted configuration, defined as 
+
+β = β∗ 
+
+> loc
+
++ α∆β, (70) guarantees that the following inequality holds: 
+
+E2
+
+> L
+
+(β) ≤ E 2
+
+> L,loc
+
+. (71) By accepting the configuration that satisfies this inequality, the sequence of {E 2
+
+> L
+
+} monotonically decreases, satisfying 
+
+lim L→+∞ E2 
+
+> L
+
+= 0 .
+
+D. Hyperparameter Configuration Strategy 
+
+Implementing the PI-SCM framework relies on the appro-priate configuration of the hyperparameter sets, particularly the candidate pool for the stochastic parameter sampling range 
+
+Υ = {τ1, τ 2, . . . , τ end }. Unlike conventional backpropagation-based deep learning where weight initialization merely dic-tates the starting point of optimization, the sampling bounds 
+
+wL ∼ [−τ, τ ]n and bL ∼ [−τ, τ ] govern the basis function space generated at each incremental step. Consistent with the original SCN theory [13], adopting a progressively larger τ empowers the randomized parameters 
+
+wL and bL to explore a broader configuration space, thereby generating basis functions with stronger nonlinear expressivity. However, extending this mechanism to PI-SCM introduces a structural bottleneck absent in purely data-driven configura-tions. Taking the localized PI-SC-I algorithm as an illustrative example, the construction of AL(x) in (14) necessitates the analytical evaluation of the hidden-node derivatives up to order 
+
+q. Given the node output hL(x) = g(w⊤ 
+
+> L
+
+x + bL) and an arbitrary multi-index γ ∈ I q , repeated application of the chain rule yields: 
+
+Dγ hL(x) = g(|γ|)(w⊤ 
+
+> L
+
+x + bL)
+
+> n
+
+Y
+
+> j=1
+
+wγj 
+
+> L,j
+
+, (72) where wL,j is the j-th component of the hidden weights 
+
+wL, and g(|γ|) denotes the corresponding activation derivative. Recalling (15), we have: 
+
+AL(x) = X
+
+> γ∈I q
+
+JDγ u(uL−1)g(|γ|)(w⊤ 
+
+> L
+
+x+bL)
+
+> n
+
+Y
+
+> j=1
+
+wγj 
+
+> L,j
+
+. (73) For the smooth bounded activation functions adopted in this work, the magnitude of each derivative contribution within 
+
+AL(x) is governed primarily by the product Qnj=1 wγj 
+
+> L,j
+
+.Consequently, a derivative block of order |γ| scales as O(τ |γ|).When a disproportionately large τ is assigned, the highest-order derivative terms can dominate the lower-order state-dependent terms. This column-wise magnitude disparity in-flates the condition number of ML defined in (24), and the effect becomes progressively stronger as q increases. Consequently, a large τ exacerbates matrix ill-conditioning. While the TSVD approach introduced in Section III-A miti-gates the adverse effects of matrix ill-conditioning, feeding it highly ill-conditioned matrices forces the truncation of exces-sive singular components, destroying the physical information embedded within the Jacobian operators. Conversely, restricting τ to small values guarantees well-conditioned matrices but restricts the expressive capacity of the network. For complex problems, relying exclusively on such constrained spaces requires a large number of hidden nodes to achieve acceptable accuracy, leading to slow convergence and structural redundancy. To resolve the tension among convergence rate, struc-tural exploratory capacity, and numerical matrix stability, the candidate pool is formulated as a parametrically scaled monotonically increasing sequence, defined as Υ = a ×{1, 2, 4, 8, 16 , 32 , 64 }. Here, a > 0 serves as a problem-dependent characteristic scaling factor. The magnitude of a
+
+is specifically tailored to the governing differential equations to equilibrate the numerical magnitudes among the state-dependent Jacobian Ju and the derivative-dependent Jacobians 
+
+JDγ u for 1 ≤ | γ| ≤ q.PI-SCM processes this scaled sequence in ascending order. The framework samples from the narrowest bounds first, 12 
+
+escalating to the subsequent broader candidate range only when the current configuration space fails to secure a valid residual descent. This strategy effectively balances numerical stability with the structural expressivity required for complex physical dynamics. IV. E XPERIMENTAL RESULTS 
+
+This section evaluates PI-SCM along three complementary axes. First, forward problems assess state approximation for the Van der Pol oscillator, the two-dimensional Helmholtz equation, and the Allen–Cahn equation. Second, inverse prob-lems assess joint state reconstruction and parameter identifi-cation on the Van der Pol and Helmholtz systems. Third, an activation-function study isolates the effect of the hidden-node basis. 
+
+A. Experimental Systems 1) Van der Pol oscillator: The Van der Pol oscillator [25] is a nonlinear, non-conservative dynamical system used in circuit modeling, seismology, biological neuron modeling, and optimal control [26]. We consider the controlled second-order equation 
+
+utt −μ(1 −u2)ut+u−U = 0 , (t, U ) ∈ [0 , 5] ×[0 , 1] , (74) where μ is the nonlinear damping coefficient and U is the exogenous input. The initial conditions are u(0 , U ) = −0.25 
+
+and ut(0 , U ) = −2.0. The value μ = 1 is prescribed in the forward task, whereas μ is identified in the inverse task. 
+
+2) Two-dimensional Helmholtz equation: The Helmholtz equation is a canonical elliptic model of time-harmonic wave propagation. The benchmark is 
+
+uxx + uyy + k2u − q(x, y ) = 0 , (x, y ) ∈ [−1, 1] × [−1, 1] ,
+
+(75) with homogeneous Dirichlet conditions 
+
+u(−1, y ) = u(1 , y ) = u(x, −1) = u(x, 1) = 0 . (76) A manufactured source is used: 
+
+q(x, y ) = − (a1π)2 sin( a1πx ) sin( a2πy )
+
+− (a2π)2 sin( a1πx ) sin( a2πy )+ sin( a1πx ) sin( a2πy ),
+
+(77) where a1 = 1 and a2 = 4 . The value k2 = 1 is prescribed in the forward task, whereas k2 is identified in the inverse task. The corresponding analytical solution is 
+
+u(x, y ) = sin( a1πx ) sin( a2πy ). (78) 
+
+3) Allen–Cahn equation: The Allen–Cahn equation models phase separation and presents a challenging combination of a stiff reaction term and sharp moving interfaces. We consider 
+
+ut −ϵu xx +5 u3 −5u = 0 , (x, t ) ∈ [−1, 1] ×[0 , 0.5] , (79) where ϵ = 10 −4, u(x, 0) = x2 cos( πx ), and the periodic boundary constraints are u(−1, t ) = u(1 , t ) and ux(−1, t ) = 
+
+ux(1 , t ). Because the small diffusion coefficient produces a large scale disparity between the derivative and reaction terms, we define X = ωnx with ωn = 1 /√ϵ = 100 . The transformed equation is 
+
+∂u ∂t − ϵω 2
+
+> n
+
+∂2u∂X 2 + 5 u3 − 5u = 0 . (80) Since ϵω 2 
+
+> n
+
+= 1, the coordinate stretching balances the state- and derivative-dependent Jacobian contributions in (73) and improves the conditioning of ML without changing the underlying physical solution. For each system, state accuracy is measured by the root mean square error (RMSE) over Ntest test inputs: 
+
+RMSE = 
+
+vuut 1
+
+Ntest 
+
+> Ntest
+
+X
+
+> i=1
+
+∥upred (ζi) − utrue (ζi)∥22, (81) where ζi denotes the ith test input, and upred and utrue denote the predicted and reference states, respectively. All methods are implemented in Python and evaluated on a workstation equipped with an NVIDIA RTX 4060 Ti GPU, an Intel Core i5-14600KF CPU, and 16 GB of RAM. 
+
+B. Forward Problems: Experimental Setup 
+
+We consider both unsupervised and semi-supervised set-tings. For the Van der Pol system, we sample Np = 1000 
+
+interior points and Ni = 100 initial points, with an ad-ditional Nd = 100 Runge–Kutta observations in the semi-supervised setting. The penalty weights are set to ωbc = 1 
+
+and ωdata = 1 . The constructive parameters are Υ = 15 ×{1, 2, 4, 8, 16 , 32 , 64 }, Tmax = 50 , Lmax = 300 , and W =200 , with A1 = {1.0, 0.9, . . . , 0.1}, A2 = {1.0, 0.9, . . . , 0},and R = {1 − 10 −k | k = 1 , . . . , 7}.For the two-dimensional Helmholtz equation, we use Np =2000 interior collocation points, Nbc = 1000 boundary points, and Lmax = 400 . The remaining PI-SCM settings follow those of the Van der Pol experiment. The baselines include shallow and deep PINNs with architectures 1×400 and 4×64 ,respectively, together with the physics-informed extreme learn-ing machine (PIELM) [27], which uses the same 1 × 400 
+
+architecture as PI-SCM. For the Allen–Cahn equation, we set Lmax = 500 , while the other PI-SCM settings follow those of the Van der Pol exper-iment. The corresponding variable-scaling physics-informed neural network (VS-PINN) baselines [28] use shallow and deep architectures of 1 × 500 and 4 × 64 , respectively. Across all forward experiments, each PINN-based baseline uses the same physics collocation, initial/boundary, and ob-servational points as the corresponding PI-SCM experiment. All PINN-based baselines employ the hyperbolic tangent ac-tivation and are trained with Adam for 5,000 epochs, with an initial learning rate of 10 −2 for the Van der Pol and Helmholtz equations and 10 −3 for the Allen–Cahn equation. For the Van der Pol equation, we additionally compare with PISCN [23], which adopts the same constructive settings as PI-SCM and is subsequently optimized with Adam for 100 epochs using a learning rate of 5 × 10 −3. Since PISCN requires labeled data during construction, it is evaluated only in the semi-supervised setting. PI-SCM and PISCN use the sine activation. Each configuration is repeated 100 times. 13 
+
+TABLE I FORWARD RESULTS FOR THE VAN DER POL OSCILLATOR .                                                                                 
+
+> Algorithm Paradigm Time (s) RMSE PINN ( 1×300 )Unsupervised 21 .3±0.57 3.69 e−1±9.18 e−2
+> Semi-supervised 27 .5±0.89 8.05 e−2±4.02 e−3
+> PINN ( 4×64 )Unsupervised 40 .0±1.02 5.49 e−3±3.03 e−3
+> Semi-supervised 50 .8±1.08 1.34 e−3±5.22 e−4
+> PISCN Unsupervised ––Semi-supervised 13 .8±0.37 7.58 e−2±2.59 e−2
+> PI-SC-I Unsupervised 0.53 ±0.02 3.88 e−1±1.41 e−1
+> Semi-supervised 0.60 ±0.01 1.23 e−1±3.82 e−2
+> PI-SC-II Unsupervised 1.37 ±0.04 1.30 e−2±5.73 e−3
+> Semi-supervised 1.57 ±0.05 5.27 e−3±2.63 e−3
+> PI-SC-III Unsupervised 1.44 ±0.04 1.93 e−3±9.86 e−4
+> Semi-supervised 1.64 ±0.04 5.92 e−4±1.76 e−4
+
+TABLE II FORWARD RESULTS FOR THE TWO -DIMENSIONAL HELMHOLTZ EQUATION .                                                                                     
+
+> Algorithm Paradigm Time (s) RMSE PINN ( 1×400 )Unsupervised 40 .5±1.23 2.62 e−2±1.97 e−2
+> Semi-supervised 53 .2±1.51 1.13 e−2±4.50 e−3
+> PINN ( 4×64 )Unsupervised 75 .6±1.11 3.28 e−2±1.43 e−2
+> Semi-supervised 105 ±1.38 1.44 e−2±5.06 e−3
+> PIELM Unsupervised 0.02 ±0.00 9.09 e−3±3.83 e−3
+> Semi-supervised 0.02 ±0.00 6.61 e−3±3.84 e−3
+> PI-SC-I Unsupervised 0.57 ±0.01 1.91 e−1±9.82 e−2
+> Semi-supervised 0.66 ±0.01 1.57 e−1±7.25 e−2
+> PI-SC-II Unsupervised 1.99 ±0.05 5.19 e−3±2.05 e−3
+> Semi-supervised 2.20 ±0.06 4.71 e−3±1.78 e−3
+> PI-SC-III Unsupervised 2.31 ±0.04 1.02 e−6±4.79 e−7
+> Semi-supervised 2.54 ±0.05 1.04 e−6±8.75 e−7
+
+C. Forward Problems: Results 
+
+All tabulated values are reported as mean ± standard devia-tion, and predictive accuracy is evaluated on 10,000 randomly sampled test coordinates. For each system, the table reports training time and RMSE under the unsupervised and semi-supervised paradigms, while the accompanying figure presents the semi-supervised PI-SC-III prediction, absolute error, and representative cross-sectional profiles. 
+
+1) Van der Pol oscillator: The corresponding results are presented in Table I and Fig. 1, respectively. 
+
+2) Two-dimensional Helmholtz equation: The correspond-ing results are presented in Table II and Fig. 2, respectively. 
+
+3) Allen–Cahn equation: The corresponding results are presented in Table III and Fig. 3, respectively. 
+
+D. Forward Problems: Result Analysis 
+
+The forward results in Tables I–III reveal a consistent accuracy–efficiency hierarchy across the three forward bench-marks. PI-SC-I provides the lowest construction cost but may underfit problems involving strong oscillations, high spatial frequencies, or sharp transitions. Extending the correction scope in PI-SC-II substantially improves predictive accuracy, while the global correction in PI-SC-III consistently achieves the lowest errors among the three variants. Importantly, this gain preserves the main computational advantage of the frame-work, with PI-SC-III remaining substantially faster than the 
+
+TABLE III FORWARD RESULTS FOR THE ALLEN –C AHN EQUATION .                                                                        
+
+> Algorithm Paradigm Time (s) RMSE VS-PINN ( 1×500 )Unsupervised 31 .8±0.79 5.40 e−1±2.63 e−2
+> Semi-supervised 36 .2±0.94 4.65 e−1±4.67 e−2
+> VS-PINN ( 4×64 )Unsupervised 65 .0±1.06 5.23 e−1±4.14 e−2
+> Semi-supervised 71 .6±1.35 7.75 e−2±1.06 e−1
+> PI-SC-I Unsupervised 1.59 ±0.04 5.28 e−1±3.50 e−3
+> Semi-supervised 1.73 ±0.03 3.16 e−1±2.47 e−2
+> PI-SC-II Unsupervised 3.13 ±0.07 1.71 e−1±4.44 e−2
+> Semi-supervised 3.41 ±0.06 2.25 e−2±1.04 e−2
+> PI-SC-III Unsupervised 3.49 ±0.14 6.16 e−3±2.07 e−3
+> Semi-supervised 3.70 ±0.07 1.57 e−3±2.88 e−4
+
+deep gradient-based baselines while achieving comparable or better accuracy. This trend is consistent across both ODE and PDE prob-lems. For the unsupervised Van der Pol problem, PI-SC-III reduces the RMSE from 5.49 × 10 −3 for the deep PINN to 
+
+1.93 × 10 −3, while reducing the training time from 40 .0 sto 1.44 s. For the Helmholtz equation, it achieves an RMSE on the order of 10 −6 under both training paradigms. On the semi-supervised Allen–Cahn problem, PI-SC-III reaches an RMSE of 1.57 × 10 −3, reducing the error by approximately a factor of 49 while being 19 × faster than the corresponding deep VS-PINN. The particularly high accuracy observed for the Helmholtz problem can be attributed to its linear operator structure. Because the governing equation is linear in both u
+
+and its derivatives uxx and uyy , the state-space linearization used in PI-SCM is exact for this operator and introduces no nonlinear truncation error. This enables the global least-squares correction in PI-SC-III to recover the solution with very high precision. For the same reason, PIELM is considered only for the Helmholtz benchmark, since it is restricted to differential equations that are linear in the state and its derivatives. Although PIELM is faster for this problem, its RMSE remains more than three orders of magnitude higher than that of PI-SC-III. Sparse observations provide additional benefits when the physics constraints alone pose a challenging approximation problem, as demonstrated by the Van der Pol and Allen– Cahn results. Their contribution is limited for the Helmholtz problem because the unsupervised model already achieves a very low error level. Overall, the forward experiments demonstrate that PI-SCM provides the most favorable balance among predictive accuracy, computational efficiency, and the ability to incorporate sparse observations. 
+
+E. Inverse Problems: Experimental Setup 
+
+The inverse experiments jointly recover the state and one scalar physical coefficient. Each system compares the two PINN architectures with PI-SC-I, PI-SC-II, and PI-SC-III. For both inverse benchmarks, the unknown physical param-eter has a ground-truth value of 1.0 and is initialized at 0.1:
+
+μtrue = 1 .0 and μ(0) = 0 .1 for Van der Pol, and k2 
+
+> true
+
+= 1 .0
+
+and  k2(0) = 0 .1 for Helmholtz. Each experiment uses Nd =100 observations, while all other sampling, construction, and 14 0 1 2 3 4 5
+
+Time t
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Control  U
+
+(a) Second-order PI-SC-III prediction      
+
+> 012345
+
+Time t
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Control  U
+
+(b) Absolute state error      
+
+> 012345
+
+Time t
+
+> −1 012
+> State  u
+
+(c) Slice at U = 0.3        
+
+> Reference u
+> PI-SC-III u
+> 012345
+
+Time t
+
+> −1 012
+> State  u
+
+(d) Slice at U = 0.6   
+
+> Reference u
+> PI-SC-III u
+> −1 012̂
+> u(t, U)
+> 0.001 0.002 0.003 0.004 0.005 0.006
+> |u −̂  u|
+
+Fig. 1. Forward solution of the Van der Pol oscillator obtained by semi-supervised PI-SC-III. Top left: predicted state over (t, U ). Top right: absolute pointwise error. Bottom: cross-sectional trajectories at U = 0 .3 and U = 0 .6.TABLE IV INVERSE RESULTS FOR THE VAN DER POL OSCILLATOR .                                                      
+
+> Algorithm |μpred −μtrue |Time (s) State RMSE PINN ( 1×300 )2.88 e−1±1.09 e−122 .0±0.51 5.85 e−2±1.35 e−2
+> PINN ( 4×64 )2.35 e−4±2.01 e−451 .8±0.94 9.51 e−4±3.42 e−4
+> PI-SC-I 4.01 e−1±4.69 e−20.71 ±0.02 1.08 e−1±2.05 e−2
+> PI-SC-II 1.91 e−3±1.59 e−31.64 ±0.03 4.80 e−3±2.10 e−3
+> PI-SC-III 5.08 e−4±2.75 e−41.95 ±0.04 5.96 e−4±2.00 e−4
+
+baseline settings match the corresponding forward experiment. Each method is evaluated over 100 independent trials 
+
+F. Inverse Problems: Results 
+
+All tabulated values are reported as mean ± standard deviation, and state predictive accuracy is evaluated on 10,000 randomly sampled test coordinates. For each system, the table reports parameter identification error, state RMSE, and training time. 
+
+1) Van der Pol oscillator: The corresponding results are presented in Table IV. 
+
+2) Two-dimensional Helmholtz equation: The correspond-ing results are presented in Table V. 
+
+G. Inverse Problems: Result Analysis 
+
+The inverse results in Tables IV and V show the same update-scope hierarchy as in the forward experiments. PI-
+
+TABLE V INVERSE RESULTS FOR THE TWO -DIMENSIONAL HELMHOLTZ EQUATION .                                                      
+
+> Algorithm |k2
+> pred −k2
+> true |Time (s) State RMSE PINN ( 1×400 )1.09 e+1 ±2.87 e+0 50 .6±1.19 2.82 e−1±1.27 e−1
+> PINN ( 4×64 )6.72 e−1±6.27 e−1101 ±2.13 2.36 e−2±1.22 e−2
+> PI-SC-I 3.72 e+1 ±1.93 e+1 1.49 ±0.03 2.17 e−1±9.90 e−2
+> PI-SC-II 7.14 e−1±7.55 e−13.14 ±0.07 5.04 e−3±2.21 e−3
+> PI-SC-III 8.42 e−4±1.60 e−33.51 ±0.10 6.70 e−5±1.15 e−4
+
+SC-I is less effective for joint state and parameter recovery, while PI-SC-II improves the reconstruction accuracy through windowed correction. PI-SC-III provides the most accurate overall recovery. Across both inverse benchmarks, PI-SC-III provides parameter-identification accuracy comparable to or better than that of the deep PINN. It also improves state reconstruction and requires substantially less training time. Overall, these re-sults demonstrate that PI-SCM retains high predictive accuracy and computational efficiency in inverse problems. 
+
+H. Activation-Function Study: Experimental Setup 
+
+We isolate the influence of the hidden-node basis on the semi-supervised Van der Pol forward problem. PI-SC-III is evaluated with sine, hyperbolic tangent, and sigmoid acti-vations. Lmax is set to 1,000, while the sampling points, 15 −1.0 −0.5 0.0 0.5 1.0 
+
+Space x
+
+> −1.0 −0.5 0.0 0.5 1.0
+> Space  y
+
+(a) Second-order PI-SC-III prediction     
+
+> −1.0 −0.5 0.0 0.5 1.0
+
+Space x
+
+> −1.0 −0.5 0.0 0.5 1.0
+> Space  y
+
+(b) Absolute state error     
+
+> −1.0 −0.5 0.0 0.5 1.0
+
+Space y
+
+> −1.0 −0.5 0.0 0.5 1.0
+> State  u
+
+(c) Slice at x = −0.5       
+
+> Reference u
+> PI-SC-III u
+> −1.0 −0.5 0.0 0.5 1.0
+
+Space y
+
+> −1.0 −0.5 0.0 0.5 1.0
+> State  u
+
+(d) Slice at x = 0.5   
+
+> Reference u
+> PI-SC-III u
+> −0.75 −0.50 −0.25 0.00 0.25 0.50 0.75 ̂
+> u(x, y)
+> 2468
+> |u −̂  u|
+> 1e−6
+
+Fig. 2. Forward solution of the two-dimensional Helmholtz equation obtained by PI-SC-III. Top left: predicted state over (x, y ). Top right: absolute pointwise error. Bottom: cross-sectional profiles at x = −0.5 and x = 0 .5.TABLE VI SEMI -SUPERVISED PI-SC-III RESULTS WITH DIFFERENT ACTIVATION FUNCTIONS .Activation RMSE Sine 5.66 e−4 ± 3.59 e−4
+
+Hyperbolic tangent 2.71 e−3 ± 8.92 e−4
+
+Sigmoid 1.68 e−2 ± 7.96 e−3
+
+penalty weights, candidate ranges, and remaining constructive settings are kept identical to the semi-supervised Van der Pol configuration described above. Each activation is evaluated over 100 independent trials. 
+
+I. Activation-Function Study: Results 
+
+Table VI summarizes the state RMSE , while Fig. 4 shows the evolution of the average true residual E2 
+
+> L
+
+with the number of accepted hidden nodes. 0 250 500 750 1000 1250 1500 
+
+Network Nodes ( L)
+
+10 6
+
+10 5
+
+10 4
+
+10 3
+
+10 2
+
+10 1
+
+10 0
+
+> Average  2
+> L
+
+sin tanh sigmoid 
+
+Fig. 4. Evolution of the average true residual E2 
+
+> L
+
+with the number of accepted hidden nodes for three activation functions. 
+
+J. Activation-Function Study: Result Analysis 
+
+Sine activation achieves the highest predictive accuracy and the fastest residual convergence among the tested activation functions. As shown in Fig. 4, it reduces the nonlinear residual more rapidly and converges to the lowest residual level, supporting its use as the default activation in the reported PI-SCM experiments. 16 0.0 0.1 0.2 0.3 0.4 0.5 
+
+Time t
+
+> −1.00 −0.75 −0.50 −0.25 0.00 0.25 0.50 0.75
+> Space  x
+
+(a) Second-order PI-SC-III prediction      
+
+> 0.0 0.1 0.2 0.3 0.4 0.5
+
+Time t
+
+> −1.00 −0.75 −0.50 −0.25 0.00 0.25 0.50 0.75
+> Space  x
+
+(b) Absolute state error     
+
+> −1.0 −0.5 0.0 0.5 1.0
+
+Space x
+
+> −1.0 −0.8 −0.6 −0.4 −0.2 0.0
+> State  u
+
+(c) Slice at t = 0.1     
+
+> Reference PI-SC-III −1.0 −0.5 0.0 0.5 1.0
+
+Space x
+
+> −1.0 −0.8 −0.6 −0.4 −0.2 0.0 0.2 0.4
+> State  u
+
+(d) Slice at t = 0.4 
+
+> Reference PI-SC-III
+> −1.0 −0.8 −0.6 −0.4 −0.2 0.0 0.2 0.4 ̂
+> u(t, x)
+> 0.002 0.004 0.006 0.008 0.010 0.012 0.014
+> Absolute error
+
+Fig. 3. Forward solution of the Allen–Cahn equation obtained by semi-supervised PI-SC-III. Top left: predicted state over (t, x ). Top right: absolute pointwise error. Bottom: spatial profiles at t = 0 .1 and t = 0 .4.
+
+V. C ONCLUSION 
+
+This paper introduced PI-SCM, a backpropagation-free framework for nonlinear differential equations. Its progressive algorithmic suite, ranging from localized construction (PI-SC-I) through windowed correction (PI-SC-II) to global correction (PI-SC-III), converts nonlinear physics-informed learning into a sequence of analytically solvable least-squares problems. The universal approximation analysis establishes the theo-retical basis for residual convergence, while the inverse for-mulation enables state reconstruction and physical-parameter identification within the same framework. The empirical study considered forward approximation on the Van der Pol, two-dimensional Helmholtz, and stiff Allen–Cahn systems; inverse identification on the Van der Pol and Helmholtz systems; and an activation-function abla-tion. Across these tasks, PI-SC-III consistently provided the strongest accuracy–efficiency trade-off among the proposed variants. It achieved competitive or lower errors than deep gradient-based PINNs while reducing training time by one to two orders of magnitude. The semi-supervised results also showed that PI-SCM can assimilate sparse observations when the physical constraints alone are insufficient, and the activation study identified sine as the most effective basis for the oscillatory benchmark. Future work should examine scalability to higher-dimensional geometries, more severe multiscale stiffness, noisy parameter-identification settings, and adaptive selection of the candidate range and update scope. Extending the current shallow constructive architecture while retaining analytical training and numerical stability is another important direction toward real-time scientific machine-learning applications. REFERENCES [1] Baker N, Alexander F, Bremer T, et al. Workshop report on basic research needs for scientific machine learning: Core technologies for artificial intelligence[R]. USDOE Office of Science (SC), Washington, DC (United States), 2019. [2] Raissi M, Perdikaris P, Karniadakis G E. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations[J]. Journal of Computational Physics, 2019, 378: 686-707. [3] Schiassi E , D’Ambrosio A , Drozd K ,et al. Physics-Informed Neural Networks for Optimal Planar Orbit Transfers[J]. Journal of Spacecraft and Rockets, 2022, 59(3):16.DOI:10.2514/1.A35138. [4] Shukla K, Di Leoni P C, Blackshire J, et al. Physics-informed neural network for ultrasound nondestructive quantification of surface breaking cracks[J]. Journal of Nondestructive Evaluation, 2020, 39(3): 61. [5] Berkhahn S, Ehrhardt M. A physics-informed neural network to model COVID-19 infection and hospitalization scenarios[J]. Advances in Con-tinuous and Discrete Models, 2022, 2022(1): 61. [6] Diao Y, Yang J, Zhang Y, et al. Solving multi-material problems in solid mechanics using physics-informed neural networks based on domain decomposition technology[J]. Computer Methods in Applied Mechanics and Engineering, 2023, 413: 116120. [7] Wang S, Sankaran S, Wang H, et al. An expert’s guide to training physics-informed neural networks. arXiv preprint arXiv:2308.08468, 2023. 17 
+
+[8] Cuomo S, Di Cola V S, Giampaolo F, et al. Scientific machine learning through physics–informed neural networks: Where we are and what’s next[J]. Journal of Scientific Computing, 2022, 92(3): 88. [9] Pao Y H, Takefuji Y. Functional-link net computing: theory, system architecture, and functionalities[J]. Computer, 1992, 25(5): 76-79. [10] Schmidt W F, Kraaijveld M A, Duin R P W. Feed forward neural networks with random weights[C]//International Conference on Pattern Recognition. IEEE Computer Society Press, 1992: 1-4. [11] Huang G B, Zhu Q Y, Siew C K. Extreme learning machine: theory and applications[J]. Neurocomputing, 2006, 70(1-3): 489-501. [12] Liu D, Chang T S, Zhang Y. A constructive algorithm for feedforward neural networks with incremental training[J]. IEEE Transactions on Circuits and Systems I: Fundamental Theory and Applications, 2002, 49(12): 1876-1879. [13] Wang D, Li M. Stochastic configuration networks: Fundamentals and algorithms[J]. IEEE Transactions on Cybernetics, 2017, 47(10): 3466-3479. [14] Wang D, Li M. Deep stochastic configuration networks with univer-sal approximation property[C]//2018 International Joint Conference on Neural Networks (IJCNN). IEEE, 2018: 1-8. [15] Li K, Wang W, Lin S. Soft measurement of ammonia nitrogen concen-tration based on GA-SCN[C]. IEEE Symposium on Product Compliance Engineering-Asia (ISPCE-CN), IEEE, 2018: 1-4. [16] Felicetti M J, Wang D. Deep stochastic configuration networks with optimised model and hyper-parameters[J]. Information Sciences, 2022, 600: 431-441. [17] Felicetti M J, Wang D. Deep stochastic configuration networks with different random sampling strategies[J]. Information Sciences, 2022, 607: 819-830. [18] Pan J, Luan F, Gao Y, et al. FPGA-based implementation of stochastic configuration network for robotic grasping recognition[J]. IEEE Access, 2020, 8: 139966-139973. [19] Li W, Tao H, Li H, Chen K, et al. Greengage grading using stochastic configuration networks and a semi-supervised feedback mechanism[J]. Information Sciences, 2019, 488: 1-12. [20] Li W, Zhang Q, Wang D, et al. Stochastic configuration networks for self-blast state recognition of glass insulators with adaptive depth and multi-scale representation[J]. Information Sciences, 2022, 604: 61-79. [21] Chen K, An J, Fang Y, et al. Research on solid waste plastic bottle cognitive based on YOLOv5s and deep stochastic configuration net-work[C]. International Conference on Automation, Control and Robotics Engineering, 2022: 275-280. [22] Liu W, Ren C, Xu Y. PV generation forecasting with missing input data: a super-resolution perception approach[J]. IEEE Transactions on Sustainable Energy, 2021, 12(2): 1493-1496. [23] Xu L, Yang C, Xu X, et al. Physics-informed stochastic configuration network promoted model predictive control with multi-objective opti-mization[J]. Artificial Intelligence Review, 2025, 58(9): 281. [24] Wu L, Tan W G Y, Zhou L, Braatz R D, Drgoˇ na J. Least-squares multi-step Koopman operator learning for model predictive control. arXiv preprint arXiv:2601.11901, 2026. [25] Hafeez H Y, Ndikilar C E, Isyaku S. Analytical study of the van der pol equation in the autonomous regime[J]. Progress in Physics, 2015, 11: 252. [26] Andersson J, ˚Akesson J, Diehl M. Dynamic optimization with CasADi[C]//2012 IEEE 51st IEEE Conference on Decision and Control (CDC). IEEE, 2012: 681-686. [27] Dwivedi V, Srinivasan B. Physics-informed extreme learning machine (PIELM): A rapid method for the numerical solution of partial differ-ential equations[J]. Neurocomputing, 2020, 391: 96-118. [28] Ko S, Park S. VS-PINN: A fast and efficient training of physics-informed neural networks using variable-scaling methods for solving PDEs with stiff behavior[J]. Journal of Computational Physics, 2025, 529: 113860.

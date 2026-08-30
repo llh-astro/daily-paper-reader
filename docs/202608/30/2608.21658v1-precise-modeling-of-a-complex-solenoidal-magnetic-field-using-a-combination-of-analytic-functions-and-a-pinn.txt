@@ -1,0 +1,1693 @@
+Title: Precise Modeling of a Complex Solenoidal Magnetic Field Using a Combination of Analytic Functions and a PINN
+
+URL Source: https://arxiv.org/pdf/2608.21658v1
+
+Published Time: Tue, 25 Aug 2026 00:15:48 GMT
+
+Number of Pages: 54
+
+Markdown Content:
+FERMILAB-PUB-26-0539-PPD-TD 
+
+Precise Modeling of a Complex Solenoidal Magnetic Field Using a Combination of Analytic Functions and a PINN 
+
+Cole Kampa, 1 Susan Dittmer, 2 Henry Glass, 3 and Michael Schmitt 2
+
+> 1)
+
+Department of Physics, Mathematics and Astronomy, California Institute of Technology, Pasadena, CA, 91125, USA 
+
+> 2)
+
+Department of Physics and Astronomy, Northwestern University, Evanston, IL, 60208, USA 
+
+> 3)
+
+Fermi National Accelerator Laboratory, Batavia, IL, 60510, USA 
+
+(*Electronic mail: kampa@caltech.edu) (Dated: 21 August 2026) 
+
+We demonstrate an iterative approach to modeling a sparsely measured magnetic field in a large-bore solenoid. This approach uses a hybrid of traditional and machine learning techniques. The traditional technique is a linear least-squares fit using a series solution to Laplace’s equation, while the machine learning technique involves the training of a physics-informed neural network (PINN) on the least-squares fit residuals. We use a newly defined activation function “DELTAsnake,” a modification to the snake activation function proposed by Ziyin et al. that allows for stronger curvature and non-monotonicity. The com-bined model approximately obeys Maxwell’s equations to a level sufficient for producing high quality physics simulations and analysis. Our approach is applied to a highly realis-tic calculation of the expected magnetic field in the Mu2e experiment’s Detector Solenoid which includes a simple model for the expected statistical measurement uncertainties. Us-ing ten toy measurement simulations, we demonstrate the capabilities of our model in comparison to the least-squares method alone; the least-squares method alone results in a reduced chi-squared statistic of 2 .15 ± 0.01, while our approach improves the reduced chi-square to 1 .034 ± 0.005. Furthermore, for an average toy simulation, we show that the range of the RMS of the three field component residuals reduces from 0 .07 − 0.37 Gauss to 0 .05 − 0.07 Gauss. We find that this novel method is robust against a realistic system-atic uncertainty deriving from Hall probe calibration bias and can be used to significantly reduce the number of measurements required to achieve an accurate model. 1arXiv:2608.21658v1 [physics.ins-det] 21 Aug 2026 I. INTRODUCTION 
+
+Magnetic fields play a central role in a wide range of scientific and industrial applications 1–3 .In particle physics experiments like Mu2e 4, accurate knowledge of the field is essential for recon-structing charged particle trajectories and measuring momenta of charged particles. Errors in the field model directly propagate to the momentum measurement and can degrade the sensitivity of the experiment. To achieve a high quality model of the field, experimentalists often measure the field directly and create a data-driven model for the field throughout the experimental volume. A common approach is to fit an analytic model – typically a truncated series expansion that satisfies Maxwell’s equations – to a sparse set of measurements 5–7 . This method has the advantage of being fast, interpretable, and free of assumptions about the underlying conductor geometries. Experience has shown, however, that such models can struggle to capture subtle, complex, or asymmetric features. In recent particle physics experiments, for example, this technique has been used to model magnetic fields with a 10 −3 relative accuracy, whereas Mu2e requires a field modeling accuracy of 10 −4 (see Ref. 8). The limitations in the analytic method are due primarily to basis function selection. One can often choose a convenient coordinate system that results in basis functions that respect some symmetry, e.g. cylindrical symmetry in the case of Mu2e. These symmetries are typically only approximate in the magnetic environment, which results in some features that the basis functions cannot easily model. While the complete (infinite) set of basis functions would be able to model said features, in practice truncating to a finite set of terms limits this capability; such a truncation is required due to the finite set of measurement positions. An alternative approach is to use flexible machine learning models, such as neural networks (NNs), trained directly on the measured values. In addition to being more flexible than the analyti-cal functions, NNs do not rely on any assumptions about the conductor geometries. When physical constraints are included, these models can learn complex structure without requiring large numbers of hand-engineered basis terms that rely on approximate symmetries and a reasonable selection of boundary conditions. Physics-Informed Neural Networks (PINNs) 9, in particular, allow soft en-forcement of physical laws such as Maxwell’s equations via an extension to the loss function. We find that a PINN alone is not sufficient for modeling the field of the Mu2e Detector Solenoid (DS) at a level required for producing high quality physics results. Instead, the best magnetic magnetic field model is obtained when applying a PINN to capture sub-dominant features that remain after 2fitting with the analytic model. In this work, we present a hybrid modeling strategy that combines these two approaches. We begin by fitting a cylindrical harmonic least-squares model to the measured field. Then, we train a PINN to learn the residual field components that the analytic model fails to capture. The PINN is designed to use both hard and soft constraints from Maxwell’s equations to ensure physical consistency. Finally, we iterate the least-squares fit on the PINN-subtracted data to recover any remaining structure that the least-squares model struggled to fit in the first iteration. In this manner, we are able to attain our accuracy goals. Our approach is tested using a high-fidelity simulation of the Mu2e Detector Solenoid (DS) magnetic field, including detailed representations of both active and passive magnetic elements. The simulation is used to generate realistic test data; it allows us to benchmark the model perfor-mance under controlled conditions. We demonstrate that the hybrid model substantially improves reconstruction quality, generalizes well between the points of the measurement grid, and is robust against noise and realistic systematic effects. We also explore the ability of the PINN to recover key field features even when trained on a dramatically reduced measurement set, highlighting its potential in scenarios where mapping time or access is limited. The remainder of this paper is organized as follows. In Section II, we briefly describe the Mu2e solenoid system and outline the hybrid modeling approach. The modeling description includes the formulation of both the least-squares fit and the PINN. In Section III, we present results from the nominal field scenario as well as a few robustness tests, including a simulated Hall probe calibra-tion systematic error and a case with dramatically reduced measurement density. We conclude in Section IV with a summary of the results and their implications for future field modeling efforts. 
+
+II. METHODS 
+
+We apply a hybrid modeling approach comprised of linear least-squares fitting and a novel PINN scheme. This approach is applied to a realistic calculation of the Mu2e DS magnetic field. 
+
+A. Magnetic Field Calculation and Data Preparation 
+
+The Mu2e experiment 10 at Fermilab will search for the Charged Lepton Flavor Violating (CLFV) process muon to electron conversion, which is forbidden in the Standard Model of particle 3physics. The experiment comprises a proton beam and a set of three superconducting solenoid sys-tems to produce and manipulate a muon beam. The muons are stopped on an aluminum stopping target, and the detector systems measure electrons emitted from the target to identify the signal process. The Mu2e magnetic environment is complex. Three large superconducting solenoid systems, the Production Solenoid (PS), Transport Solenoid (TS) and Detector Solenoid (DS), establish the magnetic field throughout the experiment. In the PS, the field captures decay products from proton-nucleon interactions and directs them to the TS. The TS field is toroidal which allows for efficient charge and momentum collimation and transport to the DS. By the time the beam arrives at the DS it is comprised primarily of low-momentum ( p ≲ 80 MeV/c) negative muons, which then stop in the aluminum target and yield the Mu2e initial state, a muon bound to an aluminum nucleus. Under the signal process, neutrinoless muon-to-electron conversion in the field of a nucleus, an electron with p ≈ 105 MeV/c is emitted from the target. The DS field, which has a negative axial gradient near the TS-DS interface, guides this electron toward the downstream detector systems. To accurately measure the momentum and energy of the electron using the detectors, the mag-netic field in the downstream DS region is designed to be as uniform as possible (approximately 1%). The Field Mapping System (FMS) apparatus, the Detector Solenoid Field Mapper (DSFM), sparsely samples the DS magnetic field using Hall probes 8. Modeling procedures are applied to these measurements to create a continuous model for the field. A Cartesian coordinate system is defined in Mu2e with an origin in the center of the TS in y and 
+
+z and x = 0 defined along the DS axis. The ordinal directions are (ˆi, ˆj, ˆk): + ˆj points from the floor to the ceiling, +ˆk is parallel to the DS solenoidal axis and points from the upstream to downstream direction of the beam in the DS, and +ˆi is defined to complete the right-handed system. In the DS, where we apply our modeling technique, the coils have radii of approximately 1 m and span an axial length of approximately 10 m. We map a region of the bore that encompasses the sensitive tracking volume which extends to a radius of 0 .8 m. This results in a large mapping volume of approximately 20 m 3.We use a combination of custom and commercial software packages to calculate the expected magnetic field in the Mu2e DS. The helicalc package, described in the supplementary material, is used to calculate active contributions to the magnetic field due to the superconducting net-work in the PS, TS, and DS. The commercial three-dimensional Finite Element Analysis (FEA) magnetostatics simulation software suite Opera from Dassault Systèmes is used to calculate the 4FIG. 1. A 3D representation of the DS coils and bus bars. While the visualization represents the coils as simple cylindrical shells helicalc represents the coils with helical windings in the field calculation. 
+
+contribution from the passive magnetic materials 11 .The superconductors in each solenoid system are treated in different ways, given proximity to the region of interest, the DS bore. The PS and TS coils are represented as ideal solenoids, i.e. thick cylindrical shells of current, following the prescription of the SolCalc MATLAB routine 12 . On the other hand, a much more detailed geometric representation of the DS coils is used. Each coil is represented as one or more helical windings of thick superconducting cable with a rectangular cross-section. Coils with multiple layers are wound with opposite helicity in subsequent layers, and layers are spliced together with a thick circular arc of superconductor. Finally, a complex network of superconducting bus bars connect the DS coils in series. The bus bars are composed of thick circular arcs and thick straight bars. A 3D visualization of the DS conductor network is shown in Figure 1. All of these superconductor field contributions are computed in helicalc .The magnetic material contributions to the magnetic field are calculated using the Opera mag-netostatics package. A set of ideal solenoids represents the PS, TS, and DS coils. This representa-tion is practically identical to the representation used in helicalc as confirmed through validation studies. In addition to the coils, there are several sources of magnetic material: reinforcement bar (rebar) in the concrete shielding blocks, rebar in the floor, and steel plates embedded in the floor. To ease the computational burden of including passive magnetic materials in Opera, we use simple geometric blocks with a homogeneous mixture of steel and concrete to approximate the 5FIG. 2. A 3D representation of the Mu2e coils and passive magnetic materials included in the Opera calculation. The coils (red) will be welded via a support structure to the steel floor plates (magenta), which are embedded in the concrete floor. The floor contains several layers of rebar (green and blue), and the DES blocks (translucent yellow) contain rebar. The −x wall of the concrete shielding blocks has been removed only in the visualization, for clarity of the coils and floor plates. 
+
+magnetic properties of concrete with rebar. In reality a complex grid of cylindrical steel rods is embedded in the concrete. The homogeneous model accounts for the relative density of rebar material as well as the efficiency of flux transport given the expected layout of the cylindrical rods. A full technical description of the material modeling is provided in the supplementary material. The Opera calculation is completed twice, once with all of the magnetic material included ( ⃗Bw)and once without any magnetic material contributions ( ⃗ Bw/o). Figure 2 visualizes the Opera model that includes the passive magnetic materials. We use helicalc for the main contributions and the difference ⃗ Bw −⃗ Bw/o from OPERA for the impact of the passive magnetic materials. The final field calculation at each field point is the sum of the field contributions from each superconducting element i as calculated by helicalc 
+
+along with the field contributions from the passive magnetic materials as calculated by Opera: ⃗
+
+Btrue (x, y, z) = ∑
+
+> i
+
+⃗
+
+Bi(x, y, z)
+
+!
+
+> helicalc
+
++ ⃗ Bw(x, y, z) −⃗ Bw/o(x, y, z)
+
+!
+
+> Opera
+
+(1) As a simple demonstration of the complexity of the magnetic field in the DS, Figure 3 shows 1D profiles of the three field components along the axial direction ( z) at a radial distance of 0 .8 m from the solenoid axis. Along with being complex, the magnitudes of the field components vary 62000           
+
+> 02000 4000
+> Br [G]
+> DS Field Profiles
+> r= 0.8 m
+> = 0 rad
+> =rad
+> 25
+> 025
+> B [G]
+> = 0 rad
+> =rad
+> 46810 12 14
+> z[m] 10000 15000 20000
+> Bz [G] = 0 rad
+> =rad
+
+FIG. 3. Axial field profiles in the Mu2e DS. The top panel shows Bz vs. z. The middle panel shows Br vs. z.The bottom panel shows Bφ vs. z. In each plot, the solid line denotes the φ = 0 rad profile while the dashed line denotes the φ = π rad profile. 
+
+widely. For an evaluation of our methods we prepare two field point samples. The first sample rep-resents the expected measurement values of the DS field and comprises a sparse cylindrical grid of approximately Nmeas = 2.4 × 10 4 field points throughout the DS volume ( r ≤ 0.8 m, 
+
+z ∈ [4.25 , 13 .85 ] m). This sample is denoted as the measurement sample . The grid of points in the measurement sample is defined as the expected sampling locations of the DSFM, which will measure the DS field with eight 3D Hall probes spaced radially along the DSFM propellers 8. The propellers are rotated azimuthally in φ (∆φ = π/8 rad) and translated axially in z (∆z = 50 mm) to create the sparse grid of measurements. Each Hall probe contains three orthogonally mounted GaAs Hall elements which display a characteristic thermal noise with a standard deviation of approximately 0 .3 Gauss. This thermal noise is modeled and used to represent a statistical mea-surement error applied to each field component; a multivariate Gaussian distribution ( N3) with mean vector of zeros and variances of (0.3 Gauss )2 is sampled and summed with each ideal field point. The thermal noise in each field component is uncorrelated. The field in the measurement sample is given by: ⃗
+
+Bmeas (x, y, z) = ⃗ Btrue (x, y, z) + N3(⃗ μ, Σ) (2) where ⃗ μ = ( 0, 0, 0) and Σ = ( 0.3G )2 × I3. For the nominal configuration we generate ten toy measurements by resampling the thermal noise distribution. The second field point sample is used strictly for evaluating the modeling results and is denoted as the test sample . It is defined on a 3D Cartesian grid with a step size of ∆x = ∆y = ∆z =
+
+725 mm such that the volume of the DS bore is uniformly sampled. A radial cut of r ≤ 0.8 m is applied to the test sample to match the extent of the measurement sample. The test sample contains approximately Ntest = 1.2 × 10 6 points. Measurement error is not included in the test sample. The model fitting and training procedures are performed on the measurement sample alone, while the evaluation of the results are performed on the test sample. The field evaluated at the test sample points is ⃗ Btrue . In other words, comparing the test sample to the prediction of the fitted model evaluates the modeling accuracy relative to the underlying (or “true”) magnetic field. In contrast, comparing the measurement sample to the model prediction characterizes the residuals expected in a real measurement campaign, incorporating the effects of measurement noise, potential systematic effects, and the spatial sampling density used during fitting and training. 
+
+B. Least-Squares Approach 
+
+To model the magnetic field throughout the Mu2e DS volume from a sparse set of measured points, we begin with an analytic approach. We construct functional forms that satisfy Maxwell’s equations in a source-free region and fit their free parameters to the measured points using linear least-squares minimization. This method is widely used in particle physics 5–7 and has the advan-tage of requiring no detailed knowledge of the conductor geometry. In the case of the Mu2e DS, more than 140 conductors contribute to the field, and their precise positions after construction and cooldown are not easily determined. The analytic method bypasses this complexity, but at the cost of requiring many basis functions to model detailed features of the field. To reduce this burden, we design basis functions that reflect the approximate cylindrical sym-metry of the Mu2e DS. The set of basis functions includes constant and linear functions of the Cartesian coordinates. The specific functional forms used are presented in the remainder of this section. They build upon prior work 13 , with small extensions to broaden the expressiveness of the model. A static magnetic field in a source-free region obeys Maxwell’s equations: 
+
+∇ ·⃗ B = 0 (3) and 
+
+∇ ×⃗ B = 0 . (4) 8With these constraints, the range of allowed functional forms that can be used to describe ⃗ B is restricted. We choose to define a scalar magnetic potential Φ as ⃗
+
+B = −∇Φ (5) which obeys Equation 4 by construction. Equation 3 can be recast for Φ:
+
+∇2Φ = 0 . (6) In other words, any scalar function Φ that has a Laplacian of zero is allowed by Equations 3 and 4. With a set of M basis functions Φi, a series solution to Laplace’s equation is constructed as a sum of basis functions: 
+
+ΦLSQ =
+
+> M
+
+## ∑
+
+> i
+
+Φi (7) which is used as an analytic model function. In Cartesian coordinates, one can trivially construct terms up to first-order in the spatial com-ponents and Equation 6 will be satisfied: 
+
+Φcart (x, y, z) = −
+
+
+
+F0 + F1x + F2y + F3z + F4xy 
+
++ F5xz + F6yz + F7xyz 
+
+
+
+(8) which leads to the Cartesian terms in the analytical model 
+
+Bx,cart (x, y, z) = F1 + F4y + F5z + F7yz (9) 
+
+By,cart (x, y, z) = F2 + F4x + F6z + F7xz (10) 
+
+Bz,cart (x, y, z) = F3 + F5x + F6y + F7xy (11) which has seven free parameters F i.To solve Laplace’s equation in a cylindrical coordinate system, we assume that a separable solution exists, and enforce boundary conditions to derive an appropriate set of basis functions. We define the cylindrical coordinate system in terms of the Cartesian system: the radial coordinate 
+
+r = px2 + y2, the azimuthal coordinate φ = tan −1(y/x), and the axial coordinate z, which remains 9the same as the Cartesian z. In this coordinate system, Laplace’s equation reads: 0 = ∂ 2Φ
+
+∂ r2 + 1
+
+r
+
+∂ Φ
+
+∂ r + 1
+
+r2
+
+∂ 2Φ
+
+∂ φ 2 + ∂ 2Φ
+
+∂ z2 . (12) The φ component necessarily results in oscillatory solutions due to the 2 π periodicity of the az-imuthal coordinate. While both exponential and oscillatory solutions are permitted in z, we choose the oscillatory form, which better reflects the structure of the solenoidal fields. Given the known forms of the φ and z solutions, Equation 12 reduces to a Bessel differential equation in r. A de-tailed derivation of such a cylindrical harmonic solution appears, for example, in Pollack et al. 13 
+
+A prototypical term reads: 
+
+Φn,k(r, φ , z) = In(kr ) sin (nφ ) sin (kz ) (13) where n is a non-negative integer, k is a real constant, and In are modified Bessel functions of the first kind. The sin terms are selected for illustration; cos terms are equally valid and included in the series. The full functional form, including sin and cos terms is: 
+
+Φn,k(r, φ , z) = In(kr )
+
+
+
+An,k cos (kz ) cos (nφ )+Bn,k sin (kz ) cos (nφ )+Cn,k cos (kz ) sin (nφ )+Dn,k sin (kz ) sin (nφ )
+
+
+
+(14) where An,k, Bn,k, Cn,k, and Dn,k are unconstrained coefficients that modify the overall normalization and sign of each term. To restrict the axial solutions to a set of countable, orthogonal functions we set a periodic boundary condition on Φ in z over some length L = z1 − z0 for start and end points z0 and z1. We make a simplifying translation of the axial coordinate z such that z = 0 is in the center of these endpoints, or z1 = −z0 = L/2. The boundary condition is imposed at each point in the r, φ plane: 
+
+f (r, φ ) = Φ(r, φ , −L/2) = Φ(r, φ , +L/2) (15) for some unknown f (r, φ ). After fitting the model to the data, we can extract f (r, φ ) although 10 it is not the primary quantity of interest. It should be understood that while there is no explicit boundary condition on the exterior radial surface of the bounding cylinder, when fitting this series solution to measurements the resulting model function can only be trusted within the radial extent of the measurements. For the Mu2e DS, the radial extent of the measurements is r = 0.8 m; we do not attempt to use the model beyond this radius. Furthermore, for r ≥ 1 m we encounter the superconductors in the solenoid coils, so the underlying assumption that we are in a source-free region breaks down. The magnetic field in the Mu2e DS is far from axially periodic, but functional forms with a periodic boundary condition in z can describe the measurement sample. This can be understood by considering that the magnetic field is the gradient of the scalar field; while the scalar potential is fixed to match at the axial ends, the gradients are not. Some additional flexibility to fit the points is gained by tuning the hyperparameter L. There is a subtle trade-off when selecting L. As L
+
+increases, the total number of terms required to match the data will increase. On the other hand, if L is too small and the boundaries are near the data there is little flexibility in the functions to match the data at the axial ends, as they must conform to the condition of equal potential Φ on the two surfaces. By imposing the boundary condition in Equation 15, we discretize k:
+
+km = 2π(m + 1)
+
+L (16) where m is a non-negative integer. We choose (m + 1) to discard the km = 0 terms which define 
+
+Φn,k that are independent of the spatial coordinates and do not contribute to the field. With the set of km, we construct the series solution to Φcyl in cylindrical coordinates by summing Φn,k up to some maxima of m and n:
+
+Φcyl =
+
+> mmax
+
+## ∑
+
+> m=0
+> nmax
+
+## ∑
+
+> n=0
+
+In(kmr)
+
+
+
+Am,n cos (kmz) cos (nφ )+Bm,n sin (kmz) cos (nφ )+Cm,n cos (kmz) sin (nφ )+Dm,n sin (kmz) sin (nφ )
+
+
+
+. (17) By increasing mmax , smaller spatial features in z are captured. Additionally, due to the coupled 11 nature of z and r, terms with increasing m (i.e. increasing km) scale the radial dependence in the term In(kmr). Similarly, increasing nmax includes terms with smaller spatial features in φ while modifying the radial dependence via the order of the Bessel function. Setting z = ±L/2 elucidates the functional form of boundary condition f (r, φ ):
+
+f (r, φ ) = 
+
+> mmax
+
+## ∑
+
+> m=0
+> nmax
+
+## ∑
+
+> n=0
+
+(−1)m+1In(kmr)
+
+×
+
+
+
+Am,n cos (nφ ) + Cm,n sin (nφ )
+
+
+
+. (18) We apply the gradient to Φcyl (Equation 17) to determine the magnetic field defined by this cylindrical harmonic model: 
+
+Br,cyl =
+
+> mmax
+
+## ∑
+
+> m=0
+> nmax
+
+## ∑
+
+> n=0
+
+kmI′
+
+> n
+
+(kmr)
+
+h
+
+Am,n cos (kmz) cos (nφ ) + Bm,n sin (kmz) cos (nφ )+Cm,n cos (kmz) sin (nφ ) + Dm,n sin (kmz) sin (nφ )
+
+i
+
+Bφ ,cyl =
+
+> mmax
+
+## ∑
+
+> m=0
+> nmax
+
+## ∑
+
+> n=0
+
+nr In(kmr)
+
+h
+
+−Am,n cos (kmz) sin (nφ ) − Bm,n sin (kmz) sin (nφ )+Cm,n cos (kmz) cos (nφ ) + Dm,n sin (kmz) cos (nφ )
+
+i
+
+Bz,cyl =
+
+> mmax
+
+## ∑
+
+> m=0
+> nmax
+
+## ∑
+
+> n=0
+
+kmIn(kmr)
+
+h
+
+−Am,n sin (kmz) cos (nφ ) + Bm,n cos (kmz) cos (nφ )
+
+−Cm,n sin (kmz) sin (nφ ) + Dm,n cos (kmz) sin (nφ )
+
+i
+
+. (19) where I′
+
+> n
+
+(kmr) is the first derivative of In(kmr).As the least-squares analytical model is not the focus of this paper, we do not describe some of the subtler points of the model or the hyperparameter optimizations (see the supplementary material). The optimized model uses the following hyperparameter values: L = 12 .5 m, mmax = 54, and nmax = 6. When including Ncart (= 7 with all terms) of the trivial Cartesian solutions the least-squares model has Nfree free parameters: 
+
+Nfree = 4 nmax (mmax + 1) + 2 (mmax + 1) + Ncart (20) which is slightly complicated by the removal of Cm,0 and Dm,0 terms, which are otherwise uncon-12 strained given sin (nφ ) = 0 when n = 0. Nfree = 1,436 for the nominal model. After fitting, we refer to the prediction from the least-squares model on the measurement sample as ⃗ B(meas ) 
+
+> pred ,i
+
+which is used to define the residual at field i (⃗r i = ( xi, yi, zi)): ⃗
+
+B(meas ) 
+
+> res ,i
+
+=⃗ Bmeas ,i −⃗ B(meas ) 
+
+> pred ,i
+
+(21) noting that an equivalent definition is used for calculating the residuals on the test sample. 
+
+C. Physics-Informed Neural Network 
+
+A PINN is trained on the residuals on the measurement sample (Equation 21) from the least-squares fit described in Section II B to improve the modeling accuracy. As with the least-squares model function, we desire a trained PINN that obeys Maxwell’s equations in a source-free region. In contrast to the expansion in Bessel functions, there is no clear analytical path to ensuring these constraints in a NN. The flexibility of NNs, however, allows for soft constraints in the form of additional loss terms 9. We define a PINN with three inputs describing the field point location in Cartesian coordinates and one output describing a residual scalar magnetic potential ΦNN . A simple hidden layer structure is used: Nlayers hidden layers each contain Nnodes nodes, all using the same activation function (described below). The network employs a fully connected feed-forward topology. The field described by the PINN is defined in an analogous way to Equation 5: ⃗
+
+BNN = −∇Φ NN . (22) This formulation satisfies ∇ ×⃗ B = 0 by construction (i.e. a hard constraint) and naturally follows the derivation of the functional forms used in the least-squares model. Ultimately, ΦNN is added to ΦLSQ so that Φmodel = ΦLSQ + ΦNN describes the best-fit model to the data. To constrain 
+
+∇ ·⃗ B, we include an additional loss term defined as the mean squared divergence evaluated at a set of Nc collocation points randomly sampled from the DS mapping volume. The total loss function minimized during the PINN training is: 
+
+LPINN = LB + λ L∇·B = 1
+
+Nmeas 
+
+> Nmeas
+
+## ∑
+
+> i=1
+
+|| ⃗B(meas ) 
+
+> res ,i
+
+−⃗ BNN ,i|| 2 + λ
+
+NcNc
+
+## ∑
+
+> j=1
+
+(∇ ·⃗ BNN , j)2 (23) where λ ≥ 0 is a hyperparameter that regulates the relative weight of the divergence loss and 13 xyz  
+
+> rescale
+> x′
+> y′
+> z′
+> Bx
+> By
+> Bz
+> LB
+> LB
+> training data points collocation points activation weights biases
+> x
+> y
+> zBx
+> x
+> By
+> y
+> Bz
+> z
+
+FIG. 4. A network diagram for the PINN. The Cartesian coordinate inputs are rescaled and fed into a fully-connected feed-forward PINN, which uses the DELTAsnake activation function at every hidden layer node. For clarity this diagram includes two hidden layers with six nodes per hidden layer. The colors of the edges (nodes) represent weight (bias) values after training. The scalar output Φ of the NN is differentiated, which yields the field vector. Whether feeding in training data or collocation points, the final step is either to calculate LB by comparing the prediction to the residual field vectors in the training set or to calculate 
+
+L∇·B, respectively. When the PINN is used to predict the field vectors after training, the loss terms are not calculated and the field vector is directly returned. ⃗
+
+BNN ,i is the residual field vector predicted by the PINN at field point i.⃗ BNN , j is the predicted residual field vector at collocation point j. Ideally, minimizing LPINN should lead to minimal 
+
+|| ⃗B(meas ) 
+
+> res ,i
+
+−⃗ BNN ,i|| 2 consistent with ∇ ·⃗ B = 0. This PINN structure is motivated by the work done by Coskun et al. 14 but notably differs given the novel blend of hard and soft physical constraints. Similar methods have been applied successfully by Scheinker and Pokharel to time dependent electromagnetic fields for modeling beam dynamics 15 .All derivatives are calculated using automatic differentiation, which is implemented and opti-mized in modern machine learning packages like TensorFlow 16 . While automatic differentiation is already being used to find the gradient of the loss function with respect to the weights and biases for backpropagation, we additionally use it to differentiate the output with respect to the input. Conveniently, automatic differentiation yields exact derivatives, so the soft constraint in the loss function is unbiased. Given the large variation in the domain of each coordinate in the DS bore (recall z ∈ [2.9, 14 .9] mand r ∈ [0, 0.8] m), each Cartesian coordinate is rescaled such that the values are zero centered and 14 have a range of [−1, 1]. The rescaled coordinates are dimensionless. For example, the rescaled x
+
+coordinate is 
+
+x′ = x − xmeas 
+
+(max (xmeas ) − min (xmeas )) /2 . (24) The measurement and test samples use an identical rescaling. The spatial derivatives used in the calculation of ⃗ BNN and ∇ ·⃗ BNN are correspondingly rescaled for physical consistency: 
+
+∂∂ x = 2max (xmeas ) − min (xmeas ) × ∂∂ x′ . (25) A pictorial representation of this network structure is shown in Figure 4. The choice of optimal network size and activation function for our test case derives from a number of hyperparameter optimizations, which are described in the supplementary material. The optimal network structure determined from the hyperparameter optimization is Nhidden = 8 and 
+
+Nnodes = 64. The appropriate choice of activation function is subtle; the least-squares model is periodic axially and azimuthally but monotonic radially. While the least-squares model captures dominant axial and azimuthal components, its limited representational power (i.e. finite number of terms) may leave behind residual structures that contain periodic features, particularly at shorter wavelengths than those used in the model, e.g. set by mmax . This is analogous to underfitting in polynomial regression; this behavior is documented in classical regression literature 17 . With this in mind, we want the PINN to be able to capture oscillatory features. As demonstrated by Ziyin et al. 18 , common activation functions struggle to model even basic oscillatory behaviors. Instead, the so-called “snake" activation function can successfully model oscillatory behavior while avoiding a vanishing gradient which plagues many common activation functions (e.g. tanh). The snake activation is defined as: 
+
+y(x; a) = x + 1
+
+a sin 2(ax ) (26) where a is a hyperparameter that determines the spatial frequency of the sinusoidal term. Through a series of robustness tests we noticed sub-optimal training when applying the stan-dard snake activation. Given this observation, we developed a modified version of the snake activation function: the Derivative-Enhanced Local Tuning Activation modification to snake, or “DELTAsnake”. We define the DELTAsnake activation function: 
+
+y(x; f , a, G) = G
+
+
+
+ax 1 − f
+
+1 + f + sin 2(ax )
+
+
+
+(27) 15 TABLE I. A comparison of functional forms and first and second derivatives of DELTAsnake, snake, and tanh. 
+
+Activation y y′ y′ range y′′ 
+
+DELTAsnake G
+
+
+
+ax 1− f
+
+1+ f + sin 2(ax )
+
+
+
+G
+
+
+
+a1− f
+
+1+ f + a sin (2ax )
+
+
+
+[−2 f Ga 
+
+(1+ f ) , 2Ga 
+
+(1+ f ) ] 2Ga 2 cos (2ax )
+
+snake x + 1
+
+a sin 2(ax ) 1 + sin (2ax ) [0, 2] 2a cos (2ax )
+
+tanh tanh x 1 − tanh 2 x [0, 1] −2 tanh x sech 2 x2 1 0 1 23                           
+
+> 2
+> 1
+> 0123
+> y
+> DELTAsnake and snake; a= 2
+> snake DELTAsnake
+> f= 0.5, G= 1.0 420241.00
+> 0.75
+> 0.50
+> 0.25
+> 0.00 0.25 0.50 0.75 1.00
+> Hyperbolic Tangent
+> 202
+> x
+> 1
+> 012dy/d x
+> 42024
+> x
+> 0.00 0.25 0.50 0.75 1.00 210125
+> 05d2y/d x2
+> 4321012340.5
+> 0.0 0.5
+
+FIG. 5. The DELTAsnake and snake activation functions (left) both outperform common activation func-tions like hyperbolic tangent (right) given the periodic nature of the data. Additionally, the snake-like functions do not suffer from vanishing gradients as suggested in the middle panel of the plots. DELTAsnake has additional flexibility in monotonicity and curvature. 
+
+The hyperparameter f controls the ratio of the maximum negative derivative to the maximum positive derivative and is set in the range [0, 1]. The contribution of the sin 2 term is tuned with hyperparameters f and a. Hyperparameter G modifies the curvature of the function. This ability to make the function non-monotonic and tune the curvature results in faster and more consistent convergence during training. By setting f = 0 and G = 1/a, one can recover the original snake activation function. To illustrate the impact of these modifications, we compare the first and second derivatives of DELTAsnake, snake, and tanh in Table I and provide plots comparing the functions and their derivatives in Figure 5. A detailed analysis of the properties of DELTAsnake is currently under way and will be dis-cussed in a later work. In this particular application, we find values f = 0.5, G = 1, and a = 516 work well. We show concretely in the supplementary materials that a network using the DELTAs-nake activation outperforms an equivalent network using the standard snake activation function as well as the hyperbolic tangent activation function. As recommended in Ref. 18 , when using the snake activation, the biases ( b) are initialized to zero and the weights ( w) are initialized from a uniform distribution in the range: 
+
+w ∈ [−p3/Nnodes , p3/Nnodes ] . (28) When using DELTAsnake, due to the larger curvature, we find stabler results with a smaller initial-ization range. From trial and error we developed a heuristic for the range of the weight initializa-tions for DELTAsnake that depends on a, G, and Nnodes and relates to the period of DELTAsnake oscillations: 
+
+w ∈
+
+h
+
+− κ π
+
+Ga √Nnodes 
+
+, κ π
+
+Ga √Nnodes 
+
+i
+
+(29) with a hand-tunable parameter κ that should be O(1). When κ = 1 the initialization range holds 
+
+w to within one period of the DELTAsnake oscillation for the case of G = 1. An additional sup-pression factor of 1 /G is included to balance the increased curvature. If κ is too large, the training may not converge. If κ is too small, the network gets stuck in uninteresting solutions or false minima. For the PINN applied to the Mu2e DS magnetic field, we find a value of κ = 0.7 works well. For the best network structure, which has Nnodes = 64, this results in an initialization range of approximately w ∈ [−0.055 , 0.055 ].To prepare the data for training, the measurement sample is randomly split into training data 
+
+and validation data with an 80%/20% training/validation split. The network is trained using the ADAM optimizer 19 for a nominal training period of 10 ,000 epochs. In each epoch Nc = 50 ,000 collocation points are sampled and passed through the network to calculate L∇·B. An initial learn-ing rate (LR) of LR = 2 × 10 −3 is used, with a learning rate reduction scheme that monitors the training loss for plateaus. The learning rate is reduced by a factor of 0 .5 with a patience of 300 epochs. The minimum allowed LR is set to 5 × 10 −5. To encourage early training towards a con-vergence of LB before applying a harsh physics constraint, λ is initialized to a small value and adjusted throughout the training period. We evaluated several annealing strategies and found that a gradual linear ramp yields the most consistent results and is straightforward to tune. A pre-training period of 1 ,250 epochs is completed with λ = 0.001. We then apply the linear ramp until 17 λ reaches its final value λmax . Every 3 epochs we apply a constant additive increase: 
+
+λi+1 = min (λi + 0.0001 , λmax ) . (30) Annealing λ in this way provides the benefit of being able to pre-train with a small λ value, without shocking the loss function with a large jump in λ in few epochs. An early stopping routine monitors the validation loss and stops the training with a patience of 5,000. 
+
+D. Fit Quality Statistic 
+
+To evaluate the quality of the fits we compare the value of the reduced chi-square ( χ2reduced ) with one; a value close to one is indicative of a good fit based on the measurement uncertainties. The reduced chi-square value is equal to the chi-square value, χ2, divided by the number of degrees of freedom, NDOF = Nmeas − NLSQ − NPINN , where NLSQ denotes the number of free parameters in the least-squares fit and NPINN is the generalized degrees of freedom (GDF) which we estimate using a Monte Carlo method proposed by Ye 20 . In the initial least-squares fit, which does not include the PINN, we set NPINN = 0. Details of the estimation of NPINN are included in the supplementary material. The full definition of the reduced chi-square is: 
+
+χ2reduced = χ2
+
+NDOF 
+
+= 1
+
+NDOF 
+
+> Nmeas
+
+## ∑
+
+> i
+
+(⃗Bmeas ,i −⃗ B(meas ) 
+
+> pred ,i
+
+)2
+
+σ 2
+
+> i
+
+(31) where σi = 0.3 Gauss is the injected measurement uncertainty. While Equation 31 refers to the measured and predicted values of from the initial least-squares fit, corresponding definitions of the measurement and prediction values are used to determine χ2reduced in the downstream modelings stages. 
+
+III. RESULTS 
+
+Our modeling technique is applied to the ten toy measurement simulations for the Mu2e DS described in Section II A. We provide a summary of the reduced chi-square values from the toys 18 and plots to further highlight the results for one of the toys. In the subsequent sections we describe robustness tests of the model that include a test of the impact of a systematic shift in the measure-ments and a test demonstrating the power of the PINN when using a significantly reduced set of measurement points. 
+
+A. Nominal Results 
+
+1. Least-Squares Approach 
+
+All field points in a given toy simulated measurement sample are included in the least-squares fit. We set the length parameter L = 12 .5 m and include terms in the series to orders mmax = 54 and nmax = 6, based on a hyperparameter optimization. Using intuition from the Nyquist-Shannon sampling theorem, one can alternatively select a reasonable value for mmax and nmax ; the model should not include frequencies above half the sampling frequency. In z, for example, the mea-surement sampling step size is ∆z = 0.05 m, therefore m should not exceed a value of 124. The azimuthal step size is ∆φ = π/8 rad, so n should not exceed a value of 7. Other considera-tions include consistency of convergence and fitting time, so we ultimately use a model with a more conservative truncation in axial frequencies. The least-squares fits result in a fit quality of 
+
+χ2reduced = 2.15 ± 0.01. We provide plots below for a toy with χ2reduced = 2.14. Running a sin-gle fit requires approximately 20 minutes of wall-clock time when executed on an AMD Ryzen Threadripper 3970X 32-Core CPU. Plots of residuals in the following sections (Figures 10 and 11) clearly indicate the least-squares model accurately reconstructs Bz but struggles to model sub-dominant features in Br and Bφ .
+
+2. Physics-Informed Neural Network 
+
+The PINN is applied to the residuals of the least-squares fit for each toy. In other words, the PINN learns a relic field contribution that can be included in the final model. The choice of network structure and activation function is not obvious, so we complete a number of hyperparameter optimizations to build an optimal network. This optimal network has Nlayers = 8, Nnodes = 64, and a DELTAsnake function with f = 0.5, a = 5, and G = 1 at every node of every hidden layer. A choice of λmax = 0.1 is sufficient to produce a physically consistent model that retains enough flexibility to model the relevant features of the field. The fit quality after training the PINN is 19 χ2reduced = 1.037 ± 0.005, and χ2reduced = 1.034 for the toy included in the figures. The training procedure requires approximately 30 minutes of wall-clock time per toy when executed on an NVIDIA GeForce RTX TM 2080 Ti GPU with 11GB GDDR6 memory. Using a Monte Carlo method 20 with twenty trials, wherein we randomly perturb the input resid-uals by a small amount and retrain the PINN, we estimate the GDF to be NPINN = dGDF = 1,156 ± 57. Given the uncertainty on NPINN is small relative to the total degrees of freedom, we use the mean value when computing χ2reduced . We note that NPINN is an order of magnitude fewer than the num-ber of free parameters in the PINN ( = 29 ,441), which is consistent with the findings of Ye 20 and Gao and Jojic 21 . In particular, Gao and Jojic demonstrate that the GDF is significantly reduced in neural networks that are deep and regularized. Our PINN is both deep ( Nlayers = 8) and is regularized with the physics constraint. After training the PINN, we study the features of the trained network in detail. The total loss function and its components, the hyperparameter λ , and the LR throughout the training are shown in Figure 6. The loss exhibits some small instabilities, particularly early on during the 
+
+λ annealing. Nonetheless, the overall trend is clearly convergent. Interestingly, during the pre-training L∇·B initially increases rapidly while the network settles towards a small MSE loss. Before the pre-training concludes L∇·B naturally begins to decrease given the very small non-zero value of 
+
+λ during pre-training. The network consistently improves the loss using the initial LR throughout pre-training and for the initial stage of λ annealing. The LR then rapidly falls to the minimum value. Note that during the rapid decrease in LR the MSE loss is quite stable, while L∇·B continues to be reduced. This is exactly the desired behavior of the λ annealing: an initial training period that focuses on MSE loss, followed by an extended period of annealing and final training once λ
+
+has reached λmax that focuses on reducing unphysical features in the trained PINN. By inspection, we can ensure the weights and biases of the trained network are under control. Figure 7 displays the weights and biases at initialization and after training. The weights are ap-proximately Gaussian and are restricted to within approximately half a period of the DELTAsnake oscillation. Similarly, the biases are approximately Gaussian. Both the weights and biases display means that are non-zero but small. To quantify the consistency of the trained network with Maxwell’s equations, we compare the divergence and the magnitude of the curl of the trained PINN evaluated at the test sample points to the divergence and curl induced by interpolating the same test dataset at randomly sampled points throughout the volume (Figure 8). This interpolation scheme is used for physics simulations and 20 Epoch 0.10 0.15 0.20 0.25 Loss               
+
+> LPINN
+> LB(training)
+> LB(validation) Epoch 10 3
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> Physics Loss
+> LB
+> Epoch 0.00 0.05 0.10
+> 01000 2000 3000 4000 5000 6000 Epoch 10 4
+> 10 3
+> LR
+
+FIG. 6. Plots of losses relating to ⃗ B accuracy (top row), physics loss (second row), physics constraint hyperparameter λ (third row), and LR (fourth row) as a function of epoch throughout the training period. Weights 10 0                          
+
+> 10 1
+> 10 2
+> Initialization: mean: -7.474E-04 stddev: 3.259E-02 Integral: 28928 Underflow: 0Overflow: 0Trained: mean: -2.337E-03 stddev: 4.466E-02 Integral: 28928 Underflow: 0Overflow: 0
+> 0.3 0.2 0.1 0.0 0.1 0.2 0.3 Biases 10 0
+> 10 1
+> Initialization: mean: 0.000E+00 stddev: 0.000E+00 Integral: 513 Underflow: 0Overflow: 0Trained: mean: -6.626E-03 stddev: 1.584E-02 Integral: 513 Underflow: 0Overflow: 0
+
+FIG. 7. Plots of weights (top) and biases (bottom) of the PINN. The initialization is represented by a gray shaded histogram while the values after training are represented by a green outline histogram. 
+
+analysis needed to interpret data from Mu2e. The standard deviation and extent of tails in the PINN are several orders of magnitude smaller than those introduced by interpolation. As the interpolation has been demonstrated to be sufficient for producing high quality physics simulations, we can 21 20 15 10 5 0 5 10 15 20                                    
+
+> B[Gauss/m]
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6Interpolation: mean: 4.978E-02 stddev: 1.101E+02 Integral: 2282665 Underflow: 0Overflow: 0Trained PINN: mean: 2.885E-03 stddev: 4.382E-02 Integral: 1232256 Underflow: 0Overflow: 00.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.0 |×B| [Gauss/m]
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6Interpolation: mean: 4.912E+01 stddev: 9.746E+01 Integral: 2282665 Underflow: 0Overflow: 0Trained PINN: mean: 5.600E-07 stddev: 9.764E-07 Integral: 1232256 Underflow: 0Overflow: 0
+
+FIG. 8. Plots of divergence (top) and magnitude of the curl (bottom) of the trained PINN (blue bars) com-pared to derivatives introduced by linearly interpolating the magnetic field using the original field calculation evaluated at the test sample points (gray hatches). The former is evaluated at the test sample field points using automatic differentiation, while the latter is evaluated at locations sampled uniformly throughout the mapped volume. For clarity the x axis of each plot is restricted to magnitudes less than 20 Gauss/m, but the interpolation derivatives extend to approximately ±1,000 Gauss/m. 
+
+conclude that the trained PINN with λmax = 0.1 is well behaved physically. The behavior of the PINN is highlighted for the profiles at φ = 0, π rad at a radius r = 0.8 m for the three cylindrical field components (Figure 9). The PINN learns Gauss-level features in Br and 
+
+Bφ which have some sub-dominant oscillatory structures. The residual panels show unstructured residuals with a scale consistent with the measurement noise. There are very small features in the PINN for the axial component Bz, which is already well modeled by the least-squares fit. In the following sections the prediction of the PINN is denoted as ⃗ BPINN .
+
+3. Least-Squares Iteration 
+
+After the PINN has been trained, the modeling is completed by a final iteration of the least-squares fitting. In this final iteration, the input data are prepared by subtracting the trained PINN evaluation from the original measurement: ⃗
+
+Bres ,NN =⃗ Bmeas −⃗ BPINN . (32) This second residual field should be well modeled by the least-squares fit and may find small im-provements in convergence since the structures of the field that the least-squares model originally struggled to reconstruct in the first least-squares fit are captured by the PINN. The iterated fit uses an identical set of parameters to the first fit, but are initialized to their best-fit values. The resulting fits to ⃗ Bres ,NN , which we define as ⃗ BLSQ ,2, yield a final fit quality statistic of 22 4                                 
+
+> 2
+> 024
+> Br [G]
+> PINN ( = 0)
+> PINN ( =)
+> Data ( = 0)
+> Data ( =)
+> 46810 12 14 Z [m] 1
+> 01Data - PINN 4
+> 2
+> 024
+> B [G]
+> PINN ( = 0)
+> PINN ( =)
+> Data ( = 0)
+> Data ( =)
+> 46810 12 14 Z [m] 1
+> 01Data - PINN 4
+> 2
+> 024
+> Bz [G]
+> PINN ( = 0)
+> PINN ( =)
+> Data ( = 0)
+> Data ( =)
+> 46810 12 14 Z [m] 1
+> 01Data - PINN
+
+FIG. 9. Axial profiles at φ = 0, π rad, r = 0.8 m comparing the PINN input and training evaluation. The three field components Br, Bφ , and Bz are displayed on the top, middle, and bottom, respectively. Each plot contains two panels. The top panel shows the least-squares residual (black and gold points) that are supplied as input and the trained PINN evaluation (magenta and blue lines). The bottom panel shows the residual of the trained PINN with the input. 
+
+χ2reduced = 1.034 ± 0.005. The value for the toy included in the figures is χ2reduced = 1.031. The final field model is defined as the sum of the iterated least-squares fit and the evaluation of the trained PINN ( ⃗BPINN ): ⃗
+
+Bmodel =⃗ BLSQ ,2 +⃗ BPINN . (33) The condensed picture of the fit quality is presented in histograms of field component residuals across all points of the measurement sample in Figure 10. The first least-squares fit does a modest job of reconstructing the measured field. Training the PINN brings the residuals in line with the 23 3 2 1 0 1 2 3                                                                                 
+
+> Br[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> Fit Residuals: Br(Measured Dataset)
+> LSQ Fit mean: 3.383E-03 stddev: 4.201E-01 Integral: 24416 Underflow: 0Overflow: 0PINN Training mean: 3.894E-04 stddev: 2.992E-01 Integral: 24416 Underflow: 0Overflow: 0LSQ Refit mean: 6.445E-04 stddev: 2.987E-01 Integral: 24416 Underflow: 0Overflow: 0Injected Noise Model 6420246
+> B[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> Fit Residuals: B(Measured Dataset)
+> LSQ Fit mean: -7.744E-03 stddev: 5.469E-01 Integral: 24416 Underflow: 0Overflow: 0PINN Training mean: -3.634E-03 stddev: 2.977E-01 Integral: 24416 Underflow: 0Overflow: 0LSQ Refit mean: -3.636E-03 stddev: 2.975E-01 Integral: 24416 Underflow: 0Overflow: 0Injected Noise Model 1.5 1.0 0.5 0.0 0.5 1.0 1.5
+> Bz[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> Fit Residuals: Bz(Measured Dataset)
+> LSQ Fit mean: 2.436E-06 stddev: 3.037E-01 Integral: 24416 Underflow: 0Overflow: 0PINN Training mean: 5.626E-04 stddev: 3.018E-01 Integral: 24416 Underflow: 0Overflow: 0LSQ Refit mean: 5.325E-09 stddev: 3.014E-01 Integral: 24416 Underflow: 0Overflow: 0Injected Noise Model
+
+FIG. 10. Residual plots, data - fit, for the three field components Br (top), Bφ (middle), Bz (bottom) evaluated at all points in the measurement sample. The residuals after each step of the modeling are included: least-squares fit (black outline), PINN training (blue filled), and least-squares iteration (green hatch). An overlay of the injected noise model is included as a red dashed line. 
+
+underlying measurement noise model. Small gains are seen in the final least-squares fit iteration. While studying fit residuals are instructive and help us understand modeling behavior, what we ultimately care about is the fidelity of the final model with respect to the true, underlying magnetic field. In other words, we want to know how well the model predicts the field in the absence of measurement noise. The component residuals evaluated on the test sample provide this information (Figure 11). Due to the strong physical constraints in the model as well as strong ability to generalize, the RMS of the residuals on the test sample are approximately five times smaller than the measurement noise. Recalling that efforts in recent experiments have resulted in modeling accuracies at the 10 −3 level, we conclude our modeling procedure can outperform alternative methods applied to other large bore solenoidal field by several orders of magnitude. The remainder of Section III is dedicated to robustness tests of this modeling technique. 24 6 4 2 0 2 4 6 
+
+> Br[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+
+Fit Residuals: Br (Test Dataset)                           
+
+> LSQ Fit mean: 5.664E-04 stddev: 3.756E-01 Integral: 1232256 Underflow: 0Overflow: 0PINN Training mean: 1.773E-03 stddev: 7.204E-02 Integral: 1232256 Underflow: 0Overflow: 0LSQ Refit mean: 2.102E-03 stddev: 7.131E-02 Integral: 1232256 Underflow: 0Overflow: 06420246
+> B[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+
+Fit Residuals: B (Test Dataset)                        
+
+> LSQ Fit mean: -8.191E-03 stddev: 3.715E-01 Integral: 1232256 Underflow: 0Overflow: 0PINN Training mean: -8.922E-03 stddev: 5.126E-02 Integral: 1232256 Underflow: 0Overflow: 0LSQ Refit mean: -8.916E-03 stddev: 5.007E-02 Integral: 1232256 Underflow: 0Overflow: 021012
+> Bz[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+
+Fit Residuals: Bz (Test Dataset)                   
+
+> LSQ Fit mean: -4.277E-03 stddev: 7.448E-02 Integral: 1232256 Underflow: 0Overflow: 0PINN Training mean: -3.851E-03 stddev: 6.089E-02 Integral: 1232256 Underflow: 0Overflow: 0LSQ Refit mean: -4.207E-03 stddev: 5.996E-02 Integral: 1232256 Underflow: 0Overflow: 0
+
+FIG. 11. Residual plots, data - fit, for the three field components Br (top), Bφ (middle), Bz (bottom) evaluated at all points in the test sample. The residuals after each step of the modeling are included: least-squares fit (black outline), PINN training (blue filled), and least-squares iteration (green hatch). 
+
+B. Systematic Effect: Hall Probe Bias 
+
+To consider a realistic systematic effect in the data, we consider an overall field strength scaling systematic applied independently to each Hall probe. We consider the case where the scale error is uncorrelated between probes; each scale factor is drawn from a Gaussian distribution with a mean of one and a standard deviation of 1 × 10 −4. This choice is a reflection of the requirements set by physics goals of the Mu2e experiment 8 and is expected to be achieved in the calibration. Each scale factor si is applied to the points in the measurement sample that are collected from Hall probe i to create the modified measurements ˜⃗B:˜⃗Bmeas ,i = si⃗ Bmeas ,i (34) while the point measurements in the test sample are left unmodified. A summary of the scale factors from the particular draw for this example are provided in Table II. The non-zero sample 25 TABLE II. Hall probe radial locations and the deviations of scale factors si from unity for the systematic measurement error test case. “BP” refers to Hall probes on the Big Propeller, while “SP” refers to Hall probes on the Small Propeller 8.
+
+Probe Label Radius [m] si − 1
+
+SP1 0.000 2.15 × 10 −4
+
+BP1 0.044 −9.24 × 10 −6
+
+SP2 0.054 1.39 × 10 −4
+
+SP3 0.095 −2.07 × 10 −5
+
+BP2 0.319 7.34 × 10 −5
+
+BP3 0.488 −1.44 × 10 −4
+
+BP4 0.656 −6.63 × 10 −5
+
+BP5 0.800 −1.01 × 10 −50.5                   
+
+> 0.0 0.5 R (m) 46810 12 14 Z (m) 7500 10000 12500 15000 17500 20000 Bz (G)
+> Bzvs. r,z(= 0)
+> Full Model (#8)
+> 0.8 0.6 0.4 0.2 0.0 0.2 0.4 0.6 0.8 R (m) 6810 12 Z (m)
+> Residual, Data-Fit
+> 3
+> 2
+> 1
+> 0123Data-Fit (G)
+
+FIG. 12. Results of the full modeling applied to the Hall probe calibration systematic test case for Bz. The left panel shows the data (black points) and fit evaluated at the measurement points (green wireframe) for the φ = 0 rad plane of the measurement sample. The right panel uses color to indicate the residual for the same plane of data. The residual pattern indicates a resistance of the model to fitting the bias in the probes. 
+
+mean si − 1 = 2.2 × 10 −5 should result in a small bias in the final model. If all steps of modeling are on firm ground, there should be no major consequence of the calibration scale factors. Figures 12 and 13 summarize the result of the full modeling procedure and include a plot of Bz
+
+in the φ = 0 rad plane and a plot of residuals on the test samples, respectively. The initial least-squares fit results in a fit statistic χ2reduced = 8.3, and χ2reduced = 7.3 for the final model. The in-creased χ2 is dominated by the model successfully resisting the bias, which appears most strongly in Bz. The residual histograms for the test sample points indicate a bias in Bz, as expected. Overall the model is still of high quality; neither Br nor Bφ are biased, and the RMS of the residuals are 26 6 4 2 0 2 4 6  
+
+> Br[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+
+Fit Residuals: Br (Test Dataset)                          
+
+> LSQ Fit mean: -7.398E-03 stddev: 4.065E-01 Integral: 1232256 Underflow: 0Overflow: 0PINN Training mean: 3.747E-03 stddev: 1.978E-01 Integral: 1232256 Underflow: 0Overflow: 0LSQ Refit mean: 3.375E-03 stddev: 1.925E-01 Integral: 1232256 Underflow: 0Overflow: 06420246
+> B[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+
+Fit Residuals: B (Test Dataset)                            
+
+> LSQ Fit mean: -8.191E-03 stddev: 3.717E-01 Integral: 1232256 Underflow: 0Overflow: 0PINN Training mean: -8.935E-03 stddev: 5.847E-02 Integral: 1232256 Underflow: 0Overflow: 0LSQ Refit mean: -8.932E-03 stddev: 5.762E-02 Integral: 1232256 Underflow: 0Overflow: 0432101234
+> Bz[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+
+Fit Residuals: Bz (Test Dataset)                   
+
+> LSQ Fit mean: -2.199E-01 stddev: 2.057E-01 Integral: 1232256 Underflow: 0Overflow: 0PINN Training mean: -2.084E-01 stddev: 2.251E-01 Integral: 1232256 Underflow: 0Overflow: 0LSQ Refit mean: -2.165E-01 stddev: 2.217E-01 Integral: 1232256 Underflow: 0Overflow: 0
+
+FIG. 13. Residual plots, data - fit, for the three field components Br (top), Bφ (middle), Bz (bottom) evaluated at all points in the test sample for the Hall probe calibration systematic test. The residuals after each step of the modeling are included: least-squares fit (black outline), PINN training (blue filled), and least-squares iteration (green hatch). 
+
+below the noise level of the probes. 
+
+C. Reduction in Number of Measurements 
+
+To assess the value added by the PINN, we pose the question: what unique benefits does the PINN offer compared to traditional methods? Drawing once again upon insights from the Nyquist-Shannon limit and basic Fourier analysis, we observe that certain features in the Mu2e DS field are inherently difficult to reconstruct using a truncated cylindrical harmonic series. One such example, visible in the Figure 9, is a shoulder feature in Br at φ = π rad, 8 ≤ z ≤ 9 m, which does not appear at φ = 0 and is not captured by the least-squares fit. However, the PINN is able to model this feature successfully. This observation raises the possibility that broader and subtler structures – those that are smooth or slowly varying in space – may still require a large number of harmonic terms to represent 27 accurately in a truncated cylindrical harmonic series. This is analogous to the classic difficulty of approximating a step function with a truncated Fourier series; although the feature appears coarse, the sharp, localized spatial transition demands many basis functions to resolve. As a result, efforts to reconstruct such features using a truncated least-squares model may be inefficient. The PINN, by contrast, can learn these structures directly from data without relying on an explicit basis, making it more effective at capturing such behavior with fewer learned parameters. This strength in turn could reduce the required spatial sampling density. This hypothesis has practical implications; a reduction in required measurements translates directly into a faster measurement campaign. We construct a reduced dataset with half as many mapper set points in both azimuthal angle φ
+
+and axial position z. We ensure the least-squares model still satisfies the Nyquist-Shannon limit by setting mmax = 54 and nmax = 2. The PINN is trained using the same hyperparameter values optimized for the nominal case. Figure 14 shows the residuals on the test sample under this reduced measurement sample sce-nario. The initial least-squares fit yields a poor fit quality with χ2reduced = 77, but after the PINN training, the final model achieves χ2reduced = 1.12. The residual histograms show that while the model is slightly weaker than in the nominal case, the RMS of the residuals remains well below the measurement noise, and the tails are very minor (typically within a few Gauss). To further highlight the PINN’s strength, Figure 15 shows the r = 0.8 m profiles at φ = 0, π rad, allowing direct comparison to the nominal model (Figure 9). The PINN successfully captures broader, semi-periodic field features across all components. Notably, the shoulder in Br is suc-cessfully modeled despite a larger magnitude and more complex structure; its amplitude increases by over an order of magnitude and exhibits sub-dominant oscillations. A comparable sawtooth-like structure is visible in Bφ , underscoring the PINN’s ability to easily reconstruct the same feature that would require many more terms in the least-squares model. In practice, the choice of spatial sampling density requires robust studies of any potential down-sides of reducing the number of measurements, e.g. increasing impact of systematic effects. We have neglected that here and instead completed a basic demonstration using the nominal measure-ment without considering systematics. 28 20 10 0 10 20                                                                            
+
+> Br[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Fit Residuals: Br(Test Dataset)
+> LSQ Fit mean: -7.468E-03 stddev: 3.905E+00 Integral: 1232256 Underflow: 0Overflow: 0PINN Training mean: 3.324E-04 stddev: 1.464E-01 Integral: 1232256 Underflow: 0Overflow: 0LSQ Refit mean: -8.907E-04 stddev: 1.431E-01 Integral: 1232256 Underflow: 0Overflow: 020 10 010 20
+> B[Gauss] (Data - Fit)
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Fit Residuals: B(Test Dataset)
+> LSQ Fit mean: -1.188E-02 stddev: 3.833E+00 Integral: 1232256 Underflow: 0Overflow: 0PINN Training mean: -9.011E-03 stddev: 9.539E-02 Integral: 1232256 Underflow: 0Overflow: 0LSQ Refit mean: -9.021E-03 stddev: 9.522E-02 Integral: 1232256 Underflow: 0Overflow: 010.0 7.5 5.0 2.5 0.0 2.5 5.0 7.5 10.0
+> Bz[Gauss] (Data - Fit)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Fit Residuals: Bz(Test Dataset)
+> LSQ Fit mean: -1.466E-03 stddev: 8.868E-01 Integral: 1232256 Underflow: 0Overflow: 0PINN Training mean: -1.774E-03 stddev: 1.234E-01 Integral: 1232256 Underflow: 0Overflow: 0LSQ Refit mean: -2.143E-04 stddev: 1.159E-01 Integral: 1232256 Underflow: 0Overflow: 0
+
+FIG. 14. Residual plots, data - fit, for the three field components Br (top), Bφ (middle), Bz (bottom) evaluated at all points in the test sample when fitting with a sparse measurement sample. The residuals after each step of the modeling are included: least-squares fit (black outline), PINN training (blue filled), and least-squares iteration (green hatch). 
+
+IV. SUMMARY AND CONCLUSIONS 
+
+We have demonstrated a hybrid approach for modeling the magnetic field inside the Mu2e DS bore, combining a truncated cylindrical harmonic least-squares model with a PINN trained on the residuals. This approach results in a final model that is both physically consistent and highly accurate, achieving residuals well below the injected measurement noise and a χ2reduced near unity. The standard deviation of the residuals of the model evaluation compared to the true field is orders of magnitude better than the requirements driven by Mu2e’s physics goals. The PINN architecture, which incorporates both hard and soft constraints from Maxwell’s equations, proves essential in capturing asymmetric and localized field features that are poorly described by the cylindrical harmonic series alone. The DELTAsnake activation function, intro-duced here, enhances the PINN’s ability to learn structured, oscillatory residuals while maintaining training stability and physical consistency. 29 20                                  
+
+> 15
+> 10
+> 5
+> 0510 15 20
+> Br [G]
+> PINN ( = 0)
+> PINN ( =)
+> Data ( = 0)
+> Data ( =)
+> 46810 12 14 Z [m] 1
+> 01Data - PINN 20
+> 15
+> 10
+> 5
+> 0510 15 20
+> B [G]
+> PINN ( = 0)
+> PINN ( =)
+> Data ( = 0)
+> Data ( =)
+> 46810 12 14 Z [m] 1
+> 01Data - PINN 20
+> 15
+> 10
+> 5
+> 0510 15 20
+> Bz [G]
+> PINN ( = 0)
+> PINN ( =)
+> Data ( = 0)
+> Data ( =)
+> 46810 12 14 Z [m] 1
+> 01Data - PINN
+
+FIG. 15. Axial profiles at φ = 0, π rad, r = 0.8 m comparing the PINN input and training evaluation when the PINN is trained on sparse data. The three field components Br, Bφ , and Bz are displayed on the top, middle, and bottom, respectively. Each plot contains two panels. The top panel shows the least-squares residual (black and gold points) that are supplied as input and the trained PINN evaluation (magenta and blue lines). The bottom panel shows the residual of the trained PINN with the input. 
+
+Robustness studies show that the model resists calibration systematics and can maintain accu-racy even when trained on a substantially reduced dataset. While this study focuses on the Mu2e DS as a test case, the techniques developed here should be broadly applicable to solenoidal field environments where measurement sparsity, geometric complexity, and physical consistency are key concerns over large spatial volumes. The authors also note the generic applicability of the iterative training, wherein either modeling technique alone cannot sufficiently model the data but the iteration of the two is especially powerful. 30 SUPPLEMENTARY MATERIAL 
+
+See supplementary material for additional details relating to: the helicalc package; the ho-mogeneous magnetic material model; details of the least-squares model and hyperparameter opti-mization; the PINN hyperparameter optimization; the estimate of the GDF of the PINN. 
+
+V. ACKNOWLEDGMENTS 
+
+We are grateful for the vital contributions of the Fermilab staff and the technical staff of the participating institutions. This work was supported by the US Department of Energy; the Is-tituto Nazionale di Fisica Nucleare, Italy; the Science and Technology Facilities Council, UK; the Royal Society, UK; the Leverhulme Trust, UK; the Ministry of Education and Science, Rus-sian Federation; the National Science Foundation, USA; the National Science Foundation, China; the Helmholtz Association, Germany; the Julian Schwinger Foundation, USA; the EU Horizon 2020 Research and Innovation Program under the Marie Skłodowska-Curie Grant Agreement Nos. 858199, 101003460, 101006726 and 101230211; and the Horizon Europe Research and Innova-tion Program under the Marie Skłodowska-Curie Grant Agreement No. 101234557. This docu-ment was prepared by members of the Mu2e Collaboration using the resources of the Fermi Na-tional Accelerator Laboratory (Fermilab), a U.S. Department of Energy, Office of Science, Office of High Energy and Nuclear Physics HEP User Facility. Fermilab is managed by FermiForward Discovery Group, LLC, acting under Contract No. 89243024CSC000002. 
+
+AUTHOR DECLARATIONS Conflict of Interest 
+
+The authors have no conflicts to disclose. 
+
+Author Contributions Cole Kampa: Conceptualization (shared); Data curation (shared); Methodology (lead); Formal analysis (lead); Investigation (lead); Visualization (lead); Software (lead); Writing – original draft (lead); Writing – review & editing (shared). Susan Dittmer: Data curation (supporting); Method-31 ology (supporting); Writing – review & editing (shared). Henry Glass: Data curation (shared); Software (supporting); Writing – review & editing (shared). Michael Schmitt: Conceptualization (shared); Supervision (lead); Funding acquisition (lead); Writing – review & editing (shared). 
+
+DATA AVAILABILITY 
+
+The data that support the findings of this study are openly available in Zenodo at https://doi.org/10.5281/zenodo.21983988, Ref. 22 .The code that supports the findings of this study are openly available in GitHub at https://github.com/Mu2e/docdb-48750/tree/v1.0, Ref. 23 .
+
+REFERENCES 
+
+> 1
+
+D. P. Aguillard et al. (Muon g − 2 Collaboration), “Measurement of the Positive Muon Anoma-lous Magnetic Moment to 127 ppb,” Phys. Rev. Lett. 135 , 101802 (2025). 
+
+> 2
+
+J. Ongena, R. Koch, R. Wolf, and H. Zohm, “Magnetic-confinement fusion,” Nature Physics 
+
+12 , 398–410 (2016). 
+
+> 3
+
+V. P. Grover, J. M. Tognarelli, M. M. Crossey, I. J. Cox, S. D. Taylor-Robinson, and M. J. McPhail, “Magnetic Resonance Imaging: Principles and Techniques: Lessons for Clinicians,” Journal of Clinical and Experimental Hepatology 5, 246–255 (2015). 
+
+> 4
+
+Mu2e Collaboration, “Mu2e Run I Sensitivity Projections for the Neutrinoless μ− → e− Con-version Search in Aluminum,” Universe 9 (2023), 10.3390/universe9010054. 
+
+> 5
+
+V. I. Klyukhin, A. Ball, F. Bergsma, D. Campi, B. Cure, A. Gaddi, H. Gerwig, A. Herve, J. Ko-rienek, F. Linde, C. Lindenmeyer, R. Loveless, M. Mulders, T. Nebel, R. P. Smith, D. Stickland, G. Teafoe, L. Veillet, and J. K. Zimmerman, “Measurement of the CMS Magnetic Field,” IEEE Transactions on Applied Superconductivity 18 , 395–398 (2008). 
+
+> 6
+
+M. Aleksa, F. Bergsma, P. A. Giudici, A. Kehrli, M. Losasso, X. Pons, H. Sandaker, P. S. Miya-gawa, S. W. Snow, J. C. Hart, and L. Chevalier, “Measurement of the ATLAS solenoid magnetic field,” Journal of Instrumentation 3, P04003 (2008). 
+
+> 7
+
+E. Frank, Precision Measurement of the ND280 Magnetic Field in the T2K Neutrino Experiment: Confirmation of the Momentum Scale through ∆++ Resonances , Ph.D. thesis, Bern U. (2012). 
+
+> 8
+
+S. Feher, P. M. DeLurgio, L. Elementi, H. W. Friedsam, J. Grudzinski, M. Lamm, J. Nogiec, 32 C. Orozco, B. Pollack, M. H. Schmitt, T. Strauss, R. Talaga, R. G. Wagner, J. L. White, and H. Zhao, “Mu2e Solenoid Field Mapping System Design,” IEEE Transactions on Applied Su-perconductivity 28 (2018), 10.1109/TASC.2017.2786720. 
+
+> 9
+
+M. Raissi, P. Perdikaris, and G. Karniadakis, “Physics-informed neural networks: A deep learn-ing framework for solving forward and inverse problems involving nonlinear partial differential equations,” Journal of Computational Physics 378 , 686–707 (2019). 
+
+> 10
+
+R. H. Bernstein, “The Mu2e Experiment,” Frontiers in Physics Volume 7 - 2019 (2019), 10.3389/fphy.2019.00001. 
+
+> 11
+
+“OPERA Electromagnetic and Electromechanical Simulation,” https://www.3ds.com/ products/simulia/opera , Dassault Systèmes. 
+
+> 12
+
+M. Lopes, “SolCalc,” [Computer Software] https://doi.org/10.11578/dc.20181011.1 
+
+(2009). 
+
+> 13
+
+B. Pollack, R. Pellico, C. Kampa, H. Glass, and M. Schmitt, “Modeling magnetic fields with helical solutions to Laplace’s equation,” Nuclear Instruments and Methods in Physics Research Section A: Accelerators, Spectrometers, Detectors and Associated Equipment 977 , 164303 (2020). 
+
+> 14
+
+U. H. Coskun, B. Sel, and B. Plaster, “Magnetic field mapping of inaccessible regions using physics-informed neural networks,” Scientific Reports 12 , 12858 (2022). 
+
+> 15
+
+A. Scheinker and R. Pokharel, “Physics-constrained 3D convolutional neural networks for elec-trodynamics,” APL Machine Learning 1, 026109 (2023), https://pubs.aip.org/aip/aml/article-pdf/doi/10.1063/5.0132433/16820224/026109_1_5.0132433.pdf. 
+
+> 16
+
+M. Abadi, A. Agarwal, P. Barham, E. Brevdo, Z. Chen, C. Citro, G. S. Corrado, A. Davis, J. Dean, M. Devin, S. Ghemawat, I. Goodfellow, A. Harp, G. Irving, M. Isard, Y. Jia, R. Joze-fowicz, L. Kaiser, M. Kudlur, J. Levenberg, D. Mané, R. Monga, S. Moore, D. Murray, C. Olah, M. Schuster, J. Shlens, B. Steiner, I. Sutskever, K. Talwar, P. Tucker, V. Vanhoucke, V. Va-sudevan, F. Viégas, O. Vinyals, P. Warden, M. Wattenberg, M. Wicke, Y. Yu, and X. Zheng, “ TensorFlow: Large-Scale Machine Learning on Heterogeneous Systems,” (2015), software available from tensorflow.org. 
+
+> 17
+
+D. C. Montgomery, E. A. Peck, and G. G. Vining, Introduction to Linear Regression Analysis ,5th ed., Vol. 821 (John Wiley & Sons, Hoboken, NJ, 2012) , see Section 7.2.2. 
+
+> 18
+
+L. Ziyin, T. Hartwig, and M. Ueda, “Neural networks fail to learn periodic functions and how to fix it,” Advances in Neural Information Processing Systems 33 , 1583–1594 (2020). 33 19 D. P. Kingma and J. Ba, “Adam: A Method for Stochastic Optimization,” (2017), arXiv:1412.6980 [cs.LG]. 
+
+> 20
+
+J. Ye, “On Measuring and Correcting the Effects of Data Mining and Model Selection,” Journal of the American Statistical Association 93 , 120–131 (1998). 
+
+> 21
+
+T. Gao and V. Jojic, “Degrees of Freedom in Deep Neural Networks,” (2016), arXiv:1603.09260 [cs.LG]. 
+
+> 22
+
+C. Kampa, S. Dittmer, H. Glass, and M. Schmitt, “Dataset: Precise Modeling of a Complex Solenoidal Magnetic Field Using a Combination of Analytic Functions and a PINN,” Zenodo (2026), https://doi.org/10.5281/zenodo.21983988 .
+
+> 23
+
+C. Kampa, S. Dittmer, H. Glass, and M. Schmitt, “The docdb-48750 repository,” GitHub, v1.0, 
+
+https://github.com/Mu2e/docdb-48750/tree/v1.0 (2026). 
+
+> 24
+
+J. D. Jackson, Classical electrodynamics , 3rd ed. (Wiley, New York, NY, 1999). 
+
+> 25
+
+The pandas development team, “pandas-dev/pandas: Pandas,” (2024). 
+
+> 26
+
+Wes McKinney, “Data Structures for Statistical Computing in Python,” in Proceedings of the 9th Python in Science Conference , edited by Stéfan van der Walt and Jarrod Millman (2010) pp. 56 – 61. 
+
+> 27
+
+L. Bartoszek et al. , “Mu2e Technical Design Report,” (2015), https://doi.org/10.48550/arXiv.1501.05241, arXiv:1501.05241 [physics.ins-det]. 
+
+> 28
+
+H. E. Knoepfel, “Magnetic potentials,” in Magnetic Fields (John Wiley & Sons, Ltd, 2000) Chap. 2, pp. 55–132, https://onlinelibrary.wiley.com/doi/pdf/10.1002/9783527617418.ch2. 
+
+> 29
+
+P. Virtanen, R. Gommers, T. E. Oliphant, M. Haberland, T. Reddy, D. Cournapeau, E. Burovski, P. Peterson, W. Weckesser, J. Bright, S. J. van der Walt, M. Brett, J. Wilson, K. J. Millman, N. Mayorov, A. R. J. Nelson, E. Jones, R. Kern, E. Larson, C. J. Carey, ˙ I. Polat, Y. Feng, E. W. Moore, J. VanderPlas, D. Laxalde, J. Perktold, R. Cimrman, I. Henriksen, E. A. Quintero, C. R. Harris, A. M. Archibald, A. H. Ribeiro, F. Pedregosa, P. van Mulbregt, and SciPy 1.0 Contributors, “SciPy 1.0: Fundamental Algorithms for Scientific Computing in Python,” Nature Methods 17 , 261–272 (2020). 
+
+> 30
+
+A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan, T. Killeen, Z. Lin, N. Gimelshein, L. Antiga, et al. , “Pytorch: An imperative style, high-performance deep learning library,” Advances in neural information processing systems 32 , 8024–8035 (2019). 
+
+> 31
+
+C. R. Harris, K. J. Millman, S. J. van der Walt, R. Gommers, P. Virtanen, D. Cournapeau, E. Wieser, J. Taylor, S. Berg, N. J. Smith, R. Kern, M. Picus, S. Hoyer, M. H. van Kerkwijk, 34 M. Brett, A. Haldane, J. F. del Río, M. Wiebe, P. Peterson, P. Gérard-Marchant, K. Sheppard, T. Reddy, W. Weckesser, H. Abbasi, C. Gohlke, and T. E. Oliphant, “Array programming with NumPy,” Nature 585 , 357–362 (2020). 
+
+> 32
+
+DLMF, “ NIST Digital Library of Mathematical Functions ,” https://dlmf.nist.gov/ , Re-lease 1.2.7 of 2026-06-15, f. W. J. Olver, A. B. Olde Daalhuis, D. W. Lozier, B. I. Schneider, R. F. Boisvert, C. W. Clark, B. R. Miller, B. V. Saunders, H. S. Cohl, and M. A. McClain, eds. 
+
+> 33
+
+N. Temme, “On the numerical evaluation of the ordinary bessel function of the second kind,” Journal of Computational Physics 21 , 343–350 (1976). 
+
+> 34
+
+B. Efron, “Bootstrap Methods: Another Look at the Jackknife,” Annals Statist. 7, 1–26 (1979). 35 SUPPLEMENTARY MATERIAL VI. THE HELICALC PACKAGE 
+
+We summarize the mathematical formalism and numerical techniques utilized in the helicalc 
+
+package. Section VI A derives the various integrals that the package can solve. Section VI B elaborates the numerical integration techniques used. The helicalc package is available in the 
+
+docdb-48750 repository in the FMS_BFieldModel/helicalc_package directory 23 . Once in-stalled, the package is invoked in a Python interpreter or script by importing helicalc . A note of the class or method associated with each section below is included for reference. 
+
+A. Mathematical Formalism 
+
+1. Notation 
+
+The following notation is used in the rest of this section: •⃗x = ( x p, yp, zp): field point at which the integral is being calculated •⃗ J =⃗ J(x, y, z): current density per unit area from some source •⃗r = ( r x, ry, rz): vector from a differential volume of current to the field point, i.e. the vector quantity ⃗x − d⃗ V .
+
+2. Biot-Savart Law 
+
+The Biot-Savart law describes the magnetic flux density generated by a spatial current density that is constant in time 24 . In three-dimensions, the field due to current density ⃗ J (e.g. from a superconducting cable) is: ⃗
+
+B(⃗x) = μ0
+
+4π
+
+> ZZZ
+> V
+
+⃗
+
+J ×⃗rr3 dV (35) where μ0 is the free space permeability and the volume V contains all of the current in the con-ductor(s). While ⃗ J in principle can be spatially varying, each conductor element of the Mu2e conductor network is given a constant current density which is calculated using the total current 
+
+I flowing through the conductor and the conductor’s cross-section. The current I and conductor 36 cross-section parameters (width w, height h) are supplied to helicalc ; the calculation of J is done internally. The current is always assumed to flow in a direction normal to the conductor cross-section at any point along the conductor. The derivations and implementation in helicalc use a local coordinate system to simplify the integrals. In general, a translation vector ⃗x c = ( xc, yc, zc) and three Euler angles are supplied to the integrator for a given conductor so that the integration in the local coordinates can be transformed to the global (i.e. experiment) coordinates. The procedure to calculate the field is as follows: 1. Transform the global field point to the local coordinates of the conductor: ⃗x →⃗x ′
+
+2. Compute the integral to find the field vector in the local frame: ⃗ B′ =⃗ B(⃗x ′)
+
+3. Transform the field vector from the local to the global frame: ⃗ B′ →⃗ B
+
+The values for ⃗ B = ( Bx, By, Bz) calculated at a number of field points are saved individually for each conductor and are stored in a pandas DataFrame and saved in the serialized pickle format 25,26 .A post-processing step combines the contribution from the N conductors: ⃗
+
+B(x, y, z)helicalc =
+
+> N
+
+## ∑
+
+> i=1
+
+⃗
+
+Bi(x, y, z) (36) 
+
+3. Straight Bus Bars 
+
+Straight segments of superconductor of length L are utilized throughout the bus bar network. The cross-section ( w h ) of the bar represents the rectangular cross-section of the superconducting cable. It is convenient to consider the cross-section of the bus bar centered in x, y plane. The bar extends from z = 0 to z = L and the current points in the +ˆz direction. The position and orientation of the bar in the global frame is specified by ⃗x c and three Euler angles to define an intrinsic set of rotations about z, y, z.Using Cartesian coordinates, the current density is: ⃗
+
+J(x, y, z) = ⃗ J = ( 0, 0, 1) Iw h (37) which we can use to derive the numerator of the Biot-Savart integrand: ⃗
+
+J ×⃗r = Iw h [−ry ˆi + rx ˆj] . (38) 37 Given a field point ⃗x ′ in the local coordinate system the vector ⃗r has components r x = x′ 
+
+> p
+
+− x,
+
+ry = y′ 
+
+> p
+
+− y, rz = z′p − z for the integration point ⃗x i = ( x, y, z) along the bar. With differential volume d V = dx dy dz, we can substitute into Equation 35 to find ⃗ Bstr , the field due to a straight bus bar: ⃗
+
+Bstr (⃗x ′) = μ0I
+
+4π w h    
+
+> ZL
+> 0
+> Zh/2
+> −h/2
+> Zw/2
+> −w/2
+
+[−ry ˆi + rx ˆj]
+
+r3 dx dy dz (39) which is implemented in the helicalc.busbar.StraightIntegrator3D class. 
+
+4. Circular Arc Bus Bars 
+
+Circular arc segments of superconductor of radius R0 and subtended angle φmax are utilized throughout the bus bar network. Arcs are also used as interlayer splices for helical solenoids with more than one layer. The cross-section ( w h ) of the bar represents the rectangular cross-section of the superconducting cable; the current flows in the φ direction (i.e. along the arc). It is convenient to consider cross-section of the bus bar centered in x, y plane. The center of the arc is located at 
+
+x = 0, y = R0 and the bar extends from the z = 0 plane towards the +ˆz direction. In other words, the circle describing the arc lies in the y, z plane. The current flows from the end of the bar at z = 0through the bar. The position and orientation of the arc bar in the global frame is specified by ⃗x c
+
+and three Euler angles to define an intrinsic set of rotations about z, y, z.Using Cartesian coordinates, the current density is: ⃗
+
+J(x, y, z) = ⃗ J = ( 0, sin φ , cos φ ) Iw h (40) where φ = 0 corresponds to the start of the arc ( z = 0) and φ = φmax corresponds to the end of the arc. We can extend this definition of φ to a cylindrical coordinate system in which φ and radial coordinate ρ are in the y, z plane and x plays the role of the axial coordinate. We will use this modified coordinate system for the integration variables. The numerator of the Biot-Savart integrand is: ⃗
+
+J ×⃗r = Iw h 
+
+"
+
+(rz sin φ − ry cos φ )ˆi + ( rx cos φ ) ˆj + ( −rx sin φ )ˆk
+
+#
+
+. (41) 38 Given a field point ⃗x ′ in the local coordinate system the vector ⃗r has components r x = x′ 
+
+> p
+
+− xi,
+
+ry = y′ 
+
+> p
+
+− ρ cos φ − R0, rz = z′ 
+
+> p
+
+− ρ sin φ for the integration point (cylindrical coordinates) ⃗
+
+x i = ( ρ, φ , x) along the arc bar. With differential volume d V = ρ dρ dφ dx, we can substitute into Equation 35 to find ⃗ Barc , the field due to an arc bus bar: 
+
+Bx,arc (⃗x ′) = μ0I
+
+4π w h    
+
+> Zw/2
+> −w/2
+> ZR0+h/2
+> R0−h/2
+> Zφmax
+> 0
+
+[rz sin φ − ry cos φ ]
+
+r3 ρ dφ dρ dx (42) 
+
+By,arc (⃗x ′) = μ0I
+
+4π w h    
+
+> Zw/2
+> −w/2
+> ZR0+h/2
+> R0−h/2
+> Zφmax
+> 0
+
+[rx cos φ ]
+
+r3 ρ dφ dρ dx (43) 
+
+Bz,arc (⃗x ′) = μ0I
+
+4π w h    
+
+> Zw/2
+> −w/2
+> ZR0+h/2
+> R0−h/2
+> Zφmax
+> 0
+
+−[rx sin φ ]
+
+r3 ρ dφ dρ dx (44) which is implemented in the helicalc.busbar.ArcIntegrator3D class. 
+
+5. Helical Solenoids 
+
+Thick, helically wound, multilayer solenoids are used to describe the Mu2e DS coils. There are a number of parameters to describe the geometry of a coil. The superconducting cable 27 is aluminum-stabilized NbTi; a rectangular cross section of twisted wire containing NbTi and copper is encapsulated in an aluminum sheath. The total cross-section is rectangular. Additional layers of insulating materials are included in the geometric model. We note that the bus bars use a similar cable, but the geometric details of the aluminum sheath and insulating materials are irrelevant for deriving the integrands. The local coordinate system for a coil is constructed with the origin at the center of the coil with the axis of the coil along the z-axis. The parameters defining a coil are: • Superconductor cross section w h . The superconductor is encased in aluminum stabilizer; the total cable cross-section (neglecting insulation) is wAl hAl .• tCI : thickness of cable insulation that encapsulates the cabling (i.e. surrounds the aluminum stabilizer). The total cable cross-section is (wAl + 2tCI ) ( hAl + 2tCI ).• tGI : thickness of ground insulation that encapsulates an entire coil layer. • tIL : thickness of interlayer insulation between successive layers of the coil. 39 • Inner radius of the coil Ri. This denotes the distance from the axis of the coil to the inner edge of the innermost layer of ground insulation. • Total length of the coil L. This length includes all insulation. • Center of the coil (global coordinates): (xc, yc, zc)
+
+• Three extrinsic Euler angles x, y, and z to rotate the coil in the global frame, i.e. a pitch, yaw, and roll, respectively. All DS coils have zero pitch, yaw, and roll. • η = ±1: coil layer winding helicity. η = + 1 is a “right-handed” winding (i.e. positive helicity) while η = −1 is a “left-handed” winding (i.e. negative helicity). Note that by choosing the direction of current always in the same direction azimuthally, i.e. I ∼ ˆφ + η ˆz,we can create an axial field in the same direction for both layer helicities. ⃗ B ≈ Bz ˆz with 
+
+Bz > 0 in the nominal configuration. In the Mu2e DS coils, single-layer coils are wound with η = + 1 and two-layer coils are wound with η = −1 for the inner layer and η = + 1for the outer layer. The alternating layer helicities serves two purposes. It is easier to splice layers together in this configuration, and this configuration partially cancels the azimuthal asymmetries induced by the helical nature of the windings. It is also worth noting that a choice is made to integrate φ in the η direction. For η = + 1 the integration over φ is in the positive direction and z increases during integration. For η = −1 the integration over φ is in the negative direction but z still increases during integration. • Current I. For the Mu2e DS, which is connected in series via a network of bus bars, 
+
+I = 6, 114 A. • Number of layers NL
+
+• Number of windings (i.e. turns) per layer Nt
+
+• φi: azimuthal location of the input lead for the coil. 0 ≤ φi ≤ 2π. For a single-layer coil the input lead is on the −z end of the coil, while for a two-layer coil the input lead is on the +z
+
+end of the coil. For the Mu2e DS, a typical φi value is φi = 225 ◦.• φ f : azimuthal location of the output lead for the coil. 0 ≤ φ f ≤ 2π. For single-layer and two-layer coils the output lead is on the +z end of the coil. For the Mu2e DS, a typical φ f
+
+value is φ f = 87 ◦.40 Visualizations of single layer and multilayer coil cross-sections are shown in Figure 16. The remainder of the derivation assumes this geometry and refers to integration variables ρ, ζ , φ .
+
+ρ is the radial variable in a standard cylindrical coordinate system. φ is an accumulating az-imuthal angle that is defined to be in the range [0, 2π) for the first coil winding. For η = + 1increasing φ increases z, while for η = −1 increasing φ decreases z. Thus to move along an 
+
+η = −1 winding one must navigate along φ in the negative direction. Consider, for example, 
+
+φ = + 12 π rad ( = −12 π rad), which corresponds to the same azimuthal position as φ = 0 but in the sixth winding for a coil with η = + 1 ( = −1). ζ is fixed to the cable’s cross-section at any point in the windings. ζ = 0 corresponds to the −z edge of the cable insulation, which has a thickness of tCI .Using Cartesian coordinates, the current density is: ⃗
+
+J = ( − sin φ , cos φ , η Λ
+
+2πρ ) IC w h (45) where Λ = wAl +2tCI is the helical pitch or spacing between windings and C = C(ρ) = 
+
+q
+
+1 + ( Λ 
+
+> 2πρ
+
+)2
+
+is a normalization factor that ensures a total current of I flows through the conductor. For the Mu2e coils, C ≈ 1 ( ρ ≫ Λ) and nearly constant ( ∆ρ = h ≪ ρ); a flag in helicalc allows for a constant 
+
+C value calculated at the mean value of ρ, ρ = ρ0 + h 
+
+> 2
+
+, for a small computational benefit. The numerator of the Biot-Savart integrand is: ⃗
+
+J ×⃗r = IC w h 
+
+(
+
+ˆi(rz cos φ − ryη Λ
+
+2πρ ) (46) 
+
++ ˆj(rz sin φ + rxη Λ
+
+2πρ )+ ˆk(−ry sin φ − rx cos φ )
+
+)
+
+.
+
+The vector ⃗ r has components r x = x′ 
+
+> p
+
+− ρ cos φ , ry = y′ 
+
+> p
+
+− ρ sin φ , and 
+
+rz = z′p − [−L/2 + tGI + ζ + h 
+
+> 2π
+
+|φ − φ0|]. Note there are small helicity dependent subtleties in 
+
+rz not described here. Using the differential volume d V = ( ρ dρ)( η dφ ) dζ and substituting into Equation 35 yields 41 ζ0
+
+L 
+
+> ζ1
+> ⍴1
+> ⍴0
+> Superconductor Al Stabilizer Coil Insulator Ground Insulation
+> (inside coil) (outside coil)
+
+(a) L  
+
+> N
+> ……21whrzhAL
+> wAL
+> tCI
+> tGI
+> (inside coil) (outside coil)
+
+(b) Interlayer insulation  
+
+> tIL
+> (inside coil) (outside coil)
+
+(c) 
+
+FIG. 16. Cross-sections of the helically wound solenoids modeled in helicalc . The cross sections are at φ = 0, so the current flows into the page for all superconducting regions of the diagram. (a) A single-layer coil denoting the variables ρ and ζ which are integrated over. (b) A single-layer coil denoting most of the cable and coil parameters that are used to locate the superconductor. In this coil, the windings are labeled with indexes 1 , 2, .., N; the current flows from index 1 to N, so this is a coil with positive helicity. The current flows in the +φ direction, e.g. from winding 1 to winding 2. (c) A two-layer coil, with the interlayer insulation indicated in cyan. In each diagram denotes the superconducting cable with superconductor (NbTi and copper) in gray, aluminum stabilizer in yellow, and cable insulation in red. The outer ground insulation is black. 
+
+42 the integral to solve to find ⃗ Bh.c., the field due to a single layer of a helical coil: 
+
+Bx,h.c.(⃗x ′) = μ0I
+
+4π w h    
+
+> Zρ0+h
+> ρ0
+> Zζ0+w
+> ζ0
+> Zφ1
+> φ0
+
+[rzηρ cos φ − ry Λ 
+
+> 2π
+
+]
+
+Cr 3 dφ dζ dρ (47) 
+
+By,h.c.(⃗x ′) = μ0I
+
+4π w h    
+
+> Zρ0+h
+> ρ0
+> Zζ0+w
+> ζ0
+> Zφ1
+> φ0
+
+[rzηρ sin φ + rx Λ 
+
+> 2π
+
+]
+
+Cr 3 dφ dζ dρ (48) 
+
+Bz,h.c.(⃗x ′) = μ0I
+
+4π w h    
+
+> Zρ0+h
+> ρ0
+> Zζ0+w
+> ζ0
+> Zφ1
+> φ0
+
+−ηρ [ry sin φ + rx cos φ ]
+
+Cr 3 dφ dζ dρ (49) which is implemented in the helicalc.coil.CoilIntegrator class. The integration bounds can be derived by studying Figure 16. The radial and axial endpoints are straightforward: 
+
+ρ0 = Ri + ( hAl − h)/2 + tGI + tCI and ζ0 = tCI + ( wAl − w)/2. The φ endpoints are a bit subtler given the varying helicities. φ0 = φi starts the integration at the −z end of the coil. If the coil has a single layer φ1 = φ0 + η[2πNt − | φ f − φ0|]; the total number of realized windings is bounded from above by Nt . If the coil has two layers the first (inner) layer winds all Nt turns, 
+
+φ1 = φ0 + η[2πNt ], while the outer layer is bounded in a way equivalent to the single layer coil, 
+
+φ1 = φ0 + η[2πNt − | φ f − φ0|]. While L enters the definition of rz to define the physical location of the windings, the realized length of the coil may differ from L by up to wAl for single-layer coils, given the pitch is defined assuming no additional spacing between windings and therefore does not count the final winding which may not span a full 2 π rad. For two-layer coils, φ0 (−z end of coil) for the first layer is adjusted to splice the two layers with an arc. For the inner layer φ0 → φ0 ± 2π/10 rad (minus sign for an inner layer with η = −1) while for the second layer φ0 is left unmodified. The two helical termination points at the −z end of the coil are spliced with a circular arc that spans an angle of approximately 2 π/10 rad and has a radius equal to the mean of the two layer radii; the current flows from the first layer (negative helicity) to the second layer (positive helicity). Bus bars are connected at the +z ends of the two-layer coils to bring current in and out. 
+
+6. Ideal Solenoids 
+
+To calculate the field from ideal solenoids, we utilize the same technique as the SolCalc 12 
+
+package, which integrates the exact magnetic field from a filamentary loop current 28 over the axial (z) and radial ( ρ) dimensions. Thus, the ideal solenoid representation is a cylindrical shell of current. For a consistent geometric description, many of the parameters use for ideal solenoids 43 match those used in the helical solenoid integrations. The parameters defining an ideal solenoid coil are: • Inner radius of the coil Ri. This denotes the distance from the axis of the coil to the inner edge of the innermost layer of ground insulation. • Outer radius of the coil Ro. This denotes the distance from the axis of the coil to the outer edge of the outermost layer of ground insulation. • Total length of the coil L. This length includes all insulation. • Center of the coil (global coordinates): (xc, yc, zc)
+
+• Three extrinsic Euler angles to rotate the coil in the global frame, i.e. a pitch, yaw, and roll, respectively. While PS and DS coils have zero pitch, yaw, and roll, each TS coil has a unique yaw. • Current I. The Mu2e PS, TS, and DS coils are configured in independent circuits with current values of I = 9, 200 A, I = 1, 730 A, and I = 6, 114 A, respectively. • Number of layers NL
+
+• Number of windings (i.e. turns) per layer Nt
+
+The current distribution is approximated as being uniformly distributed throughout the entire coil cross-section without consideration of where the current is actually localized (in the supercon-ductor). In other words, the integral is computed over a simple rectangular cross-section of area 
+
+A = L (Ro − R − i). The total current It = I N t NL is distributed throughout this cross-section: ⃗
+
+J = It /A ˆφ . A visualization of the cross-section is given in Figure 17 and can be compared to the more complex geometry used for helical coils in Figure 16. Knoepfel derives the magnetic field generated by an infinitesimal filamentary circular loop by first determining the magnetic vector potential ⃗ A = Aφ ˆφ by integrating over the path of the current. Elliptic integrals E and K are used in to write the solution in closed form. The filamentary field components Br,fil and Bz,fil are then calculated using the relationship ⃗ B = ∇ ×⃗ A (equation 2.3-11 in Ref. 28 ). Noting that the differential area d A = dρ dz, we can construct the ideal solenoid coil 44 Current Density J
+
+> rz
+
+## A(inside coil) (outside coil) FIG. 17. Cross-section of the ideal solenoid modeled in helicalc . The cross sections are at φ = 0, so the current flows into the page. Note that the area A contains the entire physical extent of the coil, including superconductor, stabilizer, and insulation layers. 
+
+integrals Br,i.c. and Bz,i.c. as in Ref. 12 :
+
+Bρ,i.c.(ρ, z) = μ0I
+
+2π A
+
+Z Ro
+
+> Ri
+
+Z L/2
+
+> −L/2
+
+z
+
+ρp(R + ρ)2 + z2
+
+"
+
+− K +
+
+ R2 + ρ2 + z2
+
+(R − ρ)2 + z2
+
+
+
+E
+
+#
+
+dz dr (50) 
+
+Bz,i.c.(ρ, z) = μ0I
+
+2π A
+
+Z Ro
+
+> Ri
+
+Z L/2
+
+> −L/2
+
+1
+
+p(R + ρ)2 + z2
+
+"
+
+K +
+
+ R2 − ρ2 − z2
+
+(R − ρ)2 + z2
+
+
+
+E
+
+#
+
+dz dr (51) where ρ is the filament radius and parameter k2 is defined as: 
+
+k2(ρ, z) = 4Rρ
+
+(R + ρ)2 + z2 (52) noting that as in the other derivations, we assume the local coordinate system where the solenoid axis is aligned with ˆ z. The complete elliptic integrals of the first and second kind K and E, respec-tively, are defined as: 
+
+K = K(k2) = 
+
+Z π
+
+> 2
+> 0
+
+(1 − k2 sin 2 γ)−1/2 dγ (53) 
+
+E = E(k2) = 
+
+Z π
+
+> 2
+> 0
+
+(1 − k2 sin 2 γ)1/2 dγ (54) whose tabulated values are used for computational efficiency 29 . The ideal solenoid integration is 45 implemented in the class helicalc.solcalc.SolCalcIntegrator .
+
+B. Numerical Integrations 
+
+The 2-dimensional and 3-dimensional Biot-Savart integrals that are solved in the helicalc 
+
+packages are well behaved and smooth for field points sufficiently far from the current sources being integrated. All field points considered in the Mu2e DS are approximately 20 cm from the nearest sources of current. We therefore us an iterative trapezoidal integration technique on a uni-form grid. This choice allows a massive computational benefit by running the computations on a GPU, which excels for large matrix operations. We bootstrap the efforts from the machine learning community which has developed a number of useful tools implemented on GPUs. In particular, we use pytorch 30 due to the array structures that closely mimic numpy.array structures 31 . All conductor geometries implemented in helicalc , with the exception of the ideal solenoids, are implemented to use either a GPU (preferred, pytorch ) or a CPU ( numpy ). When helicalc was developed, pytorch did not have an implementation of the elliptic integrals, which means it can-not be used for the ideal solenoid calculations; the ideal solenoid calculations, which are already fast, are implemented for CPU computations only ( numpy ). 
+
+VII. OPERA FIELD MODEL A. Magnetic Material Model 
+
+All contributions from passive magnetic materials included in the calculation of the Mu2e DS magnetic field are computed using the Opera magnetostatics simulation software suite. A number of structural elements near the solenoids are included in the calculation, such as reinforcement bar (rebar) in concrete shielding blocks surrounding the solenoids and present in the floor of the experimental hall, as well as steel plates embedded in the floor. While rebar typically comprises thin cylindrical rods in a complex grid structure within the concrete it is supporting, we use a simplified representation to ease the computational burden. The fractional rebar content f of each concrete block is estimated from engineering drawings. A set of rectangular prisms, or blocks, with homogeneous magnetic properties are defined to represent each volume of rebar. A custom B − H curve is set for each block and is defined as a linear mixture 46 of the materials: 
+
+B(H)mix = ε f B (H)rebar + ( 1 − ε f ) ( μ0H)concrete (55) where ε is an efficiency factor included to account for the structured orientation of the real rebar layout and the expected fringe field that will magnetize that material, or in other words what fraction of the rebar is expected to efficiently transport the flux. For example, the floor rebar contains a grid of parallel rods along x and parallel rods along z. The fringe field at the floor should be approximately in the z direction. Thus, an efficiency factor of ε = 0.5 is applied to the floor blocks. Including the steel floor plates is simpler, though one can still use the homogeneous treatment with f = 1, ε = 1. Table III summarizes the material values used in the Opera model. Figure 18 shows the B − H curve used to model the rebar in the shielding blocks. 
+
+> TABLE III. The parameters used to define the different magnetic material elements in the Opera model.
+
+Source f ε Magnetic Material 
+
+Shielding block rebar 0.050 1 /3 1010 steel Floor rebar (top layer) 0.033 1 /2 1010 steel Floor rebar (bottom layer) 0 .100 1 /2 1010 steel Floor plates 1 1 A-36 steel 
+
+B. Combination with helicalc 
+
+The field point locations in the Opera maps are slightly offset from those in helicalc , so a trilinear interpolation of each field component of the Opera maps is used to evaluate the field con-tributions from Opera at the field points locations calculated in helicalc . The Opera calculation is computed on a dense 3D Cartesian grid with a step size in each dimension of 25 mm and the field is smoothly varying, so interpolation errors are negligible. 
+
+VIII. LEAST-SQUARES MODEL A. Modifications to the Model 
+
+In practice, there are a number of non-trivial modifications to the least-squares model functions (see paper Equation 19) to improve the usability and prevent free parameter degeneracies. The 
+
+n = 0 terms codify azimuthally symmetric contributions to the field, which can be seen in the 47 0 50000 100000 150000 200000 250000 300000      
+
+> H[A/m] 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> B [T]
+
+DES Rebar Homogenous Model 
+
+f = 0.050, = 1/3 
+
+> 1010 steel Air DES Mixed Model
+
+FIG. 18. The custom B − H curve used to model the DES rebar blocks. This model mixes 1010 steel and air. 
+
+pre-factor of n which results in a vanishing Bφ ,cyl . Additionally, terms with Cm,0 and Dm,0 are zero since sin 0 = 0, thus we fix Cm,0 = Dm,0 = 0. Finally, Bφ ,cyl has an apparent divergence at r = 0due to division by zero. In the limit as r → 0, Bφ ,cyl is well behaved in that it is finite and equal along any azimuthal φ profile. Therefore, the problem is mitigated near r = 0 by replacing the radially dependent terms of Bφ ,cyl by a leading-order approximation. To simplify the notation, we isolate radially dependent terms of Bφ ,cyl and denote it by fm,n(r):
+
+fm,n(r) = nr In(kmr) . (56) By considering the power series definition of In (see DLMF Equation 10.25.2 from Ref. 32 ): 
+
+In(kmr) = ( kmr/2)n ∞
+
+## ∑
+
+> j=0
+
+(k2
+
+> m
+
+r2/4) j
+
+j!Γ(n + j + 1) (57) we see that the 1 /r divergence is artificial for n > 0, and only appears due to the separate compu-tation of In(kmr) and 1 /r; for any j in Equation 57, the power of r is ≥ 1 and absorbs the factor of 48 1/r in Equation 56. For n = 0, the prefactor n in Equation 56 instead gives fm,n=0(r) = 0. Given that Equation 57 converges rapidly for small kmr (see Ref. 33 ), we approximate fm,n for small kmr
+
+and n > 0 by including only the first order ( j = 0) term. For kmr < ε = 1 × 10 −7 we approximate 
+
+fm,n(r) as: 
+
+fm,n(r) ≈
+
+
+
+0, if n = 0, 
+
+> nk nmrn−1
+> 2Γ(n+1)
+
+, if n > 0.
+
+(58) which is consistent with the small argument asymptotic expression for In given in DLMF Equa-tion 10.30.1 (Ref. 32 ). We validate the approximation by comparing Bφ ,cyl evaluated using the approximation for fm,n and the exact form of fm,n at kmr = ε. Using the nominal least-squares model best-fit parameter values, we find the largest error in Bφ ,cyl is < 1 × 10 −15 Gauss. 
+
+B. Hyperparameter Optimization 
+
+The least-squares model function, given in paper Equation 19, requires choosing only three hyperparameters. The truncation indices mmax and nmax were selected from the Nyquist-Shannon sampling criterion and empirical convergence studies, as discussed in paper Sections III A 1 and III C. Hyperparameter L, the length defining the axial bound used in the boundary conditions, is deter-mined by a grid search. We use a simplified model function with mmax = 54 and nmax = 0, i.e. a model with only azimuthally symmetric terms, to evaluate many L values in a reasonable period of time. The scan shows a broad plateau for L ≥ 11 .5 m, with a shallow minimum at L = 12 .5 m. We validate that this is a reasonable choice for the full model by running the full model fit ( mmax = 54 and nmax = 6) for a limited set of L values selected from the grid search. The results of the two scans are provided in Table IV. The behavior of the model as L is adjusted can be understood from the boundary condition matching the magnetic potential at z = ±L/2 (see paper Equations 15 and 18). If L is too small, the boundary condition is imposed too close to the data, making the model too rigid near the axial ends of the fitted region and preventing it from capturing the field structure, including asymmetric components. Thus, choosing L equal to the axial extent of the data is not optimal. On the other hand, if L becomes too large, the finite basis spans an unnecessarily long axial interval. For fixed 
+
+mmax , this reduces the maximum axial spatial frequency represented in the fit region, making the model less efficient. Large L also significantly increases the runtime. 49 TABLE IV. Hyperparameter scans over length L in the least-squares model. A first scan uses a simplified model with mmax = 54 and nmax = 0 to decrease runtime. The value L = 9.6 m corresponds to the exact axial range of the data used in the fit. A second limited scan with the nominal mmax = 54 and nmax = 6 is included for validation. The value L = 12 .5 m is used in all fits in the paper. 
+
+L [m] nmax χ2reduced Runtime [s] 9.0 0 1.25 × 10 7 6.59.6 0 6.15 × 10 6 8.210 .0 0 1.16 × 10 6 5.010 .5 0 2.12 × 10 4 4.111 .0 0 451 .20 4.711 .5 0 394 .54 3.712 .0 0 394 .31 5.412 .5 0 394 .30 4.113 .0 0 394 .32 14 .513 .5 0 394 .34 14 .014 .0 0 394 .35 13 .514 .5 0 394 .37 18 .415 .0 0 394 .42 18 .210 .0 6 1.19 × 10 6 364 12 .5 6 2.15 1.22 × 10 3
+
+15 .0 6 2.27 2.22 × 10 3
+
+IX. PINN HYPERPARAMETER OPTIMIZATION 
+
+We complete a number of hyperparameter optimizations for the PINN by training with different hyperparameter configurations using the nominal least-squares fit result. First, we perform a grid search optimization to determine the optimal network structure. In each case, we use the DELTAsnake activation at every node of every hidden layer and set f = 0.5, 
+
+a = 5, and G = 1 which were determined in an initial hand tuning. The results of the scan are described in Table V. While the results are somewhat insensitive to the exact structure near the optimum, we choose to use the deepest and densest network that we can fit in GPU memory. This choice, Nlayers = 8 and Nnodes = 64, not only yields the absolute best result in the nominal case, but also ensures the same network structure can be used throughout the robustness tests. In an effort to optimize the activation function hyperparameters and additionally to compare DELTAsnake to alternative activation functions, we perform another set of trainings. In each case we use the optimal network structure, Nlayers = 8 and Nnodes = 64, and modify the activation function used in the hidden layers. For DELTAsnake, we scan over several values of a while fixing 
+
+f = 0.5 and D = 1. For a direct comparison with the snake activation we provide one training 50 TABLE V. A hyperparameter scan over the number of hidden layers and number of nodese per hidden layer to determine the optimal scalar PINN network structure for the nominal Mu2e DS dataset. The hyperpa-rameter λ = 0.1 is set in each test. In each case the DELTAsnake activation function with f = 0.5, a = 5, and D = 1 is used at each node. The optimal structure is marked by a shaded green box. Any test where the GPU memory was exceeded is marked by a shaded red box and is considered unsuccessful. In these cases an additional test with half the number of collocation points was run to try to mitigate the problem, unsuccessfully. 
+
+Nodes Layers 2 4 8 10 16 
+
+LPINN = 0.1885 
+
+LB = 0.1885 
+
+L∇·B = 0.0001 
+
+Lval = 0.1924 Runtime = 2 m 
+
+LPINN = 0.0977 
+
+LB = 0.0946 
+
+L∇·B = 0.0304 
+
+Lval = 0.0941 Runtime = 4 m 
+
+LPINN = 0.0936 
+
+LB = 0.0925 
+
+L∇·B = 0.0110 
+
+Lval = 0.0924 Runtime = 8 m 
+
+LPINN = 0.0987 
+
+LB = 0.0970 
+
+L∇·B = 0.0176 
+
+Lval = 0.0965 Runtime = 14 m 32 
+
+LPINN = 0.1120 
+
+LB = 0.1073 
+
+L∇·B = 0.0467 
+
+Lval = 0.1071 Runtime = 3 m 
+
+LPINN = 0.0911 
+
+LB = 0.0907 
+
+L∇·B = 0.0037 
+
+Lval = 0.0913 Runtime = 10 m 
+
+LPINN = 0.0903 
+
+LB = 0.0901 
+
+L∇·B = 0.0022 
+
+Lval = 0.0910 Runtime = 20 m 
+
+LPINN = 0.0910 
+
+LB = 0.0908 
+
+L∇·B = 0.0019 
+
+Lval = 0.0915 Runtime = 26 m 64 
+
+LPINN = 0.0998 
+
+LB = 0.0983 
+
+L∇·B = 0.0153 
+
+Lval = 0.0986 Runtime = 9 m 
+
+LPINN = 0.0900 
+
+LB = 0.0898 
+
+L∇·B = 0.0020 
+
+Lval = 0.0911 Runtime = 19 m 
+
+LPINN = 0.0892 
+
+LB = 0.0891 
+
+L∇·B = 0.0015 
+
+Lval = 0.0919 Runtime = 25 m 96 
+
+LPINN = 0.1127 
+
+LB = 0.1110 
+
+L∇·B = 0.0170 
+
+Lval = 0.1103 Runtime = 13 m 
+
+LPINN = 0.0899 
+
+LB = 0.0897 
+
+L∇·B = 0.0021 
+
+Lval = 0.0911 Runtime = 19 m using snake with a = 5; the DELTAsnake with a = 5 yields a better MSE error and significantly better divergence loss (approximately a factor of 10). We also complete one training with the tanh activation, which shows similar performance to the snake training. Table VI summarizes the impact of the choice of activation. We find the best results in a shallow minimum of several 
+
+a values and select DELTAsnake with a = 5 for producing the results in the paper. It is worth noting that if a is too large, the training diverges rapidly, typically within a few hundred epochs. It is possible this divergence could be fixed by hand-tuning the activation hyperparameters and training hyperparameters. However, to avoid biasing the values in Table VI by excessively hand-tuning additional hyperparameters and given we achieve high-quality results with smaller a, we do not apply such a fix in this demonstration. 51 TABLE VI. A hyperparameter scan over the activation used at each node of the hidden layers to determine the optimal scalar PINN network structure for the nominal Mu2e DS dataset. The hyperparameter λ = 0.1is set in each test, and the number of hidden layers and nodes per hidden layer are set to their optimal values of 8 and 64, respectively. We train using the DELTAsnake activation ( f = 0.5, G = 1) for various values of 
+
+a. We run the nominal case of a = 5 a second time using the standard snake activation ( f = 0, G = 1/a). We use a more convential activation, tanh, for a final comparison. For the results presented in the paper we use the DELTAsnake activation with a = 5, which is close to the optimal value in the shallow minimum in the region a ∈ [0.5, 10 .0]. This selection is denoted by the row shaded in green. Any activation in which the training diverges is shaded red; this only occurs when a > 10. Considering only the shallow minimum of the DELTAsnake trials, the DELTAsnake activation outperforms both the snake activation and tanh activation in the MSE loss in addition to a ×10 smaller divergence loss in the DELTAsnake trials. 
+
+Activation a f G LPINN LB L∇·B Lval Runtime (m) DELTAsnake 0.1 0.5 1.0 0.0946 0 .0940 0.0059 0.0943 39 DELTAsnake 0.5 0.5 1.0 0.0907 0 .0904 0.0027 0.0911 39 DELTAsnake 1.0 0.5 1.0 0.0899 0 .0897 0.0021 0.0910 24 DELTAsnake 2.0 0.5 1.0 0.0898 0 .0896 0.0018 0.0912 25 DELTAsnake 5.0 0.5 1.0 0 .0886 0.0883 0.0023 0.0930 25 DELTAsnake 10 .0 0.5 1.0 0.0905 0 .0903 0.0019 0.0912 39 DELTAsnake 20 .0 0.5 1.0DELTAsnake 50 .0 0.5 1.0snake 5.0 0.0 0.2 0.0921 0 .0908 0.0125 0.0916 39 tanh – – – 0.0944 0 .0931 0.0139 0.0927 16 
+
+X. GENERALIZED DEGREES OF FREEDOM 
+
+To assess the effective number of parameters, or generalized degrees of freedom (GDF), of the PINN, we implement the perturbative Monte Carlo estimation algorithm proposed by Ye 20 . We describe the algorithm implementation here but refer the readers to Ye’s work for details on the mathematical underpinnings and further details of the method. We start with the measured field values and nominal least-squares fit predictions from the mea-surement sample ⃗ Bi and ⃗ Bpred ,i, respectively. In this notation i refers to the field point index in the sample. Additionally, we’ve dropped all “meas” indications, since the algorithm is only ap-plied to the measurement sample. In a given trial, we perturb the PINN target values (i.e. the residual ⃗ Bres ,i =⃗ Bi −⃗ Bpred ,i) by some randomly sampled vector ⃗ δi. For each field field point, the perturbation vector is sampled as ⃗
+
+δi ∼ N3(⃗ μ, Σ) (59) where ⃗ μ = ( 0, 0, 0) and Σ = ( 0.5σ )2 × I3 and σ = 0.3 Gauss is the known measurement uncer-tainty. This choice is in accordance with Ye’s recommendation. 52 For T = 20 perturbation trials, indexed by t, we: • Generate ⃗ δt,i for all field points i.• Perturb the targets for PINN: ⃗ Bres ,t,i =⃗ Bi −⃗ Bpred ,i +⃗ δt,i
+
+• Train the PINN on ⃗ Bres ,t,i using the standard training procedure. The resulting predictions from the trained PINN are denoted ⃗ BNN ,t,i.The perturbed PINN predictions from the T trials are compared to the nominal PINN predictions (⃗BNN ,i) and used to estimate the pointwise sensitivity (ˆ hi) by estimating the slope of the PINN sensitivity for each field component (index j): • Evaluate the deviation in the estimated PINN predictions for each t: ∆⃗BNN ,t,i =⃗ BNN ,t,i −⃗
+
+BNN ,i.• Estimate the slope of ∆⃗BNN ,i vs. ⃗ δi for each field component j across the T trials. The estimated slope, ˆ hi, j, is estimated via least-squares regression of the linear equation 
+
+∆BNN ,t,i, j = hi, jδt,i, j + αi, j (60) • Estimate the pointwise sensitivity for field point: ˆhi =
+
+> 3
+
+## ∑
+
+> j=1
+
+ˆhi, j . (61) The total estimate of GDF is the sum of the pointwise sensitivities: 
+
+dGDF =
+
+> Nmeas
+
+## ∑
+
+> i
+
+ˆhi . (62) To assess a statistical uncertainty for the estimate of the GDF, we apply the bootstrap method 34 
+
+with M = 5 × 10 4 bootstrap replicas. In each replica, we sample T complete perturbation trials with replacement and recompute the GDF using the same procedure. The standard deviation of the bootstrap distribution is taken as the uncertainty on the GDF estimate. We estimate the GDF is: 
+
+dGDF = 1,156 ± 57 (63) 53 which we alternately denote as NPINN in the paper. To validate this estimate, we estimate the GDF in an alternative way using the same set of 
+
+T trials. Instead of estimating the pointwise sensitivity (ˆ hi) and summing them, we estimate the global sensitivity in a given trial t over all field points ( i) and components ( j) by regressing the slope dGDF t /Nmeas from the linear equation 
+
+∆BNN ,t,i, j = GDF t
+
+Nmeas 
+
+δt,i, j + αt . (64) The mean and standard error of the mean of the dGDF t estimators are taken as estimates of the GDF and the uncertainty on the estimate, respectively. With this alternative method we find: 
+
+dGDF = 1,144 ± 67 (65) which is in good agreement with the estimate using Ye’s method. We quote the estimate given in Equation 63 in the paper. 54

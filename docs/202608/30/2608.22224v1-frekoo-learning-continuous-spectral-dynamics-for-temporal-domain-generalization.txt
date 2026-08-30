@@ -1,0 +1,1706 @@
+Title: FreKoo++: Learning Continuous Spectral Dynamics for Temporal Domain Generalization
+
+URL Source: https://arxiv.org/pdf/2608.22224v1
+
+Published Time: Tue, 25 Aug 2026 00:58:03 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+> JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 1
+
+# FreKoo++: Learning Continuous Spectral Dynamics for Temporal Domain Generalization 
+
+En Yu, Xiaoyu Yang, Wei Duan, Guangquan Zhang, Jie Lu IEEE Fellow 
+
+Abstract —Temporal Domain Generalization (TDG) aims to learn from historical domains and generalize to unseen future distributions under concept drift. Nevertheless, prevailing TDG methods struggle with complex real-world streaming scenarios involving both multi-scale drift patterns (e.g., long-term period-icity intertwined with short-term incremental changes) and local uncertainties, especially in continuous settings where observa-tions arrive irregularly. To address this limitation, we propose FreKoo++, a novel continuous spectral-dynamical framework that pioneers the unification of continuous Koopman modal dynamics with adaptive spectral disentanglement. Specifically, FreKoo++ maps source-domain parameters into a compact latent space, modeling their evolution as a superposition of learnable continuous modes where complex eigenvalues jointly encode os-cillatory frequency and temporal growth or decay. This formula-tion naturally accommodates irregular timestamps and supports arbitrary horizon extrapolation without rigid discrete stepping. Furthermore, we propose a new adaptive soft spectral weight-ing mechanism backed by stability and spectral regularization, which automatically isolates persistent dominant dynamics from transient noise without relying on manual frequency thresholds. We derive modal approximation and generalization bounds that characterize how amplitude and eigenvalue estimation errors propagate with the prediction horizon. Extensive experiments on both discrete and continuous TDG benchmarks demonstrate that FreKoo++ achieves state-of-the-art performance under complex multi-scale drifts and irregular sampling. 
+
+Index Terms —Domain Generalization, Concept Drift, Dynamic modeling, Frequency Analysis. 
+
+I. I NTRODUCTION 
+
+# MODERN machine learning models face significant challenges in dynamic environments where data dis-tributions evolve over time [1]–[3]. Unlike static settings that assume an IID relationship between training and test data, real-world scenarios often involve continuously gener-ated data streams (e.g., user activity logs, sensor readings, financial transactions) exhibiting temporal dependencies and non-stationarity due to factors like shifting user behavior, environmental variations, or system changes [4]–[6]. These temporal dynamics lead to distributional shifts over time, known as concept drift , which invalidates the alignment be-tween historical and future out-of-distribution (OOD) data [7]– [9]. Consequently, models trained on past data frequently fail to generalize to future instances, leading to performance degra-dation and reduced reliability. This has spurred increasing interest in Temporal Domain Generalization (TDG) , which 
+
+En Yu, Xiaoyu Yang, Wei Duan, Guangquan Zhang and Jie Lu are with the Australian Artificial Intelligence Institute (AAII), Faculty of Engineer-ing and Information Technology, University of Technology Sydney (UTS), Australia (e-mail: en.yu-1@uts.edu.au; xiaoyu.yang-3@student.uts.edu.au; wei.duan@uts.edu.au; guangquan.zhang@uts.edu.au; jie.lu@uts.edu.au.) class 0        
+
+> class 1
+> uncertainty area
+> overfit boundary
+> smooth robust boundary
+> irregular Δt
+> Time stamp
+> Multi-scale drift patterns
+> Domain-specific uncertainties Domains arrive at irregular, continuous timestamps
+> 10 20 30 40 50
+> Decision-boundary angle
+> -150
+> -100
+> -50
+> 0
+> 50
+> 100
+> 150
+> 0
+> Periodic drift
+> Domain index
+> 𝒟𝑡10 𝒟𝑡29
+> 𝒟𝑡14
+> 𝒟𝑡20
+> 𝒟𝑡26
+> 𝒟𝑡39
+
+Fig. 1: Illustration of the three TDG challenges on a 2-Moons stream. The underlying distribution exhibits multi-scale periodicity, while empirical parameter estimates are corrupted by domain-specific uncertainties. Additionally, the irregularly sampled observations violate the time-invariant discrete tran-sition assumed by standard sequence models. seeks to learn from chronologically ordered source domains and generalize to unseen future distributions under evolving temporal shifts [10]. Recent progress in TDG generally follows two temporal modeling paradigms: discrete and continuous approaches. Dis-crete TDG (DTDG) methods operate under the rigid assump-tion of uniformly spaced temporal grids, enforcing step-wise transitions or generating synthetic OOD samples to model temporal evolution [10]–[13]. However, in real-world appli-cations such as social media streams and clinical healthcare, observations unfold asynchronously and unpredictably [14]. This causes temporal domains to be irregularly distributed over continuous time [15]. Binding dynamics to fixed discrete steps prevents discrete methods from characterizing the continuous dynamics of irregular time-distributed domains. To solve this, 
+
+continuous TDG (CTDG) approaches have recently emerged, leveraging continuous domain indices or neural ODEs to enable prediction at arbitrary timestamps [15]–[17]. Nevertheless, most methods implicitly assume that concept drift is primarily incremental or focus on ensuring local smoothness between adjacent domains, which causes two challenges as visualized in Fig. 1: 1) Difficulty in multi-scale drift patterns : real-world concept drift frequently ex-hibits long-term periodicity (e.g., seasonality, weekly/daily user patterns, economic cycles), not just smoothly incremental changes [18], [19]. Current approaches struggle to capture these recurring patterns spanning longer time horizons [12]. Their effectiveness often diminishes, particularly near phase transitions of periodic cycles where the inability to anticipate arXiv:2608.22224v1 [cs.LG] 23 Aug 2026 JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 2
+
+pattern recurrence hinders generalization. 2) Vulnerability to Overfitting Domain-Specific Uncertainties : current TDG meth-ods typically segment continuous data streams into discrete temporal domains. However, the complex drift patterns inher-ent in real-world streams make it difficult to guarantee that data within each domain remains IID. Consequently, localized uncertainties and non-IID characteristics within domains can complicate optimization and increase the risk of overfitting to domain-specific artifacts, ultimately undermining stable cross-temporal generalization [20]. These challenges underscore the necessity for principled frameworks that can capture persistent multi-scale dynamics while filtering local uncertainties. Since model parameters optimized on successive temporal domains provide a com-pact proxy for distributional evolution, we model parameter trajectories from a spectral perspective [15], [21], [22]. In the spectral domain, long-term trends and periodic components are typically concentrated in low-frequency structures, whereas transient domain-specific uncertainties often appear as high-frequency variations [23]–[26]. This separation offers a useful inductive bias for isolating predictable temporal dynamics from disruptive local fluctuations. Building upon this intuition, our preliminary work FreKoo [21] integrated Discrete Fourier Transform (DFT) with Koopman operator theory for dis-crete TDG. It disentangled parameter trajectories into distinct spectral bands and leveraged Koopman dynamics to extrapo-late low-frequency dominant patterns while regularizing high-frequency uncertainties. However, FreKoo is strictly bound to uniform temporal grids and relies on manually pre-defined, non-adaptive frequency thresholds. This rigid design prevents dynamic spectral disentanglement and renders it fundamen-tally incompatible with continuous-time data streams where observations arrive asynchronously. In this paper, we propose FreKoo++ , a unified framework for continuous temporal domain generalization. FreKoo++ is motivated by the observation that the solution of a continuous-time linear dynamical system admits an exponential form that can be interpreted as a spectral decomposition in the Laplace domain. Specifically, each eigenvalue of the Koopman operator encodes both the growth/decay rate and oscillatory frequency of a latent dynamical mode. This connection enables us to directly parameterize temporal evolution through learn-able Koopman eigenvalues, bypassing the need for discrete Fourier transforms and naturally supporting irregularly sam-pled observations. Concretely, FreKoo++ is implemented as a continuous-time parameterized module that learns Koopman eigenvalues from irregularly sampled parameter trajectories. This formulation supports prediction at arbitrary future times-tamps without relying on discrete time stepping. Furthermore, leveraging the continuous spectral representation, we introduce a learnable soft spectral weighting mechanism together with a spectral energy regularization strategy, which adaptively em-phasizes dominant low-frequency structures while suppress-ing high-frequency noise. This design removes the need for manually defined frequency thresholds and allows end-to-end optimization. To provide theoretical grounding, we analyze the approximation behavior of the proposed continuous-time formulation, bounding its modal approximation error and deriving a generalization bound whose growth is controlled by the learned spectrum. Our main contributions are summarized as follows:  
+
+> •
+
+We propose FreKoo++ , a pioneering continuous-time TDG framework that shifts the paradigm of parame-ter evolution from discrete-step transitions to learnable Koopman-inspired modal dynamics. By encoding fre-quency and temporal growth/decay into continuous eigen-values, FreKoo++ naturally accommodates irregularly sampled source domains and arbitrary-horizon prediction.  
+
+> •
+
+We introduce an adaptive spectral disentanglement mech-anism with spectral and stability regularization, which automatically disentangles persistent dynamics from tran-sient fluctuations without requiring manual frequency selection.  
+
+> •
+
+We provide comprehensive theoretical and empirical vali-dation for FreKoo++. Our theoretical analysis establishes rigorous approximation and generalization guarantees, while extensive experiments across diverse TDG bench-marks demonstrate its superior performance and robust extrapolation capabilities. II. R ELATED WORK 
+
+A. Temporal Domain Generalization 1) Discrete Temporal Domain Generalization (DTDG): 
+
+DTDG focuses on learning from chronologically ordered source domains to generalize to unseen future distribu-tions [10]. The core objective is to effectively leverage tem-poral evolutionary cues without accessing target domain data. Existing approaches fall broadly into data driven and model centric paradigms. Data driven methods enhance temporal robustness by synthesizing temporally shifted distributions or enforcing invariant features. For instance, CODA con-structs concept drift simulators to generate future-like sam-ples [13], Foresee synthesizes out-of-distribution instances for non-stationary environments [11], and recent methods model instance-level evolution or learn temporally invariant repre-sentations to improve robustness to future shifts [27]–[29]. 
+
+Model centric approaches instead integrate temporal dynamics directly into optimization objectives or model parameters. Gra-dient interpolation regularization encourages decision bound-aries to evolve smoothly over time [10], DRAIN forecasts future neural network parameters via drift-aware recurrent ar-chitectures [12], and sequential autoencoders capture evolving latent domain structures [8], [30]. Despite these advances, most DTDG methods implicitly rely on uniformly spaced temporal grids and assume smooth incremental shifts. 
+
+2) Continuous Temporal Domain Generalization (CTDG): 
+
+Continuous temporal learning relaxes the restrictive assump-tion of rigid, uniformly spaced temporal grids. Early continu-ous domain adaptation frameworks treat time as a continuous domain index to learn smoothly transferable representations across evolving distributions [16], [31], [32]. More recently, Continuous Temporal Domain Generalization (CTDG) has emerged to address future-domain extrapolation under contin-uous, irregular observation timestamps [15], [33]. By support-ing asynchronous observation arrivals and arbitrary-horizon JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 3
+
+forecasting, CTDG represents a critical paradigm shift toward realistic streaming environments. However, existing CTDG methods still exhibit two funda-mental limitations. First, prevailing formulations rely heav-ily on monotonic or locally smooth evolution assumptions, rendering them inadequate for complex, multi-scale, or re-curring concept drifts. Second, methods driven by stan-dard continuous-time dynamics—such as Neural ODEs or continuous-time recurrent units—typically model parameter or feature transitions directly in the time domain [14], [34], [35]. As a result, they lack an explicit mechanism to disen-tangle persistent macro-trends from transient domain-specific fluctuations. This research overcomes these bottlenecks by establishing a continuous Koopman spectral representation, where complex eigenvalues explicitly quantify frequency and temporal persistence, enabling adaptive spectral disentangle-ment under irregular temporal sampling. 
+
+B. Concept Drift 
+
+Concept drift signifies a change in the underlying data distribution over time, formally occurring between time t and 
+
+t+1 if the joint distribution Pt+1 (X, y )̸ = Pt(X, y ). This non-stationarity poses a fundamental challenge, requiring models to adapt dynamically to maintain predictive performance and reliability [7], [18], [36], [37]. Prior research treats it as unpre-dictable and often employing detect-then-adapt strategies [3], [38]. In contrast, the Temporal Domain Generalization (TDG) setting frequently focuses on leveraging more predictable evolutionary dynamics for proactive generalization [12], [39]. However, existing TDG methods often oversimplify these dy-namics, primarily modeling smooth, incremental drifts while struggling to capture complex long-range temporal structures like periodicity which are prevalent in many real-world data streams yet demand different approaches than simple mono-tonic progression. Furthermore, current TDG involves segmenting the contin-uous data stream into temporal domains {D1, D 2, . . . , D T },assuming concept drift occurs primarily between these se-quential domains [10]. This often struggles to perfectly align with real-world data streams, potentially violating the implicit assumption that data within each domain Dt is Independent and Identically Distributed (IID). Consequently, individual domains may harbor internal non-IID structures or local-ized noise patterns [40], [41]. The presence of intra-domain complexities leads to sensitivity to domain-specific noise and artifacts, hindering robust generalization, particularly for TDG models designed predominantly to address shifts occurring only at the domain boundaries. Effectively handling both the diverse inter-domain evolutionary dynamics (including period-icity) and these intra-domain data characteristics is therefore crucial for robust temporal generalization. 
+
+C. Frequency Learning and Koopman Dynamics 
+
+Frequency-domain learning has become an effective tool for modeling non-stationary temporal data. By transforming sig-nals from the time domain to the spectral domain, frequency-aware methods can capture periodicity, seasonality, and multi-scale temporal dependencies that may be difficult to identify through local time-domain statistics. For example, frequency-enhanced architectures have been used in long-term time-series forecasting [42], [43], adaptive time-frequency model-ing [44], and frequency normalization for non-stationary fore-casting [23]. Classical frequency analysis has also been widely used to detect periodic structures in temporal signals [45]–[47]. These studies suggest that spectral representations provide a useful inductive bias for separating stable temporal patterns from high-frequency disturbances. Koopman theory provides another principled view of tem-poral dynamics by representing nonlinear evolution through a linear operator in an appropriate lifted space [48], [49]. Recent machine learning methods have combined Koopman operators with neural representations for forecasting dynamical systems and non-stationary time series [4], [25]. In temporal do-main generalization, Koopman-based methods have also been explored to model evolving domains [28]. Our preliminary FreKoo framework first applies DFT-based decomposition to uniformly sampled parameter trajectories and then extrapo-lates selected components through discrete Koopman dynam-ics [21]. FreKoo++ instead directly learns a continuous modal representation, enabling spectral allocation and arbitrary-time extrapolation within a unified latent space. III. P RELIMINARY 
+
+A. Temporal Domain Generalization 
+
+Given a chronologically ordered sequence of temporal domains extracted from historical data streams, Temporal Domain Generalization (TDG) aims to train a model that generalizes to unseen future data distributions. Let T =
+
+{t1, t 2, . . . , t T } denote the set of historical timestamps, where 
+
+ti ∈ R+ and t1 < t 2 < · · · < t T . At each timestamp ti, we observe a source domain Dti = {(x(j) 
+
+> ti
+
+, y (j) 
+
+> ti
+
+)}Ni
+
+> j=1
+
+, drawn from a time-dependent joint distribution Pti (X, Y ) over a common input space X and label space Y. Due to concept drift ,
+
+Pti (X, Y ) may differ from Ptj (X, Y ) for i̸ = j. Depending on the temporal structure of the observed domains, TDG can be categorized into two paradigms: 
+
+Discrete TDG (DTDG) assumes uniformly spaced times-tamps, i.e., ∆ti = ti+1 − ti ≡ C. Given historical source domains {D ti }Ti=1 , the objective is to learn a model g(·; θ) : 
+
+X → Y that generalizes to the next unseen target domain 
+
+DtT +1 ∼ PtT +1 (X, Y ) without accessing DtT +1 during train-ing [10]. 
+
+Continuous TDG (CTDG) relaxes the uniform-spacing as-sumption and allows ∆ti to vary across domains. The objective is to learn a temporal prediction mechanism that generates model parameters θ(ts) for an arbitrary future timestamp 
+
+ts > t T , such that g(·; θ(ts)) generalizes to the unseen target domain Dts ∼ Pts (X, Y ) without access to future-domain data during training [15]. 
+
+B. Challenges 
+
+To characterize temporal distribution shifts from the perspective of model evolution, we consider the tra-jectory of optimal parameters induced by the time-varying distribution Pt(X, Y ). Specifically, let θ∗(t) =JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 4
+
+arg min θ EPt [ℓ(g(X; θ), Y )] denote the optimal parameter configuration at time t. In practice, this underlying trajec-tory cannot be directly observed. Instead, at each historical timestamp ti ∈ T , we obtain an empirical estimate ¯θti by optimizing the model on the finite temporal domain Dti . Due to finite samples, intra-domain non-stationarity, and domain-specific variations, these empirical estimates inevitably deviate from the underlying trajectory. We model this observation process as, ¯θti = θ∗(ti) + ϵ(ti), (1) where ϵ(ti) summarizes estimation error and local domain-specific fluctuations. Based on this parameter-space formu-lation, continuous temporal domain generalization confronts three fundamental challenges: 
+
+Challenge 1 (Multi-scale drift patterns in parameter space): 
+
+Prevailing TDG methods often model temporal evolution through incremental changes or local smoothness between adjacent parameter configurations. While such formulations handle gradual shifts, they fail to capture long-range recur-ring dynamics. In many real-world streams, the underlying parameter trajectory θ∗(t) exhibits periodic or multi-scale pat-terns, where similar states reappear after a temporal lag—i.e., 
+
+∃L > 0 such that θ∗(t) ≈ θ∗(t + kL ) for k ∈ Z+, despite short-term variations where θ∗(t)̸ = θ∗(t + ∆) . This non-monotonic trajectory cannot be adequately captured by step-wise local smoothness alone. 
+
+Challenge 2 (Parameter-space uncertainties and noise cor-ruption): The empirical parameter sequence {¯θti }Ti=1 is cor-rupted by the perturbation term ϵ(ti) in Eq. (1), which en-capsulates finite-sample effects and domain-specific variations. Directly treating this noisy sequence as a clean dynamical sig-nal causes models to overfit these transient fluctuations rather than tracking the true, persistent parameter trajectory θ∗(t),thereby severely degrading future-domain generalization. 
+
+Challenge 3 (Irregular timestamps and arbitrary-time pa-rameter extrapolation): CTDG requires predicting the pa-rameter configuration θ(ts) at an arbitrary future timestamp 
+
+ts > tT , while historical domains arrive at non-uniform intervals ∆ti = ti+1 − ti. Existing discrete methods rely on time-invariant one-step parameter transitions (e.g., ¯θti+1 =
+
+F (¯θti )) designed for uniform grids ( ∆ti ≡ C). Under irregular sampling, such discrete transitions fail to scale with varying temporal gaps, leading to compounding error accumulation when recursively projected to arbitrary future times. IV. F RE KOO : F REQUENCY -K OOPMAN FRAMEWORK 
+
+For the DTDG setting, our preliminary framework 
+
+FreKoo [21] models parameter trajectories through a two-stage spectral-dynamical approach (as shown in Fig. 2), i.e., Fourier-based spectral decomposition and frequency-specific dynamic modeling. Specifically, given a time-varying param-eter trajectory Θ = [θ1, θ 2, . . . , θ T ]⊤ ∈ RT ×D with T
+
+uniform timesteps and D dimensions, FreKoo first transforms it into frequency space via Discrete Fourier Transform (DFT) along the temporal axis: Θf = F(Θ) , where Θf [f, d ] =PTt=1 Θ[ t, d ] · e−j2πf t/T . To isolate dominant dynamics, it computes the average spectral magnitude across dimensions {𝜃1,𝑙𝑜𝑤, 𝜃1,ℎ𝑖𝑔ℎ} 
+
+> 𝜙𝑙𝑜𝑤
+
+𝜙 −1     
+
+> Parameter Trajectory: 𝛩 = 𝜃1, 𝜃2, … , 𝜃𝑇
+> 𝜙ℎ𝑖𝑔ℎ
+> 𝑧1,𝑙𝑜𝑤 𝑧1,ℎ𝑖𝑔ℎ
+> Ƹ𝑧1,𝑙𝑜𝑤
+
+𝑲 
+
+…
+
+…                   
+
+> Data
+> Space
+> ෠𝜃1
+> {𝜃2,𝑙𝑜𝑤, 𝜃2,ℎ𝑖𝑔ℎ}
+> 𝜙𝑙𝑜𝑤 𝜙ℎ𝑖𝑔ℎ
+> 𝑧2,𝑙𝑜𝑤 𝑧2,ℎ𝑖𝑔ℎ
+> Ƹ𝑧2,𝑙𝑜𝑤
+> {𝜃𝑇,𝑙𝑜𝑤, 𝜃𝑇,ℎ𝑖𝑔ℎ}
+> 𝜙𝑙𝑜𝑤 𝜙ℎ𝑖𝑔ℎ
+> 𝑧𝑇,𝑙𝑜𝑤 𝑧𝑇,ℎ𝑖𝑔ℎ
+> Ƹ𝑧𝑇,𝑙𝑜𝑤
+> 𝒟1 𝒟2 𝒟3 𝒟4
+> Model
+> space
+> 𝒟𝑇
+> 𝜃1 𝜃2 𝜃3 𝜃4 𝜃T
+> 𝑲𝒐𝒐𝒑𝒎𝒂𝒏
+> Space
+> DFT: ℱ·;Filter: ⊙ 𝐁 ;IDFT: ℱ −1 ·
+> 𝑭𝒓𝒆𝒒𝒖𝒆𝒄𝒚
+> Space
+> 𝑳𝒂𝒕𝒆𝒏
+> Space
+> Reconstructed
+> Space
+
+𝑲  𝑲 
+
+𝜙 −1 
+
+> ෠𝜃2
+
+𝜙 −1 
+
+> ෠𝜃T
+> Ƹ𝑧𝑇+1,𝑙𝑜𝑤
+
+𝑲 
+
+𝜙 −1 
+
+> ෠𝜃𝑇+1
+
+…
+
+…
+
+> 𝒟𝑇+1
+> 𝜃T+1
+> Predict
+> {𝜃1,𝑙𝑜𝑤, 𝜃1,ℎ𝑖𝑔ℎ}
+> 𝜙𝑙𝑜𝑤
+
+𝜙 −1     
+
+> Parameter Trajectory: 𝛩 = 𝜃1, 𝜃2, … , 𝜃𝑇
+> 𝜙ℎ𝑖𝑔ℎ
+> 𝑧1,𝑙𝑜𝑤 𝑧1,ℎ𝑖𝑔ℎ
+> Ƹ𝑧1,𝑙𝑜𝑤
+
+𝑲 
+
+…
+
+…                   
+
+> Data
+> Space
+> ෠𝜃1
+> {𝜃2,𝑙𝑜𝑤, 𝜃2,ℎ𝑖𝑔ℎ}
+> 𝜙𝑙𝑜𝑤 𝜙ℎ𝑖𝑔ℎ
+> 𝑧2,𝑙𝑜𝑤 𝑧2,ℎ𝑖𝑔ℎ
+> Ƹ𝑧2,𝑙𝑜𝑤
+> {𝜃𝑇,𝑙𝑜𝑤, 𝜃𝑇,ℎ𝑖𝑔ℎ}
+> 𝜙𝑙𝑜𝑤 𝜙ℎ𝑖𝑔ℎ
+> 𝑧𝑇,𝑙𝑜𝑤 𝑧𝑇,ℎ𝑖𝑔ℎ
+> Ƹ𝑧𝑇,𝑙𝑜𝑤
+> 𝒟1 𝒟2 𝒟3 𝒟4
+> Model
+> space
+> 𝒟𝑇
+> 𝜃1 𝜃2 𝜃3 𝜃4 𝜃T
+> 𝑲𝒐𝒐𝒑𝒎𝒂𝒏
+> Space
+> DFT: ℱ·;Filter: ⊙ 𝐁 ;IDFT: ℱ −1 ·
+> 𝑭𝒓𝒆𝒒𝒖𝒆𝒏𝒄𝒚
+> Space
+> 𝑳𝒂𝒕𝒆𝒏 t
+> Space
+> Reconstructed
+> Space
+
+𝑲  𝑲 
+
+𝜙 −1 
+
+> ෠𝜃2
+
+𝜙 −1 
+
+> ෠𝜃T
+> Ƹ𝑧𝑇+1,𝑙𝑜𝑤
+
+𝑲 
+
+𝜙 −1 
+
+> ෠𝜃𝑇+1
+
+…
+
+…
+
+> 𝒟𝑇+1
+> 𝜃T+1
+> Predict
+
+Fig. 2: FreKoo framework. It decomposes model parameter trajectories into low- and high-frequency components via the Fourier transform. Koopman dynamics extrapolate the low-frequency component, while temporal-difference regulariza-tion suppresses unstable high-frequency variations. as an energy proxy, Mf = 1
+
+> D
+
+PDd=1 |Θf [f, d ]|. Based on a specified energy preservation ratio τ ∈ [0 , 1] , a binary mask 
+
+B ∈ { 0, 1}Nfreq ×D selects the top-Q frequency indices with the largest energy magnitudes. Reversing the transformation via Inverse DFT ( F−1) yields a trajectory decomposition: 
+
+Θlow = F−1(Θ f ⊙ B), Θhigh = F−1(Θ f ⊙ (1 − B)) , (2) where Θ = Θ low + Θ high . Here, Θlow encapsulates dominant trends and long-term periodic patterns ( Challenge 1 ), whereas 
+
+Θhigh captures transient domain-specific uncertainties ( Chal-lenge 2 ). To model the persistent low-frequency dynamics 
+
+Θlow = {θ1,low , . . . , θ T, low }, FreKoo maps them into a higher-dimensional Hilbert space via an encoder ϕlow : RD → Rm,assuming near-linear evolution governed by a learnable Koop-man operator K ∈ Rm×m. The low-frequency transition is expressed as zt, low = ϕlow (θt, low ) and ˆzt+1 ,low = Kz t, low ,supervised by a Koopman consistency loss: 
+
+Lkoop = 
+
+> T−1
+
+X
+
+> t=1
+
+∥zt+1 ,low − ˆzt+1 ,low ∥22. (3) Conversely, for the volatile high-frequency sequence 
+
+Θhigh = {θ1,high , . . . , θ T, high }, forward extrapolation is avoided to prevent noise amplification. Instead, FreKoo maps it via an encoder ϕhigh and imposes a temporal difference smoothness regularization: 
+
+Rhigh = 
+
+> T−1
+
+X
+
+> t=1
+
+∥zt+1 ,high − zt, high ∥22. (4) JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 5Continuous d ynamics  modeling  on all observed source domains 
+
+Dominant  
+
+> Ƹ𝑧dom 𝑡𝑠
+
+Transient    
+
+> Ƹ𝑧trans 𝑡𝑇
+> (freeze at tT )
+> Shared Decoder φ
+
+⁻¹
+
+෠𝜃  𝑡𝑠 
+
+Ƹ𝑧  𝑡𝑠 = Ƹ 𝑧dom  𝑡𝑠 + Ƹ 𝑧trans  𝑡𝑇 
+
+𝑧  𝑡1  𝑧  𝑡2  𝑧  𝑡3  𝑧  𝑡𝑇 
+
+𝜃  𝑡1  𝜃  𝑡2  𝜃  𝑡3  𝜃  𝑡𝑇 
+
+… 
+
+> Shared Encoder 𝝓
+
+Arbitrary  𝑡𝑠 
+
+> Latent Space
+
+𝒟𝑡𝑠 𝒟𝑡1  𝒟𝑡2  𝒟𝑡𝑇 … 
+
+> Irregular time 𝑡1 𝑡2
+
+𝒟𝑡3  
+
+> 𝑡3 𝑡𝑇
+
+… …
+
+> 𝑡𝑠
+> Data Space
+
+ℒTotal = ℒtask + 𝛼ℒrec  
+
+> 𝐶
+
++
+
+𝛽ℒ fit  
+
+> 𝐶
+
++ 𝛿ℛstab + 𝛾ℛspec 
+
+> Total objective
+
+…          
+
+> Ƹ𝑧 𝑡𝑖 =Ƹ𝑧dom 𝑡𝑖 +Ƹ𝑧trans 𝑡𝑖 , 𝑖 = {1, 2, 3 … 𝑇}
+
+෠𝜃  𝑡1  ෠𝜃  𝑡2  ෠𝜃  𝑡3  ෠𝜃  𝑡𝑇 
+
+Ƹ𝑧  𝑡1  Ƹ 𝑧  𝑡2  Ƹ 𝑧  𝑡3  Ƹ 𝑧  𝑡𝑇  
+
+> Shared Decoder φ
+
+⁻¹
+
+> Reconstructed Space
+
+…
+
+…
+
+Inference at future time         
+
+> Dominant
+> Ƹ𝑧dom 𝑡𝑖
+> Transient
+> Ƹ𝑧trans 𝑡𝑖
+> Ƹ𝑧 𝑡 = Re ෍𝑘=1 𝐾 𝑎𝑘 𝑒 𝜆𝑘𝑡
+> 𝜆𝑘 = 𝜎𝑘 + 𝑗𝜔𝑘
+> Learn modal parameters
+> 𝑓 𝑘 =𝜔𝑘 ,𝑑𝑘 = −𝜎𝑘
+> Spectral disentanglement
+> Soft weights:
+> {𝑤𝑘 dom , 𝑤𝑘 trans }𝑘=1 𝐾
+> Continuous Spectral-Dynamical
+> Space
+> Modal parameters:
+> {𝑎𝑘, 𝜆𝑘}𝑘=1 𝐾
+
+Fig. 3: FreKoo++ framework. (1) Training Phase: Model parameters from irregular timestamps are encoded into a continuous latent trajectory and fitted by Koopman modal dynamics. Adaptive soft weighting disentangles persistent dominant dynamics from transient noise, yielding an optimized continuous spectral representation via joint optimization. (2) Inference Phase: For an arbitrary target timestamp ts > t T , FreKoo++ analytically extrapolates the persistent dominant component to ts, freezes the transient residual at tT , and decodes their superposition to obtain target parameters ˆθ(ts).To predict parameters for the next timestamp ˆθt+1 , FreKoo fuses the extrapolated low-frequency latent with the regular-ized high-frequency context through a shared decoder ϕ−1:
+
+ˆθt+1 = ϕ−1 Kϕ low (θt, low ) + ϕhigh (θt, high ). (5) The overall framework is trained end-to-end under the joint objective: 
+
+Lfrekoo = Ltask + αLrec + βLkoop + γRhigh , (6) where Ltask is the empirical source risk, and Lrec =PT −1 
+
+> t=1
+
+∥θt+1 − ˆθt+1 ∥22 enforces overall parameter reconstruc-tion fidelity. 
+
+Discussion 1 (Limitations of FreKoo): While FreKoo effec-tively addresses Challenges 1 and 2 in DTDG, it exhibits two inherent limitations: 1) Its reliance on DFT requires uniformly spaced domains ( ∆ti ≡ C), making it fundamentally in-compatible with continuous streams where observations arrive asynchronously ( Challenge 3 ); and 2) It separates spectral decomposition from dynamical modeling, requiring distinct encoders ( ϕlow , ϕ high ) and a manually pre-defined threshold 
+
+τ , which prevents dynamic, end-to-end spectral disentangle-ment. These constraints necessitate a unified continuous time framework with adaptive spectral selection. V. F RE KOO ++: C ONTINUOUS FREQUENCY -K OOPMAN 
+
+FRAMEWORK 
+
+To overcome the limitations of discrete pipelines outlined in Discussion 1, we introduce FreKoo++, which establishes a unified continuous-time formulation that seamlessly bridges spectral analysis and dynamic operator modeling. As shown in Fig. 3, FreKoo++ maps temporal parameter trajectories into a compact latent space and models their evolution via learnable continuous modal dynamics. Driven by these modal characteristics, an adaptive soft spectral weighting mecha-nism disentangles persistent dominant dynamics from domain-specific fluctuations. By operating directly in continuous time, FreKoo++ naturally handles irregular temporal observations and enables analytical prediction at arbitrary future horizons without requiring step-wise numerical integration. 
+
+A. Latent Trajectory Construction 
+
+For each observed timestamp ti, let θ(ti) ∈ RD denote the model parameters associated with the source domain Dti .We collect these parameters across all timestamps to form a parameter trajectory Θ = [ θ(t1), θ (t2), . . . , θ (tT )] ⊤ ∈ RT ×D,which forms a time-stamped parameter trajectory and pro-vides a task-dependent representation of all evolving source domains. Directly modeling temporal dynamics in the high-dimensional parameter space RD is computationally expensive and may retain domain-specific parameter variations that are irrelevant to future prediction. FreKoo++ addresses this by projecting the parameter trajectory into a compact latent dynamical space Rm (m ≪ D) using a shared encoder 
+
+ϕ : RD → Rm:
+
+z(ti) = ϕ(θ(ti)) , i = 1 , . . . , T, (7) where z(ti) ∈ Rm represents the latent dynamical state at time 
+
+ti. The sequence {z(ti)}Ti=1 defines the observed continuous latent trajectory across all source domains. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 6
+
+B. Continuous Spectral-Dynamical Modeling 
+
+Given the observed latent trajectory {z(ti)}Ti=1 , our pri-mary goal is to establish a continuous-time parameterization that explicitly exposes its underlying spectral and dynamical properties. We draw theoretical motivation from continuous-time Koopman spectral theory [48], [49]. When observables span a finite-dimensional Koopman-invariant subspace, the in-finitesimal generator of the continuous-time Koopman operator admits exponential modal decompositions whose eigenvalues govern both frequency and temporal growth or decay. 
+
+Proposition 1 (Koopman Spectral-Dynamical Relation): Let 
+
+z(t) ∈ Rm denote the continuous latent state sampled at his-torical timestamps {ti}Ti=1 according to Eq. (7). Suppose the continuous-time evolution of z(t) is governed by a finite K-dimensional Koopman-invariant subspace. Let Kc ∈ CK×K
+
+be the matrix representation of the infinitesimal generator of the continuous Koopman operator restricted to this subspace. If Kc is diagonalizable, then the continuous latent trajectory admits the exact modal expansion: 
+
+z(t) = Re 
+
+> K
+
+X
+
+> k=1
+
+ck vk eλk t
+
+!
+
+, (8) where {(λk, v k)}Kk=1 denote the eigenvalue-mode pairs with eigenvalues λk ∈ C and Koopman mode vectors vk ∈ Cm,and ck ∈ C is the modal coefficient determined by initial conditions. Each eigenvalue λk = σk + jω k jointly charac-terizes the continuous temporal behavior: the imaginary part 
+
+ωk = Im( λk) defines the oscillatory frequency, while the real part σk = Re( λk) dictates the temporal growth ( σk > 0) or decay ( σk < 0) rate. Proposition 1 provides the theoretical justification for our architectural design. In practice, finding an exact Koopman-invariant subspace via neural encoders is unfeasible. Instead, FreKoo++ directly employs the closed-form modal solution in Eq. (8) as a parametric dynamical prior to approximate the latent trajectory. To eliminate scalar unidentifiability between ck and vk,we absorb them into a unified complex modal amplitude vector ak = ckvk ∈ Cm. Collecting all amplitudes as A =[a1, . . . , a K ] ∈ Cm×K , the continuous modal approximation is parameterized as: 
+
+˜z(t) = Re 
+
+> K
+
+X
+
+> k=1
+
+akeλk t
+
+!
+
+. (9) Evaluating Eq. (9) at any timestamp t yields a continuous latent state without requiring step-wise transition rollouts. To bypass complex-valued optimization during backpropagation, we implement Eq. (9) through its real-valued trigonometric equivalent: 
+
+˜z(t) = 
+
+> K
+
+X
+
+> k=1
+
+eσk t [Re( ak) cos( ωkt) − Im( ak) sin( ωkt)] . (10) This reformulation guarantees that ˜z(t) ∈ Rm is evaluated natively in real arithmetic. Non-oscillatory secular trends are naturally recovered when ωk = 0 . Consequently, the learnable spectral parameters Λ = {λk}Kk=1 and amplitudes A ∈ Cm×K
+
+construct a continuous spectral coordinate system, replacing rigid DFT frequency bins with data-driven eigenvalue-indexed continuous modes. 
+
+C. Adaptive Spectral Disentanglement 
+
+Based on the spectral interpretation above, FreKoo++ as-signs each learned mode a soft dominance weight. The imag-inary part ωk reflects the oscillatory frequency, while the real part σk controls the growth or decay behavior. These quantities make it possible to distinguish persistent structures from transient fluctuations, but the separation boundary should adapt to the temporal profile of each dataset. For each mode k ∈ { 1, . . . , K }, we define its frequency score as fk = |ωk| and its decay score as dk = −σk (for stable modes with σk ≤ 0). We assign a soft dominance weight 
+
+wdom  
+
+> k
+
+∈ (0 , 1) using two learnable gating functions: 
+
+wdom  
+
+> k
+
+= σ  − κf (fk − f0) · σ  − κd(dk − d0), (11) 
+
+wtrans  
+
+> k
+
+= 1 − wdom  
+
+> k
+
+, (12) where σ(·) is the Sigmoid function, κf , κ d > 0 dictate gate sharpness, and f0, d 0 are learnable thresholds optimized jointly with the network. A mode receives a high dominance weight ( wdom  
+
+> k
+
+≈ 1) if it is both low-frequency and persistent (σk ≈ 0). Conversely, modes exhibiting high frequencies or rapid attenuation are routed to the transient component (wtrans  
+
+> k
+
+). Applying these weights continuously decomposes the latent trajectory at any time t:
+
+ˆzdom (t) = Re 
+
+> K
+
+X
+
+> k=1
+
+wdom  
+
+> k
+
+akeλk t
+
+!
+
+, (13) 
+
+ˆztrans (t) = Re 
+
+> K
+
+X
+
+> k=1
+
+wtrans  
+
+> k
+
+akeλk t
+
+!
+
+. (14) Consequently, the full reconstructed latent state at any historical observation timestamp ti (i = 1 , . . . , T ) is obtained by the superposition of both components: 
+
+ˆz(ti) = ˆ zdom (ti) + ˆ ztrans (ti). (15) 
+
+D. Joint Optimization 
+
+Training FreKoo++ optimizes the source-domain parameters 
+
+{θ(ti)}Ti=1 , the encoder ϕ and decoder ϕ−1, the eigenvalues 
+
+Λ = {λk}Kk=1 , the modal amplitudes A ∈ Cm×K , and the spectral thresholds f0, d 0 under a unified objective. In practice, this is implemented via alternating gradient updates between source-domain task fitting and latent modal fitting, while all components remain coupled through a unified objective. The overall loss consists of three predictive fitting terms and two spectral regularization constraints. The fitting losses optimize source-domain task predictors, align the continuous modal trajectory with encoded latent states, and preserve parameter auto-encoding fidelity. The two spectral constraints govern dominant-mode stability and adaptive spectral disentangle-ment, respectively. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 7
+
+The task loss ensures predictive accuracy across the ob-served source domains. Denoting the training data from do-main Dti as (Xti , Y ti ), the task loss is formulated as: 
+
+Ltask =
+
+> T
+
+X
+
+> i=1
+
+ℓ(g(Xti ; θ(ti)) , Y ti ) . (16) To align spectral disentanglement with our continuous in-ference protocol, we formulate modal trajectory fitting as an asymmetric pseudo-future prediction problem across chrono-logical source domains. Specifically, for each step i =2, . . . , T , we treat ti−1 as the latest available observation and 
+
+ti as a pseudo-future timestamp. Following the asymmetric extrapolation strategy used at test time, the persistent dominant component is propagated forward to ti, whereas the volatile transient component is held at the preceding observation ti−1:
+
+ˆz(ti | ti−1) = ˆ zdom (ti) + ˆ ztrans (ti−1). (17) The resulting temporal predictive fitting loss is defined as: 
+
+L(C)fit =
+
+> T
+
+X
+
+> i=2
+
+∥z(ti) − ˆz(ti | ti−1)∥22 , (18) where z(ti) = ϕ(θ(ti)) ∈ Rm is the encoded latent state of domain Dti . Because the dominant and transient branches are evaluated at distinct timestamps, Eq. (18) depends explicitly on the gating weights {wdom  
+
+> k
+
+, w trans  
+
+> k
+
+}Kk=1 . It therefore directly supervises adaptive modal allocation while matching the asym-metric propagation rule executed during inference. The reconstruction loss enforces auto-encoding consistency between the high-dimensional parameter space RD and the compact latent space Rm:
+
+L(C)rec =
+
+> T
+
+X
+
+> i=1
+
+θ(ti) − ϕ−1(ˆ z(ti)) 22 . (19) The first spectral constraint regularizes the dominant dy-namics against unstable extrapolation. Dominant modes with positive growth rates ( σk > 0) can explode exponentially when projected far beyond the historical observation window. We therefore penalize dominant modes exhibiting positive growth: 
+
+Rstab =
+
+> K
+
+X
+
+> k=1
+
+wdom 
+
+> k
+
+  max(0 , σ k)2, (20) such that stable ( σk < 0) or neutrally persistent ( σk = 0 )dominant modes incur no penalty. Compared with hard skew-symmetric constraints on an explicit generator matrix that force purely imaginary spectra and permit only undamped oscillations [15], this soft regularization accommodates nat-ural temporal decay while explicitly suppressing exponential divergence. The second spectral constraint suppresses noisy transient components while preventing the learned soft gates from collapsing into degenerate uniform distributions. Because tran-sient modes are not extrapolated at inference time, FreKoo++ penalizes their modal energy and encourages decisive spectral separation: 
+
+Rspec =
+
+> K
+
+X
+
+> k=1
+
+wtrans  
+
+> k
+
+∥ak∥22 +  1 − Var Kk=1 
+
+ wdom 
+
+> k
+
+ . (21) 
+
+Algorithm 1 FreKoo++ Learning and Inference 
+
+Require: Source domains {D t1 , . . . , DtT } with timestamps 
+
+T ; hyperparameters: α, β, γ, δ ; number of modes K;epochs Nep .
+
+Ensure: Predicted parameters ˆθ(ts) for target time ts. 
+
+> 1:
+
+Initialize base model g(·), encoder ϕ, decoder ϕ−1, eigen-values {λk}Kk=1 , amplitudes A, thresholds f0, d 0. 
+
+> 2:
+
+for epoch = 1 to Nep do  
+
+> 3:
+
+for i = 1 to T do  
+
+> 4:
+
+Compute task loss for g(· ; θ(ti)) on Dti . 
+
+> 5:
+
+z(ti) ← ϕ(θ(ti)) {encode parameters, Eq. (7) } 
+
+> 6:
+
+end for  
+
+> 7:
+
+Compute weights wdom  
+
+> k
+
+, w trans  
+
+> k
+
+via Eqs. (11)–(12).  
+
+> 8:
+
+Compute reconstructed trajectory ˆz(ti) for i =
+
+{1, . . . , T } via Eq.15.  
+
+> 9:
+
+Compute LTotal via Eq. (23).  
+
+> 10:
+
+Update ϕ, ϕ −1, {λk}, A, f 0, d 0 and {θ(ti)}. 
+
+> 11:
+
+end for  
+
+> 12:
+
+Inference at target time ts > t T 
+
+> 13:
+
+ˆzdom (ts) ← Re   P  
+
+> k
+
+wdom  
+
+> k
+
+ak eλk ts
+
+ 
+
+> 14:
+
+ˆztrans (tT ) ← Re   P  
+
+> k
+
+wtrans  
+
+> k
+
+ak eλk tT
+
+ 
+
+> 15:
+
+ˆθ(ts) ← ϕ−1 ˆzdom (ts) + ˆ ztrans (tT ) 
+
+> 16:
+
+return ˆθ(ts)
+
+Proposition 2 (Spectral Energy Bound): Let mode k ∈{1, . . . , K } have amplitude vector ak = ckvk ∈ Cm and decay rate σk = Re( λk) < 0. Its temporal energy over [0 , T max ] is 
+
+Ek = ∥ak∥22 · 1 − e2σk Tmax 
+
+−2σk
+
+≤ ∥ak∥22
+
+2 |σk| . (22) Proposition 2 confirms that for decaying modes ( σk < 0), temporal energy over [0 , T max ] is strictly upper-bounded by the squared modal amplitude ∥ak∥22 scaled by decay rates. For neutral modes ( σk = 0 ), the energy scales as Tmax ∥ak∥22,establishing ∥ak∥22 as a timestamp-independent surrogate for transient modal energy in Eq. (21). Meanwhile, the second term in Eq. (21) maximizes the variance of {wdom  
+
+> k
+
+}Kk=1 ,preventing gating weights from collapsing into uninformative uniform assignments and ensuring crisp spectral disentangle-ment. Crucially, Rspec operates directly in the continuous spectral coordinate space rather than on adjacent time-domain finite differences, making it naturally invariant to non-uniform sampling intervals. Overall, the full training objective is formulated as: 
+
+LTotal = Ltask + α L(C)rec + β L(C)fit + δ Rstab + γ Rspec , (23) where α, β, γ, δ > 0 are balancing hyperparameters. All parameters are trained end-to-end via gradient descent. 
+
+E. Future Time Inference 
+
+Once trained, FreKoo++ executes an analytical extrapolation protocol to predict model parameters for an unseen target do-main Dts at an arbitrary future timestamp ts > t T . To balance long-term trends with local temporal context, the decomposed components fulfill asymmetric inference roles. Persistent dom-inant modes, capturing macro-trends and recurring patterns, JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 8
+
+are extrapolated directly to the future query timestamp ts
+
+via ˆzdom (ts) in Eq. (13). Conversely, transient modes capture volatile local fluctuations that are inherently unpredictable far into the future. Forward-extrapolating these modes risks noise amplification; FreKoo++ thus freezes their contribution at the last observed timestamp tT , retaining ˆztrans (tT ) as stationary residual context. Consequently, the predicted latent state ˆz(ts) and recon-structed target parameters ˆθ(ts) are formulated as: 
+
+ˆz(ts) = ˆ zdom (ts) + ˆ ztrans (tT ), (24) 
+
+ˆθ(ts) = ϕ−1(ˆ z(ts)) . (25) Evaluating closed-form exponential modal expressions at ts
+
+and tT bypasses recursive step-wise rollouts and numerical ODE solvers, securing constant-time O(1) query complexity for arbitrary prediction horizons. The complete procedure is detailed in Algorithm 1. 
+
+Discussion 2 (FreKoo versus FreKoo++): Compared to FreKoo [21], FreKoo++ achieves three core advances: 1) re-placing rigid DFT grids with continuous Koopman eigenvalues (λk = σk + jω k) to natively support irregular sampling; 2) substituting manual DFT cutoffs with learnable spectral gates ( f0, d 0) under a single encoder; and 3) superseding discrete step-wise transitions ( Kz t) with analytical modal extrapolation ( eλk ts ), enabling closed-form O(1) arbitrary-horizon forecasting. VI. T HEORETICAL ANALYSIS 
+
+This section provides rigorous theoretical grounding for FreKoo++ by addressing two fundamental claims: 1) the expressiveness of finite continuous Koopman modes in pa-rameterizing latent trajectories, and 2) the explicit risk control provided by our stability ( Rstab ) and spectral ( Rspec ) regu-larizers. We first bound the continuous modal approximation error induced by finite spectrum truncation. We then derive a continuous-time generalization bound for unseen target domains, proving that long-horizon excess risk is strictly governed by individual modal growth rates. 
+
+A. Koopman Mode Approximation Error 
+
+We first bound the approximation error of the continu-ous modal parameterization (Eq. (9)). For notational clar-ity, theoretical statements use the complex modal form; the same bounds apply to real-valued states since Re( ·) is non-expansive. 
+
+Assumption 1 (Finite Modal Dynamics and Transient Re-mainder): The true latent dynamics admit a finite K∗-order modal expansion z(t) = PK∗ 
+
+> k=1
+
+akeλk t with ak ∈ Cm, λk ∈ C.For a model retaining K ≤ K∗ modes, the first K represent modeled dynamics; the remaining K∗ − K modes constitute a non-growing transient remainder: Re( λk) ≤ 0 for all k > K .
+
+Theorem 1 (Mode Approximation Bound): Under Assump-tion 1, let ˆz(t) = PKk=1 ˆakeˆλk t. Then for any horizon ts > 0:
+
+sup 
+
+> t∈[0 ,t s]
+
+∥z(t) − ˆz(t)∥2 ≤
+
+> K
+
+X
+
+> k=1
+
+∥ak − ˆak ∥2 eˆρk ts
+
+| {z }
+
+> amplitude error
+
++ CaKX
+
+> k=1
+
+|λk − ˆλk | ts eϱk ts
+
+| {z }
+
+> eigenvalue error
+
++
+
+> K∗
+
+X
+
+> k=K+1
+
+∥ak ∥2
+
+| {z }
+
+> truncation error
+
+,
+
+(26) 
+
+where Ca = max k≤K ∥ak∥2, ˆρk = max(Re( ˆλk), 0) , ϱk =max(Re( λk), Re( ˆλk), 0) .
+
+Proof 1 (Proof sketch): Adding and subtracting 
+
+PKk=1 akeˆλk t decomposes the error into amplitude, eigenvalue, and truncation terms. The amplitude term follows from the triangle inequality and |eˆλk t| ≤ eˆρk ts .For the eigenvalue term, the integral identity 
+
+eλk t − eˆλk t = (λk − ˆλk)t R 10 e[ˆλk +s(λk −ˆλk )] t ds yields 
+
+|eλk t − eˆλk t| ≤ |λk − ˆλk| t e ϱk t. For the truncation term, 
+
+Re( λk) ≤ 0 implies |eλk t| ≤ 1. Full proof is detailed in Supplementary I-A. 
+
+Insights. Theorem 1 justifies the objective design in Eq. (23): L(C)fit and L(C)rec directly reduce the amplitude and eigenvalue estimation terms. The eigenvalue term further re-veals that spectral errors are exponentially amplified when 
+
+ϱk > 0; Rstab penalizes positive growth rates in dominant modes, encouraging ˆρk → 0 so that error growth scales at most linearly in ts. The truncation term depends on the amplitudes of unmodeled modes; Rspec serves as an empirical surrogate by suppressing amplitudes of transient-weighted modes via wtrans  
+
+> k
+
+, while its variance term prevents degenerate gate collapse. 
+
+B. Future Time Generalization Bound 
+
+We next translate the latent approximation analysis into a generalization bound on future-domain population risk. The derivation adheres to the inference protocol (Eq. (24)): domi-nant dynamics are extrapolated to ts > t T , while transient fluc-tuations are frozen at tT . Our bound explicitly characterizes how spectral estimation errors compound over the prediction horizon ∆s = ts − tT .
+
+Assumption 2 (Regularity, Realizability, and Modal Align-ment): The task loss ℓ, predictive backbone g, and decoder 
+
+ϕ−1 are respectively Lℓ-, Lg -, and Ldec -Lipschitz. The optimal parameter trajectory is realizable in the latent space: there exists z⋆(t) such that θ⋆(t) = ϕ−1(z⋆(t)) , decomposable as 
+
+z⋆(t) = z⋆
+
+> dom
+
+(t)+ z⋆
+
+> trans
+
+(t), where the future transient remain-der satisfies sup t≥tT ∥z⋆
+
+> trans
+
+(t)∥2 ≤ Btrans . The dominant components admit matched modal representations anchored at 
+
+tT : for any τ ≥ 0,
+
+z⋆
+
+> dom
+
+(tT + τ ) = Re 
+
+ PKk=1 b⋆keλ⋆k τ
+
+
+
+,
+
+ˆzdom (tT + τ ) = Re 
+
+ PKk=1 ˆbkeˆλk τ
+
+
+
+,
+
+(27) JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 9
+
+where ˆbk = wdom  
+
+> k
+
+ˆakeˆλk tT and max 1≤k≤K ∥b⋆k∥2 ≤ Bdom .All learned modal parameters remain bounded after train-ing convergence; in particular, the historical window factor 
+
+Gtrans (tT ) =   P Kk=1 wtrans  
+
+> k
+
+e2 ˆ ρk tT
+
+1/2 is finite. 
+
+Theorem 2 (Continuous Time Generalization Bound): Let 
+
+Rts (θ) = EPts [ℓ(g(X; θ), Y )] . Under Assumptions 1–2, the excess risk Ets := Rts (ˆθ(ts)) − R ts (θ⋆(ts)) satisfies: 
+
+Ets ≤ LℓLg Ldec 
+
+ Edom (ts) + Etrans (ts), (28) where Edom (ts) = ∥ˆzdom (ts) − z⋆
+
+> dom
+
+(ts)∥2 and Etrans (ts) = 
+
+∥ˆztrans (tT ) − z⋆
+
+> trans
+
+(ts)∥2. With ∆s = ts − tT , ˆρk =max(Re( ˆλk), 0) , and ϱk = max(Re( λ⋆k), Re( ˆλk), 0) :
+
+Edom (ts) ≤
+
+> K
+
+X
+
+> k=1
+
+∥ˆbk − b⋆k∥2 eˆρk ∆s
+
+| {z }
+
+> amplitude mismatch
+
++ Bdom 
+
+> K
+
+X
+
+> k=1
+
+|ˆλk − λ⋆k| ∆s eϱk ∆s
+
+| {z }
+
+> eigenvalue mismatch
+
+.
+
+(29) The transient holding error satisfies: 
+
+Etrans (ts) ≤ Btrans + Gtrans (tT )pRspec . (30) 
+
+Proof 2 (Proof sketch): Lipschitz continuity of ℓ, g, and ϕ−1
+
+gives Ets ≤ LℓLg Ldec ∥ˆz(ts)−z⋆(ts)∥2; the triangle inequality with the inference rule yields Eq. (28). For the dominant branch, adding and subtracting b⋆keˆλk ∆s and bounding the ex-ponential difference via the integral identity eˆλk ∆s − eλ⋆k ∆s =(ˆλk − λ⋆k)∆ s
+
+R 10 e[λ⋆k +u(ˆλk −λ⋆k )]∆ s du gives Eq. (29). For the transient branch, Cauchy–Schwarz yields ∥ˆztrans (tT )∥2 ≤
+
+Gtrans (tT )pP  
+
+> k
+
+wtrans  
+
+> k
+
+∥ˆak∥22 ≤ Gtrans (tT )pRspec , where the last step uses 1 − Var( wdom  
+
+> k
+
+) ≥ 0. Full proofs are detailed in Supplementary I-B. 
+
+Insights. Theorem 2 shows that dominant extrapolation error is governed by anchor mismatch and spectral estimation error, both scaling with eˆρk ∆s ; Rstab drives ˆρk → 0, suppressing exponential divergence. For the transient branch, the pro-posed regularizers provide dual coverage over positive modal growth: a growing mode ( σk > 0) with high wdom  
+
+> k
+
+is penalized by Rstab , while one routed to the transient branch ( wtrans  
+
+> k
+
+≈ 1)has its amplitude suppressed by Rspec . This joint effect keeps 
+
+Gtrans (tT ) well-conditioned in practice; when all transient-weighted modes are non-growing, Gtrans (tT ) ≤ √K. Cru-cially, freezing transients at tT renders Etrans independent of ∆s, structurally insulating future predictions from horizon-dependent noise amplification. 
+
+Corollary 1 (Elimination of Exponential Error Amplifica-tion): If Re( λ⋆k) ≤ 0 and Re( ˆλk) ≤ 0 for all k, defining 
+
+εb = PKk=1 ∥ˆbk − b⋆k∥2 and ελ = PKk=1 |ˆλk − λ⋆k|, then: 
+
+Edom (ts) ≤ εb + Bdom (ts − tT ) ελ. (31) Stable dominant dynamics thus eliminate exponential error compounding; under exact spectral recovery ( ελ = 0 ), the error is bounded by εb regardless of the horizon. VII. E XPERIMENTS 
+
+A. Experimental Settings 1) Datasets: We evaluate FreKoo++ across both CTDG and DTDG settings. For CTDG, we benchmark on six irregularly sampled temporal datasets, including continuous variants of 2-Moons and Rot-MNIST [54], Twitter [55], [56], Yearbook [57], 
+
+Cyclone [58], and House [15]. For DTDG, we follow the evaluation protocol of FreKoo [21] and test on seven uniformly sampled temporal datasets, including 2-Moons , Rot-MNIST ,
+
+ONP , Shuttle , Elec2 , HousePrices , and ApplianceEnergy . Be-cause several benchmarks share similar names across the two paradigms but differ in their construction protocols, we append the suffix ‘-C’ to CTDG variants and ‘-D’ to DTDG variants for clarity. Detailed dataset statistics and construction procedures are provided in Supplementary II-A. 
+
+2) Baselines and Implementations: For CTDG, we compare against time-agnostic baselines, including Offline , LastDo-main , and IncFinetune ; domain generalization regularizers 
+
+IRM [50] and V-REx [51]; continuous domain adaptation meth-ods CIDA [31]; and temporal modeling baselines TKNets [28], 
+
+DRAIN [12], DRAIN-∆t [12], DeepODE [52], NeuralLio [33] and Koodos [15]. For DTDG, we additionally compare with the full suite of baselines adopted in FreKoo [21]. Note that FreKoo is evaluated exclusively under DTDG, as its Discrete Fourier Transform (DFT) requires uniformly spaced timestamps. Detailed descriptions are provided in Supple-mentary II-B. All methods follow the same data splits, pre-processing, task backbones, and evaluation protocols within each benchmark setting. FreKoo++ employs lightweight MLPs as the encoder ϕ and decoder ϕ−1, with the number of Koopman modes K set equal to the latent dimension m.Detailed implementation, hyperparameter, and training details are provided in Supplementary III. 
+
+B. Main Results 1) Continuous Temporal Domain Generalization: Table I presents the main performance evaluation across all CTDG benchmarks, where source domains arrive at irregular times-tamps and target domains demand arbitrary-horizon forecast-ing. FreKoo++ consistently outperforms existing baselines in both classification and regression tasks, confirming that modeling parameter trajectories within a continuous spectral-dynamical space is more effective than either omitting tempo-ral ordering or enforcing discrete transition rules. Specifically, time-agnostic approaches (e.g., Offline, Last-Domain, IncFinetune) flatten historical domains into static representations, thereby obscuring persistent temporal drift amidst localized, domain-specific fluctuations. Discrete tempo-ral baselines (e.g., DRAIN, DRAIN-∆t) incorporate parameter transitions, yet their stepwise prediction mechanisms remain bound to local iterations and lack a global spectral description of the trajectory. While continuous-time architectures (e.g., DeepODE, Koodos) naturally handle irregular observation intervals, they do not utilize the learned spectrum to sep-arate persistent and transient parameter modes. In contrast, FreKoo++ parameterizes parameter evolution as a superpo-sition of eigenvalue-indexed Koopman modes, where the real JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 10 
+
+TABLE I: Performance comparison on CTDG datasets . The classification tasks report error rates (%) except for the AUC for the Twitter dataset. The regression tasks report MAE. ’-’ implies that the method does not support the task.                                                                                                                                                                                                                                                      
+
+> Methods Classification Regression 2-Moons-C ↓Rot-MNIST-C ↓Twitter ↑Yearbook ↓Cyclone ↓House-C ↓
+> Offline 13.5 ±0.3 6.6 ±0.2 0.54 ±0.09 8.6 ±1.0 18.7 ±1.4 19.9 ±0.1 LastDomain 55.7 ±0.5 74.2 ±0.9 0.54 ±0.12 11.3 ±1.3 22.3 ±0.7 20.6 ±0.7 IncFinetune 51.9 ±0.7 57.1 ±1.4 0.52 ±0.01 11.0 ±0.8 19.9 ±0.7 20.6 ±0.2 IRM [50] 15.6 ±0.2 8.6 ±0.4 0.53 ±0.11 8.3 ±0.5 18.0 ±0.8 19.8 ±0.2 V-REx [51] 12.8 ±0.2 8.6 ±0.3 0.58 ±0.05 8.9 ±0.5 17.7 ±0.5 20.2 ±0.1 CIDA [31] 18.7 ±2.0 8.3 ±0.7 0.63 ±0.03 8.4 ±0.8 17.0 ±0.4 10.2 ±1.0 TKNets [28] 39.6 ±1.2 37.7 ±2.0 0.57 ±0.04 8.4 ±0.3 --DRAIN [12] 53.2 ±0.9 59.1 ±2.3 0.57 ±0.04 10.5 ±1.0 23.6 ±0.5 9.8 ±0.1 DRAIN-∆t[12] 46.2 ±0.8 57.2 ±1.8 0.59 ±0.02 11.0 ±1.2 26.2 ±4.6 9.9 ±0.1 DeepODE [52] 17.8 ±5.6 48.6 ±3.2 0.64 ±0.02 13.0 ±2.1 18.5 ±3.3 10.7 ±0.4 NeuralLio [33] 4.5 ±1.3 5.4 ±1.1 0.68 ±0.01 6.1 ±1.2 16.2 ±0.2 9.0 ±0.4 Koodos [15] 2.8 ±0.7 4.6 ±0.1 0.71 ±0.02 6.6 ±1.3 16.4 ±0.3 9.0 ±0.2
+> FreKoo++ (ours) 1.3 ±0.2 3.8 ±0.8 0.72 ±0.01 5.4 ±0.4 16.0 ±0.2 8.8 ±0.1
+
+TABLE II: Performance comparison on DTDG datasets . Classification tasks report error rates (%), and regression tasks report MAE. “–” indicates that the method does not support the task.                                                                                                                                                                                                                                                                                      
+
+> Methods Classification Regression 2-Moons-D ↓Rot-MNIST-D ↓ONP ↓Shuttle ↓Elec2 ↓House-D ↓Appliance ↓
+> Offline 22.4 ±4.6 18.6 ±4.0 33.8 ±0.6 0.77 ±0.10 23.0 ±3.1 11.0 ±0.36 10.2 ±1.1 LastDomain 14.9 ±0.9 17.2 ±3.1 36.0 ±0.2 0.91 ±0.18 25.8 ±0.6 10.3 ±0.16 9.1 ±0.7 IncFinetune 16.7 ±3.4 10.1 ±0.8 34.0 ±0.3 0.83 ±0.07 27.3 ±4.2 9.7 ±0.01 8.9 ±0.5 CDOT [16] 9.3 ±1.0 14.2 ±1.0 34.1 ±0.0 0.94 ±0.17 17.8 ±0.6 ––CIDA [31] 10.8 ±1.6 9.3 ±0.7 34.7 ±0.6 –14.1 ±0.2 9.7 ±0.06 8.7 ±0.2 GI [10] 3.5 ±1.4 7.7 ±1.3 36.4 ±0.8 0.29 ±0.05 16.9 ±0.7 9.6 ±0.02 8.2 ±0.6 LSSAE [30] 9.9 ±1.1 9.8 ±3.6 38.8 ±1.1 0.22 ±0.01 16.1 ±1.4 ––DDA [11] 9.7 ±1.5 7.6 ±0.7 34.0 ±0.3 0.21 ±0.02 12.8 ±1.1 9.5 ±0.12 6.1 ±0.1 DRAIN [12] 3.2 ±1.2 7.5 ±1.1 38.3 ±1.2 0.26 ±0.05 12.7 ±0.8 9.3 ±0.14 6.4 ±0.4 EvoS [53] 3.0 ±0.4 7.3 ±0.6 35.4 ±0.2 0.23 ±0.01 11.8 ±0.5 9.8 ±0.10 7.2 ±0.1 Koodos [15] 1.3 ±0.4 7.0 ±0.3 33.5 ±0.4 0.24 ±0.04 –8.8 ±0.19 4.8 ±0.3 FreKoo [21] 1.0 ±0.3 6.9 ±0.7 32.3 ±0.3 0.20 ±0.02 9.2 ±0.7 9.0 ±0.11 4.0 ±0.1
+> FreKoo++ (ours) 0.9 ±0.8 5.5 ±0.7 31.1 ±0.2 0.19 ±0.01 10.1 ±1.0 9.3 ±0.10 3.9 ±0.0
+
+and imaginary components explicitly quantify temporal persis-tence and oscillatory frequency, respectively. This continuous spectral formulation enables the analytical extrapolation of stable dominant dynamics while insulating future predictions against volatile, non-generalizable noise. These consistent empirical gains validate that our proposed continuous-time dynamics and spectral disentanglement are exceptionally ef-fective for continuous domains and long-horizon extrapolation. 
+
+2) Discrete Temporal Domain Generalization: Table II evaluates FreKoo++ under DTDG benchmarks with uniformly spaced temporal grids. Although designed for continuous ir-regularly sampled domains, FreKoo++ remains highly compet-itive under uniformly sampled DTDG benchmarks. It improves upon FreKoo on five of seven datasets, including 2-Moons-D, Rot-MNIST-D, ONP, Shuttle, and Appliance, while FreKoo remains stronger on Elec2 and House-D. These results demon-strate the strong backward compatibility and versatility of FreKoo++, proving that its continuous spectral-dynamical for-mulation remains exceptionally effective regardless of whether temporal domains are regularly or irregularly sampled. 
+
+C. Ablation Studies 
+
+To systematically validate the design rationale of FreKoo++, we conduct ablation studies on representative CTDG bench-marks across two complementary dimensions: method-level architectural variants and objective-level regularization vari-ants . As summarized in Table III, the empirical results demon-strate that every component in FreKoo++ plays an indispens-able role in securing robust cross-temporal generalization. The method-level variants confirm that our core architec-tural choices provide decisive performance guarantees. First, enforcing σk ≡ 0 (Fixed spectrum ) restricts modes to purely unattenuated oscillations ( λk = jω k) and neglects temporal growth and decay dynamics. This causes catastrophic degra-dation across all tasks: classification error surges from 1.3% 
+
+to 9.7% on 2-Moons-C, Twitter AUC drops sharply to 0.64 ,and Cyclone MAE degrades to 17 .2. These drops prove that modeling growth and decay rates ( σk) is as vital as modeling oscillatory frequencies (ωk) for tracking parameter evolu-tion. Second, replacing adaptive soft gates with Hard gating 
+
+severely impairs generalization (e.g., Cyclone MAE worsens to 
+
+18 .7), confirming that rigid frequency cutoffs introduce severe boundary artifacts. Similarly, locking gating thresholds via 
+
+Frozen gating consistently degrades performance, validating the necessity of dynamically adapting spectral boundaries to data-specific temporal profiles. The objective-level variants demonstrate that all regular-izers and loss terms contribute synergistically to trajectory JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 11   
+
+> (a) Dominant–transient decomposition (b) Adaptive spectral gating (c) Future trajectory extrapolation
+
+Fig. 4: Qualitative spectral analysis on 2-Moons-C. (a) The parameter trajectory is decomposed into a smooth dominant component and a short-lived transient residual. (b) Learned modes are organized in the frequency–decay plane, where adaptive gates separate persistent modes from transient ones without fixed DFT bins or manual frequency thresholds. (c) Continuous-time inference extrapolates the dominant dynamics while freezing the transient component, producing a coherent future trajectory. TABLE III: Ablation studies on representative CTDG bench-marks. We report error rate (%, ↓) for 2-Moons-C, AUC ( ↑)for Twitter, and MAE ( ↓) for Cyclone. The best performance in each column is in bold .                                                                                    
+
+> Variant 2-Moons-C Twitter Cyclone Err. ↓AUC ↑MAE ↓
+> Method-level variants
+> Fixed spectrum 9.7 ±1.5 0.64 ±0.11 17.2 ±0.7 Hard gating 6.7 ±2.8 0.67 ±0.09 18.7 ±0.3 Frozen gating 2.8 ±0.3 0.70 ±0.01 16.2 ±0.2
+> Objective-level variants
+> w/o L(C)rec 1.6 ±0.5 0.70 ±0.02 16.4 ±0.3 w/o L(C)fit 2.0 ±0.5 0.68 ±0.02 16.2 ±0.2 w/o Rstab 2.5 ±1.4 0.70 ±0.01 16.1 ±0.1 w/o Rspec 6.7 ±3.3 0.69 ±0.01 16.8 ±0.4
+> FreKoo++ 1.3 ±0.2 0.72 ±0.01 16.0 ±0.2
+
+fidelity and extrapolation stability. Omitting transient spectral regularization ( Rspec ) triggers the most severe performance drop (2-Moons-C error increases to 6.7% ), directly validating Proposition 2 by confirming that penalizing transient ampli-tudes ∥ak∥22 is essential for filtering domain-specific noise. Disabling stability regularization ( Rstab ) impairs accuracy on 2-Moons-C ( 1.3% vs. 2.5% ), supporting Theorem 2 and Corollary 1 by verifying that penalizing positive growth rates (σk > 0) prevents dominant extrapolation modes from di-verging exponentially. Finally, removing either L(C)rec or L(C)fit 
+
+degrades performance across all datasets, confirming their complementary roles in preserving auto-encoding fidelity and continuous modal trajectory alignment. 
+
+D. Qualitative Spectral Analysis 
+
+To provide qualitative intuition for our continuous spectral mechanism, Figure 4 visualizes the learned modal decomposi-tion on 2-Moons-C across three complementary perspectives. Notably, all panels are generated from a single trained model to ensure consistency. 
+
+1) Parameter-space trajectory decomposition: Figure 4(a) illustrates how raw parameter evolution is cleanly disentangled into distinct spectral branches. The smooth dominant compo-nent tracks the persistent, recurring backbone of the parameter trajectory, whereas the transient component isolates localized, short-lived residual fluctuations. The high reconstruction fi-delity confirms that our continuous modal parameterization faithfully preserves predictable long-term dynamics without overfitting domain-specific noise. 
+
+2) Spectral distribution and adaptive gating: Figure 4(b) plots the learned modal coordinates in the frequency–decay plane (fk, d k), where fk = |ωk| and dk = −σk. Bypassing rigid DFT grids and manual frequency cutoffs, the learn-able soft gates carve out a smooth, data-driven dominance boundary in the continuous spectral space. Persistent modes with low frequency and minimal decay ( σk ≈ 0) receive high dominance weights ( wdom  
+
+> k
+
+≈ 1), whereas high-frequency or rapidly decaying modes are automatically routed to the transient branch. 
+
+3) Extrapolated space-time trajectory: Figure 4(c) projects continuous parameter evolution into a 3D space-time repre-sentation, highlighting FreKoo++’s exceptional long-horizon extrapolation capability governed by Eqs. (24)–(25). Far be-yond the historical training window ( ts ≫ tT ), the extrapo-lated dominant segment seamlessly extends the smooth cycli-cal trajectory into distant future domains without trajectory collapse or numerical divergence. Meanwhile, the transient residual is held constant at tT as stationary local context. This visually validates both our long-term extrapolation stability and asymmetric inference protocol, as propagating persistent macro-dynamics secures reliable far-future forecasting while strictly preventing volatile local noise from corrupting long-term domain generalization. 
+
+E. Qualitative Analysis of Decision Boundaries 
+
+To evaluate how continuous parameter trajectory evolution translates into task-level generalization, Figure 5 visualizes the learned decision boundaries on 2-Moons-C across six JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 12 Step  35,  err:  2.1%  Step  38,  err:  2.1 %  Step  41,  err:  3.1 %  Step  44,  err:  5.3 %  Step  47,  err:  1.1 %  Step  49,  err:  1.5 %                                                                    
+
+> Step 35, err: 1.5 % Step 38, err: 0.9 % Step 41, err: 1.5 % Step 44, err: 1.1 % Step47, err: 0.9 % Step 49, err: 1.4 %
+> (a) Koodos Step 35, err: 2.1% Step 38, err: 2.1 % Step 41, err: 3.1 % Step 44, err: 5.3 % Step 47, err: 1.1 % Step 49, err: 1.5 %
+> Step 35, err: 1.5 % Step 38, err: 0.9 % Step 41, err: 1.5 % Step 44, err: 1.1 % Step47, err: 0.9 % Step 49, err: 1.4 %
+> (b) FreKoo++
+
+Fig. 5: Qualitative comparison of decision boundaries learned on 2-Moons-C across six unseen future domains. Red curves denote learned decision boundaries alongside the corresponding classification error rates. unseen future temporal domains (steps 35 to 49 ). We com-pare FreKoo++ against the strongest continuous-time baseline Koodos [15]. As shown in Figure 5(a), Koodos produces convoluted and irregular decision boundaries. As time extends further beyond the historical training window (e.g., at step 44 ), Koodos suffers from severe boundary degradation, causing the classification error to surge to 5.3% . This instability stems from unconstrained continuous trajectory modeling, which overfits transient local noise and amplifies integration errors over longer extrapolation horizons. In contrast, FreKoo++ (Figure 5(b)) yields remarkably smooth, globally consistent, and physically intuitive decision boundaries that naturally rotate in synchronization with the underlying moon-cluster dynamics. Crucially, as the prediction horizon extends into distant future domains (steps 44 and 49 ), FreKoo++ main-tains exceptional accuracy without experiencing performance degradation. These results are consistent with the stability predicted by Theorem 2 and Corollary 1, demonstrating that enforcing dominant mode stability ( σdom  
+
+> k
+
+≤ 0) effectively prevents boundary distortion and guarantees generalization robustness over continuous time. Additional decision boundary visualizations are provided in Supplementary IV-A. VIII. C ONCLUSION 
+
+In this paper, we presented FreKoo++, a continuous-time spectral-dynamical framework for temporal domain general-ization. Motivated by the spectral-dynamical relation of contin-uous Koopman dynamics, FreKoo++ represents the evolution of task parameters through learnable modal components whose eigenvalues jointly encode oscillatory frequency and temporal growth or decay. This formulation removes the dependence on uniformly sampled temporal domains and fixed discrete tran-sitions, allowing parameter evolution to be learned from irreg-ular observations and evaluated at arbitrary future timestamps. In addition, FreKoo++ further introduces an adaptive soft spectral weighting mechanism that separates persistent dom-inant dynamics from transient domain-specific fluctuations, together with spectral and stability regularization terms that suppress noisy modal components and control unstable long-horizon extrapolation. Theoretical analysis establishes modal approximation and continuous time generalization bounds, clarifying how the learned spectrum and the proposed regular-izers affect future-domain risk. Experiments on both discrete and continuous TDG benchmarks demonstrate that FreKoo++ consistently improves temporal generalization. These results suggest that continuous spectral-dynamical modeling provides a principled and effective direction for learning robust models in evolving environments. ACKNOWLEDGMENTS 
+
+The work was supported by the Australian Research Council (ARC) under Laureate project FL190100149 and Discovery Project DP220102635. REFERENCES [1] E. Han, C. Huang, and K. Wang, “Model assessment and selection under temporal distribution shift,” in International Conference on Machine Learning . PMLR, 2024, pp. 17 374–17 392. [2] Z. Cao, Q. Xu, Z. Yang, X. Cao, and Q. Huang, “Cakge: Context-aware adaptive learning for dynamic knowledge graph embeddings,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 48, no. 6, pp. 6225–6240, 2026. [3] E. Yu, J. Lu, K. Wang, X. Yang, and G. Zhang, “Drift-aware collabora-tive assistance mixture of experts for heterogeneous multistream learn-ing,” in Proceedings of the AAAI Conference on Artificial Intelligence ,vol. 40, no. 19, 2026, pp. 16 199–16 207. [4] R. Wang, Y. Dong, S. Arik, and R. Yu, “Koopman neural forecaster for time series with temporal distribution shifts,” in International Confer-ence on Learning Representations (ICLR) , 2023. [5] X. Yang, E. Yu, W. Duan, and J. Lu, “Turning drift into constraint: Ro-bust reasoning alignment in non-stationary multi-stream environments,” in Forty-third International Conference on Machine Learning , 2026. [6] A. Giaretta, M. Bisiacco, and G. Pillonetto, “Supervised learning in dy-namic and non stationary environments,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 47, no. 10, pp. 9345–9351, 2025. [7] J. Lu, A. Liu, F. Dong, F. Gu, J. Gama, and G. Zhang, “Learning under concept drift: A review,” IEEE transactions on knowledge and data engineering , vol. 31, no. 12, pp. 2346–2363, 2018. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 13 
+
+[8] K. Xu, L. Chen, and S. Wang, “Coral: Concept drift representation learning for co-evolving time-series,” arXiv preprint arXiv:2501.01480 ,2025. [9] J. Wang, Z. Ren, R. Zhan, and Z. Zhou, “Distributionally robust policy learning under concept drifts,” in International Conference on Machine Learning . PMLR, 2025, pp. 64 244–64 281. [10] A. Nasery, S. Thakur, V. Piratla, A. De, and S. Sarawagi, “Training for the future: A simple gradient interpolation loss to generalize along time,” Advances in Neural Information Processing Systems , vol. 34, pp. 19 198–19 209, 2021. [11] Q. Zeng, W. Wang, F. Zhou, C. Ling, and B. Wang, “Foresee what you will learn: data augmentation for domain generalization in non-stationary environment,” in Proceedings of the AAAI conference on artificial intelligence , vol. 37, no. 9, 2023, pp. 11 147–11 155. [12] G. Bai, C. Ling, and L. Zhao, “Temporal domain generalization with drift-aware dynamic neural networks.” in The Eleventh International Conference on Learning Representations. , 2023. [13] C.-Y. Chang, Y.-N. Chuang, Z. Jiang, K.-H. Lai, A. Jiang, and N. Zou, “Coda: Temporal domain generalization via concept drift simulator,” in Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2 , 2025, pp. 131–142. [14] X. Yang, J. Lu, and E. Yu, “Walking the tightrope: Autonomous disentangling beneficial and detrimental drifts in non-stationary custom-tuning,” Advances in neural information processing systems , vol. 38, pp. 116 167–116 193, 2026. [15] Z. Cai, G. Bai, R. Jiang, X. Song, and L. Zhao, “Continuous temporal domain generalization,” Advances in Neural Information Processing Systems , vol. 37, pp. 127 987–128 014, 2024. [16] G. Ortiz-Jimenez, M. E. Gheche, E. Simou, H. P. Maretic, and P. Frossard, “Cdot: Continuous domain adaptation using optimal trans-port,” arXiv preprint arXiv:1909.11448 , 2019. [17] T. Qin, S. Wang, and H. Li, “Evolving domain generalization via latent structure-aware sequential autoencoder,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 45, no. 12, pp. 14 514–14 527, 2023. [18] E. Yu, J. Lu, B. Zhang, and G. Zhang, “Online boosting adaptive learning under concept drift for multistream classification,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 38, no. 15, 2024, pp. 16 522–16 530. [19] B. Jiao, Y. Guo, D. Gong, and Q. Chen, “Dynamic ensemble selection for imbalanced data streams with concept drift,” IEEE transactions on neural networks and learning systems , vol. 35, no. 1, pp. 1278–1291, 2022. [20] S. Niu, J. Wu, Y. Zhang, Z. Wen, Y. Chen, P. Zhao, and M. Tan, “Towards stable test-time adaptation in dynamic wild world,” in The Eleventh International Conference on Learning Representations , 2023. [Online]. Available: https://openreview.net/forum?id=g2YraF75Tj [21] E. Yu, J. Lu, X. Yang, G. Zhang, and Z. Fang, “Learning robust spectral dynamics for temporal domain generalization,” Advances in Neural Information Processing Systems , vol. 38, pp. 148 725–148 751, 2026. [22] Z. Liu, K. Zeng, Q. Ma, and J. T. Kwok, “Complematch: Boost-ing time-series semi-supervised classification with temporal-frequency complementarity,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 48, no. 4, pp. 4440–4453, 2026. [23] W. Ye, S. Deng, Q. Zou, and N. Gui, “Frequency adaptive normalization for non-stationary time series forecasting,” Advances in Neural Informa-tion Processing Systems , vol. 37, pp. 31 350–31 379, 2024. [24] J. Wang, M. Ye, Y. Kuang, R. Yang, W. Zhou, H. Li, and F. Wu, “Long-term feature extraction via frequency prediction for efficient reinforcement learning,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 47, no. 4, pp. 3094–3110, 2025. [25] Y. Liu, C. Li, J. Wang, and M. Long, “Koopa: Learning non-stationary time series dynamics with koopman predictors,” Advances in neural information processing systems , vol. 36, pp. 12 271–12 290, 2023. [26] Z. Liu, M. Cheng, Z. Li, Z. Huang, Q. Liu, Y. Xie, and E. Chen, “Adaptive normalization for non-stationary time series forecasting: A temporal slice perspective,” Advances in Neural Information Processing Systems , vol. 36, pp. 14 273–14 292, 2023. [27] Y. Jin, Z. Yang, X. Chu, and L. Ma, “Temporal domain generalization via learning instance-level evolving patterns,” in Proceedings of the Thirty-Third International Joint Conference on Artificial Intelligence , 2024, pp. 4255–4263. [28] Q. Zeng, W. Wang, F. Zhou, G. Xu, R. Pu, C. Shui, C. Gagne, S. Yang, C. X. Ling, and B. Wang, “Generalizing across temporal domains with koopman operators,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 38, no. 15, 2024, pp. 16 651–16 659. [29] D. Liang, J. Chen, X. Wang, Y. Wang, and S. Li, “Deepboots: Dual-stream residual boosting for drift-resilient time-series forecasting,” in 
+
+Proceedings of the AAAI Conference on Artificial Intelligence , vol. 40, no. 28, 2026, pp. 23 391–23 400. [30] T. Qin, S. Wang, and H. Li, “Generalizing to evolving domains with latent structure-aware sequential autoencoder,” in International Confer-ence on Machine Learning . PMLR, 2022, pp. 18 062–18 082. [31] H. Wang, H. He, and D. Katabi, “Continuously indexed domain adapta-tion,” in Proceedings of the 37th International Conference on Machine Learning , 2020, pp. 9898–9907. [32] Z. He, S. Li, W. Song, L. Yuan, J. Liang, H. Li, and K. Gai, “Learning time-aware causal representation for model generalization in evolving domains,” in Forty-second International Conference on Machine Learning , 2025. [Online]. Available: https://openreview.net/ forum?id=KhCKypSaqx [33] Z. Cai, Y. YAO, G. Bai, R. Jiang, X. Song, R. Shibasaki, and L. Zhao, “Continuous domain generalization,” in The Thirty-ninth Annual Con-ference on Neural Information Processing Systems , 2025. [34] W. Luo, S. Chen, T. Zhou, and C. Gong, “A theoretical perspective on streaming noisy data with distribution shift,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 48, no. 4, pp. 4150– 4166, 2026. [35] R. C. Hoover, J. James, P. May, and K. Caudle, “Koopman operator identification of model parameter trajectories for temporal domain generalization (komet),” arXiv preprint arXiv:2603.26923 , 2026. [36] X. Li and L. Yao, “Distribution-conditioned adversarial variational autoencoder for valid instrumental variable generation,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 38, no. 12, 2024, pp. 13 664–13 672. [37] P. Lu, J. Lu, A. Liu, and G. Zhang, “Early concept drift detection via prediction uncertainty,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 39, no. 18, 2025, pp. 19 124–19 132. [38] X. Yang, J. Lu, and E. Yu, “Adapting multi-modal large language model to concept drift from pre-training onwards,” in The Thirteenth International Conference on Learning Representations , 2025. [39] E. Yu, J. Lu, and G. Zhang, “Generalized incremental learning under concept drift across evolving data streams,” in Proceedings of the ACM Web Conference 2026 , 2026, pp. 3905–3916. [40] B. Peng, J. Lu, Y. Zhang, G. Zhang, and Z. Fang, “Distributional prototype learning for out-of-distribution detection,” in Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 1 , 2025, pp. 1104–1114. [41] zhangkai wu, X. Fan, H. Wu, and L. Cao, “SCot: Unifying consistency models and rectified flows via straight-consistent trajectories,” in The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. [Online]. Available: https://openreview.net/forum?id= GV82iAD70j [42] T. Zhou, Z. Ma, Q. Wen, X. Wang, L. Sun, and R. Jin, “Fedformer: Frequency enhanced decomposed transformer for long-term series fore-casting,” in International conference on machine learning . PMLR, 2022, pp. 27 268–27 286. [43] K. Yi, J. Fei, Q. Zhang, H. He, S. Hao, D. Lian, and W. Fan, “Filternet: Harnessing frequency filters for time series forecasting,” Advances in Neural Information Processing Systems , vol. 37, pp. 55 115–55 140, 2024. [44] H. Ye, J. Chen, S. Gong, F. Jiang, T. Zhang, J. Chen, and X. Gao, “Atfnet: Adaptive time-frequency ensembled network for long-term time series forecasting,” arXiv preprint arXiv:2404.05192 , 2024. [45] R. Cutler and L. S. Davis, “Robust real-time periodic motion detection, analysis, and applications,” IEEE Transactions on pattern analysis and machine intelligence , vol. 22, no. 8, pp. 781–796, 2000. [46] N. Hurley-Walker, X. Zhang, A. Bahramian, S. McSweeney, T. O’Doherty, P. Hancock, J. Morgan, G. Anderson, G. Heald, and T. Galvin, “A radio transient with unusually slow periodic emission,” 
+
+Nature , vol. 601, no. 7894, pp. 526–530, 2022. [47] B. Wang, M. Tian, Y. Yu, Q. Dong, and D. Xu, “Enhanced adrc with quasi-resonant control for pmsm speed regulation considering aperiodic and periodic disturbances,” IEEE Transactions on Transportation Elec-trification , vol. 8, no. 3, pp. 3568–3577, 2021. [48] B. O. Koopman, “Hamiltonian systems and transformation in hilbert space,” Proceedings of the National Academy of Sciences , vol. 17, no. 5, pp. 315–318, 1931. [49] S. L. Brunton, M. Budiˇ si´ c, E. Kaiser, and J. N. Kutz, “Modern koopman theory for dynamical systems,” arXiv preprint arXiv:2102.12086 , 2021. [50] M. Arjovsky, L. Bottou, I. Gulrajani, and D. Lopez-Paz, “Invariant risk minimization,” arXiv preprint arXiv:1907.02893 , 2019. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 14 
+
+[51] D. Krueger, E. Caballero, J.-H. Jacobsen, A. Zhang, J. Binas, D. Zhang, R. Le Priol, and A. Courville, “Out-of-distribution generalization via risk extrapolation (rex),” in International conference on machine learning .PMLR, 2021, pp. 5815–5826. [52] R. T. Q. Chen, Y. Rubanova, J. Bettencourt, and D. K. Duvenaud, “Neu-ral ordinary differential equations,” in Advances in Neural Information Processing Systems , vol. 31, 2018. [53] M. Xie, S. Li, L. Yuan, C. Liu, and Z. Dai, “Evolving standardization for continual domain generalization over temporal drift,” Advances in Neural Information Processing Systems , vol. 36, 2024. [54] L. Deng, “The MNIST database of handwritten digit images for machine learning research,” IEEE Signal Processing Magazine , vol. 29, no. 6, pp. 141–142, 2012. [55] L. Zhao, Q. Sun, J. Ye, F. Chen, C.-T. Lu, and N. Ramakrishnan, “Feature constrained multi-task learning models for spatiotemporal event forecasting,” IEEE Transactions on Knowledge and Data Engineering ,vol. 29, no. 5, pp. 1059–1072, 2017. [56] G. Bai, J. Torres, J. Wang, L. Zhao, C. Abad, and C. Vaca, “Sign-regularized multi-task learning,” in Proceedings of the 2023 SIAM International Conference on Data Mining . SIAM, 2023, pp. 793–801. [57] H. Yao, C. Choi, B. Cao, Y. Lee, P. W. Koh, and C. Finn, “Wild-time: A benchmark of in-the-wild distribution shift over time,” in Advances in Neural Information Processing Systems , vol. 35, 2022, pp. 10 309– 10 324. [58] B. Chen, B.-F. Chen, and H.-T. Lin, “Rotation-blended CNNs on a new open dataset for tropical cyclone image-to-intensity regression,” in Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining , 2018, pp. 90–99. [59] M. Schirmer, M. Eltayeb, S. Lessmann, and M. Rudolph, “Modeling irregular time series with continuous recurrent units,” in International Conference on Machine Learning . PMLR, 2022, pp. 19 388–19 405. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 1
+
+# Supplementary Material for FreKoo++: Learning Continuous Spectral Dynamics for Temporal Domain Generalization 
+
+SECTION ITHEORETICAL ANALYSIS DETAILS 
+
+A. Proof of Theorem 1 
+
+We adopt two conventions throughout this supplementary section. (i) The omitted transient remainder in Assumption 1 is non-growing ( Re( λk) ≤ 0 for k > K ); the learned transient-weighted dynamics in Theorem 2 are evaluated over the historical window [0 , t T ], with growth controlled by the window factor Gtrans (tT ), which is finite by Assumption 2. (ii) Since Re( ·)
+
+is 1-Lipschitz ( ∥ Re( u) − Re( v)∥2 ≤ ∥ u − v∥2 for u, v ∈ Cm), every bound derived for the complex expansion P 
+
+> k
+
+akeλk t
+
+applies directly to the real-valued parameterization ˜z(t) = Re   P  
+
+> k
+
+akeλk t; we therefore suppress Re( ·) in intermediate steps. 
+
+Restatement of Theorem 1 (Mode Approximation Bound). Under Assumption 1, let ˆz(t) = PKk=1 ˆakeˆλk t. Then for any horizon ts > 0:
+
+sup 
+
+> t∈[0 ,t s]
+
+∥z(t) − ˆz(t)∥2 ≤
+
+> K
+
+X
+
+> k=1
+
+∥ak − ˆak∥2 eˆρk ts + CaKX
+
+> k=1
+
+|λk − ˆλk| ts eϱk ts +
+
+> K∗
+
+X
+
+> k=K+1
+
+∥ak∥2,
+
+where ˆρk = max(Re( ˆλk), 0) , ϱk = max(Re( λk), Re( ˆλk), 0) , and Ca = max 1≤k≤K ∥ak∥2.
+
+Proof 3: Adding and subtracting PKk=1 akeˆλk t decomposes the error as: 
+
+z(t) − ˆz(t) = 
+
+> K
+
+X
+
+> k=1
+
+(ak − ˆak)eˆλk t
+
+| {z }
+
+> Eamp (t)
+
++
+
+> K
+
+X
+
+> k=1
+
+ak
+
+ eλk t − eˆλk t| {z }
+
+> Eest (t)
+
++
+
+> K∗
+
+X
+
+> k=K+1
+
+ak eλk t
+
+| {z }
+
+> Etrunc (t)
+
+. (32) The triangle inequality gives ∥z(t) − ˆz(t)∥2 ≤ ∥ Eamp (t)∥2 + ∥Eest (t)∥2 + ∥Etrunc (t)∥2.
+
+Step 1: Amplitude estimation error. For t ∈ [0 , t s]:
+
+∥Eamp (t)∥2 ≤
+
+> K
+
+X
+
+> k=1
+
+∥ak − ˆak∥2 eˆλk t =
+
+> K
+
+X
+
+> k=1
+
+∥ak − ˆak∥2 eRe( ˆλk )t ≤
+
+> K
+
+X
+
+> k=1
+
+∥ak − ˆak∥2 eˆρk ts , (33) where the last inequality uses ˆρk ≥ Re( ˆλk) and t ≤ ts.
+
+Step 2: Eigenvalue estimation error. Fix t ∈ [0 , t s] and k ∈ { 1, . . . , K }. By the fundamental theorem of calculus applied to 
+
+s 7 → e(ˆλk +s(λk −ˆλk )) t on [0 , 1] :
+
+eλk t − eˆλk t = ( λk − ˆλk) t
+
+Z 10
+
+e(ˆλk +s(λk −ˆλk )) t ds. (34) Since |eμt | = eRe( μ)t and Re( ˆλk + s(λk − ˆλk)) is linear in s, its maximum over [0 , 1] is attained at an endpoint: 
+
+eλk t − eˆλk t ≤ | λk − ˆλk| t e max(Re( λk ),Re( ˆλk )) t ≤ | λk − ˆλk| t e ϱk t, (35) where ϱk = max(Re( λk), Re( ˆλk), 0) ≥ 0. Because ϱk ≥ 0, the map t 7 → t e ϱk t is nondecreasing on [0 , t s], so the supremum is attained at t = ts. Combining with Ca = max k≤K ∥ak∥2:
+
+sup 
+
+> t∈[0 ,t s]
+
+∥Eest (t)∥2 ≤
+
+> K
+
+X
+
+> k=1
+
+∥ak∥2 eλk t − eˆλk t ≤ CaKX
+
+> k=1
+
+|λk − ˆλk| ts eϱk ts . (36) 
+
+Step 3: Modal truncation error. By Assumption 1, Re( λk) ≤ 0 for k > K , so |eλk t| = eRe( λk )t ≤ 1 for all t ≥ 0. Hence: 
+
+sup 
+
+> t∈[0 ,t s]
+
+∥Etrunc (t)∥2 ≤
+
+> K∗
+
+X
+
+> k=K+1
+
+∥ak∥2 eλk t ≤
+
+> K∗
+
+X
+
+> k=K+1
+
+∥ak∥2. (37) Summing Eqs. (33), (36), and (37) completes the proof. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 2
+
+B. Proof of Theorem 2 
+
+Theorem 3 (Restatement of Theorem 2): Under Assumptions 1–2, the future-domain excess risk at ts > t T satisfies: 
+
+Ets ≤ LℓLg Ldec 
+
+ Edom (ts) + Etrans (ts), (38) where Edom (ts) = ∥ˆzdom (ts) − z⋆
+
+> dom
+
+(ts)∥2 and Etrans (ts) = ∥ˆztrans (tT ) − z⋆
+
+> trans
+
+(ts)∥2. With ∆s = ts − tT , ˆρk =max(Re( ˆλk), 0) , ϱk = max(Re( λ⋆k), Re( ˆλk), 0) :
+
+Edom (ts) ≤
+
+> K
+
+X
+
+> k=1
+
+∥ˆbk − b⋆k∥2 eˆρk ∆s + Bdom 
+
+> K
+
+X
+
+> k=1
+
+|ˆλk − λ⋆k| ∆s eϱk ∆s , (39) and the transient holding error satisfies: 
+
+Etrans (ts) ≤ Btrans + Gtrans (tT )pRspec , (40) where Gtrans (tT ) =   P Kk=1 wtrans  
+
+> k
+
+e2 ˆ ρk tT
+
+1/2.
+
+Proof 4: By Assumption 2, θ⋆(ts) = ϕ−1(z⋆(ts)) and ˆθ(ts) = ϕ−1(ˆ z(ts)) .
+
+Step 1: Excess risk to latent error. By Lℓ-Lipschitz continuity of ℓ and Lg -Lipschitz continuity of g(X; ·):
+
+Ets ≤ LℓLg ∥ˆθ(ts) − θ⋆(ts)∥2. (41) By Ldec -Lipschitz continuity of ϕ−1:
+
+∥ˆθ(ts) − θ⋆(ts)∥2 = ∥ϕ−1(ˆ z(ts)) − ϕ−1(z⋆(ts)) ∥2 ≤ Ldec ∥ˆz(ts) − z⋆(ts)∥2. (42) Combining Eqs. (41)–(42): 
+
+Ets ≤ LℓLg Ldec ∥ˆz(ts) − z⋆(ts)∥2. (43) 
+
+Step 2: Latent error decomposition. By the inference rule ˆz(ts) = ˆ zdom (ts) + ˆ ztrans (tT ) (Eq. (24)) and the decomposition 
+
+z⋆(ts) = z⋆
+
+> dom
+
+(ts) + z⋆
+
+> trans
+
+(ts):
+
+∥ˆz(ts) − z⋆(ts)∥2 ≤ ∥ ˆzdom (ts) − z⋆
+
+> dom
+
+(ts)∥2
+
+| {z }
+
+> Edom (ts)
+
++ ∥ˆztrans (tT ) − z⋆
+
+> trans
+
+(ts)∥2
+
+| {z }
+
+> Etrans (ts)
+
+. (44) Substituting into Eq. (43) proves Eq. (38). 
+
+Step 3: Dominant extrapolation error. Setting τ = ∆ s in the anchored representations of Assumption 2: 
+
+z⋆
+
+> dom
+
+(ts) = Re 
+
+ KX
+
+> k=1
+
+b⋆keλ⋆k ∆s
+
+
+
+, ˆzdom (ts) = Re 
+
+ KX
+
+> k=1
+
+ˆbkeˆλk ∆s
+
+
+
+. (45) By the non-expansive property of Re( ·):
+
+Edom (ts) ≤
+
+> K
+
+X
+
+> k=1
+
+ ˆbkeˆλk ∆s − b⋆keλ⋆k ∆s 
+
+> 2
+
+. (46) Adding and subtracting b⋆keˆλk ∆s :
+
+ˆbkeˆλk ∆s − b⋆keλ⋆k ∆s = ( ˆbk − b⋆k)eˆλk ∆s + b⋆k
+
+ eˆλk ∆s − eλ⋆k ∆s . (47) The triangle inequality yields: 
+
+Edom (ts) ≤
+
+> K
+
+X
+
+> k=1
+
+∥ˆbk − b⋆k∥2 |eˆλk ∆s | +
+
+> K
+
+X
+
+> k=1
+
+∥b⋆k∥2 |eˆλk ∆s − eλ⋆k ∆s |. (48) For the first sum, |eˆλk ∆s | = eRe( ˆλk )∆ s ≤ eˆρk ∆s . For the second sum, applying the integral identity to u 7 → e[λ⋆k +u(ˆλk −λ⋆k )]∆ s
+
+on [0 , 1] :
+
+eˆλk ∆s − eλ⋆k ∆s = ( ˆλk − λ⋆k)∆ s
+
+Z 10
+
+e[λ⋆k +u(ˆλk −λ⋆k )]∆ s du. (49) Since Re( λ⋆k + u(ˆλk − λ⋆k)) is linear in u, its maximum over [0 , 1] is attained at an endpoint. Therefore: 
+
+|eˆλk ∆s − eλ⋆k ∆s | ≤ | ˆλk − λ⋆k| ∆s emax(Re( λ⋆k ),Re( ˆλk ))∆ s ≤ | ˆλk − λ⋆k| ∆s eϱk ∆s . (50) Substituting max k ∥b⋆k∥2 ≤ Bdom and Eq. (50) into Eq. (48) establishes Eq. (39). JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 3
+
+Step 4: Transient holding error. The triangle inequality gives: 
+
+Etrans (ts) ≤ ∥ ˆztrans (tT )∥2 + ∥z⋆
+
+> trans
+
+(ts)∥2. (51) By Assumption 2, ∥z⋆
+
+> trans
+
+(ts)∥2 ≤ Btrans .For the learned transient contribution, the non-expansive property and the triangle inequality give: 
+
+∥ˆztrans (tT )∥2 = Re 
+
+ KX
+
+> k=1
+
+wtrans  
+
+> k
+
+ˆakeˆλk tT
+
+
+
+> 2
+
+≤
+
+> K
+
+X
+
+> k=1
+
+wtrans  
+
+> k
+
+∥ˆak∥2 eˆρk tT , (52) where |eˆλk tT | = eRe( ˆλk )tT ≤ eˆρk tT . Writing wtrans  
+
+> k
+
+= pwtrans  
+
+> k
+
+· pwtrans  
+
+> k
+
+and applying Cauchy–Schwarz: 
+
+∥ˆztrans (tT )∥2 ≤
+
+ KX
+
+> k=1
+
+wtrans  
+
+> k
+
+e2 ˆ ρk tT
+
+1/2 KX
+
+> k=1
+
+wtrans  
+
+> k
+
+∥ˆak∥22
+
+1/2
+
+. (53) The first factor is Gtrans (tT ), which is finite by Assumption 2. For the second factor, since 1 − Var Kk=1 (wdom  
+
+> k
+
+) ≥ 0, the definition Rspec = P 
+
+> k
+
+wtrans  
+
+> k
+
+∥ˆak∥22 + (1 − Var( wdom  
+
+> k
+
+)) (Eq. (21)) implies: 
+
+> K
+
+X
+
+> k=1
+
+wtrans  
+
+> k
+
+∥ˆak∥22 ≤ R spec . (54) Substituting into Eq. (53): 
+
+∥ˆztrans (tT )∥2 ≤ Gtrans (tT )pRspec . (55) Combining Eqs. (51) and (55) proves Eq. (40). Steps 1–4 together complete the proof. 
+
+C. Proof of Proposition 2 
+
+Proof 5: Define the cumulative temporal energy of mode k over [0 , T max ]:
+
+Ek =
+
+Z Tmax 
+
+> 0
+
+∥akeλk t∥22 dt. (56) Since ∥ Re( u)∥2 ≤ ∥ u∥2, this upper-bounds the energy of the real-valued trajectory Re( akeλk t).Given λk = σk + jω k with σk < 0:
+
+Ek = ∥ak∥22
+
+Z Tmax 
+
+> 0
+
+|e(σk +jω k )t|2 dt = ∥ak∥22
+
+Z Tmax 
+
+> 0
+
+e2σk t dt = ∥ak∥22 · 1 − e2σk Tmax 
+
+−2σk
+
+. (57) Because σk < 0 and Tmax > 0, we have 0 < e 2σk Tmax < 1, so 1 − e2σk Tmax ≤ 1. Therefore: 
+
+Ek ≤ ∥ak∥22
+
+−2σk
+
+= ∥ak∥22
+
+2|σk| , (58) which establishes Eq. (22). SECTION II EXPERIMENTAL DETAILS 
+
+A. Datasets 1) CTDG Benchmarks: We evaluate FreKoo++ on six continuous temporal domain generalization (CTDG) benchmarks characterized by asynchronous arrivals and irregularly sampled temporal gaps. For all CTDG datasets, timestamps are normalized to [0 , 1] while preserving their relative temporal intervals. Following the standard CTDG setup, the chronologically earliest 70% of domains serve as historical source training data, while the remaining latest 30% are reserved as unseen target domains for future extrapolation. The ’-C’ suffix denotes the continuous, irregularly sampled variant to distinguish it from its discrete counterpart. 
+
+Rotated 2-Moons-C. This synthetic benchmark constructs a continuous variant of the two-moons problem to model rotational concept drift. It contains 1,000 two-dimensional samples per domain across two classes formed by upper and lower moon-shaped clusters. We sample 50 timestamps from [0 , 50] to construct 50 sequential domains. Domains 1–35 (35 source domains) are used for training, while domains 36–50 (15 target domains) serve as unseen test sets. Concept drift is induced by continuously rotating the dataset counter-clockwise at a constant rate of 18 ◦ per unit time. 
+
+Rotated MNIST-C. We extend the MNIST dataset [54] to continuous temporal shifts under irregular sampling. Fifty timestamps are sampled from [0 , 50] , where each timestamp defines a domain containing 1,000 randomly selected digit images, yielding a total of 50 temporal domains. The first 35 rotated domains serve as training source data, while the remaining 15 JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 4
+
+domains are reserved for testing. Analogous to Rotated 2-Moons-C, progressive counter-clockwise rotation at 18 ◦ per unit time induces continuous visual domain drift. 
+
+Twitter. This benchmark evaluates influenza-risk prediction using streaming social media signals [55], [56]. Domains are constructed from tweet streams collected at 50 arbitrary starting timestamps across the 2010–2014 flu seasons, with each domain spanning a 7-day temporal window. We partition the data into 50 chronological domains, using the first 35 as training sources and the final 15 for testing. Features consist of disease-related term frequency statistics validated against CDC Influenza-Like Illness reports, where concept drift reflects both seasonal flu cycles and evolving user tweeting patterns. 
+
+Yearbook. Derived from the Wild-Time benchmark [57], this dataset contains frontal yearbook portraits collected from 1930 to 2013 across 128 high schools for gender classification. We sample 40 non-consecutive years across the 84-year span to construct 40 irregularly spaced domains, training on the first 28 source domains and evaluating on the final 12 future target domains. Long-term visual drift naturally emerges from non-uniform temporal intervals, reflecting shifts in fashion trends, photographic styles, and social context. 
+
+Cyclone. This benchmark addresses a regression task mapping satellite imagery of tropical cyclones to wind intensity [58]. Each cyclone event represents a distinct domain indexed by its occurrence date. Following Koodos [15], we extract West Pacific cyclone records from 2014 to 2016 to form 72 continuous temporal domains. We use the first 50 domains as training sources and the remaining 22 domains for future wind intensity prediction. Concept drift naturally arises from seasonal meteorological variations and event-driven irregular arrivals. 
+
+House-C. This real-estate regression benchmark predicts housing prices from property features based on transaction records from 2013 to 2019. Following the CTDG protocol, we sample 40 non-overlapping one-month temporal windows to create 40 chronological domains, using the first 28 domains for training and the remaining 12 domains for testing. Concept drift stems naturally from evolving local real-estate market conditions and non-uniform sampling intervals. 
+
+2) DTDG benchmarks: To verify backward compatibility under discrete settings, we evaluate FreKoo++ across seven temporal benchmarks following the experimental setup and evaluation protocol established in FreKoo [21]. Following standard DTDG practice, historical chronological domains serve as source training data, while the immediately succeeding unseen future domain is reserved as the target domain. This benchmark suite encompasses both synthetic and complex real-world temporal data streams with diverse drift patterns. 
+
+Rotated 2-Moons-D. This benchmark adapts the 2-Moons dataset to model concept drift via rotation. It contains 1,800 2-dimensional samples across two classes, divided into 10 sequential domains. Each domain is rotated 18° counter-clockwise relative to the previous one. We train on domains 0-8 and test on domain 9, where the drift is caused by the incremental rotation. 
+
+Rotated MNIST-D. We randomly sampled 1000 instances from the MNIST dataset and constructed a total of five domains by successively rotating them counter-clockwise by 15°, analogous to the Rotated 2-Moons-D setup. The first four rotated domains are used for training, while the fifth domain serves as the test set, creating incremental drift induced by progressive rotation transformations. 
+
+Online News Popularity (ONP) 1. This dataset aggregates heterogeneous features of articles published by Mashable over two years, aiming to predict social media shares (popularity). It comprises 39,797 samples with 58 features, where concept drift is characterized by temporal shifts in popularity patterns. We partition the data into 6 time-ordered domains, using the first five for training and the last for testing. The dataset undergoes slight real-world concept drift over the observed time period. 
+
+Shuttle 2. The Shuttle dataset contains 58,000 instances of multi-class flight status classification under severe class imbalance. It is partitioned into 8 time-stamped domains using a chronological split: domains spanning timestamps 30-70 serve as training data, while the most recent period (70–80) is reserved for testing. The dataset also has real-world concept drifts over the observed time period. 
+
+Electrical Demand 3. This dataset records electricity demand in a province, addressing a binary classification task to predict whether 30-minute demand exceeds or falls below the daily average for that time period. After removing instances with missing values, it contains 28,222 samples with 8 features. It is partitioned into 30 two-week chronological domains, with the first 29 used for training and the 30th for testing. Seasonal variations in demand induce concept drift, making this a real-world benchmark capturing both periodic and incremental drift patterns. 
+
+HousePrices-D 4. This dataset comprises housing price records from 2013 to 2019 for the regression task to predict property prices based on feature values. We treat each calendar year as a distinct domain, using 2013–2018 data for training and the final (2019) domain for testing. Concept drift emerges naturally from temporal economic shifts and market fluctuations over the years. 
+
+Appliances Energy Prediction 5. This dataset addresses regression modeling for predicting appliance energy consumption in a low-energy building. Comprising 10-minute sensor readings over 4.5 months in 2016, it is partitioned into 9 chronological  
+
+> 1https://archive.ics.uci.edu/dataset/332/online+news+popularity
+> 2https://archive.ics.uci.edu/dataset/148/statlog+shuttle
+> 3https://web.archive.org/web/20191121102533/http://www.inescporto.pt/˜ jgama/ales/ales 5.html
+> 4https://www.kaggle.com/datasets/htagholdings/property-sales
+> 5https://archive.ics.uci.edu/dataset/374/appliances+energy+prediction JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 5
+
+TABLE IV: Detailed network architectures for the task predictive model and the uniform latent autoencoder ( ϕ, ϕ −1) across all benchmark datasets. All autoencoder hidden layers employ ReLU activations.                                  
+
+> Dataset Predictive model ( θ∈RD)Latent encoder-decoder ( ϕ, ϕ −1)2-Moons-C MLP: [2, 50, 50, 1] + ReLU + Sigmoid
+> ϕ: [ D→1024 →512 →128 →m]
+> ϕ−1: [ m→128 →512 →1024 →D]Rot-MNIST-C 3×[Conv(32/32/64, k=3 ) + ReLU + MaxPool( 2)] + MLP: [576, 128, 10] + LogSoftmax Twitter Embedding Network + MLP [32, 128, 32, 1] + ReLU + Sigmoid Yearbook 3×[Conv(32/32/64, k=3 ) + ReLU + MaxPool( 2)] + MLP: [1024, 128, 32, 1] + ReLU + Sigmoid Cyclone 4×[Conv(32/32/64/64, k=3 ) + ReLU + MaxPool( 2)] + MLP: [1024, 128, 32, 1] + ReLU House MLP: [30, 400, 400, 1] + ReLU
+
+domains. We train on the first eight domains and evaluate on the final (most recent) ninth domain, with concept drift arising from temporal shifts in energy usage patterns across the observation period. 
+
+B. Baselines 1) CTDG Baselines: Following the continuous temporal domain generalization protocol in Koodos [15], we compare FreKoo++ against twelve representative CTDG baselines evaluated in Table I, categorized into four technical paradigms based on how they handle temporal information: 
+
+Time-agnostic baselines. These methods ignore explicit temporal ordering across domains. Offline aggregates all source domains into a single pool for empirical risk minimization. LastDomain trains exclusively on the chronologically latest source domain, adopting a naive recency-based heuristic. IncFinetune sequentially fine-tunes the network across chronological domains using a reduced learning rate. 
+
+Domain generalization and continuous adaptation baselines. IRM [50] and V-REx [51] penalize invariant predictor mismatches and risk variations across source domains, respectively. CIDA [31] conditions the model on continuous temporal indices, aligning representations via adversarial domain alignment with a domain-aware discriminator. 
+
+Temporal and parameter forecasting baselines. TKNets [28] leverages Koopman operators for discrete temporal transfer across evolving domains. DRAIN [12] forecasts future neural network parameters via a discrete recurrent network trained on source parameter trajectories. To accommodate irregular sampling intervals, DRAIN-∆t [15] replaces standard discrete recurrent units with continuous-time recurrent units [59]. 
+
+Continuous-time dynamics baselines. DeepODE [15] maps model parameters into a latent space and evolves them via a Neural ODE solver [52]. NeuralLio [33] incorporates continuous-time Liouville operator dynamics to track evolving continuous distributions over time. Koodos [15] models the coupled evolution of data and parameter states using a continuous-time Koopman formulation under structural constraints. To ensure a fair and rigorous comparison, all baseline methods share identical task backbone architectures with FreKoo++ across each benchmark dataset. Experimental results are either directly cited from their original publications under matched evaluation protocols or reproduced using their official open-source implementations under unified experimental settings. To ensure statistical reliability, all reported metrics represent the mean and standard deviation ( mean ± std ) computed over five independent runs with different random seeds. 
+
+2) DTDG baselines: For the DTDG compatibility evaluation, we follow the FreKoo protocol [21]. The comparison includes time-agnostic baselines Offline , LastDomain , and IncFinetune ; continuous domain adaptation baselines CDOT [16] and CIDA [31]; discrete TDG methods GI [10], LSSAE [30], Foresee [11], and DRAIN [12]; and spectral-Koopman baselines 
+
+TKNets [28], Koodos [15], and FreKoo [21]. SECTION III IMPLEMENTATION DETAILS 
+
+A. Network Architectures 
+
+To ensure rigorous comparability with state-of-the-art baselines, FreKoo++ integrates three primary modules: a dataset-specific task predictive model ( θ ∈ RD ), a symmetric four-layer latent autoencoder ( ϕ, ϕ −1), and the continuous Koopman spectral-dynamical module operating in Rm. Detailed network architectures for the task backbones and the uniform autoencoder setup across all benchmark datasets are summarized in Table IV. 
+
+B. Training Details and Hyperparameters 
+
+We optimize FreKoo++ end-to-end using the Adam optimizer across all benchmark datasets. Optimization is parameterized with three distinct learning rate groups: η1 for the predictive task model, η2 for the latent encoder and decoder, and η3 for the continuous Koopman spectral module. The overall joint loss objective is regulated by four hyperparameter weights: α for JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 6            
+
+> (a) Step 1, err 4.8% (b) Step 2, err 3.3% (c) Step 3, err 3.8% (d) Step 4, err 2.7% (e) Step 5, err 2.7%
+> (f) Step 6, err 2.2% (g) Step 7, err 1.4% (h) Step 8, err 2.5% (i) Step 9, err 1.9% (j) Step 10, err 1.7%
+> (k) Step 11, err 4.1% (l) Step 12, err 2.0% (m) Step 13, err 2.8% (n) Step 14, err 4.5% (o) Step 15, err 4.5%
+
+Fig. 6: t-SNE visualization on all 15 future domains of Rot-MNIST-C (colored by class). Each subfigure is one future domain with its step index and classification error. parameter reconstruction ( L(C)rec ), β for modal trajectory fitting ( L(C)fit ), γ for transient spectral regularization ( Rspec ), and δ for stability regularization ( Rstab ). For the 2-Moons-C dataset, the model is trained for 300 epochs with learning rates η1 = 1 × 10 −2 and η2 = η3 = 1 × 10 −3,regulated by loss weights α = 100 , β = 1 , γ = 1 , and δ = 10 . The Rot-MNIST-C configuration employs 400 training epochs with a uniform learning rate η1 = η2 = η3 = 1 × 10 −3 across all modules, governed by α = 100 , β = 10 , γ = 1 ,and δ = 10 . For Twitter , training spans 200 epochs using η1 = 1 × 10 −2 for the task predictor and η2 = η3 = 1 × 10 −3
+
+for the autoencoder and spectral dynamics modules, combined with loss weights α = 10 , β = 10 , γ = 1 , and δ = 10 . The 
+
+Yearbook dataset is optimized over 800 epochs with a uniform learning rate of 1 × 10 −3 across all components, accompanied by loss coefficients α = 100 , β = 10 , γ = 1 , and δ = 10 . For Cyclone , we train the model for 500 epochs using a uniform learning rate η1 = η2 = η3 = 1 × 10 −3, with objective weights set to α = 100 , β = 100 , γ = 100 , and δ = 10 . Finally, the 
+
+House dataset is trained over 600 epochs maintaining a uniform learning rate of 1 × 10 −3 across all modules, regulated by loss coefficients α = 10 , β = 10 , γ = 1 , and δ = 10 .SECTION IV SUPPLEMENTARY EXPERIMENTS 
+
+A. Qualitative Analysis of Extrapolated Test-Domain Representations 
+
+To inspect the geometric evolution of feature representations synthesized via continuous parameter extrapolation, we visualize the domain-adapted penultimate features across all unseen future target domains ( ts > t T ) using t-SNE. The resulting manifolds are colored by semantic class and annotated with per-domain error rates in Fig. 6 (Rot-MNIST-C) and Fig. 7 (Yearbook). Two key geometric properties validate the core design of FreKoo++: 
+
+a) Sustained long-horizon class separability: Feature discriminability remains well-preserved across the entire extrap-olation window. Across all 15 future steps of Rot-MNIST-C and 12 future steps of Yearbook, the feature representations consistently form tight, well-isolated clusters corresponding to the respective semantic categories. This confirms that the target model configurations ˆθ(ts) generated via closed-form Koopman modal superposition synthesize valid, discriminative decision JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 7         
+
+> (a) Step 1, err 6.1% (b) Step 2, err 5.4% (c) Step 3, err 4.9% (d) Step 4, err 4.7%
+> (e) Step 5, err 2.6% (f) Step 6, err 2.7% (g) Step 7, err 2.8% (h) Step 8, err 5.9%
+> (i) Step 9, err 6.3% (j) Step 10, err 5.6% (k) Step 11, err 6.7% (l) Step 12, err 5.2%
+
+Fig. 7: t-SNE visualization on all 12 future domains of Yearbook (colored by class). Each subfigure is one future domain with its step index and classification error. boundaries on the underlying model manifold, demonstrating that FreKoo++ captures true continuous distributional drift rather than overfitting to source-domain boundary states. 
+
+b) Horizon-invariant stability and error boundedness: The feature geometry exhibits stability over extended temporal horizons. The per-domain classification errors remain consistently low and tightly bounded ( 1.4% –4.8% on Rot-MNIST-C, 
+
+2.6% –6.7% on Yearbook), with no evidence of representation collapse or dispersion at distant time steps. This empirical trend provides direct qualitative evidence for Theorem 2 and Corollary 1: by analytically extrapolating non-growing dominant spectral dynamics while locking volatile transient components at tT , FreKoo++ effectively eliminates the compounding numerical integration errors and boundary distortions that typically plague discrete or ODE-based autoregressive baselines. Together, these visualizations demonstrate that FreKoo++ preserves a temporally coherent yet class-discriminative feature topology across arbitrary prediction horizons, providing qualitative corroboration for the quantitative superiority. 
+
+B. Hyperparameter Sensitivity Analysis 
+
+To evaluate the stability of FreKoo++ with respect to objective loss weights, we analyze performance sensitivity over a wide grid search range {0.01 , 0.1, 1.0, 10 , 100 } for α (L(C)rec ), β (L(C)fit ), γ (Rspec ), and δ (Rstab ) across six CTDG benchmark datasets. As illustrated in Fig. 8, our framework demonstrates remarkable robustness across several orders of magnitude. Across most real-world datasets (e.g., Cyclone, House, Twitter, Yearbook, and 2-Moons-C), the error curves remain remarkably flat across the entire hyperparameter spectrum, indicating that FreKoo++ does not require delicate parameter tuning to achieve superior generalization. Optimal performance is generally attained when loss weights are selected within the moderate range 
+
+[0 .1, 10] . Specifically, setting β (L(C)fit ) or α (L(C)rec ) excessively large ( 100 ) leads to an error increase on Rot-MNIST-C, as over-constraining parameter trajectory alignment forces the model to fit transient noise. Conversely, moderate values of stability (δ) and spectral regularization ( γ) effectively constrain positive modal growth rates and filter transient noise without sacrificing JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 8
+
+model capacity. Overall, these results confirm that FreKoo++ is numerically stable and consistently effective under standard loss weight configurations. Fig. 9 illustrates the impact of modal dimension K ∈ { 2, . . . , 64 } across all six CTDG datasets. When K ≤ 4, insufficient spectral capacity causes severe underfitting and high variance (e.g., on 2-Moons-C and Rot-MNIST-C). Expanding K to the range of 16 –32 consistently yields the best generalization, with K = 32 achieving peak AUC on Twitter and lowest MAE on House-C and 2-Moons-C. Beyond this point ( K = 64 ), performance on noisy real-world datasets (e.g., House-C and Twitter) slightly deteriorates due to the over-parameterization of redundant modes. Thus, K = 32 serves as the global sweet spot balancing spectral expressiveness and noise suppression. For architectural regularity and implementation simplicity, we standardize K = m = 32 across all experiments.        
+
+> (a) α(b) β(c) γ(d) δ
+
+Fig. 8: Hyperparameter sensitivity analysis of FreKoo++ with respect to objective loss weights α (L(C)rec ), β (L(C)fit ), γ (Rspec ), and δ (Rstab ) swept over {0.01 , 0.1, 1.0, 10 , 100 } across six benchmark datasets.     
+
+> (a) 2-Moons-C (b) Rot-MNIST-C (c) Twitter
+> (d) Yearbook (e) Cyclone (f) House-C
+
+Fig. 9: Sensitivity of the number of Koopman modes K. The red star marks the adopted K = 32 .

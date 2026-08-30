@@ -1,0 +1,3580 @@
+Title: Enforcing Dirichlet Boundary Conditions in Operator Learning
+
+URL Source: https://arxiv.org/pdf/2608.27256v1
+
+Published Time: Fri, 28 Aug 2026 01:16:17 GMT
+
+Number of Pages: 43
+
+Markdown Content:
+ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 
+
+ANDREW M. STUART AND MARGARET TRAUTNER 
+
+Abstract. Operator learning in scientific machine learning is concerned with approximation of maps between infinite-dimensional function spaces; such maps frequently arise as the solution operators of partial differential equa-tions (PDEs). Neural operators have demonstrated broad empirical success at approximating such maps from data. However, most existing neural op-erator architectures enforce boundary conditions indirectly through training from data even though the boundary condition is often known exactly. Fur-thermore, existing modifications and approaches that do enforce boundary conditions explicitly suffer from impractical restrictions, including boundary smoothness, uniform grids, and separable, box-like domains. In this work, we propose an architecture which, independently of training, satisfies homo-geneous Dirichlet boundary conditions, whilst simultaneously retaining the expressivity of existing kernel-integral neural operator architectures. This is achieved by enforcing the property that the output of each layer is contained in the span of a subset of the homogeneous Dirichlet eigenfunctions of the Laplacian on the output domain. The method requires only that the out-put domain be bounded with Lipschitz boundary and places no restriction on the choice of discretization, making it applicable to arbitrary mesh data and general geometries. We prove universal approximation for the resulting archi-tecture; furthermore the approach we adopt in the analysis proves universality for a broad class of kernel-integral neural operators thereby uniting existing theory for a variety of operator learning methods. We validate the proposed method on maps defined by the coefficient to solution map in 2D PDEs: Darcy flow on a square domain and the Helmholtz equation on a circular domain. Comparisons are made with alternative methods. 
+
+1. Introduction 
+
+1.1. Motivation and Literature Review. Interest in, and the use of, neural network-based models for problems in science and engineering has exploded in the past decade. For many of these problems, the underlying phenomena are governed by partial differential equations (PDEs), which map input functions to output func-tions via an infinite-dimensional operator. Operator learning encompasses a branch of machine-learning models that generalize to this infinite-dimensional function 
+
+Date : August 28, 2026. 2010 Mathematics Subject Classification. Primary 68T01, 65N99, 35J05. 
+
+Key words and phrases. Operator learning, Dirichlet boundary conditions, Laplacian eigen-functions, scientific machine learning. The first author was supported by the Department of Defense Vannevar Bush Faculty Fellow-ship N00014-22-1-2790. The second author, the majority of whose work was done whilst at Caltech, was also supported by the Department of Defense Vannevar Bush Faculty Fellowship N00014-22-1-2790 awarded to the first author. The second author is grateful to ETH Z¨ urich Department of Mathematics for support during the completion of the manuscript. 
+
+1arXiv:2608.27256v1 [math.NA] 27 Aug 2026 2 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+space setting; the models themselves are termed neural operators and early exam-ples include DeepONet [31], PCA-Net [21, 8], random features [35] and the Fourier Neural Operator (FNO) [28]. For overviews of the field see [25, 3, 26]. Operator learning has proved empirically useful in two main cases. First, when the underlying equations of the system are known, operator learning can accelerate scientific computing by serving as a surrogate model for computationally expensive numerical simulations [37, 7, 3]. The second case is where a model is learned from data alone, as the governing equations are unknown [45, 46, 15]. However, in many settings, the reality falls in between these two cases; some information is known about the system, such as a boundary condition or conservation law [20], but the full descriptive equations remain unknown. In these cases, it is natural to want to enforce the known information without impeding the expressivity of the architecture or the ability to learn an approximator through stochastic optimization. It is this setting which largely motivates the present work: we enforce boundary conditions 
+
+for neural operators that hold even without training while retaining the expressivity of the architecture. Furthermore, we develop the method in a manner that can act on arbitrary mesh data and thus on general geometries in any dimension. Commonly used neural operator architectures rely on data to learn the bound-ary condition and thus enforce it only approximately. For instance, the DeepONet architecture multiplies two neural networks, one of which, the “branch” network, constructs basis functions from the input function, and the second, the “trunk” network, serves as a means to evaluate the output function on any point in the domain. Thus, the “trunk” network is largely responsible for learning the bound-ary condition; any point on the boundary should evaluate to match the bound-ary condition. However, there is no current mechanism to enforce this explicitly without fundamentally altering the expressivity of the architecture. Similarly, the FNO processes the input function through finite-dimensional neural networks act-ing pointwise both on the function and on a learned reweighting of the function in Fourier space via a kernel-integral operator [28]. By design, this architecture is natural for periodic boundary conditions on box-like domains with uniform grids. In practice, a positional encoding , or simply the coordinates ( x1, . . . , x d) of the input domain, are appended to the input function values at that point. Thus, en-forcement of non-periodic boundary conditions comes only by learning a map from this input positional encoding to the boundary value from data, and once again there is currently no mechanism to enforce this explicitly. These two architectures are representative of the larger class of neural operator architectures which enforce boundary conditions in a similar manner: PCA-Net, various modifications of Deep-ONet [1, 19], and other architectures involving kernel-integral operators, including wavelet neural operators [42] and the Laplace neural operator [10] all require data to enforce boundary conditions through approximation. Several lines of research have made efforts to enforce boundary conditions explic-itly in both operator learning and scientific machine learning (SciML) more broadly. Most notably, work on orthogonal polynomial neural operators (OPNOs) [29] uses a Shen transform [40] of Chebyshev polynomials to replace the Fourier basis and transform in the FNO with a basis that naturally satisfies Dirichlet, von Neumann, or Robin boundary conditions. The work also develops an efficient algorithm for computing these transforms and demonstrates that the resulting architecture sat-isfies boundary conditions to machine precision. A drawback of this work is that ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 3
+
+it requires data to be evaluated on Chebyshev-Gauss-Lobatto points, a variant of Gaussian grids [9]. This issue is remedied by the follow-up work [30] that develops an algorithm to extend the previous method to uniform grids. Both works prove universal approximation properties of their architecture and demonstrate machine precision satisfaction of the boundary conditions in various PDE examples. How-ever, limitations of these methods are that they may only be generalized to separable domains; i.e. domains that can naturally be viewed as a d-dimensional box with uniform or Gaussian grids as opposed to arbitrary mesh coordinate points. A simi-lar approach also appears in recently proposed work that is capable of enforcing the boundary conditions on arbitrarily curved quadrilateral domains only [14]. These caveats prevent the methods from extending to more complex geometries, which may well be the setting when direct enforcement of the boundary condition is most valuable. Other approaches to enforce boundary conditions in operator learning include BOON [39], which uses a physics-informed refining procedure to enforce the con-straint, as well as a method based on Q-learning that proposes an algorithm that refines the boundary conditions iteratively during training [12]. In non-operator learning approaches to SciML, boundary conditions have also been encoded explic-itly in graph neural networks [22] and physics-informed neural networks [6]. Fur-thermore, the boundary condition problem has been considered in work that pre-dates most current approaches in SciML, including for data-driven models based on kernel learning [18] and standard feedforward neural networks [32]. The ap-proach in this latter work involves multiplication by a known function that satis-fies a zero boundary condition and has also been carried forward to more recent work on convergence of Deep Galerkin Methods (DGMs) to approximate PDEs in SciML [24, 11]. Another very recent method proposes to learn function extensions separately from the main neural operator model, which allows additional domain generality [33]. 1.2. Contributions. We make the following contributions to the state-of-the-art, in relation to enforcing Dirichlet boundary conditions within operator learning, as overviewed in the preceding subsection: (C1) We propose an operator learning methodology that automatically satisfies Dirichlet boundary conditions, independent of training, by using the Dirich-let eigenfunctions of the Laplacian as a central part of the architecture. (C2) We prove universal approximation for a general class of nonlocal neural operators, subsuming the proposed Dirichlet eigenfunction based architec-ture as a special case; these approximation results may be of independent interest beyond the application to enforcing Dirichlet boundary conditions. This general class includes neural operators using only a single hidden layer and single basis function as well as neural operators that perform approxi-mation in a particular basis of interest. Sufficient conditions on such basis functions are provided. (C3) We implement the proposed method to approximate two representative op-erators defined by coefficient-to-solution maps arising in PDE problems: the Darcy flow equation on a square domain and the Helmholtz equation on a circular domain. We demonstrate the advantage of the proposed method over FNO, as well as over three possible alternative operator learning ap-proaches that also automatically satisfy the boundary condition. 4 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+Specifically, we introduce a new, kernel-integral based, operator learning archi-tecture in which the output space of each layer builds an approximation in the basis of Dirichlet eigenfunctions of the Laplacian in the output domain, contribu-tion (C1). These eigenfunctions satisfy a zero boundary condition and thus, coupled with a zero-preserving activation function and an appropriate fixed bias, create an architecture that automatically satisfies the Dirichlet boundary condition of a PDE. In fact, replacing the final hidden layer of any kernel-integral neural operator, in-cluding FNO, with this Laplacian eigenfunction layer achieves the desired boundary condition without training. In addition, as a departure from previous work that automatically satisfies the boundary condition, this approach is applicable to com-plex geometries and domains; we assume only that the domain is bounded, with Lipschitz boundary. Furthermore, the method requires no restriction on choice of discretization or grid; it may be used on functions defined on arbitrary meshes. Beyond the choice of the eigenfunctions of the Laplacian as the basis elements, we establish universal approximation for a much broader class of potential basis func-tions, contribution (C2). The approach we adopt suggests practical extensions of the method to other classical basis choices, including various finite element bases. Numerical results demonstrate the practicality and competitiveness of the proposed approach, contribution (C3). The remainder of the paper is organized as follows. In Section 2, we define the nonlocal neural operator, as well as the Dirichlet-boundary condition enforcing variant, and detail the assumptions on our choice of basis. In Section 3, we present the main theorems as well as critical lemmas supporting the conclusions; we defer the detailed proofs of the lemmas to the appendix. In Section 4, we showcase the results of various numerical experiments supporting the practical application of the proposed Laplacian eigenfunction layer. We make concluding remarks in Section 5. The more technical proofs, and some useful supplementary lemmas, are con-tained in the appendix. Appendix A contains lemmas describing finite-dimensional feedforward neural networks; Appendix B contains proofs that various familiar ap-plication settings satisfy the assumptions of our main theorems; Appendices C and D contain the proofs of the two main lemmas underlying our main results, Theorem 3.4 and Theorem 3.5; and Appendix E contains key results on the behavior of the eigenfunctions of the Laplacian. 2. Definition of Nonlocal Neural Operator 
+
+In this section we define the nonlocal neural operator (NNO) as in [27], repeated here in the context and notation of our work, as well as specify the Dirichlet layer 
+
+that allows for exact enforcement of Dirichlet boundary conditions. We note that the NNO may also be referred to as a kernel-integral neural operator in the liter-ature, and that a variety of common operator learning architectures fall into this general setting, including the Fourier Neural Operator (FNO) [28]. The NNO def-inition is given in Subsection 2.1. In Subsection 2.2, we define the Dirichlet layer variant, which is obtained through the particular choice of the eigenfunctions of the Laplacian as the basis functions in the hidden layer of the more general NNO definition. Throughout this work, ∥ · ∥ and ⟨· , ·⟩ denote the L2(Ω) norm and inner product, and |·| denotes the Euclidean norm. We let Ω be a bounded, open, Lipschitz domain in Rd unless otherwise specified. Furthermore, we define [ N ] := {1, . . . , N }. We ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 5
+
+adopt the convention that Cs(Ω) is the Banach space with norm 
+
+∥η∥Cs(Ω) = X
+
+> |α|≤ s
+
+sup 
+
+> x∈Ω
+
+|(∂αη)( x)| < ∞.
+
+2.1. Nonlocal Neural Operator. Let X (Ω; Ro), Y(Ω; Ro), and V(Ω; Ro) be Ba-nach spaces of Ro-valued functions over domain Ω. Given a channel width dc, define the following lifting and projection layers as learnable feedforward neural networks 1
+
+between finite-dimensional Euclidean spaces defined as Nemytskii operators via (2.1) R : X (Ω; Rk) → V (Ω; Rdc ), u(x) 7 → R(u(x), x )and (2.2) Q : V(Ω; Rdc ) → Y (Ω; Rk′
+
+), v(x) 7 → Q(v(x)) .
+
+Note that R includes the positional encoding via pairing of u(x) with the domain variable x. Each hidden layer Lℓ, ℓ ∈ [L], defines a mapping V(Ω; Rdc ) → V (Ω; Rdc )via (2.3) (Lℓv)( x) = σ Wℓv(x) + bℓ +
+
+> M
+
+X
+
+> m=1
+
+⟨Tℓ,m v, ψ ℓ,m ⟩L2(Ω; Rdc )ϕℓ,m (x)
+
+!
+
+.
+
+Here the activation function σ : R → R is a non-polynomial C∞ function which is extended to a Nemytskii operator acting component-wise on vector inputs: for a function v(x) = ( v1(x), . . . , v dc (x)), we define σ(v(x)) = ( σ(v1(x)) , . . . , σ (vdc (x))) for x ∈ Ω. We may now define an NNO; note that the definition includes an assumption on the properties of the activation function and that this assumption follows the definition. 
+
+Definition 2.1 (Nonlocal Neural Operator) . The Nonlocal Neural Operator (NNO) is a mapping Ψ : X (Ω; Rk) → Y (Ω; Rk′
+
+) consisting of a lifting layer R, hidden layers 
+
+L1, . . . , LL, and projection layer Q as defined in equations (2.1), (2.3), and (2.2), respectively, that acts on input a ∈ X (Ω; Rk) via Ψ( a) = Q ◦ L L ◦ · · · ◦ L 1 ◦ R (a),
+
+and uses a non-polynomial C∞ activation function σ. ♢
+
+We assume that the activation function σ used throughout the model is such that a feedforward, zero-preserving neural network can universally approximate the identity in Cs on a closed ball in a finite dimension. This is true for ReLU for any s ≥ 0 [34, Appendix B, Part (iv)], via σ(x) − σ(−x) = x, which allows for exact replication of the identity. It is also true for GeLU for any integer s ≥ 0 [44, Lemma 3.1], which, unlike ReLU, also satisfies the C∞ condition. 
+
+Assumption 2.2 . Let Id be the identity matrix in d dimensions. Let sσ ≥ 0. We assume σ is such that σ(0) = 0 and for any ϵ > 0 and closed ball K ⊂ Rd, there exists a number of layers L, matrices {Al}Ll=1 , and biases {bl}Ll=1 such that for neural network 
+
+G(x) = AL(σ(AL−1σ(. . . A 1x + b1) · · · + bL−1) + bL,G(0) = 0, and it holds that ∥G − Id∥Csσ (K) < ϵ. ♢ 
+
+> 1Appendix A contains a succinct summary of the feedforward neural network properties needed in our work. 6ANDREW M. STUART AND MARGARET TRAUTNER
+
+Universal approximation results have been proved for many specific variants of the NNO that make a particular choice of the basis functions ψℓ,m and ϕℓ,m in (2.3). For example, in the FNO these are the Fourier basis elements. In order to capture a broad class of possible architectures under the same theory, rather than proving multiple specific theorems for each specific basis choice, in this work we prove universality for any NNO whose basis functions satisfy mild conditions. Informally, if the map to be approximated produces an output set that can be approximated in some L2(Ω) basis {ηj }∞ 
+
+> j=1
+
+⊂ Cs′
+
+(Ω), then one can achieve Cs′
+
+approximation using only a single hidden layer and single pair of basis functions 
+
+ψ1,1, positive almost-everywhere and continuous, and ϕ1,1, nonzero and Cs′
+
+. This is formalized in Section 3. Additionally, if the set of functions {ηj }∞ 
+
+> j=1
+
+only satisfies 
+
+{ηj }∞ 
+
+> j=1
+
+⊂ Cs′
+
+(Ω), then one can simply choose a finite subset of these functions to serve as the basis functions ϕL,m in the final hidden layer and achieve universal approximation as well. This latter approach can be practically useful when one seeks an output function satisfying certain conditions. These mild conditions also allow one to interchange various choices of basis functions at each layer without violating universality. We emphasize that the general conditions we specify on the basis functions in Section 3 unite approximation theory for architectures with various choices of basis functions in one single result. The prior work [27] showed that in fact one can set M = 0, L = 0, and 
+
+ψ0,0 = ϕ0,0 ≡ 1 in the NNO architecture and achieve universality via the resulting 
+
+averaging neural operator (ANO). It is a remarkable fact, established in [27], that a single hidden layer taking the form (L1v)( x) = σ
+
+
+
+W v (x) + 1
+
+|Ω|
+
+Z
+
+v(x) dx
+
+
+
+is sufficient for universal approximation. While a surprising and insightful theoret-ical result, the ANO is not competitive with other operator learning architectures. Intuitively, the ANO chooses a constant basis to carry the nonlocal information. In the case of, for instance, zero Dirichlet boundary conditions, this adds a constant value everywhere in the domain Ω and relies heavily on the dependence of the pro-jection layer Q on the positional encoding x, carried to the input of Q through an identity block submatrix of W . The boundary conditions are enforced through the ability of the ReLU neural network Q to approximate arbitrary continuous func-tions: positions x on the boundary are mapped close to 0 as learned from data. In practice, one would never want to use such a restrictive architecture, especially in the case of Dirichlet boundary conditions. In this work we seek a more natural basis for maps with such boundary conditions. 2.2. Dirichlet Layer. In this subsection, we propose a layer of the nonlocal neu-ral operator that automatically enforces Dirichlet boundary conditions even before training . In particular, we set the basis functions equal to the Dirichlet eigen-functions of the Laplacian on Ω; doing so automatically enforces a zero boundary condition without training, as we prove in Section 3. We refer to this modified layer as a Dirichlet layer , and define it explicitly below. 
+
+Definition 2.3 (Dirichlet Layer) . The Dirichlet layer is a mapping V(Ω; Rdc ) →V(Ω; Rdc ) via equation (2.3), where ψℓ,m = ϕℓ,m = ηm, where ℓ is the layer index and {ηm}∞ 
+
+> m=1
+
+are the Dirichlet eigenfunctions of the Laplacian on Ω. ♢ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 7
+
+By using a Dirichlet layer with zero bias as the final hidden layer in an NNO, in tandem with a zero-preserving projection layer Q, one may enforce homogeneous Dirichlet boundary conditions without training, as we prove in Section 3. One may use other choices of hidden layers prior to the Dirichlet layer, and the boundary conditions will still hold. We also point out that while this layer is designed to produce outputs with zero boundary conditions, for constant, nonzero boundary conditions, we may simply preprocess and postprocess the data. For instance, for a map ( u, b) 7 → v, where u and v are input and output functions, respectively, and 
+
+b is the boundary condition, we may learn the map ( u, b) 7 → v − b1, where 1 is the constant function equal to 1 on Ω, and then postprocess the output of the NNO by adding back b1.
+
+Remark 2.4 (Computational Complexity) . For the FNO, the fast Fourier transform allows the computational complexity of a hidden Fourier layer to be O(N log N ), where N is the number of grid points, or N = nd where n is the number of points in a single dimension of the uniform grid. This complexity remains the dominant term even when the number of Fourier modes K is decreased. For a Dirichlet layer with M eigenfunctions forming the hidden layer (2.3), the complexity is O(N M ). In practice, for reasonable mesh sizes, both for FNO and for the Dirichlet layer, we observe that K ≈ log N and M ≈ log N are more than sufficient to achieve low error, and so the Dirichlet layer effectively shares the computational complexity of an FNO layer. This empirical observation is also supported by the numerical experiments in the existing work of [27], which demonstrates that fixing M for the nonlocal neural operator can be optimal in terms of the cost-accuracy tradeoff between parameter count and model accuracy. These findings are corroborated by our own numerical experiments in Section 4. ♢
+
+3. Theory 
+
+In this section, we unite theory for a broad class of kernel-integral neural opera-tors under one umbrella. We do so via two theorems. The first theorem, Theorem 3.4, states that the nonlocal neural operator (NNO) architecture of Definition 2.1 is universal with only a single hidden layer with a single basis function. This is a generalization of the averaging neural operator result of [27]; in particular the single basis function no longer needs to be the constant function. In fact, universality of several well-known neural operator architectures may be viewed as special cases of this result; see Proposition 3.2 for further explanation. The second main theorem we prove also concerns universality of the NNO ar-chitecture, but in a slightly more general setting where we are forced to use the basis functions present in the architecture itself to achieve the universality result. Namely, the first theorem requires that the output space be representable in a basis whose elements are continuous up to and including the boundary of the domain Ω. When this is true, finite-dimensional neural networks can approximate, to arbitrary accuracy, continuous functions on bounded sets in Rd, so the proof itself simply uses finite-dimensional neural networks to approximate basis functions. However, this is intuitively unappealing. If the idea is to approximate a function using hidden layers of the form (2.3) with some choice of basis elements, it is natural to suppose that the proof could use the fact that the architecture includes these basis elements already instead of reconstructing them using finite-dimensional neural networks. This achievement is the most appealing feature of Theorem 3.5; the proof uses the 8 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+architecture’s own basis functions to obtain the universality result in addition to holding in a slightly more general setting. It is this latter theorem that applies to the Dirichlet eigenfunctions of the Laplacian as well, which for general Lipschitz domains are C∞(Ω) but not necessarily Cs′
+
+(Ω) for any s′ > 0. We require the following critical assumption about the ability of the chosen basis to approximate functions in the desired output set. Intuitively, one is allowed to first apply a smoother to the output set to be approximated, but then the chosen basis must uniformly approximate the smoothed set. Since we view the following assumption as rather general, we detail in Proposition 3.2 some familiar or relevant cases in which Assumption 3.1 holds. This assumption may be viewed informally as a consequence of separability of the relevant output space, compactness of the input set, and continuity of the underlying map of interest in relevant application settings. Since it is used in the context of the output space in subsequent results, we keep the “primed” notation for K′ and s′, even though the assumption itself is self-contained. Recall that, unless otherwise specified in this paper, Ω is open; however the following assumption and proposition are formulated in a slightly more general setting. 
+
+Assumption 3.1 (Smoothed Approximation) . Let Ω ⊂ Rd be a bounded set that may be open or closed. A compact subset K′ of Banach space B(Ω), continuously embedded in L1(Ω), satisfies the smoothed approximation assumption in B(Ω) with respect to a set of functions {ηj }∞
+
+> j=1
+
+, if there exists a set B ⊂ Rd such that {ηj }∞
+
+> j=1
+
+are defined on B ⊇ Ω, there exists a family of linear maps {fδ }δ> 0, also defined on domain B, such that fδ : B(Ω) → B (Ω) for δ > 0, and the following hold: (S1) (smoother convergence) lim δ→0 sup w∈K′ ∥fδ (w) − w∥B(Ω) = 0 .
+
+(S2) (projection convergence) For each δ > 0, lim  
+
+> J→∞
+
+sup 
+
+> w∈K′
+
+fδ (w) −
+
+> J
+
+X
+
+> j=1
+
+⟨fδ (w), η j ⟩L2(B)ηj B(Ω) 
+
+= 0 .
+
+(S3) (continuous functional) For each δ > 0 and j ∈ N, the map w 7 → ⟨ fδ (w), η j ⟩L2(B)
+
+is a continuous functional on B(Ω). 
+
+♢
+
+To establish some key examples where the Smoothed Approximation Assumption above holds, we present the following proposition. 
+
+Proposition 3.2. The following pairs of functions and Banach spaces satisfy the Smoothed Approximation Assumption 3.1: (1) Let Ω be a bounded set in Rd with Lipschitz boundary. For a box B contain-ing Ω in its interior, let {ηj }∞ 
+
+> j=1
+
+be the L2-orthogonal Fourier sine/cosine basis in L2
+
+> per
+
+(B), and let K′ be any compact subset of Cs′
+
+(Ω) for integer 
+
+s′ ≥ 0. Then K′ satisfies the Smoothed Approximation Assumption 3.1 in 
+
+Cs′
+
+(Ω) with respect to {ηj }∞
+
+> j=1
+
+.(2) Let Ω be a bounded set in Rd with Lipschitz boundary. Let {ηj }∞ 
+
+> j=1
+
+be Dirichlet eigenfunctions of the Laplacian on B := Ω . Let K′ be any compact subset of C0(Ω) . Then K′ satisfies the Smoothed Approximation Assumption 3.1 in C0(Ω) with respect to {ηj }∞
+
+> j=1
+
+.ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 9
+
+(3) Let Ω = [ −1, 1] d. Let {ηj }∞ 
+
+> j=1
+
+be the tensorized Legendre polynomials de-fined on B := Ω . Let K′ be any compact subset of Cs′
+
+(Ω) for integer s′ ≥ 0.Then K′ satisfies the Smoothed Approximation Assumption 3.1 in Cs′
+
+(Ω) 
+
+with respect to {ηj }∞
+
+> j=1
+
+.
+
+Note that Case 1 encompasses the averaging neural operator and the FNO setting for Cs′
+
+(Ω) approximation. We prove later that Case 2 covers the Dirichlet layer setting. Case 3 is the unweighted L2-norm analogue of the tensorized Chebyshev polynomial basis used in [29]. Ultimately, all these settings are covered by the same theory in Theorems 3.4 and 3.5. Since the proof of Proposition 3.2 is technical, we defer it to Appendix B. The intuition behind each case is that we first apply a smoother to an extension of the set K′ and then we may approximate it in the specified basis to obtain Smoothed Approximation Assumption 3.1, (S2). The Smoothed Approximation Assumption 3.1, conditions (S1) and (S3), are obtained from properties of the smoothing and extension operators used. 3.1. Main Theorems. In this subsection we present our main theorems, Theo-rem 3.4 and 3.5, which prove universality for NNOs under general conditions on the basis functions. Through this result, we unite theory for kernel-integral neural op-erators under two statements. In Corollary 3.6, we observe that enforcing constant Dirichlet boundary conditions through the Dirichlet layer in Definition 2.3 retains universality while automatically enforcing the boundary condition. We will use the following assumptions. 
+
+Assumption 3.3 (Single Basis Pair) . We assume that η1 and η2 satisfy (E1) η1 ≥ 0 on Ω. (E2) η1 = 0 only on a set of Lebesgue measure 0. (E3) sup y∈Ω |η1(y)| < ∞.(E4) η1 ∈ C(Ω). (E5) η2 ∈ Cs′
+
+(Ω) and η2̸ = 0 on Ω. 
+
+♢
+
+The first theorem addresses the case when approximation is possible using only a single hidden layer and pair of basis functions. 
+
+Theorem 3.4 (Single Basis Element) . Let Ω be a bounded domain in Rd with Lipschitz boundary. Let Ψ† : Cs(Ω; Rk) → Cs′
+
+(Ω; Rk′
+
+) be a continuous operator for integers s, s ′ ≥ 0, and K ⊂ Cs(Ω; Rk) be a compact subset. Assume that Ψ†(K)
+
+satisfies the Smoothed Approximation Assumption 3.1 in Cs′
+
+(Ω; Rk′
+
+) with respect to some sequence of functions {ξj }∞
+
+> j=1
+
+. If these functions are also such that {ξj }∞ 
+
+> j=1
+
+⊂
+
+Cs′
+
+(Ω) , then for any ε > 0, there exists a nonlocal neural operator Ψ as defined in Definition 2.1, with Assumption 2.2 on the activation σ satisfied with sσ = s′, such that 
+
+(3.1) sup 
+
+> u∈K
+
+∥Ψ†(u) − Ψ( u)∥Cs′ (Ω) < ε, 
+
+with a single hidden layer (M = 1) with any single basis function pair ψ1,1 := η1
+
+and ϕ1,1 := η2 satisfying Assumptions 3.3. 
+
+The second theorem addresses the slightly more general case where the Smoothed Approximation Assumption only holds for functions in Cs′
+
+(Ω) rather than in Cs′
+
+(Ω). 10 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+It also builds the approximation in the proof by using basis functions contained in the NNO architecture itself . This justifies the practical intuition that by choosing a set of basis functions to use in the NNO architecture, one is projecting onto the span of the functions as part of the approximation. 
+
+Theorem 3.5 (Approximation Using NNO Basis Elements) . Let Ω be a bounded domain in Rd with Lipschitz boundary. Let Ψ† : Cs(Ω; Rk) → Cs′
+
+(Ω; Rk′
+
+) be a con-tinuous operator for integers s, s ′ ≥ 0, and K ⊂ Cs(Ω; Rk) be a compact subset. As-sume that Ψ† satisfies the Smoothed Approximation Assumption 3.1 in Cs′
+
+(Ω; Rk′
+
+)
+
+with respect to some sequence of functions {ξj }∞
+
+> j=1
+
+. If these functions are also such that {ξj }∞ 
+
+> j=1
+
+⊂ Cs′
+
+(Ω) , then for any ε > 0, there exists a nonlocal neural operator 
+
+Ψ as defined in Definition 2.1, with Assumption 2.2 on the activation σ satisfied with sσ = s′, such that 
+
+(3.2) sup 
+
+> u∈K
+
+∥Ψ†(u) − Ψ( u)∥Cs′ (Ω) < ε, 
+
+where the final hidden layer contains {ξj }Jj=1 as outer basis elements for some J;i.e. {ξj }Jj=1 ⊂ { ϕL,m }Mm=1 with corresponding inner basis functions {ψm : ϕm ≡
+
+ξj , j ≤ J} satisfying (E2)- (E4) in Assumptions 3.3 and an earlier hidden layer contains at least one basis function pair η1 satisfying (E1)-(E4) and η2 satisfying (E2)-(E4). 
+
+The following corollary justifies the use of the Dirichlet layer for approximation as well as shows that it enforces zero boundary conditions exactly. 
+
+Corollary 3.6. Let Ω be a bounded Lipschitz domain in Rd, and let Ψ† : Cs(Ω; Rk) →
+
+C0(Ω; Rk′
+
+) be a continuous operator for nonnegative integer s. Let {ηj }∞ 
+
+> j=1
+
+be the eigenfunctions of the Dirichlet Laplacian on Ω. Let K ⊂ Cs(Ω; Rk) be a compact subset. Then for any ε > 0, there exists a nonlocal neural operator Ψ as defined in Definition 2.1, with Assumption 2.2 on the activation σ satisfied with sσ = 0 , such that 
+
+sup 
+
+> u∈K
+
+∥Ψ†(u) − Ψ( u)∥C(Ω) < ε, 
+
+with the final NNO layer a Dirichlet layer as defined in Definition 2.3, and 
+
+sup 
+
+> y∈∂Ω
+
+|(T ∗Ψ)( y)| = 0 ,
+
+where T ∗ : H1(Ω) → L2(∂Ω) is the trace operator. Proof. By Proposition 3.2, Case 2, {ηj }∞ 
+
+> j=1
+
+satisfy the Smoothed Approximation Assumption with respect to C0(Ω). Furthermore, the eigenfunctions of the Dirich-let Laplacian are in C∞(Ω) ∩ H10 (Ω), so Theorem 3.5 applies. We note that the ground state eigenfunction η1 satisfies conditions (E1)-(E4) [16, Section 6.5]. By the construction in Lemma 3.11, the final hidden layer uses {ηj }Jj=1 as basis ele-ments, with the remaining layers a finite-dimensional neural network that preserves 0 with smooth activation. Thus, Ψ enforces zero boundary condition on the output function in the trace sense. □
+
+Remark 3.7 . The approximation in Corollary 3.6 is stated for C(Ω) only. For general Lipschitz Ω, while the eigenfunctions are in C∞(Ω), the norm ∥ηj ∥Cs′ (Ω) 
+
+can blow up as one approaches the boundary, for instance, at reentrant corners. This causes the Dirichlet eigenfunctions of the Laplacian and the space Cs′ 
+
+> 0
+
+(Ω) to ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 11 
+
+fail the Smoothed Approximation Assumption without additional assumptions on boundary regularity. ♢
+
+The key lemmas underpinning the proofs of Theorems 3.4 and 3.5 are Lemma 3.8, which decomposes the true map into a sum of continuous functionals over the chosen basis, and Lemmas 3.10 and 3.11, which are devoted to approximation of the continuous functionals by an NNO with the architectures corresponding to each theorem. In Subsections 3.2 and 3.3, respectively, we describe and state these lemmas before returning to prove the two theorems in Subsection 3.4. 3.2. True Map: Approximation by Sum of Continuous Functions. The first step to establishing the approximation result is Lemma 3.8, which decomposes the true map Ψ † into a finite sum of our basis elements ηj with coefficients determined by continuous functionals on the input function. This step is similar to that of [27], except that we allow for the choice of basis to be more general than that of the Fourier basis. We note that this result may be useful beyond the setting of this work since one could substitute a variety of bases of interest; some are detailed in Proposition 3.2. The following lemma decomposes the true map into a sum of the basis elements 
+
+{ηj }Jj=1 weighted by continuous functionals from L1(Ω; Rk) → R.
+
+Lemma 3.8. Let Ω be a bounded Lipschitz domain in Rd, and let s, s ′ be nonneg-ative integers. Let Ψ† : Cs(Ω; Rk) → Cs′
+
+(Ω; Rk′
+
+) be a continuous operator, and let 
+
+{ηj }∞ 
+
+> j=1
+
+⊂ Cs′
+
+(Ω) . Let K ⊂ Cs(Ω; Rk) be a compact subset. Assume that K′ := Ψ†(K) satisfies the Smoothed Approximation Assumption 3.1 in Cs′
+
+(Ω) with respect to {ηj }∞
+
+> j=1
+
+. Then for any ϵ > 0, there exists J ∈ N, and continuous functionals 
+
+α1, . . . , α J : L1(Ω; Rk) → R such that the operator eΨ† : L1(Ω; Rk) → Cs′
+
+(Ω; Rk′
+
+),defined by 
+
+eΨ†(u) = 
+
+> J
+
+X
+
+> j=1
+
+αj (u)ηj
+
+satisfies 
+
+sup 
+
+> u∈K
+
+∥Ψ†(u) − eΨ†(u)∥Cs′ (Ω) ≤ ϵ. 
+
+Remark 3.9 . The purpose of defining the approximation eΨ† as a mapping from 
+
+L1(Ω; Rk) is to avoid needing to modify the proof for various values of s. Note that 
+
+Cs(Ω; Rk) is continuously embedded in L1(Ω; Rk). ♢
+
+We defer the proof of Lemma 3.8 to Appendix C. 3.3. NNO Approximation of Functionals and Basis Functions. In this sub-section we describe and state the two lemmas that are key to proving Theorems 3.4 and 3.5. These lemmas show that we can approximate each term αj (u)ηj in the sum in Lemma 3.8 by a NNO. The first lemma, Lemma 3.10, achieves the approxi-mation in the setting of a single hidden layer and basis function pair, corresponding to Theorem 3.4. The second lemma, Lemma 3.11, applies to the slightly more gen-eral setting of Theorem 3.5 and uses the basis functions in the NNO architecture to represent the ηj in 3.8. The proofs of both lemmas may be found in Appendix D. 12 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+Lemma 3.10. Let α : L1(Ω; Rk) → R be a continuous functional and let K ⊂
+
+L1(Ω; Rk) be a compact set consisting of bounded functions sup u∈K ∥u∥L∞(Ω) < ∞.Assume Ω ⊂ Rd is a bounded Lipschitz domain. Assume, in addition, that η ∈
+
+Cs′
+
+(Ω; Rk′
+
+) for integer s′ ≥ 0. Then for any ε > 0 there exists a nonlocal neural operator eα : L1(Ω; Rk) → Cs′
+
+(Ω; Rk′
+
+) as defined in Definition 2.1, with Assumption 2.2 on the activation satisfied with sσ = s′, such that 
+
+(3.3) sup 
+
+> u∈K
+
+∥α(u)η − eα(u)∥Cs′ (Ω) < ε 
+
+with a single hidden layer (M = 1) and with any single basis function pair ψ1,1 := η1
+
+and ϕ1,1 := η2 satisfying Assumptions 3.3. 
+
+Lemma 3.11. Let α : L1(Ω; Rk) → R be a continuous functional and let K ⊂
+
+L1(Ω; Rk) be a compact set consisting of bounded functions sup u∈K ∥u∥L∞(Ω) < ∞.Assume Ω ⊂ Rd is a bounded Lipschitz domain. Assume, in addition, that η ∈
+
+Cs′
+
+(Ω; Rk′
+
+) for integer s′ ≥ 0. Then for any ε > 0 there exists a nonlocal neural operator eα : L1(Ω; Rk) → Cs′
+
+(Ω; Rk′
+
+) as defined in Definition 2.1, with Assumption 2.2 on the activation satisfied with sσ = s′, such that 
+
+(3.4) sup 
+
+> u∈K
+
+∥α(u)η − eα(u)∥Cs′ (Ω) < ε, 
+
+where the final hidden layer contains η as an outer basis element, i.e. for some 
+
+m∗ ≤ M , ϕL,m ∗ := η with a corresponding inner basis function ψL,m ∗ ∈ L1(Ω) 
+
+satisfying (E2)-(E4) in Assumptions 3.3 and an earlier hidden layer contains at least one basis function pair η1 satisfying (E1)-(E4) and η2 satisfying (E2)-(E4). Remark 3.12 . Lemmas 3.10 and 3.11 are similar, but notable in two main differ-ences. First, Lemma 3.11 is slightly more general in that it only requires that η
+
+be Cs′
+
+on Ω rather than on the closure of Ω. In return, we sacrifice using only a single hidden layer and single basis function as in Lemma 3.10. However, the proof for Lemma 3.11 is appealing from an intuition standpoint because the basis func-tions in the NNO itself are actually used as the approximating basis, whereas in the proof of Lemma 3.10, as well as several other operator learning approximation proofs, a finite-dimensional neural network is employed to approximate η instead of using a basis function that is already part of the architecture. In practice, one never uses a single basis element, so we find it far more natural to view universal approximation as occurring through the lens of Lemma 3.11. ♢
+
+3.4. Proofs of Theorems 3.4 and 3.5. We may now prove our main theorems. As the proofs are identical except for the use of different lemmas, we present them as one. 
+
+Proof of Theorems 3.4 and 3.5 . Fix any ϵ0 > 0. By Lemma 3.8, there is J > 0such that we may approximate Ψ † by 
+
+eΨ†(u) = 
+
+> J
+
+X
+
+> j=1
+
+αj (u)ηj ,
+
+to obtain sup 
+
+> u∈K
+
+∥Ψ†(u) − eΨ†(u)∥Cs′ (Ω) < ϵ 0.ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 13 
+
+Then by Lemma 3.10 for Theorem 3.4, respectively Lemma 3.11 for Theorem 3.5, each αj ηj may be approximated by an NNO eαj satisfying the appropriate archi-tecture conditions corresponding to each theorem-lemma pair such that for any 
+
+ϵ1 > 0, sup 
+
+> u∈K
+
+∥αj (u)ηj − eαj (u)∥Cs′ (Ω) ≤ ϵ1, for all j ∈ [J].
+
+Define Ψ := PJj=1 eαj , the parallelization and subsequent sum in the final affine layer of the component NNOs. Then we have that sup 
+
+> u∈K
+
+∥Ψ†(u) − Ψ( u)∥Cs′ (Ω) = sup 
+
+> u∈K
+
+∥Ψ†(u) −
+
+> J
+
+X
+
+> j=1
+
+eαj (u)∥Cs′ (Ω) 
+
+≤ sup 
+
+> u∈K
+
+∥Ψ† −
+
+> J
+
+X
+
+> j=1
+
+αj (u)ηj ∥Cs′ (Ω) + ∥
+
+> J
+
+X
+
+> j=1
+
+αj (u)ηj −
+
+> J
+
+X
+
+> j=1
+
+eαj (u)∥Cs′ (Ω) 
+
+≤ ϵ0 + J max  
+
+> j∈[J]
+
+sup 
+
+> u∈K
+
+∥αj (u)ηj − eαj (u)∥Cs′ (Ω) 
+
+≤ ϵ0 + Jϵ 1.
+
+Choosing ϵ0 < ϵ 
+
+> 2
+
+and ϵ1 < ϵ 
+
+> 2J
+
+yields the results in (3.1) and (3.2). □
+
+4. Numerical Experiments 
+
+In this section we consider two operator learning problems defined by a coefficient to solution map in a PDE, one based on Darcy flow on a square domain and the other a variant of the Helmholtz equation on a circular domain. We implement a neural operator that enforces Dirichlet boundary conditions absolutely and test it on the two example problems. We demonstrate both the feasibility of our proposed method, and its competitiveness, in terms of cost-accuracy trade-off, in relation to other pre-existing methods. 2
+
+We first detail the architecture implementation in Subsection 4.1, and then we describe the data generation process for the Darcy and Helmholtz experiments in Subsections 4.2 and 4.3, respectively. We present and discuss results from both examples in Subsection 4.4. 4.1. Architecture. While the theory applies more generally, in implementation we make the natural choice of projecting onto the eigenfunctions of the Laplacian with Dirichlet boundary conditions on the domain associated with the application problem. In particular, we use the Dirichlet layer in Definition 2.3 as the final hidden layer in our architecture. By setting Wℓ = 0 and bℓ = 0, this layer will enforce zero Dirichlet boundary conditions absolutely for the output function, as proved in Corollary 3.6. Additionally, we enforce zero bias in the final neural network layer Q. GeLU activations are used throughout the model which, we recall, satisfy Assumptions 2.2 for any sσ ≥ 0, including the requirement that σ(0) = 0. We compare our method with a standard implementation of the FNO as well as three possible alternative methods to enforce the boundary conditions exactly via  
+
+> 2All code used to obtain results in this section may be found at the Github repository https://github.com/mtrautner/DNO. 14 ANDREW M. STUART AND MARGARET TRAUTNER
+
+projection. Let {ηj }Jj=1 be the first J eigenfunctions of the Laplacian, and let the projection operator PJ be defined via (4.1) PJ v =
+
+> J
+
+X
+
+> j=1
+
+⟨ηj , v ⟩L2(Ω; Rdc )ηj .
+
+For the first comparison, we project the output of the trained FNO Ψ FNO after training to obtain the prediction PJ ΨFNO (a) for input a. For the second compar-ison, we incorporate this projection as part of the pipeline during training . For the third comparison, we bypass neural networks entirely and simply perform reg-ularized least squares (ridge regression) on the coefficients of the input and output functions projected onto the first J eigenfunctions of the Laplacian. For this ba-sic comparison, while the input does not satisfy Dirichlet boundary conditions, the eigenfunctions are still a basis for L2(Ω). All of these approaches enforce the boundary condition absolutely. The last one corresponds to making a linear ap-proximation to the nonlinear map Ψ, whilst the proposed method and the other two comparisons all result in an approximation of the map Ψ which is nonlinear. In what follows we aim to approximate Ψ † : X (Ω; Ro) → Y (Ω; Ro) acting on a,coefficient of a PDE, to produce u, solution of the PDE. We assume we are given data {an, u n}Nn=1 with an ∼ μ i.i.d. and un = Ψ †(an). The population objective function that we aim to approximately minimize, by choice of parameters θ in Ψ( ·; θ) : X (Ω; Ro) → Y (Ω; Ro), is 
+
+J(θ) = Ea∼μ ∥Ψ( a; θ) − Ψ†(a)∥L2(Ω) 
+
+∥Ψ†(a)∥L2(Ω) 
+
+.
+
+In practice we approximate this empirically using the data to obtain objective 
+
+JN (θ) = 1
+
+N
+
+> N
+
+X
+
+> n=1
+
+∥Ψ( an; θ) − un∥L2(Ω) 
+
+∥un∥L2(Ω) 
+
+.
+
+4.2. Darcy Flow. Let Ω = [0 , 1] 2 be the unit square. We are interested in the map from a ∈ L∞(Ω; R) to u ∈ H10 (Ω; R) given by 
+
+−∇ · (a∇u) = 1 , x ∈ Ω
+
+u = 0 , x ∈ ∂Ω.
+
+In this example, we use the dataset associated with the original work on FNOs [28]. The coefficients a are randomly generated from μ := ψ#N (0 , C ) where C =(−∆+9 I)−2 equipped with zero Neumann boundary conditions to define the inverse of the identity shifted Laplacian. The map ψ is a Nemytskii operator defined by a piecewise constant function taking values 3 and 12 on the negative and positive parts of the real line, respectively. The solution was obtained via a second-order finite-difference scheme on a 421 × 421 grid, as stated in [28]. In total the data set has 2048 samples. We set aside 248 of the samples for validation used only for hyperparameter tuning, and 200 of the samples for test data, which were not used to choose hyperparameters. For this example, since the data are uniform and on the unit square, we used FNO layers in the DNO until the final layer to demonstrate the advantage of the DNO in modifying only the final layer. One can verify from Theorem 3.5 that combining different types of layers in this manner still satisfies the conditions for universality. ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 15 
+
+4.3. Helmholtz. Let Ω be the unit disk in R2. We are interested in the map from 
+
+a ∈ L∞(Ω; R) and b ∈ R to the solution u given by 
+
+−∆u − ω2au = 0 , x ∈ Ω
+
+u = b, x ∈ ∂Ω,
+
+where ω = 5π 
+
+> 2
+
+. The coefficient a is randomly generated as a sum of Gaussians. The number n of Gaussians is uniformly sampled from integers in [[2 , 7]], the centers of the Gaussians are uniformly sampled in Ω, the amplitudes are sampled uniformly 
+
+∼ (2 , 10), and the standard deviation is sampled uniformly ∼ (0 .05 , 0.1). Following summation, the resulting field ea is normalized via 
+
+a = ea − amin 
+
+amax − amin 
+
+.
+
+This ensures that a is non-negative and takes values in [0 , 1], pointwise. The bound-ary condition b is uniformly sampled ∼ [0 .25 , 5]. The numerical solution is obtained via the finite element method in FEniCSx using CG elements of degree 1 on a trian-gular mesh of the unit disk [5, 2, 4]. Since the operator −∆ − ω2a is not invertible for all choices of a, the solution operator is unbounded unless we restrict our choice of input domain ( a, b ) further. To do so, after obtaining numerical solution u, we reject the sample if max x∈Ω |u(x)| 
+
+> b
+
+> 10. This can be thought of as cutting out holes around the singularities in the domain ( a, b ); it can also be thought of as condition-ing the input measure as previously described. Doing so is necessary for the true solution map to exist on our choice of input set. To adapt the data for the FNO, we lift b to a function by b 7 → b1 and concatenate a and b1 as the input to the FNO. For the DNO, we also lift b 7 → b1 and transform the output data to be u − b1 so that it has zero boundary condition. Then the map ( a, b 1) 7 → u − b1 is learned, and in postprocessing we add b1 back to obtain the true solution. For this example, we produced 11000 data samples and set aside 500 for validation data and 500 for test data. Since the Helmholtz data are generated on a triangular mesh, we are able to pass this mesh directly to the DNO by using Dirichlet layers as all hidden layers. On the other hand, to adapt the data for the FNO, we interpolate the data to a uniform grid with approximately the same number of interior data points. We then pass to the FNO a box domain containing the circular domain with a zero mask applied outside the circular domain. For FNO, the error comparison of prediction to truth is performed on the interpolated grid instead of once more interpolating the FNO output back to the FEM mesh. In doing so, we give FNO a slight advantage because the error is not further increased via additional interpolation. 16 ANDREW M. STUART AND MARGARET TRAUTNER Best test sample Input True solution DNO prediction 
+
+> Median test sample Worst test sample
+> 0.000 0.002 0.004 0.006 0.008 0.010 0.012
+> 0.000 0.002 0.004 0.006 0.008 0.010 0.012
+> 0.000 0.002 0.004 0.006 0.008 0.010
+
+Figure 1. DNO predictions on Darcy flow. Relative L2 error for the best, median, and worst test samples, respectively: 0.482%, 0.772%, and 2 .02%. 
+
+Figure 2. DNO predictions for the Helmholtz example. Relative 
+
+L2 error for the best, median, and worst test samples, respectively: 0.0283%, 0 .130%, 4 .45%. ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 17 
+
+4.4. Results and Discussion. For both PDE examples we ran a hyperparameter gridsearch, doing so for the DNO and for the FNO. And in both PDE examples, we varied the number of eigenfunctions (resp. Fourier modes) in each dimension, the channel width, the batch size, the number of layers, and the number of training epochs. For the Darcy problem, the resulting choice of hyperparameters for the DNO was 12 modes in each degree of freedom, a channel width of 64, 300 epochs, a batch size of 15, 4 FNO layers, and one final DNO layer. For the FNO, the resulting choice was the same with 12 modes in each dimension, a channel width of 64, 300 epochs, a batch size of 14, and 4 hidden layers. For the Helmholtz problem, the resulting choices for DNO were 16 modes, a width of 64, 300 epochs, a batch size of 50 100 150 200   
+
+> Training Time (minutes)
+> 10 2
+> 10 1
+> 10 0
+> Test Error
+> Hyperparameter Optimization for Darcy Flow
+> FNO DNO
+
+Figure 3. Darcy example hyperparameter search results. 5 10 15 20 25 30 35 40   
+
+> Training Time (minutes)
+> 10 3
+> 10 2
+> Test Error
+> Hyperparameter Optimization for Helmholtz
+> FNO DNO
+
+Figure 4. Helmholtz example hyperparameter search results. 18 ANDREW M. STUART AND MARGARET TRAUTNER 10 1 10 2 10 3  
+
+> Training Data Size: N
+> 10 2
+> 10 1
+> Test Error
+
+Data Efficiency Comparison for Darcy Flow 
+
+N 1/2 
+
+> FNO DNO FNO projected during training FNO projected after training Ridge Regression
+
+Figure 5. Data efficiency for the Darcy flow example for FNO and DNO as well as projected FNO before and after training. 10 1 10 2 10 3 10 4   
+
+> Training Data Size: N
+> 10 3
+> 10 2
+> 10 1
+> Test Error
+
+Data Efficiency Comparison for Helmholtz 
+
+N 1/2 
+
+> FNO DNO FNO projected during training FNO projected after training Ridge Regression
+
+Figure 6. Data efficiency for the Helmholtz example for FNO and DNO as well as projected FNO before and after training and re-gression. 25, and 4 DNO layers. For FNO, the choices were 12 modes, a width of 64, a batch size of 25, 300 epochs, and 4 layers. We note that the training time of these models were comparable between the FNO and DNO in both examples. A visualization of the input and output functions as well as predictions for both problems can be seen in Figures 1 and 2, for the Darcy and Helmholtz examples, respectively. Figures 3 and 4 give a visualization of the relative validation error versus the training time for the hyperparameter search for the Darcy and Helmholtz examples, respectively. ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 19 
+
+These figures also give empirical evidence that the DNO is more robust to the suboptimal hyperparameter choices that will be made in practice. We then took models with these hyperparameters and performed data efficiency comparisons of DNO, FNO, and the FNO projected onto the Laplacian eigenfunc-tion basis both before and after training, as well as a basic ridge regression, as detailed in Subsection 4.1. The results of relative test error versus training data size N are shown in Figures 5 and 6. The shaded uncertainty regions in both figures represent two standard deviations away from the mean of five models trained on the same amount of data; the ridge regression example has no uncertainty as it results from a deterministic linear solve instead of from stochastic gradient descent. The poor performance of ridge regression demonstrates that the map Ψ being learned is indeed significantly nonlinear. For the Darcy example, the clearest benefit appears in the low data regime, where the DNO shows a 2 × accuracy improvement over any of the other model choices; the other nonlinear model choices fail to beat even ridge regression. The benefit of DNO remains present for higher amounts of data as well; for 1600 data points the DNO shows a 20% accuracy improvement over FNO, which in turn beats both projection approaches. Indeed, it is somewhat surprising that neither projection approach improved on the basic FNO implementation; this implies that the benefit of DNO goes beyond simply getting the boundary con-dition right. For the Helmholtz example, all of the models perform similarly at extremely low levels of data ( N = 10), but the DNO shows roughly a 30% accuracy improvement over the other models for N = 20 and N = 40. Surprisingly, in this example the benefit of DNO shows up most in the higher data regime, showing approximate 2 × improvement in accuracy for N = 5000 and N = 10000. In this Helmholtz example, projecting the FNO during training did yield some benefit in the high data regime, but, interestingly, projecting after training caused the error to more than double; we believe this error originates from the interpolation error between the native mesh of the FEM solver and the uniform mesh of the FNO. We emphasize that this phenomenon is not mitigated by increasing J in the projection operator PJ .Intuitive visualizations of the best, median, and worst test samples are shown for DNO for the Darcy and Helmholtz experiments in Figures 1 and 2, respectively, at training data counts of N = 1600 and N = 10000. We comment that for the Helmholtz example, the worst test sample occurs near the cutoff for a singularity as described in Subsection 4.3 as expected; this was also the worst test sample for FNO. 5. Conclusion 
+
+We propose a choice of basis for the nonlocal neural operator that automatically satisfies Dirichlet boundary conditions by using the eigenfunctions of the Laplacian. The approximation theory developed for this approach additionally goes far beyond this specific setting and applies to a broad class of bases for L2 with only Lipschitz boundary assumptions on a domain in any Euclidean space. We implement our proposed “Dirichlet Neural Operator” on two representative examples, including the Darcy flow problem on a square and the Helmholtz equation on a circular domain. The latter example in particular demonstrates the advantage of the method on arbitrary mesh points as well as with nonzero Dirichlet boundary. The ability of 20 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+the method to enforce boundary conditions without training on arbitrary meshes and domains distinguishes it from prior work on the subject. Several possible extensions are suggested by the work. First, since the theory applies to a broad class of possible bases, additional basis choices such as finite element bases could be implemented to achieve other desirable properties such as different boundary conditions or possibly boundedness guarantees. The choice of Fourier basis for the FNO has allowed for numerical analysis yielding rates in terms of model size parameters; similar rates could be achieved in different settings depending on the choice of basis. Furthermore, it remains an open question how to automatically enforce mixed boundary conditions on arbitrary domains that are defined separately on a partition Γ 1 ∪ · · · ∪ ΓJ = ∂Ω with operator learning. 
+
+Acknowledgments 
+
+The authors thank Manuel Santana for advice on the numerical solution of the Helmholtz equation and Samuel Lanthaler for technical insights and advice. AI acknowledgment: Claude Sonnet 4.6 was used to identify sources for theory on the eigenfunctions of the Laplacian. Claude Opus 4.8 made a key suggestion to achieve the proof of Lemma 3.10; namely, the exact “1” channel. Cursor was used as a code development aid, including in the numerical solution of the Helmholtz equa-tion, implementation of the Dirichlet layer, and figure generation scripts. Claude Code with Opus 4.8 was used as a code development aid for the linear regression comparison. The authors take full responsibility for all the theoretical and numer-ical results in this manuscript. Furthermore, AI was not used to write any portion of the manuscript nor to determine which references to cite. 
+
+References 
+
+1. Diab W Abueidda, Panos Pantidis, and Mostafa E Mobasher, DeepOKAN: Deep operator network based on Kolmogorov Arnold networks for mechanics problems , Computer Methods in Applied Mechanics and Engineering 436 (2025), 117699. 2. Martin S Alnæs, Anders Logg, Kristian B Ølgaard, Marie E Rognes, and Garth N Wells, Uni-fied form language: A domain-specific language for weak formulations of partial differential equations , ACM Transactions on Mathematical Software (TOMS) 40 (2014), no. 2, 1–37. 3. Kamyar Azizzadenesheli, Nikola Kovachki, Zongyi Li, Miguel Liu-Schiaffini, Jean Kossaifi, and Anima Anandkumar, Neural operators for accelerating scientific simulations and design ,Nature Reviews Physics 6 (2024), no. 5, 320–328. 4. Satish Balay, Shrirang Abhyankar, Mark Adams, Jed Brown, Peter Brune, Kris Buschelman, Lisandro Dalcin, Alp Dener, Victor Eijkhout, William Gropp, et al., PETSc users manual ,(2019). 5. Igor A Baratta, Joseph P Dean, Jørgen S Dokken, Michal Habera, Jack HALE, Chris N Richardson, Marie E Rognes, Matthew W Scroggs, Nathan Sime, and Garth N Wells, 
+
+DOLFINx: the next generation fenics problem solving environment , (2023). 6. Stefano Berrone, Claudio Canuto, Moreno Pintore, and Natarajan Sukumar, Enforcing Dirichlet boundary conditions in physics-informed neural networks and variational physics-informed neural networks , Heliyon 9 (2023), no. 8. 7. Kaushik Bhattacharya, Lianghao Cao, George Stepaniants, Andrew Stuart, and Mar-garet Trautner, Learning memory and material dependent constitutive laws , arXiv preprint arXiv:2502.05463 (2025). 8. Kaushik Bhattacharya, Bamdad Hosseini, Nikola B. Kovachki, and Andrew M. Stuart, Model reduction and neural networks for parametric PDEs , The SMAI Journal of Computational Mathematics 7 (2021), 121–157 (en), Publisher: Soci´ et´ e de Math´ ematiques Appliqu´ ees et Industrielles. 9. John P Boyd, Chebyshev and Fourier spectral methods , Courier Corporation, 2001. ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 21 
+
+10. Qianying Cao, Somdatta Goswami, and George Em Karniadakis, Laplace neural operator for solving differential equations , Nature Machine Intelligence 6 (2024), no. 6, 631–640. 11. Samuel N Cohen, Filippo de Feo, Jackson Hebner, and Justin Sirignano, Deep Hilbert– Galerkin methods for infinite-dimensional PDEs and optimal control , arXiv preprint arXiv:2603.19463 (2026). 12. Samuel N Cohen, Deqing Jiang, and Justin Sirignano, Neural q-learning for solving PDEs ,Journal of Machine Learning Research 24 (2023), no. 236, 1–49. 13. Edward Brian Davies and Barry Simon, Ultracontractivity and the heat kernel for Schr¨ odinger operators and Dirichlet Laplacians , Journal of Functional Analysis 59 (1984), no. 2, 335–395. 14. Suchuan Dong and Yuchuan Zhang, A novel method for enforcing exactly Dirichlet, Neumann and Robin conditions on curved domain boundaries for physics informed machine learning ,arXiv preprint arXiv:2603.21909 (2026). 15. Xinghao Dong, Chuanqi Chen, and Jin-Long Wu, Data-driven stochastic closure modeling via conditional diffusion model and neural operator , Journal of Computational Physics 534 
+
+(2025), 114005. 16. Lawrence C Evans, Partial differential equations , 2nd ed., vol. 19, American Mathematical Society, Providence, Rhode Island, 2010. 17. David Gilbarg, Neil S Trudinger, David Gilbarg, and NS Trudinger, Elliptic partial differential equations of second order , vol. 2, Springer, 1998. 18. Giorgio Gnecco, Marco Gori, and Marcello Sanguineti, Learning with boundary conditions ,Neural computation 25 (2013), no. 4, 1029–1106. 19. Somdatta Goswami, Aniruddha Bora, Yue Yu, and George Em Karniadakis, Physics-informed deep neural operator networks , Machine learning in modeling and simulation: methods and applications, Springer, 2023, pp. 219–254. 20. Derek Hansen, Danielle C Maddix, Shima Alizadeh, Gaurav Gupta, and Michael W Mahoney, 
+
+Learning physical models that can respect conservation laws , International Conference on Machine Learning, PMLR, 2023, pp. 12469–12510. 21. Jan S Hesthaven and Stefano Ubbiali, Non-intrusive reduced order modeling of nonlinear prob-lems using neural networks , Journal of Computational Physics 363 (2018), 55–78, Publisher: Elsevier. 22. Masanobu Horie and Naoto Mitsume, Physics-embedded neural networks: Graph neural PDE solvers with mixed boundary conditions , Advances in Neural Information Processing Systems 
+
+35 (2022), 23218–23229. 23. Dunham Jackson, The theory of approximation , vol. 11, American mathematical society, 1930. 24. Deqing Jiang, Justin Sirignano, and Samuel N Cohen, Global convergence of deep Galerkin and PINNs methods for solving partial differential equations , arXiv preprint arXiv:2305.06000 (2023). 25. Nikola Kovachki, Zongyi Li, Burigede Liu, Kamyar Azizzadenesheli, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar, Neural operator: Learning maps between function spaces with applications to PDEs , Journal of Machine Learning Research 24 (2023), no. 89, 1–97. 26. Nikola B Kovachki, Samuel Lanthaler, and Andrew M Stuart, Operator learning: Algorithms and analysis , Handbook of Numerical Analysis 25 (2024), 419–467. 27. Samuel Lanthaler, Zongyi Li, and Andrew M Stuart, Nonlocality and nonlinearity implies universality in operator learning , Constructive Approximation 62 (2025), 1–43. 28. Zongyi Li, Nikola Borislavov Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhat-tacharya, Andrew Stuart, and Anima Anandkumar, Fourier neural operator for parametric partial differential equations , International Conference on Learning Representations, 2021. 29. Ziyuan Liu, Haifeng Wang, Hong Zhang, Kaijun Bao, Xu Qian, and Songhe Song, Render unto numerics: Orthogonal polynomial neural operator for PDEs with nonperiodic boundary conditions , SIAM Journal on Scientific Computing 46 (2024), no. 4, C323–C348. 30. Ziyuan Liu, Yuhang Wu, Daniel Zhengyu Huang, Hong Zhang, Xu Qian, and Songhe Song, 
+
+Spfno: Spectral operator learning for PDEs with Dirichlet and Neumann boundary conditions ,arXiv preprint arXiv:2312.06980 (2023). 31. Lu Lu, Pengzhan Jin, Guofei Pang, Zhongqiang Zhang, and George Em Karniadakis, Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators ,Nature machine intelligence 3 (2021), no. 3, 218–229. 22 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+32. Kevin Stanley McFall and James Robert Mahan, Artificial neural network method for solution of boundary value problems with exact satisfaction of arbitrary boundary conditions , IEEE transactions on neural networks 20 (2009), no. 8, 1221–1233. 33. Sepehr Mousavi, Siddhartha Mishra, and Laura De Lorenzis, Imposing boundary conditions on neural operators via learned function extensions , arXiv preprint arXiv:2602.04923 (2026). 34. Ryumei Nakada and Masaaki Imaizumi, Adaptive approximation and generalization of deep neural network with intrinsic dimensionality , Journal of Machine Learning Research 21 
+
+(2020), no. 174, 1–38. 35. Nicholas H Nelsen and Andrew M Stuart, The random feature model for input-output maps between Banach spaces , SIAM Journal on Scientific Computing 43 (2021), no. 5, A3212– A3243. 36. Yu Netrusov and Yu Safarov, Weyl asymptotic formula for the Laplacian on domains with rough boundaries , Communications in mathematical physics 253 (2005), no. 2, 481–509. 37. Zhong Peng, Bo Yang, Yixian Xu, Feng Wang, Lian Liu, and Yi Zhang, Rapid surrogate mod-eling of electromagnetic data in frequency domain using neural operator , IEEE Transactions on Geoscience and Remote Sensing 60 (2022), 1–12. 38. Allan Pinkus, Approximation theory of the MLP model in neural networks , Acta Numerica 8
+
+(1999), 143–195. 39. Nadim Saad, Gaurav Gupta, Shima Alizadeh, and Danielle C. Maddix, Guiding continu-ous operator learning through physics-based boundary constraints , The Eleventh International Conference on Learning Representations, 2023. 40. Jie Shen, Tao Tang, and Li-Lian Wang, Spectral methods: algorithms, analysis and applica-tions , vol. 41, Springer Science & Business Media, 2011. 41. Tao Tang, Spectral and high-order methods with applications , Science Press Beijing, 2006. 42. Tapas Tripura and Souvik Chakraborty, Wavelet neural operator for solving parametric partial differential equations in computational mechanics problems , Computer Methods in Applied Mechanics and Engineering 404 (2023), 115783. 43. Hermann Weyl, Das asymptotische verteilungsgesetz der eigenwerte linearer partieller differ-entialgleichungen (mit einer anwendung auf die theorie der hohlraumstrahlung) , Mathema-tische Annalen 71 (1912), no. 4, 441–479. 44. Konstantin Yakovlev and Nikita Puchkin, Approximation capabilities of feedforward neural networks with gelu activations , arXiv preprint arXiv:2512.21749 (2025). 45. Minglang Yin, Ehsan Ban, Bruno V Rego, Enrui Zhang, Cristina Cavinato, Jay D Humphrey, and George Em Karniadakis, Simulating progressive intramural damage leading to aortic dissection using DeepONet: an operator–regression neural network , Journal of the Royal Society Interface 19 (2022), no. 187. 46. Huaiqian You, Quinn Zhang, Colton J Ross, Chung-Hao Lee, Ming-Chen Hsu, and Yue Yu, 
+
+A physics-guided neural operator learning approach to model biological tissues from digital image correlation measurements , Journal of Biomechanical Engineering 144 (2022), no. 12, 121012. 
+
+Appendix A. Properties of finite-dimensional neural networks 
+
+Definition A.1. A finite-dimensional feedforward neural network G : Rdx → Rdy
+
+takes the form of compositions 
+
+G(x) = ALLL−1 ◦ · · · ◦ L1(x) + bL, x ∈ Rdx
+
+where Ll : Rdl → Rdl+1 , d1 = dx, dL+1 = dy , and 
+
+Ll(xl) = σ(Alxl + bl), xl ∈ Rdl ,
+
+and Al ∈ Rdl+1 ×dl is a matrix and bl ∈ Rdl+1 is a vector. The activation σ : R → R
+
+is a Cs, non-polynomial function for some integer s ≥ 0, that is extended to act component-wise on vector inputs. ♢
+
+The following result is a well-known fact about the approximation capability of finite-dimensional feedforward neural networks. We restate it here for convenience and refer to [38, Theorem 4.1] for the proof. ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 23 
+
+Lemma A.2. Let Ω ⊂ Rd be a bounded domain, and assume σ ∈ Cs(R) is not a polynomial. Let u ∈ Cs(Ω; Rk) for some integer s ≥ 0. Then, for any non-polynomial activation σ ∈ Cs as in Definition A.1, and for any ϵ > 0, there exists a finite-dimensional neural network eu such that 
+
+∥u − eu∥Cs(Ω; Rk ) = sup 
+
+> |α|≤ s
+
+sup 
+
+> x∈Ω
+
+|Dαu(x) − Dα eu(x)| ≤ ϵ. 
+
+Appendix B. Proof of Proposition 3.2 
+
+Here we provide a proof of Proposition 3.2, which details some familiar examples where the Smoothed Approximation Assumption holds. Throughout this proof, we refer to the three conditions of the Smoothed Approximation Assumption 3.1 by their enumerations (S1), (S2), and (S3). 
+
+Proof. Case 1: We note that this case is largely taken from the proof of [27, Proposition A.6]. By [27, Lemma A.1], there exists a continuous extension mapping 
+
+E : Cs′
+
+(Ω) → Cs′
+
+> per
+
+(B). Then K′ 
+
+> per
+
+:= E(K′) is a compact subset of Cs′
+
+> per
+
+(B), and we can identify B ≃ Td in a canonical way. Fix δ > 0, and let w′ 
+
+> δ
+
+: B → R be the standard mollification (see Definition D.3) of the periodic function w′ : B → R.We may then define the family of linear maps {fδ }δ> 0 by the composition of the mollification and periodic extension operator; i.e., fδ (w) := E(w)δ . The standard mollifier satisfies (S1): lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+∥fδ (w) − w∥Cs′ (Ω) = lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+∥E (w)δ − w∥Cs′ (Ω) 
+
+= lim  
+
+> δ→0
+
+sup 
+
+> w′∈K′
+> per
+
+∥w′ 
+
+> δ
+
+− w′∥Cs′ (Ω) = 0 .
+
+Since the extension operator and the mollifier are continuous, property (S3) is also satisfied. It follows from classical results in harmonic analysis [23, Chapter 1, Section 3] that approximation by Fourier series on Cs′
+
+(B) converges uniformly over the mollified set {w′ 
+
+> δ
+
+| w′ ∈ K′
+
+> per
+
+}:lim  
+
+> J→∞
+
+sup 
+
+> w′∈K′
+> per
+
+w′ 
+
+> δ
+
+−
+
+> J
+
+X
+
+> j=1
+
+⟨w′ 
+
+> δ
+
+, η j ⟩L2(B)ηj Cs′
+
+> per (B)
+
+= 0 .
+
+It can then be seen that lim  
+
+> J→∞
+
+sup 
+
+> w∈K′
+
+fδ (w) −
+
+> J
+
+X
+
+> j=1
+
+⟨fδ (w), η j ⟩L2(B)ηj Cs′ (Ω) 
+
+= lim  
+
+> J→∞
+
+sup 
+
+> w′∈K′
+> per
+
+w′ 
+
+> δ
+
+−
+
+> J
+
+X
+
+> j=1
+
+⟨w′ 
+
+> δ
+
+, η j ⟩L2(B)ηj Cs′ (Ω) 
+
+≤ lim  
+
+> J→∞
+
+sup 
+
+> w′∈K′
+> per
+
+w′ 
+
+> δ
+
+−
+
+> J
+
+X
+
+> j=1
+
+⟨w′ 
+
+> δ
+
+, η j ⟩L2(B)ηj Cs′
+
+> per (B)
+
+= 0 ,
+
+satisfying property (S2). 
+
+Case 2: In what follows, for any γ > 0, (B.1) Ωγ := {x ∈ Ω : dist( x, ∂ Ω) ≥ γ},24 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+and 1Ωγ is the indicator function on Ω γ . For any δ > 0, define the smooth cutoff mollification of w ∈ K′ by 
+
+fδ (w) = ρδ ∗ (χ4δ w),
+
+where ρδ is the standard mollifier as in Definition D.3, and χδ = ρδ/ 4 ∗ 1Ω3δ/ 4 . Then 
+
+χδ satisfies 
+
+χδ (x) = 
+
+
+
+1 if dist( x, ∂ Ω) ≥ δ, x ∈ Ω0 if dist( x, ∂ Ω) ≤ δ 
+
+> 2
+
+, x ∈ Ω,
+
+0 if x / ∈ Ω,
+
+with 0 ≤ χδ ≤ 1 and ∥∇ χδ ∥∞ ≲ δ−1. Then χ4δ w is continuous and equal to 0 within 2 δ of the boundary ∂Ω. We show first that property (S1) holds. Recall that since K′ is compact, it is equicontinuous; i.e. there exists a modulus of continuity γ such that for all w ∈ K′, it holds that |w(x) − w(y)| ≤ γ(|x − y|) for 
+
+x, y ∈ Ω, and that γ(t) → 0 as t → 0+. We bound lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+∥fδ (w) − w∥C(Ω) ≤ lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+
+
+∥fδ (w) − χ4δ w∥C(Ω) 
+
+| {z }
+
+> (I)
+
++ ∥χ4δ w − w∥C(Ω) 
+
+| {z }
+
+> (II)
+
+
+
+.
+
+We bound components (I) and (II) separately. For any v ∈ { χ4δ w : w ∈ K′} and 
+
+x, y ∈ Ω, we have 
+
+|v(x) − v(y)| ≤ sup 
+
+> w∈K′
+
+|(χ4δ w)( x) − (χ4δ w)( y)|≤ sup 
+
+> w∈K′
+
+|χ4δ (x)|| w(x) − w(y)| + |w(y)|| χ4δ (x) − χ4δ (y)|≤ γ(|x − y|) + |w(y)|.(B.2) We are now prepared to bound component (I): lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+∥ρδ ∗ (χ4δ w) − χ4δ w∥C(Ω) 
+
+= lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+sup 
+
+> x∈Ω
+
+Z 
+
+> Bδ(0)
+
+ρδ (y)(( χ4δ w)( x − y) − (χ4δ w)( x)) dy
+
+≤ lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+sup 
+
+> x∈Ω
+
+sup 
+
+> |y|≤ δ
+
+|(χ4δ w)( x − y) − (χ4δ w)( x)|
+
+= lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+max 
+
+n
+
+sup 
+
+> x∈Ω5δ
+> |y|≤ δ
+
+|w(x − y) − w(x)|, sup 
+
+> x∈Ω\Ω5δ
+> |y|≤ δ
+
+|(χ4δ w)( x − y) − (χ4δ w)( x)|
+
+o
+
+≤ lim  
+
+> δ→0
+
+max 
+
+n
+
+γ(δ), γ (δ) + sup 
+
+> w∈K′
+
+sup 
+
+> x∈Ω\Ω5δ
+
+|w(x)|
+
+o
+
+by (B.2). Then, lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+∥ρδ ∗ (χ4δ w) − χ4δ w∥C(Ω) ≤ lim  
+
+> δ→0
+
+γ(δ) + γ(5 δ) = 0 ,ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 25 
+
+since w = 0 on ∂Ω, and any x ∈ Ω \ Ω5δ is at a distance at most 5 δ from the boundary. Bounding component (II) is simpler, as we see that lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+∥χ4δ w − w∥C(Ω) ≤ lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+sup 
+
+> x∈Ω\Ω4δ
+
+|χ4δ (x)w(x) − w(x)|≤ lim  
+
+> δ→0
+
+sup 
+
+> w∈K′
+
+sup 
+
+> x∈Ω\Ω4δ
+
+|w(x)|≤ lim  
+
+> δ→0
+
+γ(|4δ|) = 0 .
+
+Thus property (S1) holds. It is clear that property (S3) also holds since χδ is continuous and the eigenfunctions of the Laplacian are C∞(Ω). For property (S2), set B = Ω and note that for any fixed δ > 0, fδ is a bounded, continuous map from C(Ω) to Ckc (Ω) for any positive integer k, where Ckc (Ω) denotes the subspace of functions in Ck(Ω) with compact support in Ω and thus are 0 on the boundary. Then the image of K′ under fδ , denoted K′ 
+
+> δ
+
+, is compact in Ckc (Ω). Applying Lemma E.1, we obtain convergence of the projection of K′ 
+
+> δ
+
+onto the eigenfunctions of the Laplacian in C(Ω), which achieves property (S2). 
+
+Case 3: Let {Pn}∞ 
+
+> n=0
+
+denote the Legendre polynomials, Pn of degree n, orthonor-malized so that  n + 12
+
+ R 1 
+
+> −1
+
+Pm(x)Pn(x) dx = δmn , the standard Kronecker delta [40, Equation 1.3.19]. We tensorize the Legendre polynomials in d dimensions in the following manner: for ν ∈ Nd
+
+> 0
+
+, let Φ ν (x) = Qdi=1 Pνi (xi). The set {Φν }ν∈Nd 
+
+> 0
+
+is then an orthonormal basis of L2(Ω). Let B′ be a bounded hypercube containing Ω in its interior. There exists a continuous, linear operator E : Cs′
+
+(Ω) → Cs′
+
+(B′) such that E(u)|Ω = u [27, Lemma A.1]. Let ρδ be the standard mollifier in Definition D.3, and define fδ (w) = ( ρδ ∗ E (w)) |Ω for w ∈ Cs′
+
+(Ω). We assume δ < dist(Ω , ∂B ′)so that the mollifier is defined on Ω. To prove property (S1), observe that for 
+
+|α| ≤ s′, Dαfδ (w) − Dαw = ρδ ∗ (DαE(w)) − DαE(w)) on Ω. Since K′ is compact in Cs′
+
+(Ω) and E is continuous, the set {DαE(w) : w ∈ K′} is compact for any choice of |α| ≤ s′ and thus is uniformly equicontinuous; denote by ωα the modulus of continuity of this set. Since the set of α such that |α| ≤ s′ is finite, it follows that lim  
+
+> δ→0
+
+max  
+
+> α:|α|≤ s′
+
+sup 
+
+> w∈K′
+
+∥Dαfδ (w) − Dαw∥L∞(Ω) 
+
+= lim  
+
+> δ→0
+
+max  
+
+> α:|α|≤ s′
+
+sup 
+
+> w∈K′
+
+∥ρδ ∗ (DαE(w)) − DαE(w)∥L∞(Ω) 
+
+≤ lim  
+
+> δ→0
+
+max  
+
+> α:|α|≤ s′
+
+ωα(δ) = 0 ,
+
+so property (S1) holds. Property (S3) holds as well since ρδ ∗ E is a bounded linear function from Cs′
+
+(Ω) to L2(Ω), and each Φ ν satisfies ∥Φν ∥L2 = 1 so w 7 →⟨fδ (w), Φν ⟩ is a bounded linear functional and thus a continuous functional. 26 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+We proceed with proving property (S2): sup 
+
+> w∈K′
+
+fδ (w) − X
+
+> ∥ν∥∞≤J
+
+⟨fδ (w), Φν ⟩Φν Cs′ (Ω) 
+
+= sup 
+
+> w∈K′
+
+X
+
+> ∥ν∥∞>J
+
+⟨fδ (w), Φν ⟩Φν Cs′ (Ω) 
+
+≤ sup 
+
+> w∈K′
+
+X
+
+> ∥ν∥∞>J
+
+|⟨ fδ (w), Φν ⟩| 
+
+> d
+
+Y
+
+> i=1
+
+Pνi Cs′ (Ω) 
+
+≤ sup 
+
+> w∈K′
+
+X
+
+> ∥ν∥∞>J
+
+|⟨ fδ (w), Φν ⟩| 
+
+> d
+
+Y 
+
+> i=1 ,ν i̸=0
+
+∥Pνi ∥Cs′ ([ −1,1]) ,
+
+where in the last line we have used that DαΦν = Qdi=1 P (αi) 
+
+> νi
+
+(xi) together with the fact that ∥P0∥Cs′ ([ −1,1]) = 1√2 < 1, which allows the factors with νi = 0 to be discarded. Due to our chosen rescaling, ∥Pn∥L∞([ −1,1]) ≲ n1/2, it follows from the Markov brothers’ inequality that ∥Pνi ∥Cs′ ([ −1,1]) ≤ C(νi)2s′+ 12 for some constant 
+
+C independent of s′; without loss of generality, we assume C ≥ 1. We are then left with sup 
+
+> w∈K′
+
+fδ (w) − X
+
+> ∥ν∥∞≤J
+
+⟨fδ (w), Φν ⟩Φν Cs′ (Ω) 
+
+(B.3a) 
+
+≤ Cd sup 
+
+> w∈K′
+
+X
+
+> ∥ν∥∞>J
+
+|⟨ fδ (w), Φν ⟩| 
+
+> d
+
+Y 
+
+> i=1 ,ν i̸=0
+
+(νi)2s′+ 12
+
+| {z }
+
+> (I)
+
+.(B.3b) We introduce the Legendre operator 
+
+Li = −∂xi ((1 − x2 
+
+> i
+
+)∂xi ),
+
+which is self-adjoint on L2(Ω) with zero boundary terms since (1 − x2 
+
+> i
+
+) vanishes at xi = ±1, and it holds that for Pn a polynomial in xi, LiPn = n(n + 1) Pn
+
+[41, Section 1.3]. Also note that the Li commute. This allows us to write Φ ν =Qdi=1 ,ν i̸ =0 
+
+> Lki
+> (νi(νi+1)) k
+
+
+
+Φν . We may then bound quantity (I) by sup 
+
+> w∈K′
+
+X
+
+> ∥ν∥∞>J
+
+|⟨ fδ (w), Φν ⟩| 
+
+> d
+
+Y 
+
+> i=1 ,ν i̸=0
+
+(νi)2s′+ 12
+
+≤ sup 
+
+> w∈K′
+
+X
+
+> ∥ν∥∞>J
+
+|⟨   dY 
+
+> i=1 ,ν i̸=0
+
+Lki
+
+fδ (w), Φν ⟩| 
+
+> d
+
+Y 
+
+> i=1 ,ν i̸=0
+
+(νi)2s′+ 12 −2k
+
+≤ sup 
+
+> w∈K′
+
+X
+
+> ∥ν∥∞>J
+
+∥  dY 
+
+> i=1 ,ν i̸=0
+
+Lki
+
+fδ (w)∥
+
+> d
+
+Y 
+
+> i=1 ,ν i̸=0
+
+(νi)2s′+ 12 −2k.(B.4) In the above, we have used the fact that ( νi(νi + 1)) ≥ ν2 
+
+> i
+
+and that ∥Φν ∥ = 1. Since Lifδ (w) = −2xi∂xi fδ (w) + (1 − x2 
+
+> i
+
+)∂2 
+
+> xi
+
+fδ (w) and xi ∈ [−1, 1], the operator 
+
+Qdi=1 ,ν i̸ =0 Lki is a differential operator of order at most 2 kd with coefficients bounded ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 27 
+
+on Ω, so we can bound independently of ν,
+
+∥
+
+
+
+> d
+
+Y 
+
+> i=1 ,ν i̸=0
+
+Lki
+
+ fδ (w)∥ ≤ Ck,d ∥fδ (w)∥C2kd (Ω) ≤ Ck,d Ck,d,δ sup 
+
+> w∈K′
+
+∥w∥Cs′ (Ω) ,
+
+which is bounded in the final inequality for each fixed δ since K′ is compact in 
+
+Cs′
+
+(Ω). Bound (B.4) then becomes 
+
+Ck,d Ck,d,δ sup 
+
+> w∈K′
+
+∥w∥Cs′ (Ω) 
+
+X
+
+> ∥ν∥∞>J d
+
+Y 
+
+> i=1 ,ν i̸=0
+
+(νi)2s′+ 12 −2k
+
+| {z }
+
+> (II)
+
+.(B.5) Let bνi = ( νi)2s′+ 12 −2k if νi > 0, and b0 = 1 otherwise. Let S = P∞ 
+
+> n=1
+
+n2s′+ 12 −2k
+
+and SJ = PJn=1 n2s′+ 12 −2k. Assume integer k > s ′ + 34 so that S converges. Finally, note that the following sum-product factors as P
+
+> ν∈Nd
+> 0
+
+Qdi=1 bνi = (1 + S)d. As a result, we may rewrite (II) and bound as 
+
+X
+
+> ∥ν∥∞>J d
+
+Y 
+
+> i=1 ,ν i̸=0
+
+(νi)2s′+ 12 −2k = (1 + S)d − (1 + SJ )d
+
+= dξ d−1(S − SJ )= dξ d−1 X
+
+> n>J
+
+n2s′+ 12 −2k
+
+≤ Cd,k,s ′ J 32 +2 s′−2k,
+
+where we have used the mean value theorem in the second equality for some ξ ∈
+
+(1 + SJ , 1 + S). Combining the above bound with (B.3), (B.4), and (B.5), we find that sup 
+
+> w∈K′
+
+fδ (w) − X
+
+> ∥ν∥∞≤J
+
+⟨fδ (w), Φν ⟩Φν Cs′ (Ω) 
+
+≤ Ck,d,δ,s ′ sup 
+
+> w∈K′
+
+∥w∥Cs′ (Ω) J 32 +2 s′−2k.
+
+Since δ is fixed and k > s ′ + 34 , the bound tends to 0 as J → ∞ , proving (S2). □
+
+Appendix C. Proof of Lemma 3.8 
+
+Before proceeding with the proof, we repeat the lemma statement for ease of readability. 
+
+Lemma 3.8. Let Ω be a bounded Lipschitz domain in Rd, and let s, s ′ be nonneg-ative integers. Let Ψ† : Cs(Ω; Rk) → Cs′
+
+(Ω; Rk′
+
+) be a continuous operator, and let 
+
+{ηj }∞ 
+
+> j=1
+
+⊂ Cs′
+
+(Ω) . Let K ⊂ Cs(Ω; Rk) be a compact subset. Assume that K′ := Ψ†(K) satisfies the Smoothed Approximation Assumption 3.1 in Cs′
+
+(Ω) with respect to {ηj }∞
+
+> j=1
+
+. Then for any ϵ > 0, there exists J ∈ N, and continuous functionals 
+
+α1, . . . , α J : L1(Ω; Rk) → R such that the operator eΨ† : L1(Ω; Rk) → Cs′
+
+(Ω; Rk′
+
+),defined by 
+
+eΨ†(u) = 
+
+> J
+
+X
+
+> j=1
+
+αj (u)ηj28 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+satisfies 
+
+sup 
+
+> u∈K
+
+∥Ψ†(u) − eΨ†(u)∥Cs′ (Ω) ≤ ϵ. 
+
+Proof of Lemma 3.8. Step 1: Approximation by {ηj }∞
+
+> j=1
+
+. Without loss of gen-erality, we may assume k′ = 1, as we can always approximate Cs′
+
+(Ω; Rk′
+
+) = [Cs′
+
+(Ω; R)] k′
+
+component-wise. Thus, denote by Cs′
+
+(Ω) the space Cs′
+
+(Ω; R). Let {fδ }δ> 0 be the family of maps in Assumptions 3.1, and B the domain in Assumptions 3.1 item (S2). Under these assumptions, we have that lim  
+
+> J→∞
+
+sup 
+
+> w∈K′
+
+fδ (w) −
+
+> J
+
+X
+
+> j=1
+
+⟨fδ (w), η j ⟩L2(B)ηj Cs′ (Ω) 
+
+= 0 ,
+
+and lim δ→0 sup w∈K′ ∥fδ (w) − w∥Cs′ (Ω) = 0. In particular, given ϵ > 0, we can first find δ = δ(ϵ) > 0 such that sup w∈K′ ∥fδ (w) − w∥Cs′ (Ω) ≤ ϵ/ 2, and then J ∈ N such that sup w∈K′ ∥fδ (w) − PJj=1 ⟨fδ (w), η j ⟩L2(B)ηj ∥Cs′ (Ω) ≤ ϵ/ 2. It follows from the triangle inequality that (C.1) sup 
+
+> w∈K′
+
+w −
+
+> J
+
+X
+
+> j=1
+
+⟨fδ (w), η j ⟩L2(B)ηj Cs′ (Ω) 
+
+≤ ϵ. 
+
+As a consequence, it is clear that sup 
+
+> u∈K
+
+Ψ†(u) −
+
+> J
+
+X
+
+> j=1
+
+⟨fδ (Ψ †(u)) , η j ⟩L2(B)ηj Cs′ (Ω) 
+
+= sup 
+
+> w∈K′
+
+w −
+
+> J
+
+X
+
+> j=1
+
+⟨fδ (w), η j ⟩L2(B)ηj Cs′ (Ω) 
+
+≤ ϵ. 
+
+Defining βj (u) = ⟨fδ (Ψ †(u)) , η j ⟩L2(B) we have that eΨ†(u) = PJj=1 βj (u)ηj satisfies (C.2) sup 
+
+> u∈K
+
+∥Ψ†(u) − eΨ†(u)∥Cs′ (Ω) ≤ ϵ. 
+
+Step 2: Construction of αj . The above inequality is almost the desired result, but βj does not define a continuous functional L1(Ω; Rk) → R. The remainder of the proof is very similar to that of the proof of [27, Proposition A.6]; we include it here for convenience. By [27, Lemma A.2], there exists a continuous operator 
+
+Mδ : L1(Ω; Rk) → Cs(Ω; Rk) such that over the compact set K ⊂ Cs(Ω; Rk), we have sup 
+
+> u∈K
+
+∥u − M δ u∥Cs(Ω) → 0as δ → 0. Our goal is to define αj : L1(Ω; Rk) → R by αj (u) = βj (Mδ u) for suitably chosen δ > 0. Recall that, for fixed δ0 > 0, the set Kδ defined by Kδ =
+
+∪0≤δ≤δ0 Mδ (K) is a compact subset of Cs(Ω; Rk) by [27, Lemma A.4]. Note that for any j = 1 , . . . , J , by Assumptions 3.1 property (S3),together with the continuity of Ψ †, we have a continuous mapping βj : Kδ → R. Since Kδ is compact, it follows that there exists a modulus of continuity ω : [0 , ∞) → [0 , ∞), continuous in its argument and satisfying ω(0) = 0, such that 
+
+|βj (u) − βj (u′)| ≤ ω(∥u − u′∥Cs(Ω) ), ∀u, u ′ ∈ Kδ ,ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 29 
+
+holds for all j = 1 , . . . , J . It follows that 
+
+|βj (u) − βj (Mδ u)| ≤ ω(∥u − M δ u)∥Cs(Ω) ),
+
+for any 0 < δ ≤ δ0. By [27, Lemma A.2], Mδ u → u converges uniformly over 
+
+u ∈ K, so that we may conclude lim  
+
+> δ→0
+
+sup 
+
+> u∈K
+
+|βj (u) − βj (Mδ u)| ≤ lim  
+
+> δ→0
+
+ω(sup 
+
+> u∈K
+
+∥u − M δ u∥Cs(Ω) ) = 0 .
+
+In particular, we can choose δ > 0 sufficiently small, to ensure that αj (u) := 
+
+βj (Mδ u) satisfies (C.3) sup 
+
+> u∈K
+
+|βj (u) − αj (u)| ≤ ϵJ max j=1 ,...,J ∥ηj ∥Cs′ (Ω) 
+
+for all j = 1 , . . . , J . Since δ > 0, we also note that Mδ : L1(Ω; Rk) → Cs(Ω; Rk)is a continuous mapping, and hence αj = βj ◦ M δ is continuous as a mapping 
+
+αj : L1(Ω; Rk) → R.Step 3: (Conclusion). Combining the results of (C.2) and (C.3), we obtain sup 
+
+> u∈K
+
+Ψ†(u) −
+
+> J
+
+X
+
+> j=1
+
+αj (u)ηj Cs′ (Ω) 
+
+≤ sup 
+
+> u∈K
+
+Ψ†(u) −
+
+> J
+
+X
+
+> j=1
+
+βj (u)ηj Cs′ (Ω) 
+
++ sup 
+
+> u∈K
+> J
+
+X
+
+> j=1
+
+(βj (u) − αj (u)) ηj Cs′ (Ω) 
+
+≤ sup 
+
+> u∈K
+
+Ψ†(u) −
+
+> J
+
+X
+
+> j=1
+
+βj (u)ηj Cs′ (Ω) 
+
++ J max  
+
+> j=1 ,...,J
+
+∥ηj ∥Cs′ (Ω) max  
+
+> j=1 ,...,J
+
+sup 
+
+> u∈K
+
+|βj (u) − αj (u)|≤ 2ϵ. 
+
+Since ϵ > 0 was arbitrary, this proves the claim. □
+
+Appendix D. Proofs of Lemma 3.10 and 3.11 
+
+Before we proceed with the proofs, we will need the following lemma, which allows us to approximate certain integrals by the integral of a finite-dimensional neural network weighted by a positive function. 
+
+Lemma D.1. Let Ω be a bounded domain in Rd, and let K be compact in L1(Ω; Rk)
+
+and assume that MK := sup u∈K ∥u∥L∞ < ∞. Let ξ ∈ C(Ω; Rk) ∩ L1(Ω; Rk) be given and fixed. Furthermore, let ψ ∈ C(Ω; R≥0) be such that sup y∈Ω |ψ(y)| < ∞ and such that ψ is 0 only on a set of Lebesgue measure 0. Then for any ϵ > 0 there exists a neural network eR : Rk × Ω → R such that 
+
+sup 
+
+> u∈K
+
+Z
+
+> Ω
+
+eR(u(y), y )ψ(y) dy −
+
+Z
+
+> Ω
+
+u(y) · ξ(y) dy < ϵ. 
+
+Proof. Since ψ ≥ 0 on Ω and equals 0 only on a set of measure 0, we may assume without loss of generality that R 
+
+> Ω
+
+ψ(y) dy = 1 since the final layer of eR may be rescaled to account for the rescaling of ψ. Define Ω γ := {y ∈ Ω : ψ(y) < γ } and fix 
+
+γ such that MK∥ξ∥C(Ω) |Ωγ | < ϵ 
+
+> 4
+
+. Then define 
+
+ψγ (y) = max( ψ(y), γ ), y ∈ Ω.30 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+It holds that ψγ ∈ C(Ω). Choose a compact F ⊂ Ω, contained in the interior of Ω if Ω is closed, such that MK∥ξ∥C(Ω) |Ω \ F | < ϵ 
+
+> 4
+
+. Thus, F does not touch ∂Ω, which enables the cutoff function χ, that we now go on to define, to have space to deform continuously to 0. Define χ ∈ C(Ω; [0 , 1]) such that χ = 1 on F and 0 on ∂Ω. Then set 
+
+g(y) = 
+
+( χ(y)  
+
+> ψγ(y)
+
+, y ∈ Ω,
+
+0, y ∈ ∂Ω.
+
+Since ψγ is positive everywhere on Ω and χ is 0 on the boundary, g is continuous on Ω, and thus the function R : ( a, y ) 7 → (a · ξ(y)) g(y) is continuous on domain [−MK, M K]k × Ω. By universality of ordinary neural networks, i.e. Lemma A.2, there exists a network eR such that sup  
+
+> a∈[−MK,M K]k,y ∈Ω
+
+|R(a, y ) − eR(a, y )| < ϵ
+
+2 .
+
+We proceed with the bound. sup 
+
+> u∈K
+
+Z
+
+> Ω
+
+eR(u(y), y )ψ(y) dy −
+
+Z
+
+> Ω
+
+u(y) · ξ(y) dy
+
+≤ sup 
+
+> u∈K
+
+Z
+
+> Ω
+
+eR(u(y), y ) − R(u(y), y ) ψ(y) dy +
+
+Z
+
+> Ω
+
+R(u(y), y )ψ(y) − u(y) · ξ(y) dy
+
+≤ ϵ
+
+2 + sup 
+
+> u∈K
+
+Z
+
+> Ω
+
+u(y) · ξ(y)
+
+ χ(y)ψ(y)
+
+ψγ (y) − 1
+
+
+
+dy ,
+
+where we have used the normalization R 
+
+> Ω
+
+ψ(y) dy = 1. Since ψ(y)  
+
+> ψγ(y)
+
+≤ 1 and χ ≤ 1, the expression χ(y)ψ(y)  
+
+> ψγ(y)
+
+∈ [0 , 1]. Additionally, χ(y)ψ(y)  
+
+> ψγ(y)
+
+= 1 on F \ Ωγ , so we have   
+
+> χ(y)ψ(y)
+> ψγ(y)
+
+− 1 ≤ 1Ω\F + 1Ωγ . Therefore, sup 
+
+> u∈K
+
+Z
+
+> Ω
+
+u(y) · ξ(y)
+
+ χ(y)ψ(y)
+
+ψγ (y) − 1
+
+
+
+dy ≤ MK∥ξ∥C(Ω) (|Ω \ F | + |Ωγ |).
+
+By our choices of γ and F ,sup 
+
+> u∈K
+
+Z
+
+> Ω
+
+eR(u(y), y )ψ(y) dy −
+
+Z
+
+> Ω
+
+u(y) · ξ(y) dy < ϵ
+
+2 + ϵ
+
+4 + ϵ
+
+4 = ϵ. 
+
+□
+
+We also point out the following fact about continuous, nonzero functions. 
+
+Lemma D.2. Let Ω be a bounded set in Rd. Assume that η is continuous on Ω
+
+and not identically 0. Then for any ϵ > 0, there exists an open ball Γ ⊂ Ω and constant γ such that 
+
+∥γη − 1∥L∞(Γ) < ϵ. 
+
+Proof. The result follows directly from the continuity of η. □
+
+Before proceeding with the proof of Lemma 3.11, we define the standard mollifier. This definition is taken from the standard text [16, Appendix C.4]. ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 31 
+
+Definition D.3 (Standard Mollifier) . Let Ω be a bounded Lipschitz domain, and define Ω ϵ as in (B.1). We say that wϵ : Ω ϵ → R is the standard mollification of 
+
+w ∈ L1(Ω), if (D.1) wϵ := ρϵ ∗ w, in Ω ϵ for ρϵ(x) := 1
+
+ϵd ρ
+
+ xϵ
+
+
+
+,
+
+where 
+
+ρ(x) := 
+
+(C exp 
+
+ 1
+
+> |x|2−1
+
+
+
+, if |x| < 10, if |x| ≥ 1.
+
+is referred to as the standard mollifier . ♢
+
+We now restate and prove the following two lemmas, stated originally in Section 3.3. Since the proofs begin in the same way, we initiate the proofs together and make a note when they diverge. 
+
+Lemma 3.10. Let α : L1(Ω; Rk) → R be a continuous functional and let K ⊂
+
+L1(Ω; Rk) be a compact set consisting of bounded functions sup u∈K ∥u∥L∞(Ω) < ∞.Assume Ω ⊂ Rd is a bounded Lipschitz domain. Assume, in addition, that η ∈
+
+Cs′
+
+(Ω; Rk′
+
+) for integer s′ ≥ 0. Then for any ε > 0 there exists a nonlocal neural operator eα : L1(Ω; Rk) → Cs′
+
+(Ω; Rk′
+
+) as defined in Definition 2.1, with Assumption 2.2 on the activation satisfied with sσ = s′, such that 
+
+(3.3) sup 
+
+> u∈K
+
+∥α(u)η − eα(u)∥Cs′ (Ω) < ε 
+
+with a single hidden layer (M = 1) and with any single basis function pair ψ1,1 := η1
+
+and ϕ1,1 := η2 satisfying Assumptions 3.3. 
+
+Lemma 3.11. Let α : L1(Ω; Rk) → R be a continuous functional and let K ⊂
+
+L1(Ω; Rk) be a compact set consisting of bounded functions sup u∈K ∥u∥L∞(Ω) < ∞.Assume Ω ⊂ Rd is a bounded Lipschitz domain. Assume, in addition, that η ∈
+
+Cs′
+
+(Ω; Rk′
+
+) for integer s′ ≥ 0. Then for any ε > 0 there exists a nonlocal neural operator eα : L1(Ω; Rk) → Cs′
+
+(Ω; Rk′
+
+) as defined in Definition 2.1, with Assumption 2.2 on the activation satisfied with sσ = s′, such that 
+
+(3.4) sup 
+
+> u∈K
+
+∥α(u)η − eα(u)∥Cs′ (Ω) < ε, 
+
+where the final hidden layer contains η as an outer basis element, i.e. for some 
+
+m∗ ≤ M , ϕL,m ∗ := η with a corresponding inner basis function ψL,m ∗ ∈ L1(Ω) 
+
+satisfying (E2)-(E4) in Assumptions 3.3 and an earlier hidden layer contains at least one basis function pair η1 satisfying (E1)-(E4) and η2 satisfying (E2)-(E4). Proof of Lemmas 3.10 and 3.11. We can identify any u ∈ L1(Ω; Rk) with a func-tion in L1(B; Rk) for any set B ⊃ Ω via an extension of u(x) = 0 for x ∈ B \ Ω. Then the compact subset K ⊂ L1(Ω; Rk) can be identified with a compact subset of 
+
+L1(B; Rk). Let ρδ for δ > 0 be the standard mollifier of Definition D.3. We denote by uδ (x) = ( u ∗ ρδ )( x), x ∈ Ω, the mollification of u extended to B by 0 outside of Ω. Since K ⊂ L1(Ω; Rk) is compact, lim  
+
+> δ→0
+
+sup 
+
+> u∈K
+
+∥u − uδ ∥L1(Ω; Rk ) = 0 .32 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+Since α : L1(Ω; Rk) → R is continuous, it follows that αδ : L1(Ω; Rk) → R defined by αδ (u) = α(uδ ) for δ > 0, converges uniformly over K as δ → 0: (D.2) lim  
+
+> δ→0
+
+sup 
+
+> u∈K
+
+|α(u) − αδ (u)| ≤ lim  
+
+> δ→0
+
+sup 
+
+> u∈K
+
+|α(u) − α(uδ )| = 0 .
+
+Let {ξj }∞ 
+
+> j=1
+
+be any orthonormal basis of L2(Ω; Rk), which we may additionally choose to be smooth; ξj ∈ C∞(Ω; Rk). Since L2(Ω) ,→ L1(Ω) and {uδ : u ∈ K} is compact in L2(Ω), due to being the image of compact K in L1 under the continuous map of the mollification, it holds that (D.3) lim  
+
+> J→∞
+
+sup 
+
+> u∈K
+
+∥uδ −
+
+> J
+
+X
+
+> j=1
+
+⟨uδ , ξ j ⟩ξj ∥L1(Ω; Rk ) = 0 .
+
+Then define 
+
+αδ,J (u) = α
+
+
+
+> J
+
+X
+
+> j=1
+
+⟨uδ , ξ j ⟩ξj
+
+ .
+
+Furthermore, using evenness of the mollifier, we have the identity 
+
+⟨uδ , ξ j ⟩ =
+
+Z
+
+> Ω
+
+uδ (y) · ξj (y) dy =
+
+Z
+
+> Rd
+
+(u ∗ ρδ )( y) · ξj (y) dy(D.4a) =
+
+Z
+
+> Rd
+
+u(y) · (ξj ∗ ρδ ) dy =
+
+Z
+
+> Ω
+
+u(y) · ξj,δ (y) dy(D.4b) with the convention that u and ξj are expanded by 0 outside of Ω, and 
+
+ξj,δ (y) = ( ξj ∗ ρδ )( y), y ∈ Ω.(D.5) Thus, we may rewrite (D.6) αδ,J (u) = α
+
+ JX
+
+> j=1
+
+⟨u, ξ j,δ ⟩ξj
+
+
+
+From (D.2), (D.3), and continuity of α, for any ϵα > 0, it holds that for δ = δ(K) > 0small enough and J = J(δ, K) ∈ N large enough, (D.7) sup 
+
+> u∈K
+
+|α(u) − αδ,J (u)| ≤ ϵα.
+
+We will thus seek to approximate αδ,J (u)η by the NNO architecture. Recall that 
+
+η1 is the single basis function satisfying properties (E1)–(E4), and thus satisfies the conditions on ψ in Lemma D.1. Additionally, ξj,δ ∈ C(Ω; Rk) ∩ L1(Ω; Rk) and thus satisfies the conditions on ξ for the same lemma. Parallelizing the networks constructed in Lemma D.1, for any ϵ′ > 0, there exists a neural network R′ :
+
+Rk × Ω → RJ , ( v, x ) 7 → R′(v, x ) = ( R1(v, x ), . . . , R J (v, x )) such that (D.8) sup 
+
+> u∈K
+
+Z
+
+> Ω
+
+Rj (u(y), y )η1(y) dy −
+
+Z
+
+> Ω
+
+u(y) · ξj,δ (y) dy < ϵ ′
+
+for j = 1 , . . . , J . We assume ϵ′ < 1. It is at this point that the two proofs diverge. 
+
+Second half of the proof of Lemma 3.10: Recall that here η1 satisfies (E1)-(E4) and η2 ∈ Cs′
+
+(Ω) and η2̸ = 0 on Ω. Without loss of generality we may assume that 
+
+η2 > 0 on Ω. Since Ω is compact and η2 is continuous and positive, 
+
+η− 
+
+> 2
+
+:= min 
+
+> x∈Ω
+
+η2(x) > 0, η+2 := max 
+
+> x∈Ω
+
+η2(x) < ∞.ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 33 
+
+We retain R′ = ( R1, . . . , R J ) and (D.8) from the first half of the proof, and abbreviate cj := ⟨u, ξ j,δ ⟩ and bcj := R 
+
+> Ω
+
+Rj (u(y), y )η1(y) dy so that (D.8) reads sup u∈K max j∈[J] |bcj − cj | ≤ ϵ′ with ϵ′ < 1. We have that max  
+
+> j∈[J]
+
+|cj | ≤ ∥ uδ ∥ ≤ ∥ u∥ ≤ sup 
+
+> u∈K
+
+∥u∥ < ∞.
+
+As a result, max j∈[J] |bcj | ≤ sup u∈K ∥u∥ + 1 =: M1 uniformly over K. By Lemma A.2, for any ϵη > 0, there exists a finite-dimensional neural network Rη such that (D.9) ∥Rη − η∥Cs′ (Ω) < ϵ η ≤ 1.
+
+Define Me = ∥η∥L∞(Ω) + 1, which serves as a bound on ∥Rη ∥L∞(Ω) . Define the lifting layer of the NNO R : u(x) 7 → R(u(x), x ) by (D.10) R(u(x), x ) = ( R1(u(x), x ), . . . , R J (u(x), x ), 1, R η (x)) .
+
+We draw attention to the fact that the 1 is easily achieved exactly due to the final layer of finite-dimensional neural networks being affine in Definition A.1. Setting the bias term equal to this value of y and the linear weights to 0 for the channel corresponding to 1 achieves the value exactly for every input. We set the single hidden layer of our NNO as (D.11) (L1v)( x) = σ
+
+
+
+A1(W1v(x) + T1,0
+
+Z
+
+> Ω
+
+v(y)η1(y) dy η 2(x)) + b1
+
+
+
+.
+
+We set T1,0 to be a diagonal matrix, equal to the identity IJ for channels 1 , . . . , J ,equal to 1
+
+> ∥η1∥L1(Ω)
+
+on channel J + 1 and equal to 0 on the final k′ entries (corre-sponding to the Rη block). We set W1 to copy the final k′ entries ( Rη block) and 0 the other entries. The end result of these choices is that before applying A1 and 
+
+b1 and the activation, we obtain a vector 
+
+z(x) := ( bc1η2(x), . . . bcJ η2(x), η 2(x), R η (x)) ,
+
+which for all u ∈ K, x ∈ Ω, lies in the box 
+
+B : [ −M1η+2 , M 1η+2 ]J × [η− 
+
+> 2
+
+, η +2 ] × [−Me, M e]k′
+
+.
+
+Note that nonnegativity of η1 is used to achieve η2(x) in the second-to-last channel of z. Define Cz := sup u∈K ∥z∥Cs′ (Ω) . Set 
+
+eQ({cj }Jj=1 ) = α
+
+ JX
+
+> j=1
+
+cj ξj
+
+
+
+.
+
+eQ is continuous on [ −M1, M 1]J , so by Lemma A.2, for any ϵQ, there exists a neural network Q0 with 
+
+∥Q0 − eQ∥L∞([ −M1,M 1]J ) ≤ ϵQ < 1.
+
+Define the bound MQ0 = ∥Q0∥L∞([ −M1,M 1]J ) ≤ ∥ eQ∥L∞([ −M1,M 1]J ) + 1. Define the function G : B → Rk′
+
+by 
+
+G({aj }Jj=1 , b, e ) = Q0
+
+n aj
+
+b
+
+oJj=1 
+
+!
+
+e. 34 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+Since b ≥ η− 
+
+> 2
+
+> 0 on B, the map ( aj , b ) 7 → aj /b is C∞ on that domain, and σ ∈ C∞
+
+by assumption, so Q0 ∈ C∞([ −M1, M 1]J ) and G ∈ C∞(B). By Lemma A.2, there exists a finite-dimensional neural network N such that (D.12) ∥N − G∥Cs′ (B) < ϵ N .
+
+Set A1, b 1 of L1 defined in (D.11) to be the first layer weights and bias of N ,with Q realizing its remaining layers. Then (Q ◦ L 1 ◦ R )( u)( x) = N (z(x)) =: eα(u)( x).
+
+We note that M1, η − 
+
+> 2
+
+, η +2 , M e, B, and MQ0 , depend only on K, η, η2, δ, J, and on the fact that we assume the initial bounds of ϵ′, ϵ η , ϵ Q as being ≤ 1; they are thus unaffected when these bounds are subsequently decreased below 1. We now estimate the error bound. Note that z is a Cs′
+
+(Ω; RJ+1+ k′
+
+) map with components bcj η2, η2, and Rη ∈ Cs′
+
+. We decompose 
+
+∥α(u)η − eα(u)∥Cs′ (Ω) ≤ ∥N ◦ z − G ◦ z∥Cs′ (Ω) 
+
+| {z }
+
+> (I)
+
++ ∥G ◦ z − α(u)η∥Cs′ (Ω) 
+
+| {z }
+
+> (II)
+
+.
+
+For (I), by multivariate Fa` a di Bruno’s formula, (I) ≤ cs′,d (1 + Cz )s′
+
+ϵN =: CN ϵN ,
+
+where cs′,d > 0 is a constant depending on s′ and d. For (II), due to the trick of obtaining a channel with η2(x) exactly, the division is exact, and since η2(x) ≥
+
+η− 
+
+> 2
+
+> 0, we have that 
+
+G(z(x)) = Q0
+
+n bcj η2(x)
+
+η2(x)
+
+oJj=1 
+
+
+
+Rη (x) = Q0({bcj })Rη ,
+
+with Q0({bcj }) independent of x. Then (II) = ∥Q0({bcj }Jj=1 )Rη − α(u)η∥Cs′ (Ω) 
+
+≤ | Q0({bcj )}Jj=1 |∥ Rη − η∥Cs′ (Ω) + |Q0({bcj }Jj=1 ) − α(u)|∥ η∥Cs′ (Ω) 
+
+≤ MQ0 ϵη + |Q0({bcj }Jj=1 ) − α(u)|∥ η∥Cs′ (Ω) .
+
+We have that 
+
+|Q0({bcj }Jj=1 ) − α(u)| ≤ | Q0({bcj }Jj=1 ) − eQ({bcj }Jj=1 )|
+
++ | eQ({bcj }Jj=1 ) − eQ({cj }Jj=1 )| + | eQ({cj }Jj=1 ) − α(u)|≤ ϵQ + |α(
+
+> J
+
+X
+
+> j=1
+
+bcj ξj ) − α(
+
+> J
+
+X
+
+> j=1
+
+cj ξj )| + |αδ,J (u) − α(u)|.
+
+Let ωα be the modulus of continuity of α. Taking the supremum over K, we have sup 
+
+> u∈K
+
+(II) ≤ MQ0 ϵη + sup 
+
+> u∈K
+
+ϵQ + |α(
+
+> J
+
+X
+
+> j=1
+
+bcj ξj ) − α(
+
+> J
+
+X
+
+> j=1
+
+cj ξj )| + |αδ,J (u) − α(u)|
+
+!
+
+∥η∥Cs′ (Ω) 
+
+≤ MQ0 ϵη + ( ϵQ + ωα(|Ω|1/2J1/2ϵ′) + ϵα)∥η∥Cs′ (Ω) ,
+
+where we have used in the final inequality the conversion from the bound 
+
+∥
+
+> J
+
+X
+
+> j=1
+
+(bcj − cJ )ξj ∥L2(Ω) ≤ J1/2ϵ′ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 35 
+
+to obtain the bound 
+
+∥
+
+> J
+
+X
+
+> j=1
+
+(bcj − cJ )ξj ∥L1(Ω) ≤ | Ω|1/2J1/2ϵ′,
+
+using Cauchy-Schwarz. Collecting (I) and (II), sup 
+
+> u∈K
+
+∥α(u)η − eα(u)∥Cs′ (Ω) ≤ CN ϵN + MQ0 ϵη + ( ϵQ + ωα(|Ω|1/2J1/2ϵ′) + ϵα)∥η∥Cs′ (Ω) .
+
+Given ε, first fix δ, J via (D.7) such that ϵα∥η∥Cs′ (Ω) < ε/ 5. The constants CN ,
+
+MQ0 , and the domain B are then determined. Choosing 
+
+ϵN < ε 
+
+> 5CN
+
+, ϵη < ε
+
+> 5MQ0
+
+, ϵQ < ε 
+
+> 5∥η∥Cs′(Ω)
+
+, ϵ′ with ωα(|Ω|1/2√Jϵ ′) < ε 
+
+> 5∥η∥Cs′(Ω)
+
+gives sup u∈K ∥α(u)η − eα(u)∥Cs′ (Ω) < ε .
+
+Second half of the proof of Lemma 3.11: 
+
+We may assume η is not identically zero, since if it were we could set all NNO weights to be zero and satisfy the lemma statement trivially. Since η and ψL,m ∗ are both continuous on Ω, η is not identically 0, and ψL,m ∗ equals 0 only on a set of Lebesgue measure 0, there exists an open ball bΓ ⊂ Ω on which neither η nor ψL,m ∗
+
+is equal to 0. It is important to note that this property implies that ψL,m ∗ does not change sign on bΓ. For some ϵγ > 0, let Γ be the open ball in bΓ described in Lemma D.2 for η2 on bΓ, and assume Γ has radius r. We then have that for some γ,(D.13) ∥γη 2 − 1∥L∞(Γ) < ϵ γ .
+
+For δ1 > 0, let eΓδ1 be the ball that shares a center with Γ and has radius r − δ1;similarly, let eΓδ1/2 be the ball that shares a center with Γ and has radius r − δ1 
+
+> 2
+
+.Assume δ1 < r 
+
+> 2
+
+. Let Γ δ1 be the standard δ1 
+
+> 2
+
+-mollification of the indicator function 
+
+1eΓ δ12
+
+(see Definition D.3). Clearly, Γ δ1 = 1 inside eΓδ1 and 0 on Ω \ Γ; furthermore, Γδ1 ∈ C∞(Ω). Since Γ δ1 is a continuous map from Ω → R, for any ϵ0 > 0, by Lemma A.2 there exists a neural network eR such that (D.14) ∥Γδ1 − eR∥L∞(Ω) < ϵ 0.
+
+For convenience, assume ϵ0 < 12 such that the image of Ω under eR is contained in [ − 12 , 32 ]. We note that without loss of generality, we can assume that the η1
+
+and η2 pair belong to the first hidden layer, since any preceding hidden layers could simply have the weights T ≡ 0 and the remaining finite-dimensional neural network form either part of the lifting neural network R or approximate the identity, by assumption on σ. Finally, set the initial neural network R of the NNO to be the parallelization of R′ from (D.8) and eR. Thus, R : Rk × Ω → RJ+1 . Let the first hidden layer of our NNO have the form (D.15) (L1v)( x) = σ
+
+
+
+A1(W1v(x) + T1,1
+
+Z
+
+> Ω
+
+v(y)η1(y) dy η 2(x)) + b1
+
+
+
+,
+
+where W1 = diag([ 0J , 1]), T1,1 = diag([ γ1J , 0]), and A1 and b1 are to be defined later. As in the proof of Lemma 3.10, we abbreviate cj := ⟨u, ξ j,δ ⟩ and bcj := R 
+
+> Ω
+
+Rj (u(y), y )η1(y) dy so that (D.8) reads sup u∈K max j∈[J] |bcj −cj | ≤ ϵ′ with ϵ′ < 1. 36 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+The end result of the choices for the first layer (D.15) and R is that before applying 
+
+A1 and b1 and the activation, we obtain a vector 
+
+z(x) = [ bc1γη 2(x), . . . , bcJ γη 2(x), eR(x)] .
+
+Choose M1 > 0 such that {z(x)| u ∈ K, x ∈ Ω} ⊂ [−M1, M 1]J × [− 12 , 32 ], which is possible since sup y∈Ω |u(y)| < ∞ and sup y∈Ω |η2(y)| < ∞ by assumption. Similarly, choose M2 > 0 such that the image of the compact set K ⊂ L1(Ω; Rk)under the mapping (u, x ) 7 → (c1γη 2(x), . . . , c J γη 2(x)) is contained in [ −M2, M 2]J for all u ∈ K and x ∈ Ω. Let M ∗ = max {M1, M 2}.Now define (D.16) eQ : {cj }Jj=1 7 → α
+
+
+
+> J
+
+X
+
+> j=1
+
+cj ξj
+
+ ,
+
+where {cj }Jj=1 ∈ RJ . Let Mα be such that the image of [ −M ∗, M ∗]J under eQ is contained in [ −Mα, M α]. Let id be the identity function, and let ×(a, b ) := ab 
+
+denote the scalar multiplication operator between the outputs of two functions a
+
+and b. By Lemma A.2, there exists a neural network Q such that for any ϵ2 > 0, (D.17) ∥Q − × ( eQ, id) ∥L∞([ −M ∗,M ∗]J ×[− 12 , 32 ]) < ϵ 2.
+
+Let D be the depth of Q and define MQ such that the image of [ −M ∗, M ∗]J ×[− 12 , 32 ]under Q and under ×( eQ, id) is contained in [ −MQ, M Q]. We may set the weight choices A1 and b1 of L1 in (D.15) as well as {Wi}Di=2 ,and {bi}Di=2 of hidden layers L2, . . . , LD so that LD ◦ · · · ◦ L 2 ◦ σ(A1v + b1) exactly emulates the neural network Q(v) of (D.17) for input v. Within these layers, we may simply set Tℓ,m ≡ 0. Set the number of hidden layers L = D + 1. By assumption η is one of the basis elements ϕL,m ∗ for some m∗ ≤ M , and the corresponding ψL,m ∗ is such that 
+
+ReΓδ1
+
+ψL,m ∗ (y) dy̸ = 0 for any δ1 since we chose Γ ⊂ bΓ to be a set on which ψL,m ∗
+
+did not equal 0. We may then set the last hidden layer LL of the NNO as (D.18) LL(v) = σ
+
+
+
+AL
+
+  MX
+
+> m=1
+
+TL,m 
+
+Z
+
+> Ω
+
+v(y)ψL,m (y) dy ϕ L,m 
+
+ + bL
+
+
+
+,
+
+where TL,m = 0 for m̸ = m∗ and TL,m ∗ = 1R   
+
+> eΓδ1
+> ψL,m ∗(y)dy
+
+. The next step is to ensure that the set 
+
+Bm∗ := {TL,m ∗
+
+Z
+
+> Ω
+
+v(y)ψL,m ∗ (y) dy η (x) : v(y) ∈ [−MQ, M Q] for y ∈ Ω, x ∈ Ω}
+
+is bounded. We have sup 
+
+> x∈Ω
+
+|TL,m ∗
+
+Z
+
+> Ω
+
+v(y)ψL,m ∗ (y) dy η (x)| ≤ | TL,m ∗ |MQ∥η∥L∞(Ω) ∥ψL,m ∗ ∥L1(Ω) .(D.19) The coefficient TL,m ∗ is bounded for fixed m∗, δ1, and Γ, and the remaining quan-tities are bounded by assumption. Thus we deduce there exists Mm∗ such that 
+
+Bm∗ ⊂ [−Mm∗ , M m∗ ]k′
+
+. By Assumptions 2.2, for any ϵI , there exists an identity approximating neural network I that preserves 0 such that (D.20) ∥I − id ∥Cs′ ([ −Mm∗ ,M m∗ ]k′ ) < ϵ I .ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 37 
+
+Let I define the parameters AL and bL as well as those of the output neural network 
+
+Q. Denote by eα the resulting constructed NNO: 
+
+eα(u) := Q ◦ L L ◦ · · · ◦ L 1 ◦ R (u).
+
+We now prove the approximation capability of eα.sup 
+
+> u∈K
+
+∥α(u)η − eα(u)∥Cs′ (Ω) ≤ sup 
+
+> u∈K
+
+∥α(u)η − αδ,J (u)η∥Cs′ (Ω) + sup 
+
+> u∈K
+
+∥αδ,J (u)η − eα(u)∥Cs′ (Ω) 
+
+≤ ϵα∥η∥Cs′ (Ω) + sup 
+
+> u∈K
+
+∥αδ,J (u)η − eα(u)∥Cs′ (Ω) (D.21) by (D.7). The first term is bounded by assumption on η. We expand the second term: sup 
+
+> u∈K
+
+∥αδ,J (u)η − eα(u)∥Cs′ (Ω) = sup 
+
+> u∈K
+
+∥αδ,J (u)η − Q ◦ L L ◦ · · · ◦ L 1 ◦ R(u)∥Cs′ (Ω) .
+
+Putting together our definitions of Q, LL, . . . , L1, and R and letting ψ := ψL,m ∗
+
+we have that 
+
+Q◦L L ◦ · · · ◦ L 1 ◦ R (u) = 
+
+I TL,m ∗
+
+Z
+
+> Ω
+
+Q γ
+
+Z
+
+> Ω
+
+R′(u(y′), y ′)η1(y′) dy′ η2(y), eR(y)ψ(y) dy η .(D.22) The remainder of the proof simply involves assembling the individual bounds on each component one at a time. Note that we have already verified that the argument of each neural network – specifically, the arguments of each of I, Q, R′, and eR – falls within the correct domain of approximation. For visual clarity in the remainder of the bound, let af denote the argument of function f in the right-hand side of (D.22); e.g. aR′ denotes u(y′), y ′. Then sup 
+
+> u∈K
+
+∥αδ,J (u)η − eα(u)∥Cs′ (Ω) ≤ sup 
+
+> u∈K
+
+∥αδ,J (u)η − aI ∥Cs′ (Ω) 
+
+| {z }
+
+> (I)
+
++ sup 
+
+> u∈K
+
+∥I (aI ) − aI ∥Cs′ (Ω) .
+
+(D.23) For the second term, sup 
+
+> u∈K
+
+∥I (aI ) − aI ∥Cs′ (Ω) ≤ cs′,d ϵI (1 + ∥aI ∥Cs′ (Ω) )
+
+≤ cs′,d ϵI (1 + |TL,m ∗ |∥ ψ∥L1(Ω) MQ∥η∥Cs′ (Ω) )
+
+≤ C1ϵI(D.24) by Fa` a di Bruno’s formula, (D.19), and (D.20), where 
+
+C1 = cs′,d (1 + CΓ,ψ ∥ψ∥L1(Ω) MQ∥η∥Cs′ (Ω) ), and CΓ,ψ = sup 0<δ 1< r  
+
+> 2
+> 1R
+> eΓδ1
+> ψ(z)dz
+
+<
+
+∞, the bound on |TL,m ∗ |, holds since ψ̸ = 0 does not change sign on Γ and is continuous and bounded on Ω. Critically, we may take δ1 → 0 without affecting 
+
+CΓ,ψ . For (I), sup 
+
+> u∈K
+
+∥αδ,J (u)η − aI ∥Cs′ (Ω) 
+
+≤ sup 
+
+> u∈K
+
+αδ,J (u) − TL,m ∗
+
+Z
+
+> Ω
+
+Q(aQ)ψ(y) dy ∥η∥Cs′ (Ω) .(D.25) 38 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+The quantity ∥η∥Cs′ (Ω) is bounded by assumption. Bounding the first factor, sup 
+
+> u∈K
+
+αδ,J (u) − TL,m ∗
+
+Z
+
+> Ω
+
+Q(aQ)ψ(y) dy ≤
+
+sup 
+
+> u∈K
+
+αδ,J (u) − TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+
+
+> J
+
+X
+
+> j=1
+
+bcj γη 2(y)ξj
+
+ e R(y)ψ(y) dy
+
+| {z }
+
+> (II)
+
++ |TL,m ∗ | sup 
+
+> u∈K
+
+Z
+
+> Ω
+
+α
+
+
+
+> J
+
+X
+
+> j=1
+
+bcj γη 2(y)ξj
+
+ e R(y)ψ(y) dy −
+
+Z
+
+> Ω
+
+Q(aQ)ψ(y) dy .
+
+The second term is bounded by (D.26) ϵ2|TL,m ∗ |∥ ψ∥L1(Ω) = C2ϵ2
+
+by equation (D.17), where C2 = CΓ,ψ ∥ψ∥L1(Ω) . Continuing with the bound on (II): sup 
+
+> u∈K
+
+αδ,J (u) − TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+
+
+> J
+
+X
+
+> j=1
+
+bcj γη 2(y)ξj
+
+ e R(y)ψ(y) dy
+
+≤ sup 
+
+> u∈K
+
+αδ,J (u) − TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+
+
+> J
+
+X
+
+> j=1
+
+bcj γη 2(y)ξj
+
+ Γδ1 (y)ψ(y) dy
+
++ |TL,m ∗ |ϵ0∥ψ∥L1(Ω) Mα,(D.27) by (D.14). Let C3 = CΓ,ψ ∥ψ∥L1(Ω) Mα. Continuing to bound the first term in line (D.27), sup 
+
+> u∈K
+
+αδ,J (u) − TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+
+
+> J
+
+X
+
+> j=1
+
+bcj γη 2(y)ξj
+
+ Γδ1 (y)ψ(y) dy =
+
+≤ sup 
+
+> u∈K
+
+αδ,J (u) − TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+ JX
+
+> j=1
+
+bcj ξj
+
+
+
+Γδ1 (y)ψ(y) dy
+
+| {z }
+
+> (III)
+
++ sup 
+
+> u∈K
+
+TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+ JX
+
+> j=1
+
+bcj ξj
+
+
+
+Γδ1 (y)ψ(y) dy
+
+− TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+ JX
+
+> j=1
+
+bcj γη 2(y)ξj
+
+
+
+Γδ1 (y)ψ(y) dy .
+
+The second supremum term is bounded by 
+
+|TL,m ∗ |∥ ψ∥L1(Γ) sup 
+
+> u∈K
+
+sup 
+
+> y∈Γ
+
+α  JX
+
+> j=1
+
+bcj ξj
+
+ − α  JX
+
+> j=1
+
+bcj γη 2(y)ξj
+
+ .(D.28) ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 39 
+
+Let ωα be the modulus of continuity of α. From the orthonormality of ξj in L2(Ω) and H¨ older’s inequality, it holds that 
+
+∥
+
+> J
+
+X
+
+> j=1
+
+bcj (1 − γη 2(y)) ξj ∥L1(Ω) ≤ | Ω|1/2
+
+> J
+
+X
+
+> j=1
+
+|bcj || 1 − γη 2(y)|,
+
+and using (D.8) and (D.13), we may then bound (D.28) by (D.29) 
+
+|TL,m ∗ |∥ ψ∥L1(Γ ) sup 
+
+> u∈K
+
+ωα(ϵγ |Ω|1/2J max 
+
+> j∈[J]
+
+(|⟨ u, ξ j,δ ⟩| +1)) ≤ | TL,m ∗ |∥ ψ∥L1(Γ) ωα(ϵγ CΩ,J,δ ).
+
+Next, we show that 
+
+|TL,m ∗ |∥ ψ∥L1(Γ) =
+
+R 
+
+> Γ
+
+|ψ(y)| dy
+
+| ReΓδ1
+
+ψ(y) dy|
+
+may be bounded independently of Γ given fixed bΓ through sufficiently small choice of δ1. Since ψ does not change sign on bΓ, write | ReΓδ1
+
+ψ(y) dy| = ReΓδ1
+
+|ψ(y)| dy =
+
+R 
+
+> Γ
+
+|ψ(y)| dy − R
+
+> Γ\eΓδ1
+
+|ψ(y)| dy ≥ R 
+
+> Γ
+
+|ψ(y)| dy − ∥ ψ∥L∞(Ω) dω drd−1δ1, where ωd is the volume of the unit ball in Rd, and we have used the fact that the volume of the shell Γ \ eΓδ1 is upperbounded by dω drd−1δ1. Since ψ is continuous and does not equal 0 on Γ, R 
+
+> Γ
+
+|ψ(y)| dy > 0, so that δ∗ 
+
+> 1
+
+(Γ) :=    
+
+> R
+> Γ|ψ(y)|dy
+> 2∥ψ∥L∞(Ω) dω drd−1
+
+. Then for any δ1
+
+such that 0 < δ 1 ≤ δ∗ 
+
+> 1
+
+(Γ), we have |TL,m ∗ |∥ ψ∥L1(Γ) ≤ 2, so (D.29) becomes simply (D.30) |TL,m ∗ |∥ ψ∥L1(Γ) sup 
+
+> u∈K
+
+ωα(ϵγ |Ω|1/2J max 
+
+> j∈[J]
+
+(|⟨ u, ξ j,δ ⟩| + 1)) ≤ 2ωα(ϵγ CΩ,J,δ ),
+
+so long as we choose δ1 < δ ∗ 
+
+> 1
+
+(Γ) after choosing Γ. Now having dealt with the approximation of 1 by γη 2 on Γ, we continue to bound term (III): sup 
+
+> u∈K
+
+αδ,J (u) − TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+ JX
+
+> j=1
+
+Z
+
+> Ω
+
+Rj (aRj )η1(y′) dy′ ξj
+
+
+
+Γδ1 (y)ψ(y) dy
+
+≤ sup 
+
+> u∈K
+
+αδ,J (u) − TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+ JX
+
+> j=1
+
+⟨u, ξ j,δ ⟩ ξj
+
+
+
+Γδ1 (y)ψ(y) dy
+
+| {z }
+
+> (IV)
+
++ sup 
+
+> u∈K
+
+TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+ JX
+
+> j=1
+
+Z
+
+> Ω
+
+Rj (aRj )η1(y′) dy′ ξj
+
+
+
+Γδ1 (y)ψ(y) dy
+
+− TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+ JX
+
+> j=1
+
+⟨u, ξ j,δ ⟩ ξj
+
+
+
+Γδ1 (y)ψ(y) dy
+
+≤ (IV) + |TL,m ∗ |∥ ψ∥L1(Ω) ωα(J1/2ϵ′|Ω|1/2)(D.31) 40 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+by (D.8) and another application of H¨ older’s inequality within the argument of ωα.Set C4 = CΓ,ψ ∥ψ∥L1(Ω) . We can see that, within (IV), 
+
+TL,m ∗
+
+Z
+
+> Ω
+
+α
+
+
+
+> J
+
+X
+
+> j=1
+
+⟨u, ξ j,δ ⟩ξj
+
+ Γδ1 (y)ψ(y) dy
+
+= α
+
+
+
+> J
+
+X
+
+> j=1
+
+⟨u, ξ j,δ ⟩ξj
+
+ 
+
+1 + 
+
+Z
+
+> Γ\eΓδ1
+
+1
+
+ReΓδ1
+
+ψ(z) dz ψ(y)Γ δ1 (y) dy
+
+
+
+.
+
+Since α(PJj=1 ⟨u, ξ j,δ ⟩ξj ) = αδ,J (u) by definition, so finally we have that (IV) ≤ sup 
+
+> u∈K
+
+|αδ,J (u)|
+
+Z
+
+> Γ\eΓδ1
+
+1
+
+ReΓδ1
+
+ψ(z) dz ψ(y)Γ δ1 (y) dy
+
+≤ Mδ,J ∥ψ∥L∞(Ω) CΓ,ψ ωddr d−1δ1,(D.32) where Mδ,J = sup u∈K |αδ,J (u)| < ∞ by continuity of αδ,J and compactness of K, ωd
+
+is the volume of the unit ball in Rd, and we have used the fact that the volume of the shell Γ \ eΓδ1 is upperbounded by dω drd−1δ1. Let C5 = Mδ,J ∥ψ∥L∞(Ω) CΓ,ψ ωddr d−1.Bringing together the bounds of all the terms we have obtained, from equations (D.23), (D.24), (D.25), (D.26), (D.27), (D.30), (D.31), and (D.32), we have sup 
+
+> u∈K
+
+∥αδ,J (u)η − eα(u)∥Cs′ (Ω) ≤ C1ϵI + ∥η∥Cs′ (Ω) 
+
+
+
+C2ϵ2 + C3ϵ0
+
++ 2 ωα(ϵγ CΩ,J,δ ) + C4ωα(J1/2ϵ′|Ω|1/2) + C5δ1
+
+
+
+The choices of Ω, δ, s′, η, m∗, ψ, bΓ, and J are fixed. For any ε′ > 0, we then may choose ϵγ such that ωα(ϵγ CΩ,J,δ ) ≤ ε′ 
+
+> 14 ∥η∥Cs′(Ω)
+
+. The choice of ϵγ deter-mines Γ, γ, and r, which determines the value of CΓ,ψ as well as the domain bounds M ∗, Mα, and MQ. Then constants C1, C2, C3, C4, and C5 are deter-mined. Choose ϵ′ such that ωα(J1/2ϵ′|Ω|1/2) ≤ ε′ 
+
+> 7C4∥η∥Cs′(Ω)
+
+. We choose δ1 such that δ1 ≤ min 
+
+  
+
+> ε′
+> 7∥η∥Cs′(Ω) C5
+
+, r 
+
+> 2
+
+, δ ∗ 
+
+> 1
+
+(Γ) 
+
+
+
+, ϵ2 such that ϵ2 < ε′ 
+
+> 7C2∥η∥Cs′(Ω)
+
+, ϵ0 such that 
+
+ϵ0 < ε′ 
+
+> 7C3∥η∥Cs′(Ω)
+
+, and ϵI such that ϵI < ε′ 
+
+> 7C1
+
+. Combining this result with (D.7), we have sup 
+
+> u∈K
+
+∥α(u)η − eα(u)∥Cs′ (Ω) ≤ sup 
+
+> u∈K
+
+∥α(u)η − αδ,J (u)η∥Cs′ (Ω) + sup 
+
+> u∈K
+
+∥αδ,J η − eα(u)∥Cs′ (Ω) 
+
+≤ sup 
+
+> u∈K
+
+|α(u) − αδ,J (u)|∥ η∥Cs′ (Ω) + ε′
+
+≤ ϵα∥η∥Cs′ (Ω) + ε′.
+
+Choosing ε′ < ε 
+
+> 2
+
+and ϵα ≤ ε 
+
+> 2∥η∥Cs′(Ω)
+
+, we have the desired result (3.4). 
+
+□
+
+Appendix E. Eigenfunctions of the Laplacian 
+
+Here we state two lemmas related to approximation by sum of nonlinear func-tionals and eigenfunctions of Laplacian. The first lemma gives a convergence result for projection onto the basis of the eigenfunctions of the Laplacian. Though results ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 41 
+
+of this type are generally well-known [16, 17], we were unable to find a proof for this particular case in the literature, so we have included a proof here. We note that the compact support assumption of the set to be approximated is essential since, by construction, projection onto the eigenfunctions of the Laplacian nullifies at the boundary the projected function w and every power ∆ kw for integer k ≥ 0. 
+
+Lemma E.1 (Projection onto the Eigenfunctions of the Laplacian) . Let Ω be a bounded Lipschitz domain in Rd. Let W be a bounded set in Ckc (Ω) , which is the subspace of Ck(Ω) whose functions have compact support in Ω. Assume k > d +1 is an integer. Let {λ1, η 1}, {λ2, η 2}, . . . be the eigenpairs of the Laplacian on Ω subject to homogeneous Dirichlet boundary conditions, ordered such that 0 < λ 1 ≤ λ2, · · · .Let PJ w = PJj=1 ⟨w, η j ⟩L2(Ω) ηj be the projection of w onto the first J eigenfunctions over Ω. Then the approximation via the projection PJ converges uniformly in C(Ω) 
+
+as J → ∞ :
+
+lim  
+
+> J→∞
+
+sup 
+
+> w∈W
+
+w −
+
+> J
+
+X
+
+> j=1
+
+⟨w, η j ⟩L2(Ω) ηj C(Ω) 
+
+= 0 .
+
+Proof. Let eJ = w − PJ w = P∞
+
+> j=J+1
+
+⟨w, η j ⟩L2(Ω) ηj since {ηj }∞ 
+
+> j=1
+
+form a basis for 
+
+L2(Ω). We recall that ηj ∈ C∞(Ω) ∩ C(Ω), and ηj = 0 on ∂Ω [16]. We bound each inner product individually via 
+
+⟨w, η j ⟩ =
+
+Z
+
+> Ω
+
+wη j dx
+
+= −
+
+Z
+
+> Ω
+
+1
+
+λj
+
+w∆ηj dx
+
+= 1
+
+λj
+
+Z
+
+> Ω
+
+∇w · ∇ ηj dx − 1
+
+λj
+
+Z
+
+> ∂Ω
+
+w(∇ηj · bn) dx
+
+= 1
+
+λj
+
+Z
+
+> ∂Ω
+
+ηj (∇w · bn) dx − 1
+
+λj
+
+Z
+
+> Ω
+
+ηj ∇ · (∇w) dx
+
+= − 1
+
+λj
+
+Z
+
+> Ω
+
+ηj ∆w dx. 
+
+Since w and all its derivatives have compact support in Ω, we may iterate this procedure r times to obtain (E.1) ⟨w, η j ⟩ = (−1) r
+
+λrj
+
+⟨∆r w, η j ⟩.
+
+Furthermore, from [13, Lemma 2.1] combined with the unlabeled bound on 
+
+at(x, y ) contained on [13, p. 377], we can bound the eigenfunctions via 
+
+∥ηj ∥L∞(Ω) ≤ e(λj /2) t(4 πt )−d/ 4
+
+for any t > 0. Optimizing over t, we have the bound (E.2) ∥ηj ∥L∞(Ω) ≤ cdλd/ 4 
+
+> j
+
+,42 ANDREW M. STUART AND MARGARET TRAUTNER 
+
+where cd is a constant dependent only on d. Then we may bound the tail 
+
+∥eJ ∥C(Ω) ≤ X
+
+> j>J
+
+|⟨ w, η j ⟩|∥ ηj ∥L∞(Ω) 
+
+≤ cd
+
+X
+
+> j>J
+
+λd/ 4−rj |⟨ ∆r w, η j ⟩| ≤ cd
+
+  X 
+
+> j>J
+
+λd/ 2−2rj
+
+1/2  X 
+
+> j>J
+
+|⟨ ∆r w, η j ⟩| 21/2
+
+≤ cd∥∆r w∥  X 
+
+> j>J
+
+λd/ 2−2rj
+
+1/2.
+
+We now must bound the summation. Weyl’s law states that the number N (λ)of these eigenvalues that are less than or equal to λ satisfies lim 
+
+> λ→∞
+
+N (λ)
+
+λd/ 2 = (2 π)−dωdvol(Ω) ,
+
+where ωd is the volume of the unit ball in Rd [36, 43]. Thus, for any choice of ϵ,there exists a λϵ such that for all λ > λ ϵ,
+
+N (λ)
+
+λd/ 2 − (2 π)−dωdvol(Ω) < ϵ. 
+
+To handle duplicate eigenvalues, let j∗ be the largest index k such that λk ≤ λj .Note that if λj is not a duplicate eigenvalue, then j∗ = j. Then for λj > λ ϵ,
+
+j∗
+
+λd/ 2
+
+> j
+
+− (2 π)−dωdvol(Ω) < ϵ. 
+
+Rearranging yields 1
+
+λj
+
+<
+
+ ϵ + (2 π)−dωdvol(Ω) 
+
+j∗
+
+2/d 
+
+,
+
+which holds for j > J ϵ, where Jϵ is the smallest index such that λJϵ > λ ϵ.Then, 
+
+∥eJϵ ∥C(Ω) ≤ cd∥∆r w∥
+
+ X
+
+> j>J ϵ
+
+ ϵ + (2 π)−dωdvol(Ω) 
+
+j
+
+ 4rd −1
+
+
+
+> 1/2
+
+≤ cd∥∆r w∥(ϵ + (2 π)−dωdvol(Ω)) 2rd − 12
+
+Z ∞
+
+> Jϵ
+
+1
+
+j 4rd −1 dj
+
+1/2
+
+For convergence, we require r > d 
+
+> 2
+
+; let r be the smallest such integer that sat-isfies this constraint. So that ∆ r w is defined and in L2, we require 2 r ≤ k. By assumption, W ⊂ Ckc (Ω) for k > d + 1, so sup w∈W ∥∆r w∥ is finite for this choice of r. The bound becomes 
+
+∥eJ ∥C(Ω) ≤ cd,W,r, ΩJ1− 2rd ,
+
+for J > J 1, where cd,W,r, Ω = sup w∈W ∥∆r w∥(1 + (2 π)−dωdvol(Ω)) 2rd − 12 . We have set ϵ = 1, as it plays no role in the convergence. Since this is the tail bound, we have that lim  
+
+> J→∞
+
+sup 
+
+> w∈W
+
+w −
+
+> J
+
+X
+
+> j=1
+
+⟨w, η j ⟩L2(Ω) ηj C(Ω) 
+
+= lim  
+
+> J→∞
+
+sup 
+
+> w∈W
+
+∥eJ ∥C(Ω) = 0 .ENFORCING DIRICHLET BOUNDARY CONDITIONS IN OPERATOR LEARNING 43 
+
+□
+
+Department of Computing and Mathematical Sciences, Caltech, Pasadena, CA 
+
+Email address : astuart@caltech.edu 
+
+Department of Mathematics, ETH Z¨ urich, Z¨ urich, Switzerland 
+
+Email address : margaret.trautner@sam.math.ethz.ch
