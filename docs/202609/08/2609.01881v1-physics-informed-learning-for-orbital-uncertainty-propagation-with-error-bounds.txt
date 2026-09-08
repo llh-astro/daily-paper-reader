@@ -1,0 +1,1653 @@
+Title: Physics-informed Learning for Orbital Uncertainty Propagation with Error Bounds
+
+URL Source: https://arxiv.org/pdf/2609.01881v1
+
+Published Time: Thu, 03 Sep 2026 00:21:53 GMT
+
+Number of Pages: 37
+
+Markdown Content:
+# Physics-informed Learning for Orbital Uncertainty Propagation with Error Bounds 
+
+Chun-Wei Kong ∗, Morteza Lahijanian †, and Jay McMahon ‡
+
+University of Colorado, Boulder, Colorado 80301 
+
+The Fokker-Planck partial differential equation (FP-PDE) governs uncertainty evolution in stochastic dynamical systems. In orbital dynamics, solving the FP-PDE is challenging because of nonlinear motion, high-dimensional states, and large space-time domains. We develop a physics-informed neural network (PINN) approach that approximates the FP-PDE solution as a single space-time probability density, while also quantifying its worst-case approximation error. This approach is, in principle, independent of the choice of state coordinates and neural network architecture. Specifically, to enforce probability density function (PDF) properties into the neural network, we design a Physics-informed Gaussian mixture model (PINN-GMM). Then a companion error PINN learns the dynamics of the approximation error and yields time-dependent bounds that define an ambiguity set of PDFs. This ambiguity set enables rigorous computation of upper and lower bounds on event probabilities through tractable linear programs. Numerical studies on illustrative 1D examples and several 4D–6D orbital test cases demonstrate accurate uncertainty propagation, correct and informative error bounds, and improved reliability over common uncertainty-propagation baseline methods (Gaussian approximation, unscented transform, and Gaussian mixture model). Constructing the PINN-GMM requires offline training, making it costlier than the baseline approximations; once trained, however, a single forward pass returns the density at any time in sub-millisecond time 
+
+(0.16 ms in our implementation). 
+
+# I. Introduction 
+
+Uncertainty propagation of physical systems over continuous time can be modeled by a stochastic differential equation (SDE). This model describes the exact time evolution of uncertainty as a probability density function, which is governed by the Fokker-Planck partial differential equation (FP-PDE) [1, Ch. 5]. Nevertheless, FP-PDE does not admit closed-form solutions for general physical systems. Recent advances in physics-informed neural networks (PINNs) point toward an efficient and accurate framework for learning solutions of general PDEs [2, 3]. A PINN trains 
+
+> ∗Graduate Research Assistant, Department of Aerospace Engineering Sciences. Corresponding Author: chun-wei.kong@colorado.edu.
+> †Associate Professor, Department of Aerospace Engineering Sciences: morteza.lahijanian@colorado.edu.
+> ‡Associate Professor, Department of Aerospace Engineering Sciences: jay.mcmahon@colorado.edu. arXiv:2609.01881v1 [physics.comp-ph] 1 Sep 2026
+
+a neural approximation by minimizing a physics-informed loss that combines initial/boundary-condition mismatch with the residual of the governing PDE evaluated at sampled collocation points. Thus, PINNs do not require labeled data from the true PDE solution, which is the probability density function (PDF) 𝑝 (𝑥, 𝑡 ) in the FP-PDE setting; instead, the governing equation supplies physics-based constraints throughout the computational domain. This provides a new perspective on the exact uncertainty-propagation problem: instead of propagating uncertainty forward in time, we seek to approximate the full space-time PDF as a single function of space and time. Its main advantage is that PINN can represent the uncertainty at any time as an arbitrary probability distribution, provided that the neural network has sufficient approximation capacity. However, casting uncertainty propagation as learning the solution of the FP-PDE yields a substantially harder problem than traditional approaches. First, training a PINN is inherently a non-convex optimization task, and the loss function induced by the FP-PDE typically creates a highly complex loss landscape [4]. Second, existing analyses for PINNs give error estimates that grow exponentially over time, with exponents that themselves increase with the size of the state domain [5]. These effects are especially severe in orbital-dynamics applications, where uncertainty evolves over a large state space over long durations. Third, although arbitrarily many space-time samples are available for PINN training in principle, one works with a finite number of samples in practice [3]. As the state dimension and computational domain grow, this finite sampling budget suffers from curse-of-dimensionality effects: samples become increasingly sparse over the computational domain, so relatively few points fall in the regions that contain PDF information. This information dilution is particularly problematic in orbital dynamics, where probability mass often concentrates in small subsets of the state space. Because directly solving or learning the FP-PDE at orbital scales is difficult, a large body of work instead seeks accurate and efficient uncertainty propagation without explicitly solving the FP-PDE. We group the existing approaches into (i) methods that propagate an initial PDF forward in time using structured approximations and (ii) methods that approximate the FP-PDE more directly through reduced or discretized representations. For the first group, the state PDF is represented as a Gaussian mixture, with the mean and covariance of each component propagated using the deterministic drift and linearized dynamics [6]. To improve accuracy, the mixture weights are updated using the FP-PDE, leading to a quadratic optimization problem that requires state-space integrals. As a result, scalability to higher-dimensional systems is limited, and demonstrations are restricted to 1D and 2D examples. Adaptive splitting and merging criteria are introduced to improve the accuracy of Gaussian-mixture uncertainty approximations [7]. Higher-order state transition tensors are used to propagate Gaussian-mixture components and better capture the nonlinearity of orbital dynamics [8–10]. These approaches are developed for dynamical systems without process noise, i.e., for the FP-PDE without the diffusion term. Similarly, higher-order moment propagation based on state-transition tensors is developed for systems without stochastic noise [11]. A Gaussian mixture is also propagated through a surrogate dynamical model constructed by polynomial chaos expansions, but this approach is restricted to deterministic discrete-2time systems with an initial Gaussian distribution [12]. Beyond these modeling restrictions, all of the above methods lack rigorous error bounds to quantify the discrepancy between the propagated PDF and the unknown true PDF. A second line of work approximates the FP-PDE solution more directly. A Galerkin projection method represents the PDF as a tensor expansion in B-spline bases [13]. This approach has several limitations. First, the number of tensor-product B-spline basis functions, and the cost of the associated state-space integrals, grows quickly with state dimension. Second, because the B-spline basis does not enforce non-negativity and normalization, PDF properties must be restored by post-processing, which may degrade solution quality. Third, due to the decoupled tensor expansion, the formulation is restricted to SDEs whose drift and diffusion do not explicitly depend on time. Finally, as with the traditional methods above, no a priori error bounds are provided. In numerical studies, the method is tested on a 2D stochastic damped harmonic oscillator and on 3D orbital cases in modified equinoctial elements. Accuracy is assessed against high-fidelity Monte Carlo simulations using moment errors and the Hellinger distance, but no comparisons are made to traditional uncertainty-propagation methods. A tensor-decomposition method represents the space-time PDF in tensor form discretized with Chebyshev spectral differentiation to solve the FP-PDE [14]. In this formulation, the number of tensor grid points grows with both state dimension and desired resolution, so runtime and memory requirements increase rapidly. They demonstrate the method on 4D and 6D two-body problems, both unperturbed and perturbed, in rotating spherical coordinates and compare against high-fidelity Monte Carlo simulations. However, they do not compare against traditional uncertainty-propagation methods, and their validation focuses on errors in low-dimensional marginals rather than the full joint PDF. Again, no a priori error bound is available to certify the quality of the approximation. Overall, existing methods either propagate restricted parametric families without rigorous apriori error bounds, or approximate the FP-PDE with representations whose computational cost and constraint handling become limiting in high dimensions over extended time horizons, again without providing rigorous error guarantees. These gaps motivate the approach developed in this paper. In this work, we develop theory and practical methods to learn orbital uncertainty propagation as a single space-time PDF governed by the FP-PDE, together with worst-case error bounds for the learned approximation. First, we introduce several coordinate designs that reduce the effective computational domain for PINNs. These range from special analytical ones (e.g., the normalized rotating spherical coordinates [14]) to more general mappings. Next, we outline neural networks architectures for representing a space-time probability density function in PINN training. We focus on a time-conditioned Gaussian-mixture PINN (PINN-GMM), which enforces PDF properties by construction and admits analytical expressions for marginal densities. We further propose an encoder-decoder structure for the PINN-GMM to learn the PDF in a latent space. To illustrate how the PINN approximation and its worst-case error bounds can be used in downstream tasks, we consider the problem of bounding event probabilities. This problem aims to compute upper and lower bounds on the probability measure of an event when the underlying (unknown) probability density is governed by the FP-PDE. We formulate this problem as a linear program (LP) with interval arithmetic, and 3show that when a PINN-GMM represents the approximate PDF, the resulting interval computations reduce to convex optimization problems. Finally, we develop a training procedure for learning approximate space-time PDFs and their worst-case error bounds. We propose a combined sampling strategy that mixes random uniform samples with an adaptive component to mitigate the information dilution characteristic of orbital-dynamics problems. We emphasize that these choices are problem-structured mitigation strategies for learning time-varying PDFs; they do not remove the curse of dimensionality for general PINNs or arbitrary high-dimensional PDEs. In short, our main contributions are: 
+
+• a formulation of orbital uncertainty propagation as learning a single space-time probability density function governed by the FP-PDE, together with a two-stage physics-informed procedure that trains a density approximation ˆ𝑝 (𝑥, 𝑡 ) and an error approximation ˆ 𝑒 (𝑥, 𝑡 ) to construct worst-case error bounds, 
+
+• a time-conditioned PINN-GMM representation, with an encoder-decoder architecture, that yields a valid PDF at every time in the continuous horizon and improves trainability for hours-scale, large-state-space orbital problems, 
+
+• a computationally tractable LP that computes rigorous upper and lower bounds on event probabilities via PINN-GMM and its error bounds, 
+
+• a practical training procedure, including a combined random-adaptive sampling strategy to handle PDF concen-tration over the vast space-time domain for the systems of up to six dimensions considered here, and 
+
+• several numerical studies on 1D examples and four 4D–6D orbital cases that quantify accuracy, benchmark against existing methods, validate worst-case error bounds empirically, and compute certified event-probability intervals. 
+
+# II. Problem 
+
+In this work, we study uncertainty propagation in orbital dynamics modeled by a stochastic differential equation (SDE) [6, 9, 13, 14]: 
+
+𝑑 𝒙 (𝑡 ) = 𝑓 (𝒙 (𝑡 ), 𝑡 ) 𝑑𝑡 + 𝑔 (𝒙 (𝑡 ), 𝑡 )𝑑 𝒘 (𝑡 ), (1) where 𝑡 ∈ T ⊆ R≥0 is time, 𝒙 (𝑡 ) ∈ X ⊆ R𝑛 is the state at time 𝑡 , and 𝒘 (𝑡 ) ∈ R𝑚 is a standard Brownian motion. The deterministic part of the dynamics is given by the vector field 𝑓 : X × T → R𝑛 and the noise coupling by the matrix-valued function 𝑔 : X × T → R𝑛 ×𝑚 . For clarity, the 𝑖 -th component of 𝑓 is denoted 𝑓 𝑖 , and the ( 𝑗, 𝑘 )-th entry of 𝑔 is denoted 𝑔 𝑗 𝑘 . We assume that 𝑓 and 𝑔 satisfy standard regularity conditions [15, Ch. 5]. For simplicity, we denote 𝑡 = 0 as the initial time unless further specified. The initial state 𝒙 (0) is a random variable drawn from a given initial probability density function (PDF) 𝑝 0 : X → R≥0, which is assumed smooth and bounded. The evolution of the state uncertainty over time of Eq. (1) is described by the time-dependent PDF 𝑝 (𝑥, 𝑡 ), governed 4by the associated FP-PDE: 
+
+𝜕 𝑝 (𝑥, 𝑡 )
+
+𝜕𝑡 +
+
+> 𝑛
+
+Õ
+
+> 𝑖 =1
+
+𝜕 𝜕𝑥 𝑖 
+
+[ 𝑓 𝑖 𝑝 (𝑥, 𝑡 )] − 12
+
+> 𝑛
+
+Õ
+
+> 𝑖 =1, 𝑗 =1
+
+𝜕 2
+
+𝜕𝑥 𝑖 𝜕𝑥 𝑗 
+
+[ 𝑚 Õ
+
+> 𝑘 =1
+
+𝑔 𝑖𝑘 𝑔 𝑗 𝑘 𝑝 (𝑥, 𝑡 )
+
+]
+
+= 0, (2) subject to the initial condition 
+
+𝑝 (𝑥, 0) = 𝑝 0 (𝑥 ) ∀𝑥 ∈ X . (3) To simplify notation, define the differential operator D [·] associated with the FP-PDE as 
+
+D [·] := 𝜕 𝜕𝑡 [·] + 
+
+> 𝑛
+
+Õ
+
+> 𝑖 =1
+
+𝜕 𝜕𝑥 𝑖 
+
+[ 𝑓 𝑖 ·] − 12
+
+> 𝑛
+
+Õ
+
+> 𝑖, 𝑗 =1
+
+𝜕 2
+
+𝜕𝑥 𝑖 𝜕𝑥 𝑗 
+
+[ 𝑚 Õ
+
+> 𝑘 =1
+
+𝑔 𝑖𝑘 𝑔 𝑗 𝑘 ·
+
+]
+
+. (4) Then, Eqs. (2) and (3) can be rewritten in a compact form as 
+
+D [ 𝑝 (𝑥, 𝑡 )] = 0 subject to 𝑝 (𝑥, 0) = 𝑝 0 (𝑥 ). (5) Under the regularity assumptions on 𝑓 and 𝑔 , the FP-PDE in Eq. (5) is well-posed, i.e., it admits a unique smooth solution 𝑝 (𝑥, 𝑡 ), which is a reasonable assumption for most physical systems. 
+
+Fig. 1 Physics-informed neural networks considered: a) standard PINN-MLP and b) proposed PINN-GMM, both trained with initial-condition and FP-PDE residual losses. 
+
+In general, Eq. (5) cannot be solved in closed form. We therefore approximate 𝑝 (𝑥, 𝑡 ) with a physics-informed neural-network representation ˆ 𝑝 (𝑥, 𝑡 ). Figure 1 contrasts the standard PINN-MLP representation [2, 3] with the proposed 5time-conditioned PINN-GMM representation; both are trained by minimizing a physics-informed loss derived from Eq. (5). Unlike data-driven methods that rely on finite samples of the true solution, this training uses only the FP-PDE operator D [·] and the initial condition 𝑝 0, requiring no labeled data for 𝑝 (𝑥, 𝑡 ) at 𝑡 > 0. Nevertheless, as with any learning-based solution, quantifying the error remains critical. We therefore pose the following problem. 
+
+Problem 1. Given the FP-PDE in Eq. (5) , a compact state domain 𝑋 ⊂ X , and a compact time interval 𝑇 = [0, 𝑇 end ] ⊂ T , let Ω := 𝑋 × 𝑇 . Train a PINN ˆ𝑝 (𝑥, 𝑡 ) that approximates the solution 𝑝 (𝑥, 𝑡 ) on Ω, and construct an error bound 
+
+𝐵 : 𝑇 → R≥0 such that 
+
+sup  
+
+> 𝑥 ∈𝑋
+
+| 𝑝 (𝑥, 𝑡 ) − ˆ𝑝 (𝑥, 𝑡 )| ≤ 𝐵 (𝑡 ), ∀𝑡 ∈ 𝑇 . (6) Here, 𝑋 is a computational region of interest, not a finite PDE domain with prescribed artificial boundary conditions. The FP-PDE is associated with the SDE on the full state space X, where the PDF is assumed to be integrable and to decay at infinity. The bound in Eq. (6) is therefore an in-domain guarantee over 𝑋 × 𝑇 ; evaluating ˆ 𝑝 outside this region, including time extrapolation beyond 𝑇 , is out of scope. Although our prior work [16] develops a theoretical foundation for constructing such error bounds, training a PINN approximation ˆ 𝑝 for orbital uncertainty propagation remains challenging in practice due to the large space-time domain (see the discussion in Sec. I), let alone constructing the corresponding error bound 𝐵 .Furthermore, the neural-network ˆ 𝑝 introduces an additional practical hurdle. In orbital conjunction analysis, one must integrate the PDF over an event set to compute the event probability. Since the true 𝑝 is unknown, we can only bound such event probability using ˆ 𝑝 together with the error bound 𝐵 , which naturally leads to integrals of ˆ 𝑝 ± 𝐵 .Computing such integrals is itself nontrivial when ˆ 𝑝 is represented by a neural network. This motivates the following problem of computing upper and lower bounds on event probabilities. Formally, 
+
+Problem 2. Consider the setting in Problem 1, a bounded event set 𝑋 event ⊆ 𝑋 . Define the event probability (probability mass) at time 𝑡 by P(𝑥 ∈ 𝑋 event , 𝑡 ) := ∫  
+
+> 𝑥 ∈𝑋 event
+
+𝑝 (𝑥, 𝑡 )𝑑𝑥. Given approximate PDF ˆ𝑝 (𝑥, 𝑡 ) and bound 
+
+𝐵 (𝑡 ), compute lower and upper probability bounds P− (𝑡 ; 𝑋 event , ˆ𝑝, 𝐵 ) and P+ (𝑡 ; 𝑋 event , ˆ𝑝, 𝐵 ), respectively, such that 
+
+P− (𝑡 ; 𝑋 event , ˆ𝑝, 𝐵 ) ≤ P(𝑥 ∈ 𝑋 event , 𝑡 ) ≤ P+ (𝑡 ; 𝑋 event , ˆ𝑝, 𝐵 ).
+
+# III. Methods 
+
+This section presents the theoretical framework for approximating the space–time density 𝑝 (𝑥, 𝑡 ) in orbital dynamics. We first describe alternative coordinate choices and how they affect domain size and dynamical structure. We then introduce a representation of ˆ 𝑝 (𝑥, 𝑡 ) that encodes PDF properties. Finally, we show how the resulting approximation, together with a time-dependent error bound, enables rigorous downstream analyses; in particular, we compute upper and lower bounds on event probabilities (i.e., integrals of the PDF over event regions) via a linear program. 6A. Choice of Coordinates 
+
+The choice of state coordinates 𝒙 in Eq. (1) affects both the domain of 𝑝 (𝑥, 𝑡 ) and the structure of the dynamics. We first consider problem-specific coordinates and then introduce more general coordinates. 
+
+1. Rotating Spherical Coordinates 
+
+We adopt standard spherical coordinates (𝑟, 𝜃, 𝜙 ), related to Cartesian position (𝑥, 𝑦, 𝑧 ) by 
+
+𝑟 = √𝑥 2 + 𝑦 2 + 𝑧 2, 𝜃 = cos −1 (𝑧 /𝑟 ), 𝜙 = tan −1 (𝑦 /𝑥 ), (7) where 𝑟, 𝜃, 𝜙 are the radial distance, polar angle (from vertical) and azimuthal angle (from positive Eastward) respec-tively. The rotating non-dimensional spherical coordinates (𝑟 ′, 𝜃 ′, 𝜙 ′, 𝑡 ′) are defined by the mapping between (𝑟, 𝜃, 𝜙, 𝑡 )
+
+and (𝑟 ′, 𝜃 ′, 𝜙 ′, 𝑡 ′):
+
+𝑟 = 𝑅𝑟 ′, 𝜃 = Θ 𝜃 ′, 𝜙 = Φ 𝜙 ′ + 𝑊 (𝑇 orb 𝑡 ′), 𝑡 = 𝑇 orb 𝑡 ′, (8) where 𝑊 , 𝑅 and 𝑇 orb are the characteristic rotation rate, radius and period of the nominal orbit, respectively, and Φ,
+
+Θ are scalars for scaling and non-dimensionalization. For completeness, Ref. [14] provides the explicit 𝐽 2-perturbed Keplerian stochastic differential equation (SDE) in these coordinates. Propagating uncertainty in rotating spherical coordinates can reduce the computation domain [14]. Besides, transforming back to Cartesian coordinates yields a closed-form expression for the Cartesian-space marginal PDF, i.e., 
+
+𝑝 𝑋𝑌 𝑍𝑡 (𝑥, 𝑦, 𝑧, 𝑡 ) = 1   
+
+> 𝑅 ΘΦ 𝑟 2sin 𝜃
+
+𝑝 𝑟 ′ 𝜃 ′ 𝜙 ′ 𝑡 ′ (𝑟 ′, 𝜃 ′, 𝜙 ′, 𝑡 ′), where {𝑥, 𝑦, 𝑧, 𝑡 } is computed from {𝑟 ′, 𝜃 ′, 𝜙 ′, 𝑡 ′ } through Eqs. (7) and (8). Note that this expression is singular when sin 𝜃 = 0. For instance, if the Cartesian coordinate is defined on the Earth-Centered Inertial frame, then singularity occurs when spherical coordinates in question are over one of the poles. 
+
+2. Orbital-Elements Coordinates 
+
+The state 𝒙 may also be expressed in orbital elements (e.g., classical Keplerian or equinoctial elements). Here, 
+
+𝑎, 𝑒, 𝑖, Ω, 𝜔, 𝜃 denote semi-major axis, eccentricity, inclination, right ascension of the ascending node, argument of periapsis, and true anomaly, respectively; 𝑝 sl denotes semilatus rectum; 𝜆 and 𝐿 denote mean and true longitude, re-spectively; and (𝑃 1, 𝑃 2) and (𝑄 1, 𝑄 2) are nonsingular equinoctial variables associated with eccentricity and inclination, respectively. Propagating uncertainty in the equinoctial orbit elements {𝑎, 𝑃 1, 𝑃 2, 𝑄 1, 𝑄 2, 𝜆 } can substantially reduce the computation domain for 𝑝 (𝑥, 𝑡 ). In fact, for unperturbed Keplerian dynamics the system becomes decoupled, and nonlinearity appears only in 𝑎 and 𝜆 (see Appendix A or Ref. [10] for more details). However, a simple closed-form density transformation from these elements to Cartesian coordinates is generally not available, because it requires solving Kepler’s equation to convert mean anomaly to true anomaly. As a result, the Jacobian and the induced PDF do 7not admit a straightforward analytic expression. An alternative is the modified equinoctial set {𝑝 sl , 𝑃 1, 𝑃 2, 𝑄 1, 𝑄 2, 𝐿 }, which is related to the classical Keplerian orbit elements {𝑎, 𝑒, 𝑖, Ω, 𝜔, 𝜃 } through the true anomaly. This choice admits compact expressions for common perturbations (e.g., 𝐽 2, aerodynamic drag) and provides a direct state mapping to Cartesian space, yielding analytical PDF transformation to Cartesian coordinates. More generally, one can construct generalized equinoctial element sets with smooth, nonsingular transformations to Cartesian position and velocity, and derive the associated Jacobian matrices explicitly [17]. These Jacobians can then be used to map probability densities between elements and Cartesian coordinates via the standard change-of-variables formula. 
+
+3. Reference Coordinates 
+
+Let 𝑥 ref (𝑡 ) be a reference trajectory governed by 𝑑 (𝑥 ref ) = 𝑓 (𝑥 ref )𝑑𝑡 , and define the deviation coordinates by 
+
+𝛿𝑥 (𝑡 ) := 𝑥 (𝑡 ) − 𝑥 ref (𝑡 ). The induced SDE for 𝛿𝑥 (𝑡 ) is 
+
+𝑑 (𝛿𝑥 (𝑡 )) =
+
+[
+
+𝑓 (𝛿𝑥 (𝑡 ) + 𝑥 ref (𝑡 ), 𝑡 ) − 𝑓 (𝑥 ref (𝑡 ), 𝑡 )
+
+]
+
+𝑑𝑡 + 𝑔 
+
+(
+
+𝛿𝑥 (𝑡 ) + 𝑥 ref (𝑡 ), 𝑡 
+
+)
+
+𝑑𝑤. (9) To keep the notation light, we drop the explicit time argument (𝑡 ) and write variables without time dependence unless the context is unclear. Working in deviation coordinates shifts the learning task from 𝑝 (𝑥, 𝑡 ) to 𝑝 (𝛿𝑥, 𝑡 ), which is advantageous when 𝑥 remains concentrated near 𝑥 ref . This typically (i) shrinks the computational domain, since the support of 𝑝 (𝛿𝑥, 𝑡 ) is localized near the origin, and (ii) simplifies the local dynamics, i.e., 𝑓 (𝛿𝑥 + 𝑥 ref , 𝑡 ) − 𝑓 (𝑥 ref , 𝑡 ) ≈  
+
+> 𝜕 𝑓 𝜕𝑥
+
+|𝑥 ref for small 𝛿𝑥 . In fact, the rotating spherical coordinates discussed above can be viewed as a specific choice of reference coordinates, combined with normalization scaling factors. 
+
+4. Generalized Mapped Coordinates 
+
+We introduce a generalized coordinate framework for the class of smooth, invertible transformations. Let 𝑧 =Φ(𝑥, 𝑡 ) ∈ R𝑛 be a latent state with the same dimension as 𝑥 , where for each fixed 𝑡 the map Φ(· , 𝑡 ) is smooth and invertible. Let the original SDE be 𝑑𝑥 = 𝑓 (𝑥, 𝑡 ) 𝑑𝑡 + 𝐺 (𝑥, 𝑡 ) 𝑑𝑊, and define 𝐴 (𝑥, 𝑡 ) := 𝐺 (𝑥, 𝑡 )𝐺 (𝑥, 𝑡 )T ∈ R𝑛 ×𝑛 . By Itô’s lemma [15], the latent process 𝑧 (𝑡 ) = Φ (𝑥 (𝑡 ), 𝑡 ) satisfies an SDE of the form 𝑑𝑧 = 𝑓 𝑧 (𝑧, 𝑡 ) 𝑑𝑡 + 𝐺 𝑧 (𝑧, 𝑡 ) 𝑑𝑊, with components 
+
+𝑑𝑧 𝑖 = 𝑓 𝑧,𝑖 (𝑧, 𝑡 ) 𝑑𝑡 +
+
+> 𝑚
+
+Õ
+
+> 𝑗 =1
+
+[𝐺 𝑧 (𝑧, 𝑡 )] 𝑖 𝑗 𝑑𝑊 𝑗 , 𝑓 𝑧,𝑖 (𝑧, 𝑡 ) =
+
+[
+
+𝜕 Φ𝑖 
+
+𝜕𝑡 +
+
+> 𝑛
+
+Õ
+
+> 𝑘 =1
+
+𝜕 Φ𝑖 
+
+𝜕𝑥 𝑘 
+
+𝑓 𝑘 + 12
+
+> 𝑛
+
+Õ
+
+> 𝑘 =1
+> 𝑛
+
+Õ
+
+> 𝑙 =1
+
+𝐴 𝑘𝑙 
+
+𝜕 2Φ𝑖 
+
+𝜕𝑥 𝑘 𝜕𝑥 𝑙 
+
+]  
+
+> 𝑥 =Φ −1(𝑧,𝑡 )
+
+,
+
+[𝐺 𝑧 (𝑧, 𝑡 )] 𝑖 𝑗 =
+
+[ 𝑛 Õ
+
+> 𝑘 =1
+
+𝜕 Φ𝑖 
+
+𝜕𝑥 𝑘 
+
+𝐺 𝑘 𝑗 
+
+]  
+
+> 𝑥 =Φ −1(𝑧,𝑡 )
+
+, 𝐴 𝑘𝑙 (𝑥, 𝑡 ) =
+
+> 𝑚
+
+Õ
+
+> 𝑗 =1
+
+𝐺 𝑘 𝑗 (𝑥, 𝑡 ) 𝐺 𝑙 𝑗 (𝑥, 𝑡 ).
+
+8The corresponding FP-PDE for the latent-space PDF 𝑝 (𝑧, 𝑡 ) is 
+
+𝜕 𝑝 (𝑧, 𝑡 )
+
+𝜕𝑡 +
+
+> 𝑛
+
+Õ
+
+> 𝑖 =1
+
+𝜕 𝜕𝑧 𝑖 
+
+[ 𝑓 𝑧,𝑖 (𝑧, 𝑡 ) 𝑝 (𝑧, 𝑡 )] − 12
+
+> 𝑛
+
+Õ
+
+> 𝑖 =1
+> 𝑛
+
+Õ
+
+> 𝑗 =1
+
+𝜕 2
+
+𝜕𝑧 𝑖 𝜕𝑧 𝑗 
+
+[𝐴 𝑧,𝑖 𝑗 (𝑧, 𝑡 ) 𝑝 (𝑧, 𝑡 )] = 0,
+
+where the diffusion tensor in 𝑧 -coordinates is 𝐴 𝑧,𝑖 𝑗 (𝑧, 𝑡 ) =
+
+[ Í𝑛 𝑘 =1
+
+Í𝑛 𝑙 =1 
+
+> 𝜕 Φ𝑖
+> 𝜕𝑥 𝑘
+
+𝐴 𝑘𝑙 (𝑥, 𝑡 ) 𝜕 Φ 𝑗 
+
+> 𝜕𝑥 𝑙
+
+]  
+
+> 𝑥 =Φ −1(𝑧,𝑡 )
+
+. As a special case, the affine mapping 𝑧 = 𝑥 − 𝑥 ref recovers the reference-coordinate SDE of Eq. (9). The map Φ can be specified analytically, semi-analytically with learnable parameters or learned entirely by neural networks. Recent work [18] provides principles for learning physically interpretable mappings, yielding latent variables aligned with the underlying mechanics. When combined with a space–time density representation (next subsection), this leads to an encoder–latent-dynamics–decoder architecture for the physics-informed neural network ˆ 𝑝 (𝑥, 𝑡 ).
+
+B. Space-time Probability Density Representation 
+
+We briefly review the standard multi-layer perceptron (MLP) parameterization of the space-time density ˆ 𝑝 (𝑥, 𝑡 )
+
+commonly used in physics-informed learning. We then introduce a physics-informed neural-network-based Gaussian mixture model (PINN-GMM) as an alternative representation, outline its desirable properties, and propose a concrete architecture motivated by generalized mapped coordinates. 
+
+1. Standard Multilayer Perceptron (MLP) 
+
+A fully connected multilayer perceptron (MLP) takes (𝑥, 𝑡 ) ∈ R𝑛 +1 as input and produces a scalar output for the space-time density. Let the layer widths be 𝑑 0, 𝑑 1, . . . , 𝑑 𝐿 , with 𝑑 0 = 𝑛 + 1 matching the input dimension (𝑥, 𝑡 ) and 
+
+𝑑 𝐿 = 1 corresponding to the scalar probability density output. For each layer ℓ = 1, . . . , 𝐿 , let 𝑊 ℓ ∈ R𝑑 ℓ ×𝑑 ℓ −1 and 
+
+𝑏 ℓ ∈ R𝑑 ℓ , and define the affine map ℎℓ (𝑧 ) = 𝑊 ℓ 𝑧 + 𝑏 ℓ , with element-wise activation 𝜎 ℓ : R → R. With neural network parameters 𝜃 = {( 𝑊 ℓ , 𝑏 ℓ )} 𝐿 ℓ=1, the MLP representation of ˆ 𝑝 is ˆ 𝑝 (𝑥, 𝑡 ; 𝜃 ) = (𝜎 𝐿 ◦ ℎ𝐿 ◦ 𝜎 𝐿 −1 ◦ ℎ𝐿 −1 ◦ · · · ◦ 𝜎 1 ◦ ℎ1
+
+) (𝑥, 𝑡 ).
+
+To enforce ˆ 𝑝 ≥ 0, the output activation 𝜎 𝐿 is chosen non-negative, e.g., 𝜎 𝐿 = Softplus. 
+
+2. Physics-Informed Gaussian Mixture Model (PINN-GMM) 
+
+The standard MLP representation above does not enforce the normalization constraint ∫ 
+
+> 𝑋
+
+ˆ𝑝 (𝑥, 𝑡 )𝑑𝑥 = 1. To enforce this constraint by construction, we introduce a time-conditioned physics-informed Gaussian mixture model ˆ𝑝 (𝑥, 𝑡 ) =
+
+> 𝐾 GMM
+
+Õ
+
+> 𝑖 =1
+
+𝑤 𝑖 (𝑡 )N ( 𝑥 ; 𝜇 𝑖 (𝑡 ), Σ𝑖 (𝑡 )) . (10) The time-dependent mixture parameters are specified below as neural-network outputs of time, yielding a valid PDF of 𝑥 at any time 𝑡 . The number of components 𝐾 GMM determines the expressiveness of this density representation. 9Smaller 𝐾 GMM yields a more compact, cheaper-to-train model; larger 𝐾 GMM captures more complex structure at higher cost, and also increases the training cost of the associated error-PINN ˆ 𝑒 . We do not claim a systematic rule for selecting 
+
+𝐾 GMM ; deriving one is a nontrivial open problem that depends on the complexity of the true FP-PDE solution, the state dimension 𝑛 , and the propagation horizon. We therefore treat 𝐾 GMM as a practical accuracy–cost trade-off: start small, inspect the resulting error bound, and increase 𝐾 GMM only if the bound is not sufficiently informative for the application. We apply this guideline in all orbital experiments, yielding 𝐾 GMM = 5 (equinoctial orbit-element case) and 𝐾 GMM = 11 (rotating-spherical cases); the detailed physical reasoning is explained with the experiment setting in Appendix D. In addition, sampling for PINN-GMM is straightforward, and any marginal density has a closed-form expression—features not available for standard MLP representations. 
+
+Time–conditioned Gaussian Mixture Architecture We design PINN-GMM ˆ 𝑝 (𝑥, 𝑡 ) : R𝑛 × R → R≥0 that respects mixture constraints and remains numerically stable under disparate state scales. The state is whitened by a fixed encoder 
+
+𝑧 = Φ (𝑥 ) = Σ −1en (𝑥 − 𝜇 en ), Σen = diag (𝜎 en ), 𝜎 en ∈ R𝑛 >0, where diag (𝑠 ) denotes the diagonal matrix with entries of 
+
+𝑠 on its diagonal. In this work, the encoder parameter is set using the initial mean and covariance of the state, i.e., 
+
+𝜇 en = 𝜇 𝑡 0 and Σen = diag (Σ𝑡 0 ). The density is learned in latent space, ˆ 𝑝 𝑍 (𝑧, 𝑡 ), and decoded by the change of variables ˆ𝑝 (𝑥, 𝑡 ) = ˆ𝑝 𝑍 
+
+(Σ−1en (𝑥 − 𝜇 en ), 𝑡 ) Î 𝑛 𝑖 =1 𝜎 −1en ,𝑖 . The time-dependent mixture parameters are generated by differentiable neural networks, implemented either as separate networks or as output heads sharing a common feature network: (i) a mean output 𝜇 𝑧 (𝑡 ; 𝜃 𝜇 𝑧 ) ∈ R𝐾 GMM ×𝑛 ; (ii) a covariance output ℓ𝑧 (𝑡 ; 𝜃 𝐿 𝑧 ) ∈ R𝐾 GMM × 𝑛 (𝑛 +1) 
+
+> 2
+
+, assembled into a lower-triangular Cholesky factor 𝐿 𝑧 (𝑡 ) ∈ R𝐾 GMM ×𝑛 ×𝑛 with positive diagonals enforced by softplus + 𝜀 min ∗; and (iii) a weight-logit output 
+
+𝑣 (𝑡 ; 𝜃 𝑣 ) ∈ R𝐾 GMM . These logits are not the mixture weights directly; they are converted to the weights in Eq. (10) by 
+
+𝑤 𝑖 (𝑡 ) = (1 − 𝛼 ) exp (𝑣 𝑖 (𝑡 )) 
+
+Í𝐾 GMM  
+
+> 𝑗 =1
+
+exp (𝑣 𝑗 (𝑡 )) + 𝛼 𝐾 GMM 
+
+, 𝑖 = 1, . . . , 𝐾 GMM .
+
+Thus, 𝑤 𝑖 (𝑡 ) ≥ 𝛼 /𝐾 GMM and Í𝐾 GMM  
+
+> 𝑖 =1
+
+𝑤 𝑖 (𝑡 ) = 1. Here 𝛼 ∈ ( 0, 1) is a small mixing coefficient † that mitigates weight collapse by keeping every mixture component active. For any given normalized time 𝑡 , the corresponding 𝑥 –space Gaussian mixture parameters can be queried by decoding,i.e., for all 𝑘 ∈ 𝐾 GMM , 𝜇 𝑥,𝑘 (𝑡 ) = 𝜇 en +𝜇 𝑧,𝑘 (𝑡 )⊙ 𝜎 en , Σ𝑥,𝑘 (𝑡 ) =
+
+𝐿 𝑥,𝑘 (𝑡 ) 𝐿 𝑥,𝑘 (𝑡 )⊤ and 𝐿 𝑥,𝑘 (𝑡 ) = diag (𝜎 en ) 𝐿 𝑧,𝑘 (𝑡 ).
+
+Key Difference between PINN-GMM and Traditional GMM Propagation PINN-GMM (this work) learns a time-conditioned GMM ˆ𝑝 (𝑥, 𝑡 ) that directly approximate the full space-time density 𝑝 (𝑥, 𝑡 ) of the exact dynamics governed by the FP-PDE. In contrast, traditional GMM propagation starts from an initial GMM and propagates each mixture through dynamics (typically approximate ) dynamics, updating the mean and covariances parameters. In      
+
+> ∗𝜀 min is set to 10 −4in our experiments
+> †𝛼 is set to 0 .01 in our experiments
+
+10 most cases [8–10], the weights are held fixed unless additional information is introduced (e.g., observations, splitting criteria). 
+
+C. Error Bound Construction and Application 
+
+Above we introduce different constructions for representing the PDF approximation ˆ 𝑝 with a PINN. Here, we summarize a key result from our previous work [16] that bounds the approximation error of PINN ˆ𝑝 , yielding an admissible PDF set. In the remainder of this section, we specialize this construction to the admissible PDF set induced by PINN-GMM. We then focus on Problem 2 to compute upper and lower bounds on event probabilities (i.e., integrals of the PDF) via this admissible set. Let ˆ 𝑝 be a learned PINN approximation solution to the true PDF 𝑝 (𝑥, 𝑡 ). Define the point-wise approximation error 𝑒 (𝑥, 𝑡 ) := 𝑝 (𝑥, 𝑡 ) − ˆ𝑝 (𝑥, 𝑡 ) Then 𝑒 (𝑥, 𝑡 ) is governed by another PDE: 
+
+D [ 𝑒 ] + D [ ˆ𝑝 ] = 0 s.t. 𝑒 (𝑥, 0) = 𝑝 0 (𝑥 ) − ˆ𝑝 (𝑥, 0). (11) The error PDE in Eq. (11) is not necessarily easier to solve than the original FP-PDE in Eq. (5). It has the same differential operator and is forced by the residual D [ ˆ𝑝 ], so a large or oscillatory residual can make error-PINN training difficult. To address this, we use a smooth PINN-GMM representation for ˆ 𝑝 together with the coordinate/encoder choices introduced above, which aim to keep D [ ˆ𝑝 ] smooth and small, and we train ˆ 𝑒 on informative samples via the combined sampling of Sec. IV; Sec. V provides empirical evidence that the resulting error-learning step is tractable on the orbital benchmarks considered here. Our prior work [16] showed that, under some sufficient conditions, one can construct a time-conditioned error bound that solves Problem 1 by training another error-PINN ˆ 𝑒 (𝑥, 𝑡 ) that approximates the solution to the PDE in Eq. (11). Specifically, the time-dependent error bound takes the first-order form proposed in Ref. [16]: 
+
+𝐵 (𝑡 ) = 2 · max   
+
+> 𝑥 ∈𝑋
+
+| ˆ𝑒 (𝑥, 𝑡 )| , ∀𝑡 ∈ 𝑇 . (12) The factor 2 in Eq. (12) is not a heuristic safety factor; it follows from Ref. [16, Cor. 1] under a sufficient accuracy condition on the error-PINN ˆ 𝑒 . A conservative checking condition is given in Ref. [16, Prop. 1] but is not evaluated here, as it depends on problem-dependent constants that are difficult to estimate tightly in high-dimensional orbital settings. Sec. V empirically validates the constructed bounds against high-fidelity reference solutions. We note that if Eq. (12) yields a 𝐵 (𝑡 ) satisfying Eq. (6)—as theoretically grounded by Ref. [16, Cor. 1] and empirically supported in Sec. V—then all subsequent claims, including the admissible PDF set in Eq. (13) and the LP-based event-probability bounds in Proposition 1, follow rigorously. 11 Formally, let 𝐵 (𝑡 ) be constructed by Eq. (12) such that Eq. (6) holds, then ˆ 𝑝 (𝑥, 𝑡 ) and 𝐵 (𝑡 ) defines a set of admissible PDFs 
+
+P ( ˆ𝑝, 𝐵, 𝑡 ) :=
+
+{
+
+𝑝 (𝑥, 𝑡 ) ∀𝑥 ∈ 𝑋 ⊂ R𝑛 : | 𝑝 (𝑥, 𝑡 ) − ˆ𝑝 (𝑥, 𝑡 )| ≤ 𝐵 (𝑡 ), 𝑝 (𝑥, 𝑡 ) ≥ 0,
+
+¹
+
+> R𝑛
+
+𝑝 (𝑥, 𝑡 ) 𝑑𝑥 = 1
+
+}
+
+(13) such that for every 𝑡 ∈ 𝑇 , the true PDF 𝑝 (𝑥, 𝑡 ) is guaranteed to lie in this set, i.e., 𝑝 (𝑥, 𝑡 ) ∈ P ( ˆ𝑝, 𝐵, 𝑡 ).
+
+Remark 1. The bound 𝐵 (𝑡 ) in Eq. (12) is uniform in space: the first-order construction retains only the spatial maximum of ˆ𝑒 (𝑥, 𝑡 ), discarding spatial variation and making the admissible set conservative. This form is used because it yields a simple ambiguity set compatible with the LP-based event-probability bounds in Proposition 1. Tighter spatially varying bounds are possible but require higher-order recursive error learning [16], which is not practical for the orbital examples here. 
+
+Remark 2. The admissible PDF set P in Eq. (13) is a type of ambiguity set. It corresponds to the band model [19], the 
+
+density ratio class [20, 21], and the intervals of measures [22]. Moreover, it can be translated into an 𝜖 -contamination model with bounded outlier distribution [23]. 
+
+Several applications of P are discussed in Refs. [20, 21, 24] and references therein. Here we focus on Problem 2, which seeks upper and lower bounds on the probability of an event, such as entering an unsafe region or reaching a target set. Following the optimization approach used in formal methods [25], we formulate an LP to solve Problem 2. 
+
+Proposition 1 (Solving Problem 2 by LP) . Given 𝑡 ∈ 𝑇 , a bounded set 𝑋 ⊂ R𝑛 , and a event set 𝑋 event ⊆ 𝑋 . Let 
+
+𝐶 = {𝑐 1, . . . , 𝑐 𝑁 }, where 𝑐 𝑖 ⊆ 𝑋 , be a partition of 𝑋 , i.e., ∪𝑁 𝑖 =1𝑐 𝑖 = 𝑋, 𝑐 𝑖 ∩ 𝑐 𝑗 = ∅ for all 𝑖 ≠ 𝑗 ∈ { 1, . . . , 𝑁 }. Let ˆ𝑝 
+
+and 𝐵 be given such that Eq. (13) holds. Define computable lower and upper relaxations 𝑝 𝑖 , 𝑝 𝑖 satisfying 
+
+𝑝 𝑖 ≤ min  
+
+> 𝑥 ∈𝑐 𝑖
+
+ˆ𝑝 (𝑥, 𝑡 ) − 𝐵 (𝑡 ), 𝑝 𝑖 ≥ max  
+
+> 𝑥 ∈𝑐 𝑖
+
+ˆ𝑝 (𝑥, 𝑡 ) + 𝐵 (𝑡 ). (14) 
+
+and define 𝑝 − 
+
+> 𝑖
+
+:= max {0, 𝑝 𝑖 } and 𝑝 + 
+
+> 𝑖
+
+:= 𝑝 𝑖 . Let Vol (𝑐 𝑖 ) be the volume of cell 𝑐 𝑖 ∈ 𝐶 . Then the upper bound of event probability P+ (𝑡 ; 𝑋 event ) ≥ P(𝑥 ∈ 𝑋 event , 𝑡 ) can be obtained by solving: 
+
+P+ (𝑡 ; 𝑋 event ) = max 
+
+> 𝑝 𝑖
+
+Õ    
+
+> 𝑐 𝑖 ∈𝐶 ∧𝑐 𝑖 ∩𝑋 event ≠∅
+
+𝑝 𝑖 Vol (𝑐 𝑖 ) (15a) 
+
+subject to 
+
+𝑝 𝑖 ∈ [ 𝑝 − 
+
+> 𝑖
+
+, 𝑝 + 
+
+> 𝑖
+
+] ∀𝑖 ∈ { 1, . . . , 𝑁 }
+
+> 𝑁
+
+Õ
+
+> 𝑖 =1
+
+𝑝 𝑖 Vol (𝑐 𝑖 ) ≤ 1. (15b) 
+
+Similarly, the lower bound of event probability P− (𝑡 ; 𝑋 event ) ≤ P(𝑥 ∈ 𝑋 event , 𝑡 ) can be obtained by solving 
+
+P− (𝑡 ; 𝑋 event ) = min 𝑝 𝑖 
+
+Í𝑐 𝑖 ∈𝐶 ∧ 𝑐 𝑖 ⊆ 𝑋 event 𝑝 𝑖 Vol (𝑐 𝑖 ) subject to Eq. (15b) .
+
+12 Proof. Fix 𝑡 and let 𝑝 (· , 𝑡 ) ∈ P ( ˆ𝑝, 𝐵, 𝑡 ). Define the cell averages 
+
+𝑝 𝑖 := 1Vol (𝑐 𝑖 )
+
+¹
+
+> 𝑐 𝑖
+
+𝑝 (𝑥, 𝑡 ) 𝑑𝑥, ∀𝑖 ∈ { 1, . . . , 𝑁 }, (16) Since 𝑝 (· , 𝑡 ) ∈ P ( ˆ𝑝, 𝐵, 𝑡 ), for all 𝑥 ∈ 𝑋 we have ˆ 𝑝 (𝑥, 𝑡 ) − 𝐵 (𝑡 ) ≤ 𝑝 (𝑥, 𝑡 ) ≤ ˆ𝑝 (𝑥, 𝑡 ) + 𝐵 (𝑡 ). By definition of 𝑝 𝑖 , 𝑝 𝑖 in Eq. (14), 𝑝 𝑖 ≤ min 𝑥 ∈𝑐 𝑖 ˆ𝑝 (𝑥, 𝑡 ) − 𝐵 (𝑡 ) ≤ ˆ𝑝 (𝑥, 𝑡 ) − 𝐵 (𝑡 ) ≤ 𝑝 (𝑥, 𝑡 ) ≤ ˆ𝑝 (𝑥, 𝑡 ) + 𝐵 (𝑡 ) ≤ max 𝑥 ∈𝑐 𝑖 ˆ𝑝 (𝑥, 𝑡 ) + 𝐵 (𝑡 ) ≤ 𝑝 𝑖 , ∀𝑥 ∈
+
+𝑐 𝑖 . Therefore, for all 𝑥 ∈ 𝑐 𝑖 , 𝑝 − 
+
+> 𝑖
+
+:= max {0, 𝑝 𝑖 } ≤ 𝑝 (𝑥, 𝑡 ) ≤ 𝑝 𝑖 := 𝑝 + 
+
+> 𝑖
+
+. Integrating over 𝑐 𝑖 and dividing by Vol (𝑐 𝑖 ) yields 
+
+𝑝 − 
+
+> 𝑖
+
+≤ 1Vol (𝑐 𝑖 )
+
+∫ 
+
+> 𝑐 𝑖
+
+𝑝 (𝑥, 𝑡 ) 𝑑𝑥 = 𝑝 𝑖 ≤ 𝑝 + 
+
+> 𝑖
+
+, where the equality holds by definition in Eq. (16). Also, by definition of 𝑐 𝑖 in Proposition 1, Í𝑁 𝑖 =1 𝑝 𝑖 Vol (𝑐 𝑖 ) ≤ ∫ 
+
+> R𝑛
+
+𝑝 (𝑥, 𝑡 ) 𝑑𝑥 = 1, so {𝑝 𝑖 }𝑁 𝑖 =1 is feasible for constraints (15b). 
+
+Upper bound. Let 𝐼 := {𝑖 : 𝑐 𝑖 ∩ 𝑋 event ≠ ∅} and 𝑈 := Ð𝑖 ∈𝐼 𝑐 𝑖 . Then 𝑋 event ⊆ 𝑈 , and since 𝑝 ≥ 0, P(𝑥 ∈ 𝑋 event , 𝑡 ) =
+
+∫ 
+
+> 𝑋 event
+
+𝑝 (𝑥, 𝑡 ) 𝑑𝑥 ≤ ∫ 
+
+> 𝑈
+
+𝑝 (𝑥, 𝑡 ) 𝑑𝑥 = Í𝑖 ∈𝐼 
+
+∫ 
+
+> 𝑐 𝑖
+
+𝑝 (𝑥, 𝑡 ) 𝑑𝑥 = Í𝑖 ∈𝐼 𝑝 𝑖 Vol (𝑐 𝑖 ). Since the LP defining P+ (𝑡 ; 𝑋 event ) maximizes the same expression over all feasible decision variables { ˜𝑝 𝑖 }𝑁 𝑖 =1, we have P(𝑥 ∈ 𝑋 event , 𝑡 ) ≤ Í𝑖 ∈𝐼 𝑝 𝑖 Vol (𝑐 𝑖 ) ≤ 
+
+max ˜𝑝 𝑖 
+
+Í𝑖 ∈𝐼 ˜𝑝 𝑖 Vol (𝑐 𝑖 ) = P+ (𝑡 ; 𝑋 event ).
+
+Lower bound. Let 𝐽 := {𝑖 : 𝑐 𝑖 ⊆ 𝑋 event }. Then Ð𝑖 ∈ 𝐽 𝑐 𝑖 ⊆ 𝑋 event , and since 𝑝 ≥ 0, P(𝑥 ∈ 𝑋 event , 𝑡 ) =
+
+∫ 
+
+> 𝑋 event
+
+𝑝 (𝑥, 𝑡 ) 𝑑𝑥 ≥ ∫    
+
+> ∪𝑖 ∈𝐽 𝑐 𝑖
+
+𝑝 (𝑥, 𝑡 ) 𝑑𝑥 = Í𝑖 ∈ 𝐽 
+
+∫ 
+
+> 𝑐 𝑖
+
+𝑝 (𝑥, 𝑡 ) 𝑑𝑥 = Í𝑖 ∈ 𝐽 𝑝 𝑖 Vol (𝑐 𝑖 ). Minimizing the right-hand side over all feasible { ˜𝑝 𝑖 }𝑁 𝑖 =1 gives the LP value P− (𝑡 ; 𝑋 event ), hence P(𝑥 ∈ 𝑋 event , 𝑡 ) ≥ min ˜𝑝 𝑖 
+
+Í𝑖 ∈ 𝐽 ˜𝑝 𝑖 Vol (𝑐 𝑖 ) = P− (𝑡 ; 𝑋 event ).
+
+Remark 3. The event-probability bounds P+ and P− tighten as (i) the PINN’s error bound 𝐵 decreases or (ii) the partition is refined (larger |𝐶 |, smaller Vol (𝑐 𝑖 )), which tightens 𝑝 𝑖 and 𝑝 𝑖 .
+
+To solve Problem 2 by Proposition 1, one must compute 𝑝 𝑖 , 𝑝 𝑖 for each cell 𝑐 𝑖 ∈ 𝐶 , satisfying Eq. (14), and then set 𝑝 − 
+
+> 𝑖
+
+:= max {0, 𝑝 𝑖 } and 𝑝 + 
+
+> 𝑖
+
+:= 𝑝 𝑖 . When ˆ𝑝 is represented by a neural network, 𝑝 𝑖 and 𝑝 𝑖 can be obtained via interval arithmetic using tools such as auto-LiRPA [26]. However, when 𝑐 𝑖 is a compact convex polytope and ˆ 𝑝 is a PINN-GMM, these bounds can be computed efficiently as we show below. 
+
+Proposition 2 (Mixture inequality) . Consider non-negative weights 𝑤 1, . . . , 𝑤 𝐾 such that Í𝐾 𝑘 =1 𝑤 𝑘 = 1, and let C
+
+be a nonempty compact set, and let 𝑓 𝑘 : C → R≥0 be continuous functions on C. Then Í𝐾 𝑘 =1
+
+(
+
+𝑤 𝑘 min 𝑥 ∈ C 𝑓 𝑘 (𝑥 )
+
+)
+
+≤
+
+min 𝑥 ∈ C 
+
+( Í𝐾 𝑘 =1 𝑤 𝑘 𝑓 𝑘 (𝑥 )
+
+)
+
+≤ max 𝑥 ∈ C 
+
+( Í𝐾 𝑘 =1 𝑤 𝑘 𝑓 𝑘 (𝑥 )
+
+)
+
+≤ Í𝐾 𝑘 =1
+
+(
+
+𝑤 𝑘 max 𝑥 ∈ C 𝑓 𝑘 (𝑥 )
+
+)
+
+.
+
+Lemma 1 (PDF bounds of a Gaussian distribution over a compact convex polytope) . Let C ⊂ R𝑛 be a nonempty compact convex polytope, corresponding to a partition cell 𝑐 𝑖 in Proposition 1, and let 𝜙 : R𝑛 → R≥0 be a Gaussian PDF with mean 𝜇 ∈ R𝑛 and positive definite covariance Σ ∈ R𝑛 ×𝑛 . Let 𝑐 𝜙 = (2𝜋 )−𝑛 /2 det (Σ)−1/2 and define 
+
+𝑞 (𝑥 ) := 12 (𝑥 − 𝜇 )⊤Σ−1 (𝑥 − 𝜇 ), 𝑞 − := min   
+
+> 𝑥 ∈ C
+
+𝑞 (𝑥 ), 𝑞 + := max   
+
+> 𝑥 ∈ C
+
+𝑞 (𝑥 ). (17) 
+
+Then min 𝑥 ∈ C 𝜙 (𝑥 ) = 𝑐 𝜙 exp (− 𝑞 +) and max 𝑥 ∈ C 𝜙 (𝑥 ) = 𝑐 𝜙 exp (− 𝑞 − ).
+
+13 Proof. Since 𝜙 (𝑥 ) = 𝑐 𝜙 exp (− 𝑞 (𝑥 )) and exp (− 𝑦 ) is strictly decreasing in 𝑦 , minimizing 𝜙 over C is equivalent to maximizing 𝑞 over C, and vice versa. 
+
+Remark 4. Lower bound 𝑞 − in Eq. (17) is a standard convex quadratic program. Since Σ−1 is positive definite, the objective 𝑞 (𝑥 ) = (𝑥 − 𝜇 )⊤Σ−1 (𝑥 − 𝜇 ) is smooth and strongly convex, so projected gradient descent with an appropriate step size converges globally to the unique minimizer over C with a linear rate [27]. Upper bound 𝑞 + in Eq. (17) is attained at a vertex of C, i.e., 𝑞 + = max 𝑣 ∈Vert ( C) 𝑞 (𝑣 ) by Bauer’s maximum principle [28, 29]. 
+
+Theorem 1 (Bounds for a Gaussian-mixture admissible set over a compact convex polytope) . Consider ˆ𝑝 (𝑥, 𝑡 ) =
+
+Í𝐾 𝑘 =1 𝑤 𝑘 𝜙 𝑘 (𝑥, 𝑡 ) with 𝑤 𝑘 ≥ 0 and Í𝐾 𝑘 =1 𝑤 𝑘 = 1, where each 𝜙 𝑘 (· , 𝑡 ) is a Gaussian PDF as in Lemma 1. Let 𝐵 (𝑡 ) ≥ 0
+
+be given and let 𝑐 𝑖 ⊂ R𝑛 be a nonempty compact convex polytope. Define 𝑝 𝑖 := Í𝐾 𝑘 =1
+
+(
+
+𝑤 𝑘 min 𝑥 ∈𝑐 𝑖 𝜙 𝑘 (𝑥, 𝑡 )
+
+)
+
+− 𝐵 (𝑡 )
+
+and 𝑝 𝑖 := Í𝐾 𝑘 =1
+
+(
+
+𝑤 𝑘 max 𝑥 ∈𝑐 𝑖 𝜙 𝑘 (𝑥, 𝑡 )
+
+)
+
++ 𝐵 (𝑡 ). Then 𝑝 𝑖 , 𝑝 𝑖 satisfy the relaxed constraints in Eq. (14) , i.e., 𝑝 𝑖 ≤
+
+min 𝑥 ∈𝑐 𝑖 
+
+( ˆ𝑝 (𝑥, 𝑡 ) − 𝐵 (𝑡 )) and 𝑝 𝑖 ≥ max 𝑥 ∈𝑐 𝑖 
+
+( ˆ𝑝 (𝑥, 𝑡 ) + 𝐵 (𝑡 )). Consequently, setting 𝑝 − 
+
+> 𝑖
+
+:= max {0, 𝑝 𝑖 } and 𝑝 + 
+
+> 𝑖
+
+:= 𝑝 𝑖 
+
+yields valid bounds for Proposition 1. Proof. By Proposition 2 with C = 𝑐 𝑖 and 𝑓 𝑘 (·) = 𝜙 𝑘 (· , 𝑡 ), we have Í𝐾 𝑘 =1
+
+(
+
+𝑤 𝑘 min 𝑥 ∈𝑐 𝑖 𝜙 𝑘 (𝑥, 𝑡 )
+
+)
+
+≤ min 𝑥 ∈𝑐 𝑖 
+
+Í𝐾 𝑘 =1 𝑤 𝑘 𝜙 𝑘 (𝑥, 𝑡 ) =
+
+min 𝑥 ∈𝑐 𝑖 ˆ𝑝 (𝑥, 𝑡 ), and max 𝑥 ∈𝑐 𝑖 ˆ𝑝 (𝑥, 𝑡 ) = max 𝑥 ∈𝑐 𝑖 
+
+Í𝐾 𝑘 =1 𝑤 𝑘 𝜙 𝑘 (𝑥, 𝑡 ) ≤ Í𝐾 𝑘 =1
+
+(
+
+𝑤 𝑘 max 𝑥 ∈𝑐 𝑖 𝜙 𝑘 (𝑥, 𝑡 )
+
+)
+
+. Since 𝐵 (𝑡 ) is constant in 𝑥 , subtracting/adding 𝐵 (𝑡 ) yields Í𝐾 𝑘 =1
+
+(
+
+𝑤 𝑘 min 𝑥 ∈𝑐 𝑖 𝜙 𝑘 (𝑥, 𝑡 )
+
+)
+
+− 𝐵 (𝑡 ) ≤ min 𝑥 ∈𝑐 𝑖 ˆ𝑝 (𝑥, 𝑡 ) − 𝐵 (𝑡 ), and max 𝑥 ∈𝑐 𝑖 ˆ𝑝 (𝑥, 𝑡 ) + 
+
+𝐵 (𝑡 ) ≤ Í𝐾 𝑘 =1
+
+(
+
+𝑤 𝑘 max 𝑥 ∈𝑐 𝑖 𝜙 𝑘 (𝑥, 𝑡 )
+
+)
+
++ 𝐵 (𝑡 ). Let 𝑝 𝑖 = Í𝐾 𝑘 =1
+
+(
+
+𝑤 𝑘 min 𝑥 ∈𝑐 𝑖 𝜙 𝑘 (𝑥, 𝑡 )
+
+)
+
+− 𝐵 (𝑡 ) ≤ min 𝑥 ∈𝑐 𝑖 ˆ𝑝 (𝑥, 𝑡 ) − 𝐵 (𝑡 ),
+
+and 𝑝 𝑖 = Í𝐾 𝑘 =1
+
+(
+
+𝑤 𝑘 max 𝑥 ∈𝑐 𝑖 𝜙 𝑘 (𝑥, 𝑡 )
+
+)
+
++ 𝐵 (𝑡 ) ≥ max 𝑥 ∈𝑐 𝑖 ˆ𝑝 (𝑥, 𝑡 ) + 𝐵 (𝑡 ). By Lemma 1 and Remark 4, 𝑝 𝑖 and 𝑝 𝑖 are computable, and they satisfy Eq. (14). Building on Theorem 1, we present a general Algorithm 1 for Proposition 1 via PINN-GMM ˆ 𝑝 and its error bound 
+
+𝐵 .
+
+Algorithm 1 Compute Upper/Lower Bounds for P(𝑥 ∈ 𝑋 event , 𝑡 )
+
+Require: 𝑋, 𝑋 event ; time 𝑡 ; PINN-GMM ˆ 𝑝 (𝑥, 𝑡 ) and error bound 𝐵 (𝑡 ) 
+
+> 1:
+
+Partition 𝑋 into polytope cells 𝐶 = {𝑐 𝑖 }𝑁 𝑖 =1 
+
+> 2:
+
+Compute 𝑝 − 
+
+> 𝑖
+
+, 𝑝 + 
+
+> 𝑖
+
+for each cell 𝑐 𝑖 ∈ 𝐶 via Theorem 1  
+
+> 3:
+
+Solve the LP in Proposition 1  
+
+> 4:
+
+return P+ (𝑡 ), P− (𝑡 )
+
+# IV. Training Implementation 
+
+We describe our physics-informed neural network (PINN) training pipeline in three parts: (i) loss functions derived from the Fokker-Planck operator and the initial condition; (ii) sampling strategies for the initial and differential losses; and (iii) the optimizer. We first give pseudocode for training the space-time probability density function ˆ𝑝 (𝑥, 𝑡 ) (Algorithm 2) and the error approximation ˆ 𝑒 (𝑥, 𝑡 ) used to construct the time-dependent first-order bound 𝐵 (𝑡 )
+
+(Algorithm 3), then detail each component. All hyperparameter values are summarized in Table 1. 14 Algorithm 2 Training ˆ 𝑝 
+
+Require: ˆ𝑝 𝜃 ; FP-PDE (Eq. (5)); sampling strategy S ampling ; optimizer Opt  
+
+> 1:
+
+Initialize losses L0, L𝑟 ; set best_loss ← ∞  
+
+> 2:
+
+for 𝑘 = 1 to 𝑘 max do  
+
+> 3:
+
+(B (0) 
+
+> 𝑘
+
+, B (𝑟 ) 
+
+> 𝑘
+
+) ← Sampling ⊲ IC and residual batches  
+
+> 4:
+
+L ← L 0 + 𝑤 𝑟 L𝑟 , L0 = L ˆ𝑝  
+
+> 0
+
+( ˆ𝑝 ; B (0) 
+
+> 𝑘
+
+, 𝑝 0), L𝑟 = L ( ˆ𝑝 ) 
+
+> 𝑟
+
+( ˆ𝑝 ; B (𝑟 ) 
+
+> 𝑘
+
+, D) ⊲ Physics-informed loss  
+
+> 5:
+
+Backprop (L) ; Opt.step ()  
+
+> 6:
+
+if L < best_loss then best_loss ← L ; 𝜃 ★ ← 𝜃  
+
+> 7:
+
+end for  
+
+> 8:
+
+return ˆ𝑝 𝜃 ★
+
+Algorithm 3 Training ˆ 𝑒 and constructing 𝐵 (𝑡 )
+
+Require: ˆ𝑒 𝜃 ; error PDE for 𝑒 (Eq. (11) including ˆ 𝑝 ); Sampling ; Opt  
+
+> 1:
+
+Initialize L0, L𝑟 ; set best_loss ← ∞  
+
+> 2:
+
+for 𝑘 = 1 to 𝑘 max do  
+
+> 3:
+
+(B (0) 
+
+> 𝑘
+
+, B (𝑟 ) 
+
+> 𝑘
+
+) ← Sampling ⊲ IC and residual batches  
+
+> 4:
+
+L ← L 0 + 𝑤 𝑟 L𝑟 , L0 = L (𝑒 ) 
+
+> 0
+
+( ˆ𝑒 ; B (0) 
+
+> 𝑘
+
+, 𝑝 0, ˆ𝑝 ), L𝑟 = L (𝑒 ) 
+
+> 𝑟
+
+( ˆ𝑒 ; B (𝑟 ) 
+
+> 𝑘
+
+, D, ˆ𝑝 ) ⊲ Physics-informed loss  
+
+> 5:
+
+Backprop (L) ; Opt.step ()  
+
+> 6:
+
+if L < best_loss then best_loss ← L ; 𝜃 ★ ← 𝜃  
+
+> 7:
+
+end for  
+
+> 8:
+
+return ˆ𝑒 𝜃 ★ and 𝐵 (𝑡 ) = 2 max 𝑥 ∈𝑋 | ˆ𝑒 𝜃 ★ (𝑥, 𝑡 )| by Eq. (12) 
+
+A. Loss 
+
+At a generic training iteration, the sampling strategy returns an initial-condition batch B (0) = {𝑥 (0) 
+
+> 𝑖
+
+}𝑁 (0) 
+
+> 𝑖 =1
+
+(evaluated at 𝑡 = 0) and a residual batch B (𝑟 ) = {( 𝑥 (𝑟 ) 
+
+> 𝑖
+
+, 𝑡 (𝑟 ) 
+
+> 𝑖
+
+)} 𝑁 (𝑟 ) 
+
+> 𝑖 =1
+
+in 𝑋 × 𝑇 . As noted in Sec. II, 𝑋 is a computational region of interest, so no boundary-condition loss is imposed on 𝜕 𝑋 ; the losses enforce only the initial condition and PDE residuals. We train PINN-GMM ˆ 𝑝 with a Hellinger-type initial-condition (IC) loss. The HT loss is a surrogate inspired by the Hellinger distance; its appeal stems from the inequality that, for any two densities 𝑝 and 𝑞 , the exact Hellinger distance upper bounds the total variation (TV), i.e., 𝐻 2 ( 𝑝, 𝑞 ) = 12
+
+∫ 
+
+> 𝑋
+
+(√𝑝 (𝑥 ) − √𝑞 (𝑥 )) 2 𝑑𝑥 , TV ( 𝑝, 𝑞 ) = 12
+
+∫ 
+
+> 𝑋
+
+| 𝑝 (𝑥 ) − 𝑞 (𝑥 )| 𝑑𝑥 ,and TV ( 𝑝, 𝑞 ) ≤ √2𝐻 ( 𝑝, 𝑞 ). This perspective is not new: several studies (e.g., Ref. [30] and references therein) have argued that ℓ1-type metrics (including the Hellinger distance) can be more suitable than ℓ2 metrics for density estimation. Therefore, given per-iteration batches (B (0) , B (𝑟 ) ), the loss is L ( 𝑝 ) = L ( 𝑝 ) 
+
+> 0,HT
+
+(B (0) ) + 𝑤 𝑟 L ( 𝑝 ) 
+
+> 𝑟
+
+(B (𝑟 ) ),where L ( 𝑝 ) 
+
+> 0,HT
+
+(B (0) ) = 12𝑁 (0)
+
+Í𝑥 ∈ B (0)
+
+(√ 𝑝 (𝑥, 0) − √ ˆ𝑝 (𝑥, 0)
+
+)2
+
+and L ( 𝑝 ) 
+
+> 𝑟
+
+(B (𝑟 ) ) = 1  
+
+> 𝑁 (𝑟 )
+
+Í( 𝑥,𝑡 ) ∈ B (𝑟 )
+
+(
+
+D [ ˆ𝑝 ] ( 𝑥, 𝑡 )
+
+)2
+
+. For the error-PINN ˆ 𝑒 , where the true error 𝑒 := 𝑝 − ˆ𝑝 satisfies Eq. (11), we adopt a standard mean-square-error PINN loss, i.e., L (𝑒 ) = L (𝑒 ) 
+
+> 0
+
++ 𝑤 𝑟 L (𝑒 ) 
+
+> 𝑟
+
+, where L (𝑒 ) 
+
+> 0
+
+= 1 
+
+> 𝑁 (0)
+
+Í𝑁 (0)
+
+> 𝑖 =1
+
+(𝑝 (𝑥 (0) 
+
+> 𝑖
+
+, 𝑡 0) − ˆ𝑝 (𝑥 (0) 
+
+> 𝑖
+
+, 𝑡 0) − ˆ𝑒 (𝑥 (0) 
+
+> 𝑖
+
+, 𝑡 0))2 and L (𝑒 ) 
+
+> 𝑟
+
+=  
+
+> 1
+> 𝑁 (𝑟 )
+
+Í𝑁 (𝑟 )
+
+> 𝑖 =1
+
+(D [ ˆ𝑒 ] ( 𝑥 (𝑟 ) 
+
+> 𝑖
+
+, 𝑡 (𝑟 ) 
+
+> 𝑖
+
+) + D [ ˆ𝑝 ] ( 𝑥 (𝑟 ) 
+
+> 𝑖
+
+, 𝑡 (𝑟 ) 
+
+> 𝑖
+
+))2.
+
+B. Sampling 
+
+In high dimensions, uniformly drawn points often lie in regions where the density and/or the residual magnitude 
+
+|D [·]| are small, contributing little to the physics-informed loss; see the empty-space phenomenon in multivariate 15 settings [31]. In Algorithms 2 and 3, Sampling denotes the batch-generation process that returns an initial-condition batch B (0) and a residual batch B (𝑟 ) at each training iteration. To implement this process, we first define two basic strategies: (i) a uniform baseline , and (ii) an adaptive pool strategy that maintains a persistent set of informative samples. Our proposed approach is the (iii) combined strategy, which builds on these two by augmenting the adaptive pool with fresh random mini-batches. 
+
+Uniform baseline: At iteration 𝑘 , the strategy produces B (0) 
+
+> 𝑘
+
+= {𝑥 (0) 
+
+> 𝑖
+
+}𝑁 (0) 
+
+> 𝑖 =1
+
+and B (𝑟 ) 
+
+> 𝑘
+
+= {( 𝑥 (𝑟 ) 
+
+> 𝑖
+
+, 𝑡 (𝑟 ) 
+
+> 𝑖
+
+)} 𝑁 (𝑟 ) 
+
+> 𝑖 =1
+
+, with independent draws 𝑥 (0)
+
+> 𝑖
+> i.i.d.
+
+∼ 𝑈 (𝑋 ), 𝑥 (𝑟 )
+
+> 𝑖
+> i.i.d.
+
+∼ 𝑈 (𝑋 ), and 𝑡 (𝑟 )
+
+> 𝑖
+> i.i.d.
+
+∼ 𝑈 (𝑇 ). This uniform sampling coincides with the standard sampling strategy used in most PINN implementations [2, 3]. While it offers unbiased coverage, it may still place many samples in regions that provide weak gradient signals. 
+
+Adaptive pool: Adaptive sampling grows a persistent pool of training points over time [2]. Instead of drawing a fresh random mini-batch at every iteration, we (i) initialize a pool set S with samples from a proposal distribution 
+
+𝜋 cand ; (ii) use the entire pool as the training batch for the next 𝑘 adap iterations; and (iii) every 𝑘 adap iterations, draw 𝑁 cand 
+
+candidates from 𝜋 cand , score them (e.g., by initial-condition discrepancy or differential residual), and enlarge S by adding the 𝑁 add highest-scoring candidates, with 𝑁 add ≤ 𝑁 cand . This repeated enrichment helps avoid early stagnation and improves stability. The proposal 𝜋 cand can be uniform, biased toward informative regions, or a mixture. While the adaptive pool targets informative samples, the combined strategy below restores per-iteration domain coverage by adding fresh random samples. 
+
+Combination: At iteration 𝑘 , we form each batch by mixing the current pool with new random samples: B (0) 
+
+> 𝑘
+
+=
+
+S (0) 
+
+> 𝑘
+
+∪ B (0) 
+
+> rand ,𝑘
+
+and B (𝑟 ) 
+
+> 𝑘
+
+= S (𝑟 ) 
+
+> 𝑘
+
+∪ B (𝑟 ) 
+
+> rand ,𝑘
+
+, where S (0) 
+
+> 𝑘
+
+and S (𝑟 ) 
+
+> 𝑘
+
+are the current pools of the IC and residual samples, respectively, and B (·)  
+
+> rand ,𝑘
+
+is a fresh random mini-batch of size 𝑁 rand sampled i.i.d. from 𝜋 cand . We use a first-in-first out (FIFO) rule on the adaptive pool, i.e., |S (0) 
+
+> 𝑘
+
+| ≤ 𝑁 rand and |S (𝑟 ) 
+
+> 𝑘
+
+| ≤ 𝑁 rand , so that the pool does not dominate the fresh random draws as the training progresses. 
+
+C. Optimization 
+
+We use the Adam optimizer with Pytorch default setting (𝛽 1, 𝛽 2, 𝜀 ) = (0.9, 0.999 , 10 −8) to update the neural network parameters. For a standard MLP representation, all parameters share the initial learning rate 𝜂 MLP 0 = 10 −3.
+
+For the PINN-GMM, we optimize three parameter groups corresponding to the network outputs: (i) the mean network 
+
+𝜇 𝑧 (𝑡 ), (ii) the covariance network 𝐿 𝑧 (𝑡 ), and (iii) the weight network. As defined in the time-conditioned Gaussian-mixture architecture in Sec. III.B.2, the encoder parameters (𝜇 en , Σen ) are fixed from the initial state distribution; these quantities are therefore not learned and are excluded from the optimizer. A time-dependent encoder, as in Sec. III.A.4, is a possible extension but is not used here. Because the weight map 𝑣 7 → 𝑤 and the covariance map ℓ 7 → 𝐿 𝑧 7 → Σ𝑧 
+
+are constrained/reparameterized, their effective gradients tend to be sharper and less well scaled than those of the means. We therefore assign a smaller learning rates for weights and covariances, i.e., 𝜂 ( 𝜇 𝑧 ) 
+
+> 0
+
+= 10 −3, 𝜂 (𝐿 𝑧 ) 
+
+> 0
+
+= 10 −4
+
+16 and 𝜂 (𝑤 𝑧 ) 
+
+> 0
+
+= 10 −4. This choice stabilizes training of weights and covariances, while allowing the mean to adapt more quickly. We apply a global step-decay schedule to all parameters, i.e., 𝜂 𝑘 = 𝜂 0 𝛾 ⌊𝑘 /𝑘 decay ⌋, where 𝛾 ∈ ( 0, 1) and 𝑘 is the iteration number and 𝑘 decay the decay period. We use gradient-norm clipping with threshold 𝑐 grad = 1 to improve training stability. Training runs for at most 𝑘 max iterations, and we save the iterate that has the minimum total loss over the run. 
+
+Table 1 Hyperparameter values for training the density PINN ˆ𝑝 and error PINN ˆ𝑒 .                            
+
+> Loss Sampling Optimization
+> 𝑤 𝑟 =1.0𝑘 adap =100 ,𝑁 cand =30000 ,𝑁 add =32 ,𝑁 rand =4000 𝜂 0∈ { 10 −3,10 −4},𝛾 =0.95 ,𝑘 decay =1000 ,𝑘 max case-dependent
+
+# V. Experiments 
+
+We evaluate our proposed PINN-GMM for PDF approximation, worst-case error bounding, and event-probability bounding on stochastic dynamical systems of increasing complexity. These experiments also assess the learnability of the error PINN, since the reported bounds depend on learning the forced error PDE in Eq. (11). We compare PINN-GMM against three baseline uncertainty-propagation methods: Gaussian approximation (GA), unscented transform (UT), and Gaussian mixture models (GMM); see Appendix C for implementation details. We also compare against standard and ablated PINN variants to isolate the effects of the PINN-GMM architecture, encoder, and sampling strategy. We begin with two 1D examples: a linear SDE used to validate the baseline implementations, and a nonlinear SDE exhibiting non-Gaussian density evolution. The nonlinear example includes a sensitivity study over the number of PINN-GMM mixture components, 𝐾 GMM , to illustrate the accuracy–cost trade-off of the mixture representation. The orbital experiments are then organized into two groups. First, we study a 6D unperturbed Keplerian orbit. The equinoctial-coordinate case provides an analytical reference for evaluation and demonstrates the computation of event-probability bounds via Algorithm 1. Separately, the 6D examples also compare coordinate choices for training PINN-GMM by contrasting rotating spherical and Cartesian coordinates. Second, we study 4D perturbed Keplerian orbits with diffusion, including a 𝐽 2+diffusion case, one event-probability-bound demonstration, and an additional 
+
+𝐽 2+diffusion+low-thrust case. The longest horizon is approximately 7 .2 hours, demonstrating hours-scale orbital uncertainty propagation with quantified error bounds. For all orbital cases, we use the same architectures for PINN-GMM ˆ 𝑝 and the error network ˆ 𝑒 (Tables 3 and 4 in Appendix E) and the same training hyperparameters (Table 1). The computational domain 𝑋 is selected by propagating a small batch of initial samples over the prescribed horizon and choosing 𝑋 to cover the reached region, following Ref. [14]; this small-batch propagation is used only for domain selection, not as a replacement for the high-fidelity MC reference. An overly large 𝑋 worsens information dilution during training, while an overly small 𝑋 causes probability 17 mass to approach 𝜕 𝑋 , making the approximation unreliable; if this occurs, the domain should be enlarged or redefined. Some recent orbit-specific methods are not included because their assumptions or available implementations do not cover all stochastic settings considered here. The state-transition-tensor methods [8–10] and the GMM-PCE method [12] are most relevant to the noise-free Keplerian case; however, a fair comparison would require independent implementation choices, including expansion order, mixture splitting, and polynomial-chaos construction. Moreover, for the 6D unperturbed Keplerian case in equinoctial elements, the exact push-forward density is available, so we evaluate all methods directly against this analytical reference rather than relying on another numerical propagation method as a surrogate benchmark. We also do not include the tensor-decomposition method [14] because we could not access an open-source implementation. Similarly, the public implementation of the Galerkin projection method [13], used as-is, is limited to lower-dimensional systems. Direct comparisons with verified implementations of these methods are left for future work. All code is available on GitHub [32]. 
+
+A. Reference “True” Probability Density 
+
+To evaluate the uncertainty propagation approximation, we require an accurate “true” solution of the FP-PDE in Eq. (5) as a reference. A standard choice is a high-fidelity Monte Carlo (MC) simulation: draw 𝑁 independent initial states from 𝑝 0 (𝑥 ) and propagate each sample via the underlying SDE in Eq. (1). We propagate each sample with the Euler–Maruyama scheme [1, Ch. 8], choosing the integration time step to balance accuracy and cost. Given the propagated samples {𝑥 𝑖 (𝑡 )} 𝑁 𝑖 =1, the remaining task is to estimate a reference PDF. For low-dimensional systems (up to 3D), simple histograms on a discretized grid are adequate [33, Ch. 2]. For orbital dynamics, however, high dimension and large domains make direct discretization intractable and the resulting histogram-PDF inaccurate. Accordingly, we construct the reference “true” PDF by fitting a Gaussian mixture model (GMM) to the MC samples at each time 𝑡 . Instead of using a fixed number of GMM components as in Ref. [13], we sweep over different numbers of GMM components to obtain the best fitting; see Appendix B for details. We emphasize that this GMM-fitted reference density is used only as a post-processing estimator of the MC-sampled density for evaluation. When an analytical reference density is available, we use that reference directly instead of fitting a GMM to MC samples. In addition, evaluation measures that can be evaluated directly from samples, such as the relative divergence described in the next subsection, do not require a GMM-fitted reference density. We also tested kernel density (KDE) for constructing the MC-based reference density. However, the resulting KDE estimates were sensitive to bandwidth selection and exhibited finite-sample numerical irregularities, a known challenge in density estimation [33, Ch. 2.9]. We therefore use a GMM fit as a smoother, more tractable MC-based density estimator, while recognizing that a finite-component GMM introduces parametric fitting error and may not fully capture strongly non-Gaussian features. 18 B. Evaluation Measures 
+
+We assess an approximate density 𝑞 (possibly unnormalized) against a reference density 𝑝 using three empirical measures: (i) total variation ( ˜TV), which measures global distributional discrepancy; (ii) worst-case normalized error ( WNE), which measures the largest normalized pointwise deviation; and (iii) relative divergence ( ˜RD), which measures likelihood-based agreement with reference samples. 
+
+1. Total Variation 
+
+We use the total variation (TV) defined in Sec. IV.A to measure the maximal difference between the probability of an event under the distributions with densities 𝑝 and 𝑞 . Because the integral is seldom available in closed form, we estimate TV from samples: ˜TV ( 𝑝, 𝑞 ; 𝑋 ) = 12
+
+vol (𝑋 )
+
+𝑁 
+
+> 𝑁
+
+Õ
+
+> 𝑖 =1
+
+| 𝑝 (𝑥 𝑖 ) − 𝑞 (𝑥 𝑖 )| , 𝑥 𝑖 i.i.d. 
+
+∼ 𝑈 (𝑋 ), (18) where vol (𝑋 ) is the volume of 𝑋 . As 𝑁 → ∞ , ˜TV ( 𝑝, 𝑞 ; 𝑋 ) converges to 𝑇𝑉 ( 𝑝, 𝑞 ; 𝑋 ). We note that the uniform sampling 𝑈 (𝑋 ) and the estimator in Eq. (18) are well-defined since we assume 𝑋 to be bounded in Problem 1. 
+
+2. Worst-Case Normalized Error 
+
+‖ 𝑝 − 𝑞 ‖∞,𝑋 = sup 𝑥 ∈𝑋 | 𝑝 (𝑥 ) − 𝑞 (𝑥 )| . measures the largest pointwise deviation over 𝑋 . We estimate this empirically and normalize by the sampled peak of 𝑝 to obtain a scale-free measure: 
+
+WNE ( 𝑝, 𝑞 ; 𝑋 ) = max 1≤𝑖 ≤ 𝑁 |𝑞 (𝑥 𝑖 ) − 𝑝 (𝑥 𝑖 )| 
+
+max 1≤𝑖 ≤ 𝑁 𝑝 (𝑥 𝑖 ) , 𝑥 𝑖 i.i.d. 
+
+∼ 𝑈 (𝑋 ). (19) This reports the worst-case normalized error over 𝑋 .
+
+3. Relative Divergence 
+
+The generalized Kullback-Leibler divergence (gKLD) [34], also known as Csiszár’s 𝐼 -divergence [35], between nonnegative 𝑝 and 𝑞 is 𝐷 ( 𝑝 ‖𝑞 ) = ∫
+
+> R𝑛
+
+(
+
+𝑝 (𝑥 ) log 𝑝 ( 𝑥 )    
+
+> 𝑞 (𝑥 )
+
+− 𝑝 (𝑥 ) + 𝑞 (𝑥 )
+
+)
+
+𝑑𝑥. Assume 𝑝 is a probability density and 𝑞 is possibly unnormalized density with bounded total mass 𝑍 𝑞 := ∫ 
+
+> R𝑛
+
+𝑞 (𝑥 ) 𝑑𝑥 ∈ ( 0, ∞) . Then 𝐷 ( 𝑝 ‖𝑞 ) = E𝑥 ∼ 𝑝 
+
+[ log 𝑝 (𝑥 ) − 
+
+log 𝑞 (𝑥 )] − 1 + 𝑍 𝑞 = 𝐶 𝑝 − E𝑥 ∼ 𝑝 [log 𝑞 (𝑥 )] − 1 + 𝑍 𝑞 , where 𝐶 𝑝 := E𝑥 ∼ 𝑝 [log 𝑝 (𝑥 )] depends only on 𝑝 . Approximating the expectation by a sample average for i.i.d. 𝑥 𝑖 ∼ 𝑝 gives 𝐷 ( 𝑝 ‖𝑞 ) ≈ ( 𝐶 𝑝 − 1) + 1
+
+> 𝑁
+
+Í𝑁 𝑖 =1
+
+( − log 𝑞 (𝑥 𝑖 )) + 𝑍 𝑞 , which motivates the empirical relative divergence , defined without evaluating the reference PDF 𝑝 :
+
+˜RD ( 𝑝 ‖𝑞 ) := 1
+
+𝑁 
+
+> 𝑁
+
+Õ
+
+> 𝑖 =1
+
+( − log 𝑞 (𝑥 𝑖 )) + 𝑍 𝑞 , {𝑥 𝑖 }𝑁 𝑖 =1 ∼ 𝑝. (20) 19 If 𝑞 is normalized ( 𝑍 𝑞 = 1), then ˜RD ( 𝑝 ‖𝑞 ) equals the negative log-likelihood up to an additive constant. Since the omitted constant (𝐶 𝑝 − 1) is independent of 𝑞 , minimizing ˜RD ( 𝑝 ‖𝑞 ) is an empirical surrogate for minimizing 𝐷 ( 𝑝 ‖𝑞 ),whose unique minimum is attained at 𝑞 = 𝑝 . Because this constant is omitted, ˜RD ( 𝑝 ‖𝑞 ) is not the full nonnegative generalized KL divergence and may take negative values; it should therefore be interpreted comparatively within the same experiment, with smaller values indicating better likelihood-based agreement with the reference samples. Taken together, for sufficiently large 𝑁 and a reference density 𝑝 , ˜TV ( 𝑝, ·; 𝑋 ) measures global discrepancy over 𝑋 ,
+
+WNE ( 𝑝, ·; 𝑋 ) captures the worst normalized error over 𝑋 , and ˜RD ( 𝑝 ‖·) provides a likelihood-based measure over 𝑁 
+
+samples drawn directly from 𝑝 . To complement the MC-based density comparisons, Appendix D reports the final PINN-GMM physics-informed training loss, including the FP-PDE residual term, for each orbital case. 
+
+C. 1D Illustrative Example Linear Example We first consider a 1D linear SDE with an analytical solution [36, Sec. 4.1] to validate the baseline uncertainty-propagation methods: Gaussian approximation (GA) and unscented transform (UT). The third baseline: Gaussian Mixture Model (GMM) is built on GA; we therefore do not validate it separately here. Figure 2 shows the uncertainty propagation and the evaluation measures over time. Because the system is linear, both GA and UT (pink circle and cyan square lines, respectively) achieve zero total variation and zero worst-case normalized errors, and they also yield smaller relative divergence than a standard PINN-MLP ˆ 𝑝 (purple triangle line). Note that, for the baseline methods considered here, the relative divergence corresponds to the expected negative log-likelihood; consequently, it varies over time as the true covariance changes. In Fig. 2a), we show the PINN’s worst-case error bound 𝐵 (𝑡 ) (purple shaded region) against the worst-case error and confirm that 𝐵 (𝑡 ) upper-bounds it.   
+
+> a) Worst normalized error % b) Total variation % c) Relative divergence
+
+Fig. 2 1D linear SDE error validation: a) WNE with learned bound, b) ˜TV , and c) ˜RD for GA, UT, and PINN-MLP. Nonlinear Example Next, we consider a nonlinear 1D SDE with Gaussian initial distribution 𝑝 0 (𝑥 ) ∼ N ( 𝑥 ; 𝜇 =
+
+−2, 𝜎 2 = 0.25 ). Because this system has no analytical solution, the reference PDF 𝑝 (𝑥, 𝑡 ) is obtained by extensive Monte-Carlo simulation using the Euler-Maruyama scheme; see Ref. [16] for the system details and the visualization 20 of the non-Gaussian density evolution. For this sensitivity study, we compare GA, UT, GMM, and PINN-GMM with 
+
+𝐾 GMM ∈ { 1, 5, 11 , 15 } using WNE, the error measure directly associated with the learned worst-case error bound 𝐵 (𝑡 )
+
+by Algorithm 3. Figure 3a) compares WNE of all methods, while Figs. 3b) and 3c) focus on the PINN-GMM models and overlay their 𝐵 (𝑡 ) as shaded regions; for visual clarity, we split to two groups. For all tested 𝐾 GMM , 𝐵 (𝑡 ) contains the associated WNE over the time horizon. The corresponding PINN-GMM training times are 9 .7, 9 .9, 12 .5, and 13 .2seconds for 𝐾 GMM = 1, 5, 11 , 15, respectively. These results illustrate the accuracy–cost trade-off of 𝐾 GMM discussed in Sec. III.B.2. They should not be interpreted as evidence of monotone convergence as 𝐾 GMM increases. If the true PDF 𝑝 (𝑥, 𝑡 ) is already well approximated by a low-component Gaussian mixture, adding more components may provide little benefit and can also make optimization more difficult. Consequently, neither the approximation error nor the learned bound 𝐵 1 (𝑡 ) is expected to decrease monotonically with 𝐾 GMM .            
+
+> a) WNE over time b) WNE and 𝐵 1for PINN-GMM. c) WNE and 𝐵 1for PINN-GMM
+
+Fig. 3 𝐾 GMM sensitivity in the 1D nonlinear case: a) WNE comparison and b,c) PINN-GMM error bounds for varying 𝐾 GMM .       
+
+> a) Event probability and bounds b) Refined LP solution at 𝑡 =𝑇 end =5s
+
+Fig. 4 1D nonlinear event-probability bounds: a) coarse and refined bounds over time and b) final-time LP-optimized densities under cellwise constraints. 
+
+For the event-probability demonstration, we use the 𝐾 GMM = 15 PINN-GMM and pass the resulting ˆ𝑝 ± 𝐵 to 21 Algorithm 1 to solve Problem 2 for 𝑋 event = [1, 4]. Figure 4a) overlays the coarse and refined probability bounds over time. Both discretizations contain the reference probability, and refinement tightens the bounds. The point estimates from GA and GMM deviate noticeably after 𝑡 ≈ 2 s, while UT remains closer but provides no analogous error-bound interval. Figure 4b) shows the refined LP solution at the final time; dashed black lines indicate the per-cell constraints 
+
+[𝑝 − 
+
+> 𝑖
+
+, 𝑝 + 
+
+> 𝑖
+
+], and solid blue/red lines denote the LP-optimized densities attaining the lower/upper event-probability bounds. The refined computation takes 0.18 seconds per evaluated time point on average. 
+
+D. 6D Unperturbed Keplerian Orbit 
+
+We next consider a six-dimensional unperturbed Keplerian orbit, adapted from Ref. [14], to evaluate PINN-GMM in a high-dimensional nonlinear orbital setting. This group contains two studies. First, the equinoctial-coordinate case admits an analytical push-forward reference solution and is used to evaluate uncertainty propagation, error bounds, and event-probability bounds via Algorithm 1. Second, the same orbit is used to study the effect of coordinate choice by comparing PINN-GMMs trained in rotating spherical and Cartesian coordinates. To estimate the empirical total variation ˜TV and worst normalized error WNE, we draw 10 9 i.i.d. uniform samples over the state domain at each evaluation time. The empirical relative divergence ˜RD is computed directly using the available reference samples. 
+
+1. Equinoctial Orbit Elements Coordinates 
+
+In equinoctial elements, the unperturbed Keplerian flow admits an analytical push-forward solution of the FP-PDE; see Appendix A. Because the flow is nonlinear, an initially Gaussian density generally becomes non-Gaussian for 𝑡 > 0, making this a useful high-dimensional nonlinear testbed. The initial PDF is Gaussian, 𝑝 0 = N ( 𝑥 ; 𝜇 0, Σ0), with 𝜇 0 and 
+
+Σ0 reported in Appendix D. We consider 𝑇 end = 25849 seconds (about 7 .2 hours) and compare PINN-GMM with GA, UT, and GMM. Further setup details appear in Appendix D.   
+
+> a) Worst normalized error % b) Total variation % c) Relative divergence
+
+Fig. 5 6D equinoctial Keplerian error evaluation for PINN-GMM and baselines: a) WNE with the PINN-GMM bound 𝐵 (𝑡 ), b) ˜TV , and c) ˜RD against the analytical reference. 
+
+Figures 5b), 5a), and 5c) report the evaluation measures over time, where PINN-GMM consistently attains smaller errors than the baselines. In Fig. 5a), the PINN-GMM error bound contains the worst normalized error and remains 22 reasonably close; the error bound stays below approximately 5 .0% over the horizon. The bound 𝐵 (𝑡 ) is a worst-case pointwise PDF error bound, so it does not directly bound total variation or relative divergence.          
+
+> a) Full corner plot at 𝑡 =𝑇 end b) Enlarged (𝑎, 𝜆 )marginal at 𝑡 =𝑇 end
+
+Fig. 6 Final-time 6D Keplerian PDF marginals: a) PINN-GMM contours against MC samples and b) enlarged 
+
+(𝑎, 𝜆 ) comparison with baselines. 
+
+Figure 6 show 1D and 2D marginals of the PINN-GMM at the final time 𝑇 end . The black contours of PINN-GMM align well with the reference density (blue–red heat map). Since 𝜆 is the only time-varying state and its evolution depends on 𝑎 , Fig. 6b) shows the (𝑎, 𝜆 ) marginal at the final time. This enlarged comparison shows that PINN-GMM remains close to the reference, while the baseline contours exhibit relatively larger deviations. Figure 7 reports the event-probability computation for this 6D case. Figure 7a) shows point estimates from the reference solution and the tested propagation methods, while Fig. 7b) shows the reference probability together with the PINN-GMM upper and lower bounds from Algorithm 1. We instantiate Line 1 in Algorithm 1 with a guided partitioning scheme, placing finer cells near the event region and in high-density regions of the PINN-GMM approximation. This bound computation required 37 .2 seconds per evaluated time point on average. For the chosen 𝑋 event , the point estimates are comparable, but only PINN-GMM provides an a priori interval that quantifies the possible deviation from the true event probability. Moreover, The posterior empirical total variation in Fig. 5b) implies that there exist events 𝑋 event ⊆ 𝑋 
+
+for which baseline estimates may deviate from the truth by roughly 2–9%. 
+
+2. Effect of Coordinate Choice 
+
+We next use the same 6D unperturbed Keplerian orbit to examine the effect of coordinate choice. In rotating spherical coordinates, the FP-PDE has no closed-form solution. We therefore construct a reference density by propagating 10 7
+
+samples to selected times and fitting a Gaussian mixture to the resulting samples (Sec. V.A). For efficiency, we map the states to orbital elements, evolve them analytically, and map back—a semi-analytical Monte Carlo specific to this 23 a) Point estimates over a zoom-in time window b) Reference and PINN-GMM bounds over 𝑡 
+
+Fig. 7 6D equinoctial event-probability results: a) method point estimates and b) reference probability with PINN-GMM bounds from Algorithm 1. 
+
+unperturbed Keplerian case. We use the same time horizon as in the equinoctial-coordinate case; see Appendix D for additional details. Figure 8 reports the rotating-spherical-coordinate error measures. PINN-GMM yields consistently smaller errors   
+
+> a) Worst normalized error % b) Total variation % c) Relative divergence
+
+Fig. 8 6D rotating-spherical Keplerian error evaluation: a) WNE with the PINN-GMM error bound 𝐵 (𝑡 ), b) 
+
+˜TV , and c) ˜RD against the MC reference. 
+
+than the baselines: its total variation remains between 4%–9%, whereas the GA, UT, and GMM errors grow to 50%– 54%, by the final time. The worst normalized error and relative divergence show the same trend, and Fig. 8a) shows that the PINN-GMM error bound contains the worst normalized error. Figure 9a) shows the corresponding marginal PDF at the final time. The PINN-GMM contours closely follow the MC reference samples. To compare the effect of coordinate systems, we also train PINN-GMM in normalized Cartesian coordinates with a matched initial condition; see Appendix D. Under the same training budget, the Cartesian-coordinate model does not converge to comparable loss levels: its IC and FP-PDE residual losses are about an order of magnitude larger than those obtained in rotating spherical coordinates; see Appendix D for the loss values. This leads to a poor Cartesian-coordinate PDF approximation, as shown in Fig. 9b), where the final-time PINN-GMM contours deviate visibly from 24 a) b) 
+
+Fig. 9 Final-time 6D Keplerian PDF marginals for PINN-GMM trained in: a) rotating-spherical and b) Cartesian coordinates, both compared with MC samples. 
+
+the reference MC samples. Thus, although PINN-GMM is not inherently tied to a particular coordinate system, the coordinate choice substantially affects trainability. Rotating spherical coordinates reduce the effective state-domain size and concentrate residual samples in regions containing PDF information, whereas in Cartesian coordinates the probability mass moves through a much larger domain, making training more difficult for a fixed sampling budget. 
+
+E. 4D Perturbed Keplerian Orbit with Diffusion 
+
+We next consider four-dimensional planar perturbed Keplerian orbits with stochastic diffusion in rotating spherical coordinates. Unlike the 6D unperturbed Keplerian cases, these systems do not admit a closed-form FP-PDE solution, so the reference densities are constructed from fully numerical Monte Carlo simulations as described in Sec. V.A. This group contains two experiments. The first uses the 𝐽 2+diffusion case from Ref. [14] to evaluate uncertainty propagation and demonstrate event-probability bounds via Algorithm 1. The second adds a non-conservative low-thrust acceleration over a longer time horizon, testing the method in a more general perturbed-dynamics setting. 
+
+1. 𝐽 2 Perturbation with Diffusion 
+
+This experiment, adapted from Ref. [14], considers a 4D planar Keplerian orbit with 𝐽 2 perturbation and diffusion driven by Brownian motion. The dynamics is expressed in rotating spherical coordinates, with the same setup as in Ref. [14]: time horizon 𝑇 end = 17232 .9 seconds and Gaussian initial distribution. The scaling constants in Eq. (8) are 
+
+𝑅 = 2 × 10 6 m, 𝑇 orb = 86164 .695 s, Θ = 0.015 rad, Φ = 0.0387 rad, and 𝑊 = 7.2920644 × 10 −5 rad/s. The diffusion 25 matrix is 
+
+𝑔 (x(𝑡 )) =
+
+
+
+02×2
+
+diag (𝜎 𝑟 , 𝜎 𝜙 )
+
+
+
+∈ R4×2, 𝜎 𝑟 = 10 −4
+
+√
+
+𝑅 2/𝑇 3orb 
+
+, 𝜎 𝜙 = 10 −11 
+
+√
+
+Φ2/𝑇 3orb 
+
+,
+
+which is constant in x(𝑡 ) and enters only through the velocity-state equations. Since the corresponding FP-PDE has no closed-form solution, we construct the reference PDF as in Sec. V.A using a fully numerical Monte Carlo (MC) simulation. For this MC, propagating 10 6 samples took about 36375 seconds, whereas training PINN-GMM ˆ 𝑝 over   
+
+> a) Worst normalized error % b) Total variation % c) Relative divergence
+
+Fig. 10 4D 𝐽 2+diffusion error evaluation: a) WNE with the PINN-GMM error bound 𝐵 (𝑡 ), b) ˜TV , and c) ˜RD 
+
+against the MC reference. 
+
+40000 iterations took 7246 seconds and training its error-PINN ˆ 𝑒 over 20000 iterations took an additional 10566 seconds. Further details are given in Appendix D. Figure 10 reports the errors of PINN-GMM and the baseline methods. Although PINN-GMM has larger errors at early times, its errors remain relatively small over the full horizon under all three evaluation measures. Figure 10a) also shows that the PINN-GMM error bounds contains the observed worst normalized error; the baselines provide no analogous error quantification. The larger initial error of PINN-GMM stems from the fact that the baselines start from the exact initial distribution, whereas PINN-GMM learns the initial density through the IC loss. Figure 11 maps the PINN-GMM density learned in rotating spherical coordinate to the Cartesian 𝑋 -𝑌 plane (see Sec. III.A.1) and compares the resulting marginal PDF with the reference MC density at uniform time points. The PINN-GMM surface closely follow the MC density (wireframes) throughout the horizon, capturing both the drift and spreading of the probability mass. This agreement provides an additional coordinate-transformed validation of the learned density, complementing the quantitative error measures in Fig. 10. We use this 𝐽 2+diffusion case as the 4D demonstration of event-probability bounding via Algorithm 1. Figure 12a) shows the point estimates, and Fig. 12b) overlays the PINN-GMM upper and lower bounds. This bound computation required 21.9 seconds on average for this case. As before, only PINN-GMM supplies a certified deviation interval. Compared with the 6D event-probability example in Fig. 7b), the resulting probability interval is tighter, illustrating that Algorithm 1 can be less conservative in the lower-dimensional 4D setting. 26 Fig. 11 Cartesian 𝑋 -𝑌 PDF evolution for the 4D 𝐽 2+diffusion case: PINN-GMM learned in rotating spherical coordinates, transformed, and compared with MC references.   
+
+> a) Point estimates over a zoom-in time window b) Reference and PINN-GMM bounds over 𝑡
+
+Fig. 12 4D 𝐽 2+diffusion event-probability results: a) method point estimates and b) reference probability with PINN-GMM bounds from Algorithm 1. 
+
+2. 𝐽 2 Perturbation, Diffusion, and Low Thrust 
+
+Next, we add continuous low-thrust acceleration to the 4D 𝐽 2+diffusion dynamics over an extended time horizon 
+
+𝑇 end = 25849 s. The thrust model is most simply described in physical coordinates: the acceleration has constant magnitude 𝑎 𝑇 = 0.01 m /s2 and is aligned with the instantaneous in-plane velocity, i.e., aLT = 𝑎 𝑇 ( ¤ 𝑟 e𝑟 + 𝑟 ¤𝜙 e𝜙 )/ 𝑉 ,where 𝑉 = √ ¤𝑟 2 + ( 𝑟 ¤𝜙 )2, and e𝑟 and e𝜙 are the radial and increasing-azimuth unit vectors, respectively. Similarly, we 27 a) Worst normalized error % b) Total variation % c) Relative divergence 
+
+Fig. 13 4D 𝐽 2+diffusion+low-thrust error evaluation: a) WNE with the PINN-GMM error bound 𝐵 (𝑡 ), b) ˜TV ,and c) ˜RD against the MC reference. 
+
+construct the reference density using a fully numerical Monte Carlo simulation and compare PINN-GMM with GA, UT, and GMM. For this case, constructing the reference density with 10 6 MC samples took 66200 seconds. To mitigate initial-condition error, we constrain the PINN-GMM parameterization to match the initial Gaussian distribution exactly at 𝑡 = 0. We note that this construction applies only when the initial PDF 𝑝 0 is exactly representable by a GMM with the chosen 𝐾 GMM ; see Appendix D for details. Training PINN-GMM ˆ 𝑝 over 60000 iterations took 7229 seconds; training its error PINN ˆ 𝑒 over 40000 iterations took 23211 seconds. Figure 13 reports the evaluation measures. Thanks to the exact initial-condition matching, PINN-GMM starts with the same initial error as GA and UT. It then exhibits substantially slower error growth across all measures, while the learned bound 𝐵 (𝑡 ) in Fig. 13a) contains the observed worst normalized error over the propagation horizon. 
+
+F. Summary of Orbital Experiments 
+
+Table 2 summarizes the orbital cases using the (minimum, maximum) range of each error measure over the evaluation horizon. This range-based summary captures how the uncertainty-propagation error varies over time. Across the four orbital cases, the proposed PINN-GMM keeps the maximum ˜TV below 9 .0% and the maximum 
+
+WNE below 7 .9%. For ˜RD, smaller values indicate better likelihood-based agreement with the reference samples; the proposed PINN-GMM also maintains consistently low and narrow RD ranges, whereas the baselines and naive PINN variants can exhibit substantially larger RD values, especially in the 6D rotating-spherical and 4D low-thrust cases. Table 2 also reports three PINN ablations to isolate the roles of the density representation, sampling strategy, and encoder. The first, PINN-MLP (vanilla) , uses a standard MLP for ˆ 𝑝 with uniform sampling; the second, PINN-GMM (vanilla) , uses the same GMM density representation as the proposed method but still relies on uniform sampling; and the third, PINN-GMM (no-encoder) , uses the combined sampling strategy but learns directly in 𝑥 -space. The results show that the GMM representation alone is not sufficient: in higher-dimensional problems, uniform samples provide poor coverage under practical sampling budgets, leading to unstable training for both vanilla variants. The degradation of PINN-GMM (no-encoder) further shows that the encoder is important for conditioning the training problem. The 28 Table 2 Summary of orbital cases. The columns under “Error measures” report the ( min , max ) range of each measure over the evaluation time horizon. ˜TV and WNE are reported in percent, and ˜RD is dimensionless; ↓
+
+indicates that smaller values are better. The column “Offline comp. time” reports the computation time (in seconds) required to construct the density representation: training time for PINN-based methods, propagation time for GA and UT, and initial GMM fitting plus propagation time for GMM. A dagger superscript ( †) indicates methods that provide a valid error bound 𝐵 (𝑡 ). An asterisk superscript ( ∗) on a PINN-based entry indicates that the training run plateaued before convergence, and the reported results use the best checkpoint obtained. “N/A” means that log ˆ 𝑝 is not available because the values of ˆ𝑝 are below machine precision. 
+
+Experiments Methods Error measures ( min , max ) Offline comp. time 
+
+˜TV% ↓ WNE% ↓ ˜RD ↓
+
+6D Kepler-Equinoctial orbit elements 
+
+GA (2 .38 × 10 −5, 9.95) (6 .73 × 10 −5, 12.3) (−0.40,-0.30) 0.005 UT (2 .38 × 10 −5, 9.77) (6 .73 × 10 −5, 15.3) (-0.40, -0.33) 0.066 GMM (1.11, 8.96) (3.91, 9.24) (-0.40, -0.33) 1520 PINN-MLP (vanilla) (0.74, 4.12) (0.19, 4.54) (-0.42, -0.39) 8033 PINN-GMM (vanilla) (17.0, 81.8) (11.6, 100) (-0.24, 15.3) 2231 ∗
+
+PINN-GMM (no-encoder) (65.8, 100) (413, 499) (3.1, 76.0) 1278 ∗
+
+PINN-GMM (proposed) † (0.58, 2.87) (0.53, 2.45) (-0.39, -0.38) 7317 6D Kepler-Rotating spherical 
+
+GA (0.22, 54.1) (0.30, 71.0) (6.46, 13.6) 0.683 UT (0.22, 54.1) (0.30, 98.7) (6.46, 12.6) 5.016 GMM (2.30, 49.7) (4.03, 54.3) (6.46, 10.2) 1000 PINN-MLP (vanilla) (4 .6 × 10 5, 1 .3 × 10 6) (72.9, 88.6) (9 .2 × 10 3, 2 .6 × 10 4) 87 ∗
+
+PINN-GMM (vanilla) (0.22, 93.7) (0.30, 100) (6.46, 29.5) 2233 ∗
+
+PINN-GMM (no-encoder) (45.0, 53.4) (100, 100) N/A 137 ∗
+
+PINN-GMM (proposed) † (4.08, 9.02) (2.35, 7.78) (6.47, 6.70) 13074 4D Kepler-
+
+𝐽 2+diffusion 
+
+GA (0.16, 20.2) (0.22, 25.7) (4.58, 5.12) 0.026 UT (0.16, 20.2) (0.22, 33.5) (4.58, 4.89) 0.089 GMM (0.81, 17.3) (2.34, 17.5) (4.58, 4.91) 1402 PINN-MLP (vanilla) (1.49, 6.36) (0.46, 8.55) (4.59, 4.61) 10454 PINN-GMM (vanilla) (0.54, 20.3) (0.54, 25.5) (4.58, 5.00) 3125 PINN-GMM (no-encoder) N/A N/A N/A 2∗
+
+PINN-GMM (proposed) † (3.47, 4.18) (2.17, 4.29) (4.59, 4.61) 7246 4D Kepler-
+
+𝐽 2+diffusion+low-thrust 
+
+GA (0.16, 48.0) (0.22, 64.0) (4.58, 10.0) 0.04 UT (0.16, 48.0) (0.21, 95.9) (4.58, 8.74) 0.15 GMM (4.56, 41.2) (10.7, 51.0) (4.59, 6.04) 2378 PINN-MLP (vanilla) (1.74, 50.1) (0.89, 100) (4.60, 53.3) 18593 PINN-GMM (vanilla) (0.16, 99.6) (0.22, 100) (4.58, 45.2) 1.91 ∗
+
+PINN-GMM (no-encoder) (49.5, 50.7) (100, 100) N/A 3.55 ∗
+
+PINN-GMM (proposed) † (0.16, 7.43) (0.00, 7.91) (4.58, 4.73) 7229 
+
+asterisks in Table 2 mark runs whose losses plateau before convergence; this behavior occurs frequently for PINN-MLP (vanilla) , PINN-GMM (vanilla) , and PINN-GMM (no-encoder) , indicating that these naive variants are harder to train reliably than the proposed PINN-GMM. In particular, the extremely large ˜TV of PINN-MLP (vanilla) in the 6D Keplerian rotating-spherical-coordinate case suggests that, without a PDF-valid representation, a neural-network approximation can produce probability estimates that are far from the true values. The offline computation time in Table 2 should be interpreted separately from online evaluation cost. PINN-GMM is more expensive to construct than GA and UT because it requires offline training, while GMM also incurs initial 29 mixture fitting and propagation cost. However, once trained, PINN-GMM returns the GMM parameters at any queried time through a single forward pass, which takes approximately 0.16 milliseconds on average in our implementation [32] 
+
+# VI. Discussion 
+
+The current framework relies on a well-posed Fokker-Planck equation and thus assumes continuously differentiable dynamics. It does not apply directly to systems with impulsive effects. For example, if an impulse thrust is applied at some time 𝑡 imp , where 0 < 𝑡 imp < 𝑇 end , one cannot propagate uncertainty over [0, 𝑇 end ] in a single Fokker–Planck formulation. An operational limitation is that the PINN-GMM approximation error, and the associated learned error bound, may grow over longer horizons. Extending the method to one-day or multi-day orbital uncertainty propagation while maintaining informative error bounds is an important direction for future work. Computation speed remains a key area for future investigation. For the orbital experiments considered here, our approach currently takes longer (on CPU) than the baseline uncertainty-propagation methods, but remains faster than high-fidelity Monte Carlo. We did not explore more advanced PINN architectures (e.g., transformer-based models) or training techniques (e.g., adaptive loss weighting, GPU parallelization); incorporating them could further reduce runtime. To facilitate such developments, we release our code on GitHub [32] so that others can test alternative designs and push efficiency and accuracy further. 
+
+# VII. Conclusion 
+
+We present a physics-informed neural network (PINN) framework for uncertainty propagation that learns a space-time solution of the Fokker-Planck equation along with time-dependent worst-case error bounds that are theoretically grounded and empirically validated on the considered case studies. We propose a differentiable, time-conditioned Physics-Informed Gaussian-Mixture Model (PINN-GMM) that enforces PDF properties by construction. The PINN-GMM and its learned error bounds define an ambiguity set that, when the error PINN is sufficiently accurate, contains the true PDF and yields rigorous event-probability intervals via tractable linear programs. Across higher-dimensional orbital benchmarks, PINN-GMM provides accurate hours-scale uncertainty propagation with informative error quan-tification and improved robustness relative to classical baselines and naive PINN variants. Although the propagation horizons considered here are shorter than those of some orbital uncertainty studies, the ability to bound the propagated-density error is critical—uncertainty models that are inaccurate at unknown levels may lead to significant adverse consequences that are difficult to quantify. 30 Appendix A. Keplerian Dynamics in Orbit Elements 
+
+Equinoctial orbit elements Let (𝑎, 𝑒, 𝑖, Ω, 𝜔, 𝑀 ) denote the classical Keplerian elements (mean anomaly 𝑀 ). The equinoctial elements are [𝑎, 𝑃 1, 𝑃 2, 𝑄 1, 𝑄 2, 𝜆 ]⊤, where 𝑃 1 = 𝑒 sin (𝜔 +Ω), 𝑃 2 = 𝑒 cos (𝜔 +Ω), 𝑄 1 = tan (𝑖 /2) sin Ω, 𝑄 2 =
+
+tan (𝑖 /2) cos Ω, and 𝜆 = 𝑀 + 𝜔 + Ω. Let x := [𝑎, 𝑃 1, 𝑃 2, 𝑄 1, 𝑄 2, 𝜆 ] be the state of a nominal Keplerian orbit governed by d x(𝑡 ) = f (x(𝑡 )) d𝑡 , where f (x(𝑡 )) = [0, 0, 0, 0, 0, √𝜇 /𝑎 (𝑡 )3 ]⊤. This dynamical system induces the flow Φ(𝑡 ; 𝑡 0),with Φ(𝑡 ; 𝑡 0) = x(𝑡 0) + 
+
+[
+
+0, 0, 0, 0, 0, √𝜇 /𝑎 3 (𝑡 − 𝑡 0)
+
+]⊤
+
+, and the Fokker-Planck solution for 𝑡 ≥ 𝑡 0 is the pushforward: 
+
+𝑝 (𝑥, 𝑡 ) = 𝑝 0
+
+(Φ−1 (𝑡 ; 𝑡 0, 𝑥 )) where 𝑝 0 denotes the PDF at initial time 𝑡 0.
+
+# B. Constructing Reference ‘True’ PDF by Fitting Gaussian Mixture 
+
+Let {𝑥 𝑖 (𝑡 )} 𝑁 𝑖 =1 denote 𝑁 Monte Carlo samples of the stochastic differential equation at time 𝑡 ∈ 𝑇 . At each time 
+
+𝑡 , when no analytical reference density is available, we fit a Gaussian mixture density to the propagated MC samples 
+
+{𝑥 𝑖 (𝑡 )} 𝑁 𝑖 =1 using the expectation-maximization algorithm in the scikit-learn package [37]. As discussed in Sec. V.A, this fitted density serves only as a post-processing reference estimator, never as training data or exact ground truth. The best fit is obtained by searching over a list of candidate numbers of mixture components {1, 2, 4, 8, 16 }.
+
+# C. Baseline Uncertainty Propagation Methods 
+
+Gaussian Approximation Gaussian Approximation (GA) propagates the state mean through the deterministic non-linear dynamics and the covariance through dynamics linearized about the mean. For the SDE in Eq. (1), we integrate 
+
+¤¯𝑥 = 𝑓 ( ¯𝑥, 𝑡 ) and ¤𝑃 𝑥 = 𝐹𝑃 𝑥 + 𝑃 𝑥 𝐹 𝑇 + 𝑔 ( ¯𝑥, 𝑡 )𝑔 ( ¯𝑥, 𝑡 )𝑇 , where 𝐹 = 𝜕 𝑓 /𝜕𝑥 |𝑥 = ¯𝑥 (𝑡 ) ; see Särkkä and Solin [1, Algorithm 9.4]. The ODEs are solved using SciPy’s solve_ivp [38], and the resulting density is 𝑁 (𝑥 ; ¯ 𝑥 (𝑡 ), 𝑃 𝑥 (𝑡 )) .
+
+Unscented Transform Unscented Transform (UT) propagates a set of deterministic sigma points over time, and compute the statistics of these sigma points to obtain the means and covariances [39, 40]. Our implementation follows Särkkä and Solin [1, Algorithm 9.5], using the scaled unscented transform with a tunable scaling parameter 𝛼 ≥ 0,usually chosen according to some rules of thumb [41]; we use 𝛼 = 10 −3 by default. 
+
+Gaussian Mixture Model A simple uncertainty propagation method using Gaussian mixture is implemented by: (i) fit an initial Gaussian mixture to the initial PDF 𝑝 0 (𝑥 ) by the same method in Appendix B with more candidate number of mixture components {10 , 20 , 30 , 40 }; (ii) propagate each mixture by the Gaussian approximation (GA) method to any time 𝑡 ∈ 𝑇 , and combine them to obtain the final Gaussian mixture density at each time. 31 D. Orbit Experiments 
+
+6D Unperturbed Keplerian Orbit in Equinoctial Orbit Element Space The state and the dynamics are provided in Sec. III.A.2. The initial PDF is a Gaussian distribution with mean 𝜇 0 = [4.2245700 × 10 7 meters , 7.7893469 ×
+
+10 −7, 3.1708085 ×10 −4, 2.7199831 ×10 −6, −1.0321360 ×10 −6, 1.5750291 ×10 −5] and covariance Σ0 = diag ([ 2.9833938 ×
+
+10 12 , 1.0585866 × 10 −4, 1.2572521 × 10 −3, 2.4929550 × 10 −6, 4.7029530 × 10 −6, 5.2294909 × 10 −4]) . The state do-main is 𝑋 = [− 4.0507 , 5.9977 ] × [− 4.7033 , 4.8175 ] × [− 4.4900 , 4.9228 ] × [− 5.0428 , 4.7609 ] × [− 4.7474 , 4.9450 ] × [− 10 .9330 , 118 .0678 ]. We use 𝐾 GMM = 5 for the PINN-GMM. This choice reflects the relatively structured density evolution in equinoctial elements, where only 𝜆 varies under the unperturbed Keplerian flow. The training time of PINN-GMM ˆ 𝑝 over 𝑘 max = 60000 iterations is 7317 seconds; its initial-condition loss and FP-PDE residual loss are 6.2 × 10 −5 and 6 .4 × 10 −4, respectively. The training time of ˆ 𝑒 1 over 𝑘 max = 40000 iterations is 8347 seconds. 
+
+6D Unperturbed Keplerian Orbit in Rotating Spherical Space In this experiment (adapted from [14]), the state and the dynamics are defined in [14, Eq. 16] without 𝐽 2 and diffusion noise: 𝐽 2 = 0, G(x) = 0. The scaling constants of the rotating spherical coordinates are 𝑅 = 2 × 10 6 meter, 𝑇 orb = 86164 .695 seconds, Θ = 0.015 rad, Φ = 0.0387 rad, and 𝑊 = 7.2920644 × 10 −5 rad/s. The initial PDF is a Gaussian distribution with mean 𝜇 0 =
+
+[ 4.2164 ×10 7 
+
+> 𝑅
+
+, 𝜋 /2 
+
+> Θ
+
+, 0 
+
+> Φ
+
+, 0 
+
+> 𝑅 /𝑇 orb
+
+, 0  
+
+> Θ/𝑇 orb
+> 7.2921 ×10 −5−𝑊
+> Φ/𝑇 orb
+
+] and covariance Σ0 = diag ([ 10 11  
+
+> 𝑅 2
+
+, 10 −5 
+
+> Θ2
+
+, 10 −4 
+
+> Φ2
+
+, 10 3  
+
+> (𝑅 /𝑇 orb )2
+
+, 10 −13   
+
+> (Θ/𝑇 orb )2
+
+, 10 −12   
+
+> (Φ/𝑇 orb )2
+
+]) .
+
+The state domain is 𝑋 = [15 , 27 ] × [ 102 , 107 ], ×[− 9, 12 ] × [− 25 , 25 ] × [− 10 , 10 ] × [− 50 , 100 ]. 10 7 samples from semi-analytical Monte Carlo simulation are used to construct the reference “true” PDF. Sine the dynamics is more complicated, we use 𝐾 GMM = 11 for the PINN-GMM. The larger 𝐾 GMM reflects the more complex density evolution in rotating spherical coordinates, where all state components couple nonlinearly. The training time of PINN-GMM ˆ 𝑝 
+
+over 𝑘 max = 60000 iterations is 13074 seconds; its initial-condition loss and FP-PDE residual loss are 6 .0 × 10 −4 and 4.5 × 10 −3, respectively. The training time of ˆ 𝑒 1 over 𝑘 max = 40000 iterations is 8816 seconds. 
+
+6D Unperturbed Keplerian Orbit in Cartesian Space The Cartesian state is x = [𝑥, 𝑦, 𝑧, 𝑣 𝑥 , 𝑣 𝑦 , 𝑣 𝑧 ], with the standard Keplerian dynamics: 𝑓 1 (x) = 𝑣 𝑥 , 𝑓 2 (x) = 𝑣 𝑦 , 𝑓 3 (x) = 𝑣 𝑧 , 𝑓 4 (x) = −𝜇 𝑥 𝑟 3 , 𝑓 5 (x) = −𝜇 𝑦 𝑟 3 , 𝑓 6 (x) = −𝜇 𝑧 𝑟 3 . To define the initial distribution in Cartesian space, we sample from the rotating spherical coordinate’s initial distribution, map those samples to Cartesian coordinates, compute the resulting Cartesian mean and variances, and then set 
+
+𝑝 0 to a diagonal Gaussian with the corresponding mean 𝜇 0 = [4.2158868 × 10 7, −2.8649365 × 10 3, −6.4722394 ×
+
+10 2, 6.9467247 ×10 −2, 3.0742595 ×10 3, 3.1288903 ×10 −2] and covariance Σ0 = diag ([ 9.9124732 ×10 10 , 1.7442639 ×
+
+10 11 , 1.7627195 × 10 10 , 1.9275731 × 10 3, 2.3256350 × 10 3, 1.8096840 × 10 2]) in SI units. The state domain is 
+
+𝑋 = [− 3.0 × 10 7, 5.0 × 10 7] × [− 2.0 × 10 6, 5.5 × 10 7], ×[− 8 × 10 5, 9 × 10 5] × [− 4000 .0, 250 .0] × [− 4000 .0, 4000 .0] × [− 100 .0, 100 .0]. We use the same PINN-GMM architecture for ˆ 𝑝 and the same training hyperparameters as in the previous experiment. Similar to the previous experiments, we normalize the Cartesian coordinates by 𝑥 ′ = 𝑥 /𝑅, 𝑦 ′ =
+
+32 𝑦 /𝑅, 𝑧 ′ = 𝑧 /𝑅, 𝑣 ′ 
+
+> 𝑥
+
+= 𝑣 𝑥 /( 𝑅 /𝑇 ), 𝑣 ′ 
+
+> 𝑦
+
+= 𝑣 𝑦 /( 𝑅 /𝑇 ), 𝑣 ′ 
+
+> 𝑧
+
+= 𝑣 𝑧 /( 𝑅 /𝑇 ) during training for numerical stability. Since the training of ˆ 𝑝 did not converge over 60000 iterations—with its initial-condition loss and FP-PDE residual loss plateauing at 2 .9 × 10 −2 and 2 .1 × 10 −2, respectively—we did not train its error PINN. 
+
+4D Perturbed Keplerian Orbit with Diffusion in Rotating Spherical Space In this experiment (adapted from [14, Eq. 16]), the four-dimensional state are defined by setting x := [𝑟 ′, 𝜙 ′, 𝑣 ′ 
+
+> 𝑟
+
+, 𝑣 ′
+
+> 𝜙
+
+], 𝜃 ′ = 𝜋 /2, 𝑣 ′ 
+
+> 𝜃
+
+= 0, The standard 𝐽 2 =
+
+1.0826 ×10 −3 coefficient is used. The initial PDF is a Gaussian distribution with mean 𝜇 0 = [ 4.2164 ×10 7 
+
+> 𝑅
+
+, 0 
+
+> Φ
+
+, 0 
+
+> 𝑅 /𝑇 orb
+
+, 7.2921 ×10 −5 −𝑊  
+
+> Φ/𝑇 orb
+
+]
+
+and covariance Σ0 = diag ([ 10 11  
+
+> 𝑅 2
+
+, 10 −4 
+
+> Φ2
+
+, 10 3  
+
+> (𝑅 /𝑇 orb )2
+
+, 10 −12   
+
+> (Φ/𝑇 orb )2
+
+]) . The state domain is 𝑋 = [18 , 24 ] × [− 2, 3] × [− 20 , 20 ] × [− 22 , 32 ]. Due to the computation limit, only 10 6 samples from a full numerical Monte Carlo simulation are used to construct the reference “true” PDF. The same 𝐾 GMM = 11 is used as in the rotating-spherical 6D case, as the 4D dynamics involve similar nonlinear coupling under 𝐽 2 perturbation and diffusion. The initial-condition loss and FP-PDE residual loss for ˆ 𝑝 are 2 .5 × 10 −4 and 1 .8 × 10 −3, respectively. 
+
+4D Low-Thrust For the 4D low-thrust case, the state domain is enlarged to 𝑋 = [17 , 30 ] × [− 8, 8] × [− 15 , 40 ] × [− 55 , 65 ]. To remove initial-condition fitting error, the PINN-GMM with 𝐾 GMM = 11 is parameterized in whitened coordinates with time-gated mean and Cholesky-factor deviations, so that at 𝑡 = 0 all mixture components reduce to the same Gaussian density N ( 𝑥 ; 𝜇 0, Σ0), independent of the mixture weights. Thus, the initial-condition fitting error is eliminated up to numerical precision, and the final FP-PDE residual loss for PINN-GMM ˆ 𝑝 is 6 .6 × 10 −3.
+
+# E. Neural Network Architectures for All Orbit Experiments 
+
+Table 3 PINN-GMM ˆ𝑝 architecture of each weight, mean, and covariance parameter for all the orbit experi-ments. Layer Connection Type # Neurons Activation Function 
+
+Input Layer → Hidden Layer 1 Fully Connected 64 Softplus Hidden Layer 1 → Hidden Layer 2 Fully Connected 64 Softplus Hidden Layer 2 → Hidden Layer 3 Fully Connected 64 Softplus Hidden Layer 3 → Output Layer Fully Connected output-dimension N/A 
+
+Table 4 Error network ˆ𝑒 architecture for all the orbit experiments. Layer Connection Type # Neurons Activation Function 
+
+Input Layer → Hidden Layer Fully Connected 64 SiLU Hidden Layer → Hidden Layer 8× Residual Blocks ‡ 64 SiLU (with LayerNorm) Hidden Layer → Output Layer Fully Connected 1 N/A 33 Funding Sources 
+
+This work was supported in part by the Air Force Research Laboratory/RVSW under Contract No. FA945324CX026. 
+
+# Acknowledgments 
+
+Generative AI was used to edit grammar and improve readability; no new results, analyses, or citations were generated by the tool. 
+
+# References 
+
+[1] Särkkä, S., and Solin, A., Applied stochastic differential equations , Vol. 10, Cambridge University Press, 2019. https://doi.org/10.1017/9781108186735. [2] Lu, L., Meng, X., Mao, Z., and Karniadakis, G. E., “DeepXDE: A deep learning library for solving differential equations,” 
+
+SIAM review , Vol. 63, No. 1, 2021, pp. 208–228. https://doi.org/10.1137/19M1274067. [3] Sirignano, J., and Spiliopoulos, K., “DGM: A deep learning algorithm for solving partial differential equations,” Journal of computational physics , Vol. 375, 2018, pp. 1339–1364. https://doi.org/10.1016/j.jcp.2018.08.029. [4] Krishnapriyan, A., Gholami, A., Zhe, S., Kirby, R., and Mahoney, M. W., “Characterizing possible failure modes in physics-informed neural networks,” Advances in neural information processing systems , Vol. 34, 2021, pp. 26548–26560. URL https://proceedings.neurips.cc/paper_files/paper/2021/file/df438e5206f31600e6ae4af72f2725f1-Paper.pdf . [5] Mishra, S., and Molinaro, R., “Estimates on the generalization error of physics-informed neural networks for approximating PDEs,” IMA Journal of Numerical Analysis , Vol. 43, No. 1, 2023, pp. 1–43. https://doi.org/10.1093/imanum/drab093, URL https://doi.org/10.1093/imanum/drab093. [6] Terejanu, G., Singla, P., Singh, T., and Scott, P. D., “Uncertainty propagation for nonlinear dynamic systems using Gaussian mixture models,” Journal of Guidance, Control, and Dynamics , Vol. 31, No. 6, 2008, pp. 1623–1633. https://doi.org/10.2514/1.36247. [7] Vishwajeet, K., and Singla, P., “Adaptive split/merge-based Gaussian mixture model approach for uncertainty propagation,” 
+
+Journal of Guidance, Control, and Dynamics , Vol. 41, No. 3, 2018, pp. 603–617. https://doi.org/10.2514/1.G002801. [8] Park, R. S., and Scheeres, D. J., “Nonlinear mapping of Gaussian statistics: theory and applications to spacecraft trajectory design,” Journal of Guidance, Control, and Dynamics , Vol. 29, No. 6, 2006, pp. 1367–1375. https://doi.org/10.2514/1.20177. [9] Fujimoto, K., Scheeres, D. J., and Alfriend, K. T., “Analytical nonlinear propagation of uncertainty in the two-body problem,” 
+
+Journal of Guidance, Control, and Dynamics , Vol. 35, No. 2, 2012, pp. 497–509. https://doi.org/10.2514/1.54385. [10] Khatri, Y., and Scheeres, D. J., “Nonlinear semi-analytical uncertainty propagation for conjunction analysis,” Acta Astronautica ,Vol. 203, 2023, pp. 568–576. https://doi.org/10.1016/j.actaastro.2022.12.009. [11] Acciarini, G., Baresi, N., Lloyd, D. J., and Izzo, D., “Nonlinear propagation of non-gaussian uncertainties,” Journal of Guidance, Control, and Dynamics , Vol. 48, No. 4, 2025, pp. 903–913. https://doi.org/10.2514/1.G008717. [12] Vittaldev, V., Russell, R. P., and Linares, R., “Spacecraft uncertainty propagation using gaussian mixture models and 
+
+> ‡Each residual block is a 2-layer module with SiLU activations, optional LayerNorm, and a skip connection. A skip connection that also uses the normalized inputs is added after the 4th block.
+
+34 polynomial chaos expansions,” Journal of Guidance, Control, and Dynamics , Vol. 39, No. 12, 2016, pp. 2615–2626. https://doi.org/10.2514/1.G001571. [13] Acciarini, G., Greco, C., and Vasile, M., “Uncertainty propagation in orbital dynamics via Galerkin projection of the Fokker-Planck Equation,” Advances in Space Research , Vol. 73, No. 1, 2024, pp. 53–63. https://doi.org/10.1016/j.asr.2023.11.042. [14] Sun, Y., and Kumar, M., “Uncertainty propagation in orbital mechanics via tensor decomposition,” Celestial Mechanics and Dynamical Astronomy , Vol. 124, 2016, pp. 269–294. https://doi.org/10.1007/s10569-015-9662-z. [15] Øksendal, B., Stochastic differential equations , Springer, 2003. https://doi.org/10.1007/978-3-642-14394-6. [16] Kong, C.-W., Laurenti, L., McMahon, J., and Lahijanian, M., “Error Bounds for Physics-Informed Neural Networks in Fokker-Planck PDEs,” Proceedings of the Forty-first Conference on Uncertainty in Artificial Intelligence , Proceedings of Machine Learning Research, Vol. 286, edited by S. Chiappa and S. Magliacane, PMLR, 2025, pp. 2291–2324. URL https://proceedings.mlr.press/v286/kong25b.html. [17] Baù, G., Hernando-Ayuso, J., and Bombardelli, C., “A generalization of the equinoctial orbital elements,” Celestial Mechanics and Dynamical Astronomy , Vol. 133, No. 11-12, 2021, p. 50. https://doi.org/10.1007/s10569-021-10049-1. [18] Peper, J., Mao, Z., Geng, Y., Pan, S., and Ruchkin, I., “Four Principles for Physically Interpretable World Models,” Proceedings of the International Conference on Neuro-symbolic Systems , Proceedings of Machine Learning Research, Vol. 288, edited by G. Pappas, P. Ravikumar, and S. A. Seshia, PMLR, 2025, pp. 66–89. URL https://proceedings.mlr.press/v288/peper25a.html. [19] Kassam, S., “Robust hypothesis testing for bounded classes of probability densities (corresp.),” IEEE Transactions on Infor-mation Theory , Vol. 27, No. 2, 2003, pp. 242–247. https://doi.org/10.1109/TIT.1981.1056314. [20] Berger, J. O., “Robust Bayesian analysis: sensitivity to the prior,” Journal of statistical planning and inference , Vol. 25, No. 3, 1990, pp. 303–328. https://doi.org/10.1016/0378-3758(90)90079-A. [21] Rinderknecht, S. L., Borsuk, M. E., and Reichert, P., “Eliciting density ratio classes,” International Journal of Approximate Reasoning , Vol. 52, No. 6, 2011, pp. 792–804. https://doi.org/10.1016/j.ijar.2011.02.002. [22] DeRoberts, L., and Hartigan, J. A., “Bayesian inference using intervals of measures,” The Annals of Statistics , 1981, pp. 235–244. https://doi.org/10.1214/aos/1176345391. [23] Fauß, M., and Zoubir, A. M., “Old Bands, New Tracks—Revisiting the Band Model for Robust Hypothesis Testing,” IEEE Transactions on Signal Processing , Vol. 64, No. 22, 2016, pp. 5875–5886. https://doi.org/10.1109/TSP.2016.2600505. [24] Sriwastava, A., and Reichert, P., “Sensitivity analysis of Bayesian estimates of value function parameters to priors using imprecise probabilities,” Journal of Choice Modelling , Vol. 57, 2025, p. 100581. https://doi.org/10.1016/j.jocm.2025.100581. [25] Lahijanian, M., Andersson, S. B., and Belta, C., “Formal verification and synthesis for discrete-time stochastic systems,” IEEE Transactions on Automatic Control , Vol. 60, No. 8, 2015, pp. 2031–2045. https://doi.org/10.1109/TAC.2015.2398883. [26] Xu, K., Shi, Z., Zhang, H., Wang, Y., Chang, K.-W., Huang, M., Kailkhura, B., Lin, X., and Hsieh, C.-J., “Automatic perturbation analysis for scalable certified robustness and be-yond,” Advances in Neural Information Processing Systems , Vol. 33, 2020, pp. 1129–1141. URL https://proceedings.neurips.cc/paper_files/paper/2020/file/0cbc5671ae26f67871cb914d81ef8fc1-Paper.pdf . [27] Nesterov, Y., “Introductory lectures on convex programming volume i: Basic course,” Lecture notes , Vol. 3, No. 4, 1998, p. 5. 
+
+35 https://doi.org/10.1007/978-1-4419-8853-9. [28] Bauer, H., “Minimalstellen von funktionen und extremalpunkte,” Archiv der Mathematik , Vol. 9, No. 4, 1958, pp. 389–393. https://doi.org/10.1007/BF01898615. [29] Kružík, M., “Bauer’s maximum principle and hulls of sets,” Calculus of Variations and Partial Differential Equations , Vol. 11, No. 3, 2000, pp. 321–332. https://doi.org/10.1007/s005260000047. [30] Izenman, A. J., “Review papers: Recent developments in nonparametric density estimation,” Journal of the american statistical association , Vol. 86, No. 413, 1991, pp. 205–224. https://doi.org/10.1080/01621459.1991.10475021. [31] Scott, D. W., and Thompson, J. R., “Probability density estimation in higher dimensions,” Computer Science and Statis-tics: Proceedings of the fifteenth symposium on the interface , Vol. 528, North-Holland, Amsterdam, 1983, pp. 173–179. https://doi.org/10.1214/11-IMSCOLL801. [32] Kong, C.-W., “PINN Error Repository,” https://github.com/aria-systems-group/pinn_pde/tree/release/orbit2026, 2025. Ac-cessed: 2025-11-17. [33] Silverman, B. W., Density Estimation for Statistics and Data Analysis , Routledge, 2018. https://doi.org/10.1201/9781315140919. [34] Ferdosi, B., Buddelmeijer, H., Trager, S., Wilkinson, M., and Roerdink, J., “Comparison of density estimation methods for astronomical datasets,” Astronomy & Astrophysics , Vol. 531, 2011, p. A114. https://doi.org/10.1051/0004-6361/201116878. [35] Csiszar, I., “Why least squares and maximum entropy? An axiomatic approach to inference for linear inverse problems,” The annals of statistics , Vol. 19, No. 4, 1991, pp. 2032–2066. https://doi.org/10.1214/aos/1176348385. [36] Pavliotis, G. A., “Stochastic processes and applications,” Texts in applied mathematics , Vol. 60, 2014. https://doi.org/10.1007/978-1-4939-1323-7. [37] Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel, O., Blondel, M., Prettenhofer, P., Weiss, R., Dubourg, V., et al., “Scikit-learn: Machine learning in Python,” the Journal of machine Learning research , Vol. 12, 2011, pp. 2825–2830. URL http://jmlr.org/papers/v12/pedregosa11a.html. [38] Virtanen, P., Gommers, R., Oliphant, T. E., Haberland, M., Reddy, T., Cournapeau, D., Burovski, E., Peterson, P., Weckesser, W., Bright, J., van der Walt, S. J., Brett, M., Wilson, J., Millman, K. J., Mayorov, N., Nelson, A. R. J., Jones, E., Kern, R., Larson, E., Carey, C. J., Polat, İ., Feng, Y., Moore, E. W., VanderPlas, J., Laxalde, D., Perktold, J., Cimrman, R., Henriksen, I., Quintero, E. A., Harris, C. R., Archibald, A. M., Ribeiro, A. H., Pedregosa, F., van Mulbregt, P., and SciPy 1.0 Contributors, “SciPy 1.0: Fundamental Algorithms for Scientific Computing in Python,” Nature Methods , Vol. 17, 2020, pp. 261–272. https://doi.org/10.1038/s41592-019-0686-2. [39] Wan, E. A., and Van Der Merwe, R., “The unscented Kalman filter for nonlinear estimation,” Proceedings of the IEEE 2000 adaptive systems for signal processing, communications, and control symposium (Cat. No. 00EX373) , Ieee, 2000, pp. 153–158. https://doi.org/10.1109/ASSPCC.2000.882463. [40] Julier, S. J., and Uhlmann, J. K., “Unscented filtering and nonlinear estimation,” Proceedings of the IEEE , Vol. 92, No. 3, 2004, pp. 401–422. https://doi.org/0.1109/JPROC.2003.823141. [41] Julier, S. J., “The scaled unscented transformation,” Proceedings of the 2002 American Control Conference (IEEE Cat. No. 
+
+36 CH37301) , Vol. 6, IEEE, 2002, pp. 4555–4559. https://doi.org/10.1109/ACC.2002.1025369. 
+
+37

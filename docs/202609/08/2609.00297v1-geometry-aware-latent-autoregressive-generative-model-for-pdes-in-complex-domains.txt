@@ -1,0 +1,518 @@
+Title: Geometry-aware Latent Autoregressive Generative Model for PDEs in Complex Domains
+
+URL Source: https://arxiv.org/pdf/2609.00297v1
+
+Published Time: Wed, 02 Sep 2026 00:22:09 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Geometry-aware Latent Autoregressive Generative Model for PDEs in Complex Domains 
+
+Zi Wang ∗† Minghui Xu ∗ Tapan Mukerji 
+
+Department of Energy Science and Engineering Stanford University Stanford, CA 94305 
+
+{ziwang3, minghuix, mukerji}@stanford.edu 
+
+## Abstract 
+
+Solving multiphysics partial differential equations (PDEs) remains a major chal-lenge in scientific computing, especially for highly complex μm-scale tortuous geometries critical to energy and chemical engineering. We address this challenge by proposing a Geo metry-aware Latent Autoregressive generative Model for PDEs (GeoLAMP ) for solving physics within highly irregular and tortuous structures. GeoLAMP introduces a dual-encoder architecture on graph representations to jointly capture global topology and fine-scale geometric features, enabling an effec-tive transition from real-space fields to compact latent representations. In the latent space, we propose a causal self-attention transformer with flow matching to model temporal dynamics, allowing stable and scalable block-wise autoregressive predic-tion. A flexible decoder reconstructs high-resolution physical fields on arbitrary points. We establish three multiphysics benchmark datasets in complex geometries, covering reactive flow, heat convection, and elasticity. GeoLAMP consistently achieves the most stable autoregression performance on these datasets, maintaining low errors throughout the entire rollout horizon. Our results provide a systematic study of geometry-aware learning for PDEs in μm-scale complex geometries and offer new insights into block-wise time marching of latent autoregressive PDE modeling via a flow matching framework. 
+
+## 1 Introduction 
+
+Scientific machine learning for partial differential equations (PDEs) has gained substantial attention and has multiple methodological directions, ranging from physics-informed fitting [1–3] to operator learning [4–7] and latent modeling [8–10]. It shows strong potential to reshape conventional com-putational workflows in many scientific and engineering scenarios, including weather forecasting [11], turbulence reconstruction [12], and geological engineering [13]. However, compared with the widely studied physical problems, multiphysics processes occurring inside complex meso-scale structures ( μm) have received far less attention [14]. More importantly, meso-scale physics often governs macroscopic scientific and engineering behavior, such as natural hydrogen [15], chip cooling [16] and battery design [17]. This cross-scale dependence poses significant computational challenges. Therefore, it is necessary to develop and apply deep learning methods specifically tailored to physical systems defined on meso-scale complex geometries [18, 19]. To handle complex geometries, several machine-learning-based studies have proposed efficient solutions by incorporating geometric information into model architectures [20–22]. Point-cloud methods represent complex geometries as unordered sets of spatial points, thereby avoiding the need 
+
+> ∗Equal contribution.
+> †Corresponding author. Preprint. arXiv:2609.00297v1 [cs.LG] 31 Aug 2026
+
+Figure 1: Schematic of GeoLAMP architecture for structured grids [6, 23–27]. Graph-based methods further augment these representations with explicit neighborhood connectivity, enabling message passing or graph-kernel operators to model local physical interactions and long-range geometry-dependent transport [28–32]. More recently, GeoPT [33] introduces lifted geometric pre-training, which augments large-scale geometry data with synthetic dynamics to bridge the gap between static shape representation and physics simulation. However, real-space geometric complexity increases dramatically with domain size and problem scale, especially for meso-scale structures represented by millions of voxels. To address this difficulty, latent-space methods [8, 10, 34, 35] encode real-space data into compact latent representations and model temporal evolution in latent space, leading to substantially improved efficiency and flexibility through compression. For complex domains, latent modeling is more appealing if the geometry-aware backbones can compress irregular point clouds or meshes into regular and compact latent representations while preserving real-space information [27, 28]. Meso-scale geometries characterized by highly tortuous and heterogeneous structures calls for more reffned geometry-aware encoder–decoder designs that can compress complex domains while preserving geometry-sensitive physical information. Once the dynamics are represented in a latent space, diffusion-based generative modeling [36–43] provides a principled paradigm for accurate and stable temporal prediction. At scale, latent tokeniza-tion and transformer backbones have further shown that high-dimensional generation becomes more efficient when the model operates in a compact latent space [44–48]. These ideas are increasingly relevant to scientific surrogate modeling [35, 49, 50]. In this study, we propose a Geo metry-aware Latent Autoregressive generative Model for PDEs (GeoLAMP) to learn time-dependent multiphysics behavior in complex meso-scale geometries through latent representations, as shown in Fig. 1. Specifically, GeoLAMP consists of three main components: (i) Global and Local Encoders (GE & LE) uses multiple graph neural operator (GNO) layers to encode global/local information from graph pairs of query points sampled by the farthest-point algorithm (FPS) and curvature-based algorithm (CBS), separately; (ii ) Causal Self-attention Transformer performs block-wise temporal autoregression by applying masked self-attention over timestep tokens; and (iii ) Arbitrary Decoder (AD) decodes generated latent representations back to arbitrary locations. GeoLAMP first encodes real-space information into a latent space using GE and LE. The temporal dynamics are then autoregressively generated from the initial latent state. Finally, AD decodes the generated latent representations back to real space at arbitrary spatial locations and time points. We constructed three meso-scale physics datasets. GeoLAMP achieves the most stable autoregression behavior on them, maintaining low errors throughout the entire rollout horizon. 
+
+Contributions GeoLAMP offers a promising direction for connecting real-space physics in complex tortuous geometries with latent representations by capturing global structure while preserving local geometric details. The causal self-attention transformer behavior suggests that block-wise rollout goes beyond simple regression of future states and instead captures deeper temporal dependencies in the underlying physical dynamics. In addition to the above contributions, we establish three meso-scale physics datasets, including reactive flow, heat convection, and elasticity. 
+
+## 2 Problem setup in complex geometry 
+
+We focus on solving multiphysics PDEs with K solution variables, denoted by sK (x, t ), in a complex domain Ω ⊆ Rd over time t ∈ [0 , T ], subject to boundary conditions BC (x, t ) and initial conditions IC (x), as defined in Eq. 1. Herein, La denotes a physics-dependent differential operator 2parameterized by coefficients or source terms a. We construct three datasets covering different physical processes and meso-scale structures: flow-reactive transport in circular-packed porous structures, convective heat transfer in stochastic-field-generated structures, and elasticity in foam structures. All datasets are generated using the finite element method (FEM) in COMSOL [51], with detailed descriptions provided in Appendix A. Compared with large-scale benchmark datasets, which typically focus on single-physics Navier–Stokes equations and turbulent flows, our datasets emphasize the coupled effects of complex geometries and source terms in nonlinear multiphysics transport problems. Accurately capturing both global physical behavior and local heterogeneous variations poses significant challenges. 
+
+La ◦ sK (x, t ) = 0 , x ∈ Ω
+
+sK (x, t ) = BC (x, t ), x ∈ ∂Ω, t ∈ [0 , T ],sK (x, 0) = IC (x), x ∈ Ω
+
+(1) 
+
+## 3 Geometry-aware latent generative model 
+
+3.1 Encoder and decoder 
+
+The physical information in real space is organized from FEM mesh outputs as point sets, denoted by xi, s Ki i = 1 N at time t. Since the full point set is typically dense and computationally expensive, directly mapping all real-space points to latent representations is inefficient. To address this, we design global and local encoders (GE & LE) that compress the full field through tailored point selection while preserving as much geometry-sensitive physical information as possible. The arbitrary decoder maps the generated latent representations back to real-space points at arbitrary resolutions. All of them are built upon graph neural operators (GNOs) [28], which aggregate information from points within a query ball B of radius rb and map it onto a regular latent grid yj , g DjMj=1 at time t
+
+through Eq. 2, following a Green’s function approximation. 
+
+gj (y0) ≈ X
+
+> x∈B
+
+κ(x, y 0 
+
+> j
+
+) s(x) μ(x) (2) Then, followed with multiple GNO blocks, the real space information is compressed to latent representations, where in each layer, the approximation follows 
+
+gj (yl) ≈ X 
+
+> yl−1
+> j∈Bl
+
+κ(yl, y l−1 
+
+> j
+
+) s(yl−1 
+
+> j
+
+) μ(yl−1 
+
+> j
+
+) (3) In order to comprehensively capture the global and local information, GE and LE takes different embedded points from real space, and they are trained together as a variational auto-encoders (VAE). 
+
+Global encoder Given the full input point cloud {xi}Ni=1 , where xi ∈ Rd, GE automatically selects 
+
+ng representative points using the farthest point sampling (FPS) [52] as the input. Starting from an initial point xi1 , the sampled set at step t is denoted as St = {xi1 , x i2 , . . . , x it }, at each iteration, the next point is selected by maximizing its minimum Euclidean distance to the existing sampled set: 
+
+xit+1 = arg max  
+
+> x∈P\St
+
+
+
+min  
+
+> xj∈St
+
+∥x − xj ∥2
+
+
+
+. (4) This greedy procedure approximately solves the max–min sampling objective: 
+
+max  
+
+> S⊂P, |S|=ng
+
+min  
+
+> x∈P
+
+min   
+
+> xj∈S
+
+∥x − xj ∥2. (5) Therefore, GE intends to cover the full spatial domain and avoids local clustering, providing a robust geometric representation for global information, including the whole trend from inlet to outlet and the boundary nodes. 
+
+Local encoder Taking the remaining points after GE sampling, the local encoder (LE) further selects nl points that represent the geometric signatures in regions with sharp structural variations. We introduce a curvature-based sampling (CBS) strategy, which aims to find points located inside 3local pores and highly curved local regions. Given a point set {xi}Ni=1 , where xi ∈ Rd, for each point 
+
+xi, its k-nearest neighbors are first constructed as 
+
+Nk(xi) = {xi1 , x i2 , . . . , x ik }. (6) The local geometric variation around xi is characterized by the covariance matrix of neighbor points: 
+
+Ci = 1
+
+k
+
+X  
+
+> xj∈N k(xi)
+
+(xj − ¯xi)( xj − ¯xi)⊤, (7) where the local centroid is defined as 
+
+¯xi = 1
+
+k
+
+X  
+
+> xj∈N k(xi)
+
+xj . (8) By performing eigenvalue decomposition on Ci, we obtain λ1 ≤ λ2 ≤ · · · ≤ λd, and then the local curvature score is defined as 
+
+κi = λ1
+
+Pdm=1 λm
+
+, (9) In addition to the global information provided by the GE, the local point distributions inside flow channels and curved pores are captured by the LE by selecting a larger λ1. Finally, the nl points with the largest curvature scores are selected. LE allows model to focus on local geometric details that are most informative for preserving fine-scale behaviors and heterogeneous multiphysics interactions, complementing the global point distribution of GE. 
+
+Arbitrary decoder The arbitrary decoder (AD) is designed to decode the generated latent represen-tations back to real-space points at arbitrary locations and time steps. To handle meshes with variable numbers of nodes, we introduce a simple masking strategy into the GNO block, where information is propagated only through valid graph nodes while empty nodes are masked out. Moreover, the full field can be reconstructed at any desired resolution through iterative decoding with AD. 
+
+3.2 Flow matching and autoregressive generation 
+
+After mapping the original physical-space states into a compact latent token space, we apply flow matching to learn a transport from a Gaussian distribution to the latent data distribution, enabling autoregressive generation in the latent space. Specifically, we develop two prediction methods by modifying the scalable interpolant transformer [38] (SiT) backbone, as illustrated in Fig. 2. In the first method, the previous two latent states are patchified into tokens and used as conditional context through the cross-attention mechanism of the transformer block for next-step prediction. In addition, optional auxiliary information, such as velocity fields or structural features, can be incorporated into the conditional context, providing the model with richer physics-relevant guidance. We refer to this method as GeoLAMP-S in Fig. 2(a), where “S” denotes single-step prediction. In the second method, the previous latent tokens are directly incorporated into a causal self-attention block, enabling block-wise prediction in an M -to-M manner. We refer to this method as GeoLAMP-B, where “B” denotes blockwise prediction. In this work, we set M = 8 and perform non-overlapping blockwise prediction. Under this setting, all conditional tokens precede the target query tokens in the causal attention sequence, so each query token can attend to all conditional key tokens while the causal mask is preserved. In Fig. 2(b), the orange entries denote allowed attention, and the black square highlights that a noisy token at step L attends to all preceding conditional key tokens and itself. This autoregressive formulation of spatiotemporal dynamics enables the model to benefit from Transformer scalability, as a single forward pass provides prediction errors for multiple target locations. 4Figure 2: Illustration of latent-space autoregressive generative paradigms For both prediction paradigms, we train the latent generative model using a linear flow-matching objective. Let z denote the clean target latent tokens and let ϵ ∼ N (0, I) denote standard Gaussian noise with the same shape as z. Given t ∼ U (0 , 1) , we construct the interpolated latent state 
+
+xt = (1 − t)ϵ + tz, (10) which transports samples from the Gaussian distribution at t = 0 to the latent data distribution at 
+
+t = 1 . The corresponding target velocity is 
+
+ut = dxt
+
+dt = z − ϵ. (11) The neural network is trained to predict this velocity field from the noisy latent state, the flow-matching time, and the conditional context tokens c. The training objective is 
+
+LFM = Ez,ϵ,t 
+
+h
+
+∥vθ (xt, t, c) − ut∥22
+
+i
+
+. (12) For block-wise prediction, the clean latent variable z corresponds only to the target block. Given a conditioning window [zs, . . . , zs+M −1], the model predicts the target block [zs+M , . . . , zs+2 M −1].Flow matching is applied only to this target block, while the conditioning block is provided through 
+
+c. Equivalently, the block-wise objective is an average over target latent positions: 
+
+Lblock FM = Ez,ϵ,t 
+
+"
+
+1
+
+|Ωtar |
+
+X
+
+> i∈Ωtar
+
+∥vθ (xt, t, c)i − ut,i ∥22
+
+#
+
+, (13) where Ωtar denotes the set of target-block latent positions. In implementation, this target selection is performed implicitly by constructing xt only over the target block and by extracting velocity predictions only from the noisy target-token positions. During inference, samples are generated by solving the learned probability-flow ODE 
+
+dxt
+
+dt = vθ (xt, t, c), x0 ∼ N (0, I), t ∈ [0 , 1] . (14) The terminal latent state x1 gives the predicted target latent block. For autoregressive rollout, the predicted latent states are appended to the conditioning window and the procedure is repeated. The terminal latents are then passed through the decoder to reconstruct the corresponding physical-space states. For the reported test rollouts, we use Euler integration with 50 discretization steps. 
+
+## 4 Experiment 
+
+We first evaluate GeoLAMP on three datasets, where accuracy is measured on the global–local (G&L) point sets consistent with the graph pairs used by the GE and LE modules. We then investigate how the 5proposed dual-encoder design affects autoregressive prediction by comparing it with random sampling strategies. In addition, we evaluate high-resolution reconstruction by decoding the autoregressively generated latent states back to real space through the arbitrary-point decoder (AD). Finally, we analyze the inference scheme and attention patterns of the block-wise generative module to better understand how temporal dependencies are learned. 
+
+4.1 Model accuracy 
+
+We conduct autoregressive experiments on three datasets using 4096 global–local (G&L) points sampled from the method in Section. 3.1. The first two datasets are nonlinear flow–transport problems with source terms on solid surfaces. The third dataset is a linear elasticity problem with nonlinear boundary conditions, where we intend to test whether model can capture the dynamic boundary presence. We compare GeoLAMP with recent regression-based methods and evaluate performance using the relative L2 error over the full autoregressive rollout as well as at the final prediction step, as reported in Table 1. GeoLAMP achieves the best last-step prediction accuracy across all three datasets, demonstrating its effectiveness in long-horizon forecasting. Although Transolver [24] attains a lower average rollout error than GeoLAMP on the elasticity dataset, GeoLAMP exhibits similar average and last-step errors, indicating more stable long-term autoregressive performance. We additionally include two geometry-aware operator baselines and one matched deterministic control. Geo-FNO [53] learns a diffeomorphic deformation from the irregular domain to a regular grid and applies an FNO on that grid. NUNO [54] decomposes the non-uniform domain into subdomains, interpolates each onto a local regular grid, and applies an FNO per subdomain. Both are trained under the same blockwise M -to-M (M = 8 ) autoregression protocol, matched model size, and identical training and inference settings as GeoLAMP-B, and are evaluated on the same 4096 G&L points. Latent-Det. is a matched deterministic control that shares the frozen VAE, tokens, causal block mask, M = 8 protocol and commit stride, matched depth and width, and identical conditioning with GeoLAMP-B, but replaces the flow-matching objective and its iterative sampler with direct MSE regression of the same latent block, using one forward pass per block. Among the geometry-aware baselines, GeoLAMP-B attains the lowest mean and last-step error on all three datasets. The deterministic control closes much of the gap on the two transport datasets, but degrades sharply on long-horizon elasticity (last-step 1.9324 vs. 0.3823), indicating that the flow-matching formulation contributes most where the rollout horizon is most demanding. Fig. 3 shows the rollout error histories for three representative methods, including the two prediction paradigms of GeoLAMP and Transolver [24]. Although all methods exhibit some degree of error accumulation during rollout, GeoLAMP maintain more controlled error growth, with no significant increase over time in both cases. Overall, GeoLAMP demonstrates high autoregressive accuracy and strong flexibility in bridging real-space resolution and latent representations. Table 1: Relative L2 errors for autoregressive mean and last-step predictions on three datasets. Best/second-best results are bold /underlined. Suffixes -S/-B denote single-step/blockwise prediction. Rows above the horizontal rule are end-to-end geometry-aware baselines; rows below share the same frozen dual-encoder latent pipeline and rollout protocol, so they isolate the generative formulation.                                                               
+
+> Heat Convection Reactive Flow Elasticity Model Mean Last Mean Last Mean Last OFormer [6] 0.0060 0.0134 0.1101 0.1384 9.29 144.4 GINO [29] 0.0050 0.0074 0.1535 0.1675 6.31 143.5 Transolver [24] 0.0052 0.0266 0.4766 0.4717 0.2520 1.3703 Geo-FNO [53] 0.0041 0.0071 0.1369 0.1580 0.3676 0.5420 NUNO [54] 0.0043 0.0073 0.1528 0.1514 0.7160 3.8620 DiT-S 0.0037 0.0073 0.1464 0.1529 0.4340 0.5892 Latent-Det. 0.0035 0.0056 0.0924 0.1030 0.4395 1.9324 GeoLAMP-S 0.0033 0.0063 0.1071 0.1183 0.4081 0.5154 GeoLAMP-B 0.0025 0.0046 0.0913 0.0995 0.3460 0.3823
+
+60 20 40 60 80 100       
+
+> Rollout timestep
+> 0.00 0.01 0.02 0.03
+> a) Heat Convection
+> 20 40 60
+> Rollout timestep
+> 0.0 0.2 0.4 0.6
+> b) Reactive Flow
+> 10 20 30
+> Rollout timestep
+> 0123
+> c) Elasticity
+> Relative  L2
+> Transolver GeoLAMP-S GeoLAMP-B
+
+Figure 3: Rollout relative L2 error on Heat convection, Reactive flow, and Elasticity. Curves show the mean over test trajectories, with shaded regions indicating the 10th-90th percentile range. 
+
+4.2 Effects of geometry representation 
+
+We further examine the contribution of the proposed GE & LE architecture to autoregressive prediction and evaluate the model’s ability to reconstruct physical fields on super-resolved point sets. 
+
+Designed global & local encoder GeoLAMP employs a dual-encoder architecture on graph pairs formulated from FPS and CBS points, enabling effective extraction of global and local information from complex real-space geometries to latent representations. To demonstrate the effectiveness of the proposed global & local dual-encoder design, we compare GeoLAMP with a variant that encodes purely randomly sampled 4096 points (RS). The autoregressive accuracy on the three datasets is reported in Table 2. The results show that the proposed GE & LE dual encoder improves accuracy by more than 20% on the two flow–transport datasets while maintaining comparable performance on the elasticity dataset. This demonstrates that carefully designed point selection is essential for bridging real and latent space, and is crucial for accurate latent-space prediction. 
+
+Super-resolution by arbitrary decoder Originating from the flexibility of the GNO-based decoder, the AD enables the generated latent states to be decoded back to real-space fields on meshes of arbitrary resolution. We further evaluate the super-resolution (SR) performance using both randomly sampled (RS) points and the proposed global–local (G&L) point sets. The super-resolved autoregression results from G&L points for three datasets are shown in Fig. 4. The accuracy is given in Table 2, the G&L point selection not only achieves higher accuracy at its own sampled locations, but also leads to better global super-resolution performance. Especially for the elasticity dataset, the SR result from G&L points gains about 33% improvement. The whole comparison of results with RS and G&L points still highlight a key distinction in scientific PDE learning: spatial representation directly influence solution accuracy. This effect is further amplified in complex geometries, where physical behavior can vary sharply across subregions due to tortuous pathways and localized geometric features. Table 2: Relative L2 error comparison across different sampling method and corresponding super resolution. We report the autoregression mean and the last-step error. Best results are in bold .
+
+Heat Convection Reactive Flow Elasticity Locations Mean Last Mean Last Mean Last RS 0.0045 0.0088 0.1178 0.1262 0.3459 0.3811 
+
+G&L 0.0025 0.0046 0.0913 0.0995 0.3460 0.3823 SR from RS 0.0045 0.0080 0.1152 0.1349 0.5351 0.5573 SR from G&L 0.0040 0.0077 0.1065 0.1247 0.3561 0.3684 
+
+4.3 Rollout commit step and block length flexibility Commit step influence The blockwise prediction paradigm provides the flexibility to commit different numbers of predicted steps during inference. Specifically, after predicting a block of future latent states, the model can commit only the first few steps and then re-predict the next block, or commit more steps at once before the next autoregressive update. We investigate this effect on 7three datasets by varying the number of committed steps k, as shown in Fig. 5. Across all three datasets, committing more steps generally leads to lower rollout error, especially at later rollout timesteps. This trend suggests that, for the blockwise model, frequent re-prediction with small k
+
+can accumulate errors more rapidly, while larger k reduces the number of autoregressive updates and therefore improves rollout stability. The effect is particularly evident for Elasticity, where small committed steps lead to a sharp late-stage error increase, whereas larger committed steps substantially suppress this error growth. In addition, increasing k reduces the number of autoregressive update steps, leading to a linear reduction in time-marching cost. 
+
+Figure 4: GeoLAMP results (bottom) vs. ground truth (top). (a) Heat convection in stochastic-field structure. (b) Reactive flow in sphere-packed structure. (c) Elasticity in foam structure. 20 40 60 80 100                     
+
+> Rollout timestep
+> 0.002 0.004 0.006 a) Heat Convection
+> 10 20 30 40 50 60
+> Rollout timestep
+> 0.06 0.08 0.10
+> b) Reactive Flow
+> 10 15 20 25 30 35
+> Rollout timestep
+> 0.35 0.40 0.45 0.50
+> c) Elasticity
+> Relative  L2
+> Committed steps k:12345678
+
+Figure 5: Relative L2 rollout error for different committed steps during blockwise prediction. 8Flexible block length at inference Beyond varying the commit stride, GeoLAMP-B can also vary the temporal block itself at inference. The conditioning length C can be matched to the available history, while increasing the output length P reduces sequential rollout calls by generating more frames per block. This follows from the frame-group representation: each conditioning or noisy target frame forms a group of spatial tokens, and the embedder, self-attention blocks, and token-wise output head are shared across frames. Thus, neither C nor P determines any learned tensor shape. To generate P frames, we append P noisy frame groups and rebuild the parameter-free block mask, such that each target group attends to all C conditioning groups and to itself, but not to the other targets. For each dataset, we vary both C and P using the same frozen pretrained model and evaluate on 200 held-out trajectories (Table 3). At C = 8 , increasing the output length to P = 10 or 12 does not increase error by more than 1% relative to the native C = P = 8 rollout, and sometimes reduces it. At P = 16 , the number of model evaluations and wall-clock rollout time decrease by 43 –50% and 
+
+14 –25% , respectively, while peak batch memory increases by 12 –16% under identical settings on one NVIDIA A100 GPU (40 GB). This efficiency gain is dataset dependent in accuracy: the normalized error remains near the native setting for heat convection ( 1.01 ) and elasticity ( 0.977 ), but rises to 1.42 
+
+for reactive flow. At fixed P = 8 , using only one conditioning frame increases the normalized error to 2.74 and 2.04 for heat convection and reactive flow, respectively. The maximum error ratio across datasets decreases to 1.06 at C = 6 and 1.02 at C = 7 , indicating that most of the useful history is captured by six to seven frames. Table 3: Inference-time block-length flexibility of pretrained GeoLAMP-B models. Values are horizon-averaged physical relative L2 errors normalized by the corresponding native C = P = 8 
+
+rollout (lower is better; 1.00 is native). Left: output length at C = 8 , with commit stride P . Right: conditioning length at P = 8 . Each value averages 200 held-out trajectories.                                             
+
+> Output length ( C= 8 )History length ( P= 8 )Dataset P=8 P=10 P=12 P=14 P=16 C=1 C=4 C=6 C=7
+> Heat convection 1.00 0.991 0.991 0.994 1.01 2.74 1.07 1.01 1.00 Reactive flow 1.00 1.00 1.01 1.14 1.42 2.04 1.19 1.06 1.02 Elasticity 1.00 0.964 0.993 0.986 0.977 1.04 1.07 1.03 1.01
+
+4.4 Attention variations along the temporal axis 
+
+We analyze temporal changes by isolating the attention from noisy target queries Nj to conditioning frames Ci. For each query, the learned attention scores are visualized as heatmaps in Fig. 6 (a)–(c), where white regions indicate masked entries. In addition, the attention weights renormalized over 
+
+C1–C8 are shown as line plots in Fig. 6 (d)–(f), measuring the relative preference among conditioning frames. Heat convection and elasticity exhibit similar recency preferences. This is likely due to the monotonic spatiotemporal behavior of these systems, where temperature and stress increase continuously across the entire domain throughout the process, as shown in Fig. 4. As a result, nearby states remain spatiotemporally consistent and continuous, leading the model to focus more strongly on the most recent frames, which contain more correlated information. In contrast, reactive flow displays a different pattern in our setting. For near-future prediction, the initial conditioning frames remain nearly as important as the most recent frames. For later target frames, the attention gradually shifts toward recent inputs, while the contribution from the earliest frames decreases substantially. This behavior likely originates from the underlying physics. As shown in Fig. 4, the concentration dynamics form a wormhole pattern, driven by the competition between convective transport and surface reaction consumption [55]. During this process, reaction fronts preferentially migrate along paths of lower resistance. As a result, different local regions evolve asynchronously in time: reaction fronts along different transport regions alternately advance toward the outlet during different time intervals. The resulting attention weights therefore exhibit curved structures, reflecting the need to capture time-lagged front dynamics, namely the alternative advancing behavior of the reaction front across different regions. Together, these patterns suggest that capturing long-term dependencies, rather than relying solely on the most recent frames, is beneficial for scientific PDE learning. 9C1                                              
+
+> N1
+> C2
+> N2
+> C3
+> N3
+> C4
+> N4
+> C5
+> N5
+> C6
+> N6
+> C7
+> N7
+> C8
+> N8
+> Key frame group
+> C1
+> N1
+> C2
+> N2
+> C3
+> N3
+> C4
+> N4
+> C5
+> N5
+> C6
+> N6
+> C7
+> N7
+> C8
+> N8
+> Query frame group a)
+> Heat Convection
+> C1
+> N1
+> C2
+> N2
+> C3
+> N3
+> C4
+> N4
+> C5
+> N5
+> C6
+> N6
+> C7
+> N7
+> C8
+> N8
+> Key frame group
+> C1
+> N1
+> C2
+> N2
+> C3
+> N3
+> C4
+> N4
+> C5
+> N5
+> C6
+> N6
+> C7
+> N7
+> C8
+> N8
+> b)
+> Reactive Flow
+> C1
+> N1
+> C2
+> N2
+> C3
+> N3
+> C4
+> N4
+> C5
+> N5
+> C6
+> N6
+> C7
+> N7
+> C8
+> N8
+> Key frame group
+> C1
+> N1
+> C2
+> N2
+> C3
+> N3
+> C4
+> N4
+> C5
+> N5
+> C6
+> N6
+> C7
+> N7
+> C8
+> N8
+> c)
+> Elasticity
+> C1C2C3C4C5C6C7C8
+> Conditioning frame Ci(t= 1-8)
+> 0.05 0.10 0.15 0.20 0.25
+> Attention
+> d)
+> C1C2C3C4C5C6C7C8
+> Conditioning frame Ci(t= 1-8)
+> e)
+> C1C2C3C4C5C6C7C8
+> Conditioning frame Ci(t= 1-8)
+> f)
+> N1(t= 9)
+> N2(t= 10)
+> N3(t= 11)
+> N4(t= 12)
+> N5(t= 13)
+> N6(t= 14)
+> N7(t= 15)
+> N8(t= 16)
+> 0.000 0.001 0.002 0.003 0.004 0.005
+> Grouped self-attention
+
+Figure 6: Attention strength along the temporal axis for the three dynamics. 
+
+## 5 Related Work 
+
+Recent advances in diffusion-based generative modeling [36–39, 41, 56] have motivated a new class of PDE surrogates that model time-dependent dynamics through denoising-based generation rather than direct deterministic regression, offering long-horizon stability. However, applying diffusion generative models directly in real space can be expensive for high-resolution PDEs. Latent generative modeling addresses this issue by learning temporal evolution in the lower-dimensional space. DiffusionPDE [57] models the joint distribution of PDE coefficients and solutions with a diffusion prior, enabling forward and inverse PDE solving. DPOT [50] scales denoising-based operator learning through large-scale PDE pretraining, showing that generative-style objectives can improve data efficiency and generalization across diverse physical systems. M2PDE [58] uses diffusion models for compositional multiphysics. Lola [59] provides an empirical study of latent diffusion models for dynamical systems, showing that latent-space emulation can remain accurate under high compression rates while diffusion-based emulators outperform non-generative baselines. These methods are attractive for PDE dynamics because they can reduce rollout drift beyond standard next-step regression. However, how to design rollout schemes that balance sampling cost and error accumulation remains underexplored [50]. In addition, constructing latent representations that preserve geometry-sensitive physics in complex structures remains challenging [59]. The PDE problems in complex geometries usually present in unstructured data formats rather than pixel-wise format. The key challenge is not only to represent irregular domains, but also to compress them into latent variables without losing geometry-sensitive physical information. Point-cloud encoders provide a direct way to process unstructured spatial samples by aggregating features from local neighborhoods and progressively enlarging the receptive field [23, 25, 27]. Graph-based encoders offer a complementary strategy by explicitly using connectivity between spatial samples. In mesh- or graph-based PDE learning, nodes represent physical states at sampled locations, while edges encode local neighborhoods, mesh adjacency, or radius-based interactions [21, 30, 31]. Furthermore, graph neural operators provide a more operator-oriented encoder–decoder mechanism for mapping between irregular physical fields and latent representations [28]. 
+
+## 6 Conclusions 
+
+In this work, we propose GeoLAMP for multiphysics PDE learning in meso-scale complex 2D geometries. The specially designed dual encoder enables the model to capture both global physical 10 behavior and local geometric features. We propose a casual self-attention transformer in a flow matching framework, and achieve block-wise autoregressive prediction. We construct three complex-geometry datasets, including heat convection, reactive flow, and elasticity. GeoLAMP achieves higher accuracy in long-time autoregression than regression-based models, while demonstrating strong flexibility in geometry representation and resolution reconstruction for tortuous structures. In addition, block-wise attention analysis shows that the model captures physically meaningful temporal dependencies beyond simple one-step correlations. Several directions remain for future work. First, although the dual-encoder architecture improves geometry-aware latent representation, the model still faces challenges in reconstructing high-quality physical fields in highly complex geometries. Second, while block-wise inference improves inference efficiency, the training cost increases with the block size. We plan to address this by introducing more efficient attention mechanisms. Moreover, meso-scale multiphysics encompasses a broad range of scientific and engineering problems in 3D, which remain to be further explored. Overall, GeoLAMP demonstrates promising potential for providing fast surrogate models in chemical and energy engineering applications. 
+
+## References 
+
+[1] Maziar Raissi, Paris Perdikaris, and George Em Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics , 378:686–707, 2019. doi: 10.1016/j.jcp.2018.10.045. URL https://doi.org/10.1016/j.jcp.2018.10.045 .[2] George Em Karniadakis, Ioannis G Kevrekidis, Lu Lu, Paris Perdikaris, Sifan Wang, and Liu Yang. Physics-informed machine learning. Nature Reviews Physics , 3(6):422–440, 2021. [3] Guofei Pang, Lu Lu, and George Em Karniadakis. fpinns: Fractional physics-informed neural networks. SIAM Journal on Scientific Computing , 41(4):A2603–A2626, 2019. [4] Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Fourier neural operator for parametric partial differen-tial equations. arXiv preprint arXiv:2010.08895 , 2021. doi: 10.48550/arXiv.2010.08895. URL 
+
+https://arxiv.org/abs/2010.08895 .[5] Lu Lu, Pengzhan Jin, Guofei Pang, Zhongqiang Zhang, and George Em Karniadakis. Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators. 
+
+Nature Machine Intelligence , 3:218–229, 2021. doi: 10.1038/s42256-021-00302-5. URL 
+
+https://doi.org/10.1038/s42256-021-00302-5 .[6] Zijie Li, Kazem Meidani, and Amir Barati Farimani. Transformer for partial differential equations’ operator learning. arXiv preprint arXiv:2205.13671 , 2023. doi: 10.48550/arXiv. 2205.13671. URL https://arxiv.org/abs/2205.13671 .[7] Kamyar Azizzadenesheli, Nikola Kovachki, Zongyi Li, Miguel Liu-Schiaffini, Jean Kossaifi, and Anima Anandkumar. Neural operators for accelerating scientific simulations and design. 
+
+Nature Reviews Physics , 6:320–328, 2024. doi: 10.1038/s42254-024-00712-5. URL https: //doi.org/10.1038/s42254-024-00712-5 .[8] Tailin Wu, Takashi Maruyama, and Jure Leskovec. Learning to accelerate partial differential equations via latent global evolution. Advances in Neural Information Processing Systems , 35: 2240–2253, 2022. [9] Valerii Iakovlev, Markus Heinonen, and Harri Lähdesmäki. Learning space-time continuous latent neural pdes from partially observed states. Advances in Neural Information Processing Systems , 36:26372–26395, 2023. [10] Katiana Kontolati, Somdatta Goswami, George Em Karniadakis, and Michael D. Shields. Learning nonlinear operators in latent spaces for real-time predictions of complex dynamics in physical systems. Nature Communications , 15:5101, 2024. doi: 10.1038/s41467-024-49411-w. URL https://doi.org/10.1038/s41467-024-49411-w .[11] Lei Chen, Xiaohui Zhong, Hao Li, Jie Wu, Bo Lu, Deliang Chen, Shang-Ping Xie, Libo Wu, Qingchen Chao, Chensen Lin, et al. A machine learning model that outperforms conventional global subseasonal forecast models. Nature Communications , 15(1):6425, 2024. 11 [12] Rui Wang, Karthik Kashinath, Mustafa Mustafa, Adrian Albert, and Rose Yu. Towards physics-informed deep learning for turbulent flow prediction. In Proceedings of the 26th ACM SIGKDD international conference on knowledge discovery & data mining , pages 1457–1466, 2020. [13] Gege Wen, Zongyi Li, Kamyar Azizzadenesheli, Anima Anandkumar, and Sally M Benson. U-fno—an enhanced fourier neural operator-based deep-learning model for multiphase flow. 
+
+Advances in Water Resources , 163:104180, 2022. [14] Li Chen, An He, Jianlin Zhao, Qinjun Kang, Zeng-Yao Li, Jan Carmeliet, Naoki Shikazono, and Wen-Quan Tao. Pore-scale modeling of complex transport phenomena in porous media. 
+
+Progress in Energy and Combustion Science , 88:100968, 2022. [15] Yashee Mathur and Tapan Mukerji. Changes in physical properties of rocks during serpentiniza-tion and implications for natural hydrogen exploration. The Leading Edge , 44(6):479–487, 2025. [16] Remco Van Erp, Reza Soleimanzadeh, Luca Nela, Georgios Kampitsis, and Elison Matioli. Co-designing electronics with microfluidics for more sustainable cooling. Nature , 585(7824): 211–216, 2020. [17] Xuekun Lu, Antonio Bertei, Donal P Finegan, Chun Tan, Sohrab R Daemi, Julia S Weaving, Kieran B O’Regan, Thomas MM Heenan, Gareth Hinds, Emma Kendrick, et al. 3d microstruc-ture design of lithium-ion battery electrodes assisted by x-ray nano-computed tomography and modelling. Nature communications , 11(1):2079, 2020. [18] Jinghai Li, Wei Ge, Wei Wang, Ning Yang, Xinhua Liu, Limin Wang, Xianfeng He, Xiaowei Wang, Junwu Wang, and Mooson Kwauk. From multiscale modeling to meso-science . Springer, 2013. [19] Kapil Agrawal, Peter N Loezos, Madhava Syamlal, and Sankaran Sundaresan. The role of meso-scale structures in rapid gas–solid flows. Journal of Fluid Mechanics , 445:151–185, 2001. [20] Michael M. Bronstein, Joan Bruna, Taco Cohen, and Petar Veliˇ ckovi´ c. Geometric deep learning: Grids, groups, graphs, geodesics, and gauges. arXiv preprint arXiv:2104.13478 , 2021. doi: 10.48550/arXiv.2104.13478. URL https://arxiv.org/abs/2104.13478 .[21] Johannes Brandstetter, Daniel E. Worrall, and Max Welling. Message passing neural pde solvers. arXiv preprint arXiv:2202.03376 , 2022. doi: 10.48550/arXiv.2202.03376. URL 
+
+https://arxiv.org/abs/2202.03376 .[22] Makoto Takamoto, Timothy Praditia, Raphael Leiteritz, Daniel MacKinlay, Francesco Alesiani, Dirk Pflüger, and Mathias Niepert. Pdebench: An extensive benchmark for scientific machine learning. arXiv preprint arXiv:2210.07182 , 2022. doi: 10.48550/arXiv.2210.07182. URL 
+
+https://arxiv.org/abs/2210.07182 .[23] Charles Ruizhongtai Qi, Li Yi, Hao Su, and Leonidas J. Guibas. Pointnet++: Deep hierarchical feature learning on point sets in a metric space. In Advances in Neural Information Processing Systems , volume 30, 2017. URL https://papers.nips.cc/paper/ 7095-pointnet-deep-hierarchical-feature-learning-on-point-sets-in-a-metric-space .[24] Haixu Wu, Huakun Luo, Haowen Wang, Jianmin Wang, and Mingsheng Long. Transolver: A fast transformer solver for pdes on general geometries. In Proceedings of the 41st International Conference on Machine Learning , volume 235 of Proceedings of Machine Learning Research ,pages 53681–53705, 2024. doi: 10.48550/arXiv.2402.02366. URL https://proceedings. mlr.press/v235/wu24r.html .[25] Ali Kashefi and Tapan Mukerji. Point-cloud deep learning of porous media for permeability prediction. Physics of Fluids , 33(9), 2021. [26] Jian Liang and Hongkai Zhao. Solving partial differential equations on point clouds. SIAM Journal on Scientific Computing , 35(3):A1461–A1486, 2013. 12 [27] Yue Wang, Yongbin Sun, Ziwei Liu, Sanjay E. Sarma, Michael M. Bronstein, and Justin M. Solomon. Dynamic graph cnn for learning on point clouds. ACM Transactions on Graphics , 38 (5):146:1–146:12, 2019. doi: 10.1145/3326362. URL https://doi.org/10.1145/3326362 .[28] Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Neural operator: Graph kernel network for partial differential equations. arXiv preprint arXiv:2003.03485 , 2020. doi: 10.48550/arXiv.2003.03485. URL https://arxiv.org/abs/2003.03485 .[29] Zongyi Li, Nikola Borislavov Kovachki, Christopher Choy, Boyi Li, Jean Kossaifi, Shourya Prakash Otta, Mohammad Amin Nabian, Maximilian Stadler, Christian Hundt, Kamyar Azizzadenesheli, and Anima Anandkumar. Geometry-informed neural operator for large-scale 3d pdes. arXiv preprint arXiv:2309.00583 , 2023. doi: 10.48550/arXiv.2309.00583. URL 
+
+https://arxiv.org/abs/2309.00583 .[30] Tobias Pfaff, Meire Fortunato, Alvaro Sanchez-Gonzalez, and Peter W. Battaglia. Learning mesh-based simulation with graph networks. arXiv preprint arXiv:2010.03409 , 2021. doi: 10.48550/arXiv.2010.03409. URL https://arxiv.org/abs/2010.03409 .[31] Alvaro Sanchez-Gonzalez, Jonathan Godwin, Tobias Pfaff, Rex Ying, Jure Leskovec, and Peter W. Battaglia. Learning to simulate complex physics with graph networks. arXiv preprint arXiv:2002.09405 , 2020. doi: 10.48550/arXiv.2002.09405. URL https://arxiv.org/abs/ 2002.09405 .[32] Jaehong Chung, Rasool Ahmad, WaiChing Sun, Wei Cai, and Tapan Mukerji. Prediction of effective elastic moduli of rocks using graph neural networks. Computer Methods in Applied Mechanics and Engineering , 421:116780, 2024. [33] Haixu Wu, Minghao Guo, Zongyi Li, Zhiyang Dou, Mingsheng Long, Kaiming He, and Wojciech Matusik. Geopt: Scaling physics simulation via lifted geometric pre-training. arXiv preprint arXiv:2602.20399 , 2026. [34] Tianrun Gao, Haoren Zheng, Wenhao Deng, Haodong Feng, Tao Zhang, Ruiqi Feng, Qianyi Chen, and Tailin Wu. Gencp: Towards generative modeling paradigm of coupled physics. arXiv preprint arXiv:2601.19541 , 2026. [35] Zijie Li, Saurabh Patil, Francis Ogoke, Dule Shu, Wilson Zhen, Michael Schneier, John R Buchanan Jr, and Amir Barati Farimani. Latent neural pde solver: A reduced-order modeling framework for partial differential equations. Journal of Computational Physics , 524:113705, 2025. [36] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. arXiv preprint arXiv:2006.11239 , 2020. doi: 10.48550/arXiv.2006.11239. URL https://arxiv. org/abs/2006.11239 .[37] Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matthew Le. Flow matching for generative modeling. In The Eleventh International Conference on Learning Representations , 2023. doi: 10.48550/arXiv.2210.02747. URL https://openreview.net/ forum?id=PqvMRDCJT9t .[38] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF international conference on computer vision , pages 4195–4205, 2023. [39] Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight and fast: Learning to generate and transfer data with rectified flow. arXiv preprint arXiv:2209.03003 , 2023. doi: 10.48550/ arXiv.2209.03003. URL https://arxiv.org/abs/2209.03003 .[40] Alexander Quinn Nichol and Prafulla Dhariwal. Improved denoising diffusion probabilistic models. arXiv preprint arXiv:2102.09672 , 2021. doi: 10.48550/arXiv.2102.09672. URL 
+
+https://arxiv.org/abs/2102.09672 .13 [41] Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. 
+
+arXiv preprint arXiv:2011.13456 , 2021. doi: 10.48550/arXiv.2011.13456. URL https: //arxiv.org/abs/2011.13456 .[42] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denoising diffusion implicit models. 
+
+arXiv preprint arXiv:2010.02502 , 2021. doi: 10.48550/arXiv.2010.02502. URL https: //arxiv.org/abs/2010.02502 .[43] Tero Karras, Miika Aittala, Timo Aila, and Samuli Laine. Elucidating the design space of diffusion-based generative models. arXiv preprint arXiv:2206.00364 , 2022. doi: 10.48550/ arXiv.2206.00364. URL https://arxiv.org/abs/2206.00364 .[44] Aaron van den Oord, Oriol Vinyals, and Koray Kavukcuoglu. Neural discrete representation learning. In Advances in Neural Information Processing Systems , volume 30, 2017. URL https: //papers.nips.cc/paper/7210-neural-discrete-representation-learning .[45] Patrick Esser, Robin Rombach, and Björn Ommer. Taming transformers for high-resolution image synthesis. arXiv preprint arXiv:2012.09841 , 2021. doi: 10.48550/arXiv.2012.09841. URL https://arxiv.org/abs/2012.09841 .[46] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. arXiv preprint arXiv:2112.10752 , 2022. doi: 10.48550/arXiv.2112.10752. URL https://arxiv.org/abs/2112.10752 .[47] William Peebles and Saining Xie. Scalable diffusion models with transformers. arXiv preprint arXiv:2212.09748 , 2023. doi: 10.48550/arXiv.2212.09748. URL https://arxiv.org/abs/ 2212.09748 .[48] Nanye Ma, Mark Goldstein, Michael S Albergo, Nicholas M Boffi, Eric Vanden-Eijnden, and Saining Xie. Sit: Exploring flow and diffusion-based generative models with scalable interpolant transformers. In European Conference on Computer Vision , pages 23–40. Springer, 2024. [49] Phillip Lippe, Bastiaan S. Veeling, Paris Perdikaris, Richard E. Turner, and Johannes Brand-stetter. Pde-refiner: Achieving accurate long rollouts with neural pde solvers. arXiv preprint arXiv:2308.05732 , 2023. doi: 10.48550/arXiv.2308.05732. URL https://arxiv.org/abs/ 2308.05732 .[50] Zhongkai Hao, Chang Su, Songming Liu, Julius Berner, Chengyang Ying, Hang Su, Anima Anandkumar, Jian Song, and Jun Zhu. Dpot: Auto-regressive denoising operator transformer for large-scale pde pre-training. In Proceedings of the 41st International Conference on Machine Learning , volume 235 of Proceedings of Machine Learning Research , pages 17616–17635, 2024. doi: 10.48550/arXiv.2403.03542. URL https://proceedings.mlr.press/v235/ hao24d.html .[51] COMSOL Multiphysics. Introduction to comsol multiphysics®. COMSOL Multiphysics, Burlington, MA, accessed Feb , 9(2018):32, 1998. [52] Carsten Moenning and Neil A Dodgson. Fast marching farthest point sampling. Technical report, University of Cambridge, Computer Laboratory, 2003. [53] Zongyi Li, Daniel Zhengyu Huang, Burigede Liu, and Anima Anandkumar. Fourier neural operator with learned deformations for pdes on general geometries. Journal of Machine Learning Research , 24(388):1–26, 2023. doi: 10.48550/arXiv.2207.05209. URL https: //jmlr.org/papers/v24/23-0064.html .[54] Songming Liu, Zhongkai Hao, Chengyang Ying, Hang Su, Ze Cheng, and Jun Zhu. Nuno: A general framework for learning parametric pdes with non-uniform data. In International Conference on Machine Learning , pages 21658–21671. PMLR, 2023. [55] Zi Wang, Li Chen, Hangkai Wei, Zhenxue Dai, Qinjun Kang, and Wen-Quan Tao. Pore-scale study of mineral dissolution in heterogeneous structures and deep learning prediction of permeability. Physics of Fluids , 34(11), 2022. 14 [56] Michael S. Albergo, Nicholas M. Boffi, and Eric Vanden-Eijnden. Stochastic interpolants: A unifying framework for flows and diffusions. arXiv preprint arXiv:2303.08797 , 2023. doi: 10.48550/arXiv.2303.08797. URL https://arxiv.org/abs/2303.08797 .[57] Jiahe Huang, Guandao Yang, Zichen Wang, and Jeong Joon Park. Diffusionpde: Generative pde-solving under partial observation. Advances in Neural Information Processing Systems , 37: 130291–130323, 2024. [58] Tao Zhang, Zhenhai Liu, Feipeng Qi, Yongjun Jiao, and Tailin Wu. M2pde: Compositional generative multiphysics and multi-component pde simulation. arXiv preprint arXiv:2412.04134 ,2024. [59] François Rozet, Ruben Ohana, Michael McCabe, Gilles Louppe, François Lanusse, and Shirley Ho. Lost in latent space: An empirical study of latent diffusion models for physics emulation. 
+
+arXiv preprint arXiv:2507.02608 , 2025. [60] Joachim Ohser and Katja Schladitz. 3D images of materials structures: processing and analysis .John Wiley & Sons, 2009. 
+
+## A Dataset Generation 
+
+Overall, we reconstruct three distinct meso-scale geometries for three different physical problems, as shown in Fig. 7. For each dataset, 2,000 structures are generated, and the corresponding physical PDEs are solved to obtain 2,000 spatio-temporal solution sequences. Each dataset is then randomly split into training, validation, and test sets with 1,500, 300, and 200 sequences, respectively. All simulation is implemented in COMSOL [51]. We show one sequences of each dataset in Fig. 8. 
+
+Figure 7: Meso-scale structure reconstruction 
+
+Heat convection in stochastic-field structure. The geometry is generated using a stochastic field method implemented in GeoDict [60], as shown in Fig. 7(a), yielding a highly heterogeneous porous structure within a 24 ,000 × 24 ,000 , μ m2 domain. The flow is governed by the incompressible Navier–Stokes equations coupled with an energy transport equation, where heat exchange occurs at the solid–fluid interface. Water is used as the working fluid. Periodic boundary conditions are imposed along the flow direction with a pressure drop of 3, Pa , allowing the fluid to exit through the outlet and re-enter from the inlet while continuously exchanging heat with the solid phase under a prescribed heat flux of 1000 , W/m2. This setup represents pore-scale heat-transfer processes commonly encountered in battery systems and low-heat-flux thermal management applications. 
+
+ρ   ∂u 
+
+> ∂t
+
++ u · ∇ u = −∇ p + μ∇2u, x ∈ Ωf
+
+∇ · u = 0 , x ∈ Ωf∂T ∂t + u · ∇ T = α∇2T, x ∈ Ωf
+
+−kT ∇T · n = q, x ∈ ∂Ωs
+
+(15) 15 Figure 8: Meso-scale physics datasets 
+
+Reactive flow in sphere-packed structure. The complex geometry is constructed using a stochastic Monte Carlo sphere-packing process [55], as shown in Fig. 7(b). Specifically, multiple spheres with radius 14 , μ m are randomly initialized and iteratively adjusted within a 240 ×240 , μ m2 computational domain. In this domain, the incompressible Navier–Stokes equations are coupled with a solute transport equation, where reactants are advected from the left inlet to the right outlet and consumed at the solid surfaces through a surface reaction term. The inlet velocity, inlet concentration, and surface reaction rate are set to 7.2 × 10 −4, m/s, 0.1, mol /m3, and 10 4, m/s, respectively. This setup captures key mechanisms in subsurface reactive transport and is representative of applications such as CO 2 sequestration and natural hydrogen generation. 
+
+ρ   ∂u 
+
+> ∂t
+
++ u · ∇ u = −∇ p + μ∇2u, x ∈ Ωf
+
+∇ · u = 0 , x ∈ Ωf∂c ∂t + u · ∇ c = D∇2c, x ∈ Ωf
+
+−D∇c · n = kc, x ∈ ∂Ωs
+
+(16) 
+
+Elasticity in foam structure. The porous geometry is generated using a foam reconstruction method implemented in GeoDict [60], as shown in Fig. 7(c), within a 2,400 × 2,400 , μ m2 domain. The mechanical response is modeled by infinitesimal linear elasticity under dynamic loading conditions. Copper is used as the solid material, reflecting its common use in metallic foams. Although the governing equations are quasi-static, time-dependent boundary displacements are applied to mimic realistic loading scenarios. This dataset evaluates the model’s ability to capture deformation responses under temporally varying boundary conditions in complex porous media. 
+
+∇ · σ = 0 , x ∈ Ω
+
+σ = λ(∇ · u)I + 2 με, x ∈ Ω
+
+ε = 12 (∇u + ( ∇u)⊤), x ∈ Ω
+
+u(x, t ) = −0.001 H · 1−cos(2 πt )2 , x ∈ Γtop 
+
+(17) 
+
+## B Model hyperparameter and implementation details 
+
+B.1 Model hyperparameter Global & Local VAE. The autoencoder compresses each per-timestep scalar field on the unstruc-tured mesh into a 64 × 8 × 8 latent. Two independent GNO encoders use radius-graph integral 16 transforms with radius 0.15 and MLP layers [80 , 80 , 80] , projecting the input points onto a shared 
+
+32 × 32 grid with 128 channels. The two encoded grids are summed element-wise. The CNN encoder uses a base hidden width of 128, channel multipliers (1 , 2, 4) , two ResNet blocks per resolution level, and self-attention at resolutions 16 × 16 and 8 × 8, producing an 8 × 8 × 64 bottleneck with mean and log-variance. The KL weight is set to 10 −6. The decoder mirrors the CNN encoder and reconstructs a 32 × 32 × 128 grid, followed by a GNO decoder with MLP layers [512 , 256] and radius 0.15 .
+
+Super-resolution Decoder. The super-resolution decoder shares the CNN-decoder and GNO-decoder backend with the VAE. It takes a predicted 8 × 8 × 64 latent and upsamples it through three resolution levels with base hidden width 128, channel multipliers (1 , 2, 4) , two ResNet blocks per level, and self-attention at resolutions 8 × 8 and 16 × 16 . The CNN decoder outputs a 32 × 32 × 128 
+
+feature grid. A GNO decoder with MLP layers [512 , 256] and radius 0.15 maps the grid features to the full mesh with approximately 12 –21 × 10 3 valid vertices and produces a one-channel field prediction. 
+
+GeoLAMP-S. GeoLAMP-S denoises a 64 × 8 × 8 target latent under conditioning. With 
+
+patch _size = 1 , each latent is patch-embedded into 64 tokens with hidden width 768 and si-nusoidal 2-D positional embeddings. The flow-matching time and autoregressive step index are embedded using sinusoidal-MLP timestep embedders and combined as the AdaLN-Zero conditioning vector. The transformer uses 12 blocks, hidden width 768, 12 attention heads, and mlp _ratio = 4 .Each block contains AdaLN-modulated self-attention, cross-attention to context tokens, and an AdaLN-modulated GeGLU feed-forward layer. The final AdaLN-modulated linear layer maps the tokens back to 64-channel patches. 
+
+GeoLAMP-B. GeoLAMP-B uses the same backbone and hyperparameter settings as GeoLAMP-S, but performs non-overlapping block-wise prediction. It predicts M = 8 future latent velocity fields in one flow-matching evaluation. Conditional and noisy target latents are patch-embedded into a causal token sequence, and the noisy target token groups are unpatchified and concatenated to produce the eight predicted velocity fields. 
+
+GINO. GINO uses the same encoder-decoder structure as the Global & Local VAE (changed to AE), with the variational bottleneck replaced by a deterministic autoencoder, and are trained together. The FNO operates on the 8 × 8 latent grid. A 1 × 1 lifting convolution maps the input to a 752-channel hidden representation, using 192 input channels for reaction flow and heat convection and 128 input channels for elasticity. The trunk contains 10 spectral blocks with (4 , 4) Fourier modes, complex-valued mode-wise weights, 1 × 1 pointwise convolutional residual bypasses, GELU activations, and outer residual connections. A final 1 × 1 projection convolution maps the hidden tensor to 64 output channels. 
+
+OFormer. OFormer operates directly on 4096 mesh nodes sampled by uniform and curvature-biased strategies. The encoder uses a Conv2d(5 → 128) stem with kernel size (2 , 1) , learned node-type embeddings, and relative positional encodings. The encoder contains six Galerkin linear-attention blocks with hidden dimension 128, head dimension 128, one attention head, and feed-forward hidden dimension 512. The decoder uses Gaussian Fourier coordinate features, a two-layer MLP with hidden dimension 128, one Galerkin cross-attention block, one linear-attention block, and a three-layer MLP prediction head. 
+
+Transolver. Transolver operates directly on 4096 real-space query points from the concatenated uniform and curvature point clouds. The input feature dimension is 6 for reaction flow and heat convection and 4 for elasticity. A preprocessing MLP maps the input to width 256, followed by a learned placeholder vector and a sinusoidal physical-time embedding processed by a two-layer SiLU MLP. The trunk contains 6 Transolver blocks with hidden size 256, 8 heads, 32 slice tokens per head, dropout 0, and mlp _ratio = 2 . A final LayerNorm and linear head predict one scalar field value per point. 
+
+Geo-FNO. Geo-FNO learns a deformation from the irregular input domain to a regular computa-tional grid and applies an FNO trunk on that grid, mapping back to the physical points through the inverse deformation. It is trained on all three datasets under the same blockwise M -to-M (M = 8 )17 autoregression protocol, with matched model size, identical training strategy, and identical inference protocol as GeoLAMP-B, and is evaluated on the same 4096 G&L points of the test set. 
+
+NUNO. NUNO partitions the non-uniform point set into subdomains, interpolates each subdomain onto a local regular grid, and applies an FNO per subdomain before scattering the predictions back to the original points. It follows the same blockwise M -to-M (M = 8 ) protocol, matched model size, training strategy, inference protocol, and 4096 G&L evaluation points as Geo-FNO and GeoLAMP-B. 
+
+Latent-Det. Latent-Det. is a matched deterministic control for the generative formulation. It uses the same frozen Global & Local VAE, the same latent tokens, the same causal block mask, the same M = 8 blockwise protocol and commit stride, matched transformer depth and width, and identical conditioning as GeoLAMP-B. The flow-matching objective and its iterative ODE sampler are replaced by direct MSE regression of the same target latent block, so inference uses a single forward pass per block rather than 50 Euler steps. 
+
+DiT-S. DiT-S denoises a 64 ×8×8 target latent using DDPM noise prediction. With patch _size =1, the noisy target latent is embedded into 64 tokens with hidden width 768 and fixed sinusoidal 2-D positional embeddings. The diffusion timestep is embedded using a sinusoidal-MLP timestep embedder for AdaLN-Zero modulation. The transformer uses 12 blocks, hidden width 768, 12 attention heads, and mlp _ratio = 4 . Each block contains AdaLN-modulated self-attention, cross-attention to context tokens, and an AdaLN-modulated GeGLU feed-forward layer. The final AdaLN-modulated linear layer maps the tokens back to 64-channel patches. 
+
+B.2 Training settings 
+
+The training configurations are summarized in Table 4. For the heat convection and reactive flow datasets, the input includes the velocity field as an optional context. For the elasticity dataset, the model takes only the von Mises stress field as input. The VAE and latent dynamics model are trained separately. The arbitrary decoder is also trained independently, using precomputed latent vectors from partial points as input and full-mesh data as the target. All training tasks are conducted on a single NVIDIA A100 GPU with 80 GB of memory. Table 4: Training hyperparameters for baseline models, GeoLAMP variants, the VAE, and the arbitrary decoder.                                                 
+
+> Model Learning rate Weight decay Scheduler Epochs GINO 10 −410 −4cosine, 500-step warmup 200 OFormer 10 −410 −4cosine, 500-step warmup 200 Transolver 3×10 −410 −4cosine, 500-step warmup 200 GeoFNO 10 −410 −4cosine, 500-step warmup 200 NUNO 10 −410 −4cosine, 500-step warmup 200 DiT-S 10 −410 −4cosine, 500-step warmup 200 Latent-Det. 10 −410 −4cosine, 500-step warmup 200 GeoLAMP-S 10 −410 −4cosine, 500-step warmup 200 GeoLAMP-B 2.5×10 −510 −4cosine, 1000-step warmup 200 VAE 3×10 −410 −4ReduceLROnPlateau (factor 0.5, pat. 5) 50 SR 10 −410 −4ReduceLROnPlateau (factor 0.5, pat. 10) 100
+
+18

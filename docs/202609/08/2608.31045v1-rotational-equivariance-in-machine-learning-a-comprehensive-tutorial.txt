@@ -1,0 +1,1401 @@
+Title: Rotational Equivariance in Machine Learning: A Comprehensive Tutorial
+
+URL Source: https://arxiv.org/pdf/2608.31045v1
+
+Published Time: Tue, 01 Sep 2026 03:11:34 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# Rotational Equivariance in Machine Learning: A Comprehensive Tutorial 
+
+Peter Lippmann ∗ and Fred A. Hamprecht 
+
+Interdisciplinary Center for Scientific Computing (IWR), Heidelberg University, 69120 Heidelberg, Germany 
+
+(Dated: September 1, 2026) Rotational symmetry is one of the most important structural principles in machine learning on 3D data. In applications ranging from physics and materials science to 3D computer vision, pre-dictions should not depend on an arbitrary choice of coordinate frame. Rotational equivariance captures this requirement mathematically by enforcing that a rotation of the input induces a corre-sponding transformation of the model output. This tutorial provides a comprehensive introduction to rotational equivariance, starting from the physical and geometric intuition behind coordinate independence and building up the necessary machinery from geometric deep learning, group the-ory, and representation theory. We introduce message passing on Euclidean graphs, group actions and representations, spherical harmonics, Wigner matrices, tensor products, and Clebsch-Gordan decomposition, and explain how these ingredients give rise to modern equivariant architectures. We then survey the principal strategies for incorporating rotational equivariance in deep learning, including group convolutions, internal tensorial representations, and canonicalization-based meth-ods, and discuss their practical strengths and limitations. The tutorial aims to lower the barrier to the subject by connecting the underlying mathematics to practical model design, by unifying ideas that are often expressed in different formal languages, and by helping practitioners choose among competing approaches through a clear discussion of their trade-offs. 
+
+CONTENTS 
+
+I. Introduction 1II. Symmetries and Coordinate Independence 2III. Geometric Deep Learning and Message Passing 3IV. Groups and Spatial Symmetries 4V. Group Representations and Equivariance 4VI. Spherical Harmonics and the Irreducible Representations of SO(3) 6A. Computing Wigner-D matrices 8VII. Decomposition of Cartesian Tensors and the Tensor Product 9VIII. Rotational Equivariance in Deep Learning 11 A. Equivariance via Group Convolutions 11 B. Equivariance via Internal Tensorial Representations 13 C. Canonicalization-Based Approaches 13 D. Conceptual Links between Different Approaches 15 IX. Problems with Rotational Equivariance in Practice 17 X. Conclusion 17  
+
+> ∗peter.lippmann@iwr.uni-heidelberg.de
+
+I. INTRODUCTION 
+
+Symmetries play an essential role in the physical sci-ences. For instance, they restrict the form of admissible laws and dynamics: a symmetry rules out any equation of motion that would change under the corresponding transformation. Symmetries serve as guiding principles for formulating theories, e.g. through symmetry-invariant Lagrangians in particle physics. More broadly, the laws of physics are formulated covariantly , meaning that pre-dictions do not depend on arbitrary choices of coordi-nates or reference frames. Modeling this coordinate independence in machine learning (ML) has become a central theme in geomet-ric deep learning. Consider a molecule represented by atom positions in R3. The global coordinate system is arbitrary, so scalar observables such as the total energy must be invariant under global rotations and reflections, while vector- and tensor-valued quantities (e.g. forces, dipole moments, stresses) must transform consistently between coordinate descriptions. However, a naive en-coding of geometry by raw coordinates makes rotated or reflected configurations appear entirely different to a standard neural network. As a result, the model must ef-fectively relearn the same physical patterns across many orientations. A fundamental idea in geometric deep learning is therefore to incorporate symmetry as prior knowledge directly into the architecture by enforcing invariance 
+
+and equivariance [1–4]. These symmetry-based inductive biases improve generalization and data efficiency: the model need not spend model capacity on discovering symmetries from finite data and guarantees exact sym-metries even out of distribution, that is, for regions of the input space not explored during training. Accordingly, arXiv:2608.31045v1 [cs.LG] 31 Aug 2026 2rotationally (and often reflection-) equivariant models form the backbone of many state-of-the-art methods across disciplines [5–9]. The motivation for equivariant ML models is not only conceptual but practical as well. For many complex systems we lack closed-form equations, or solving the known underlying equations accurately is prohibitively expensive (e.g. for quantum mechanics, weather, cos-mology or high-energy physics). In such settings, data-driven surrogate models are essential for prediction and for comparing measurements to simulations [10– 12]. When data-acquisition is costly, enforcing known symmetries can be decisive: equivariant networks often reach higher accuracy with fewer samples [13, 14] and provide physically consistent predictions by construc-tion, particularly important for the stability of long simulations [15, 16]. More broadly, scientific machine learning aims to combine the strengths of learning-based models with established physical principles, rather than treating neural networks as purely data-driven black boxes. In this sense, equivariant neural networks can be viewed as practical, data-driven surrogates that preserve core physical structure. This tutorial is organized as follows. We begin by motivating symmetry as the mathematical expression of coordinate independence and introduce geometric deep learning on Euclidean graphs through the language of message passing. We then develop the group-theoretic framework needed to formalize equivariance, including group representations, which are key to describing how different physical quantities transform under symmetry operations. Building on this foundation, we introduce Cartesian tensors, spherical harmonics, Wigner-D
+
+matrices, tensor products, and the Clebsch-Gordan decomposition. We then turn to architectural design and discuss the principal strategies for achieving rota-tional equivariance in deep learning, including group convolutions, internal tensorial representations, and canonicalization-based methods. Finally, we examine the practical limitations of these approaches and discuss the trade-offs between exact built-in equivariance and learned approximate equivariance achieved through data augmentation. This tutorial is complementary to several excellent existing resources. The guide and overview by Duval 
+
+et al. [4] offers a broad and pedagogical overview of ge-ometric deep learning for atomistic systems, while the article by Kondor [17] presents a more abstract and representation-theoretic perspective on equivariant net-works. The survey by Han et al. [18] provides a wider overview of equivariant GNNs across geometric domains. The value of the present tutorial lies in its tight focus: rather than surveying geometric deep learning broadly or treating equivariance in full generality, it concentrates specifically on rotational equivariance in 3D and develops the subject from the ground up. Its aim is to give readers a clear path from coordinate independence and symme-try principles to the concrete mathematical tools, such as 
+
+SO(3) -representations, spherical harmonics, Wigner ma-trices, and tensor products, that underlie modern equiv-ariant architectures, while also helping practitioners nav-igate the different formalisms and design choices used in the literature.  
+
+> II. SYMMETRIES AND COORDINATE INDEPENDENCE
+
+Intuitively, a symmetry of a physical system is a trans-formation that leaves the relevant properties of the sys-tem unchanged. In machine learning, the same idea ap-pears in various forms. As illustrated above, the central reason why spatial symmetries matter in scientific ma-chine learning is the arbitrariness of coordinate systems. We need coordinates to represent geometric objects nu-merically , yet the choice of reference frame is not phys-ical. Let us illustrate this point with a simple example: for two directions v1, v2 ∈ R3, the angle can be computed from coordinates via 
+
+cos ∠(v1, v2) = vT1 v2
+
+∥v1∥2 ∥v2∥2
+
+, ∥vi∥2 =
+
+q
+
+vT 
+
+> i
+
+vi, (1) but the resulting value is independent of how the vectors are expressed in coordinates. In some cases, an appropriate coordinate choice can substantially simplify a computation. For example, the volume of an axis-aligned box with side lengths a, b, c can be written as 
+
+V =
+
+Z
+
+> R3
+
+IBox (x, y, z ) d x dy dz = a b c, (2) where IBox is the indicator function of the box. In a co-ordinate system aligned with the box edges, the integral factorizes immediately; in a rotated frame, the same in-tegral becomes more cumbersome even though the result must agree. Many fundamental physical theories, such as Maxwell’s formulation of electromagnetism, exploits this redundancy in the coordinate description through suitable gauge choices that simplify equations without changing physical predictions. The requirement that results obtained in different co-ordinate systems must be consistent is naturally ex-pressed as equivariance with respect to Euclidean sym-metries. Intuitively, a function or algorithm is equivari-ant if transforming its input induces a predictable, cor-responding transformation of its output. In that way, equivariant models produce predictions that remain con-sistent under coordinate changes (or, equivalently, under global transformations of the input geometry). Crucially, physical laws, formulated as coordinate-independent (covariant) equations, can be seen as equiv-3
+
+ariant algorithms .1 For instance, Newton’s second law maps forces to acceleration, 
+
+a(F1, . . . , Fn, m ) = 1
+
+m
+
+> n
+
+X
+
+> i=1
+
+Fi, (3) and the predicted acceleration transforms as expected when the input is rotated by any rotation matrix R:
+
+a(R F1, . . . , R Fn, m ) = 1
+
+m
+
+X
+
+> i
+
+R Fi
+
+= R
+
+ 1
+
+m
+
+X
+
+> i
+
+Fi
+
+
+
+= R a(F1, . . . , Fn, m ).
+
+In contrast, standard neural networks operating on raw coordinate arrays are generally not equivariant. As a toy example, suppose we concatenate two forces and a mass into an input vector x = ( F1∥F2∥m) ∈ R7 with Fi ∈ R3
+
+and scalar m ∈ R, and predict the acceleration ˆa ∈ R3
+
+using a single dense layer with weight W ∈ R3×7 and bias b ∈ R3, followed by a pointwise nonlinearity such as ReLU, 
+
+ˆa = ReLU( W x + b
+
+| {z }
+
+> =z
+
+)
+
+with ReLU( z)] i = max(0 , z i) for i = 1 , 2, 3. An uncon-strained matrix W mixes scalar and vector components arbitrarily, as in w1F1,1 + w2F1,2 + w3F1,3 + w4F2,1 +
+
+· · · + w7m, which does not transform like a vector under rotations. Therefore, our predicted acceleration would not be consistent across different choices of reference frames. Furthermore, component-wise nonlinearities typ-ically break equivariance. A simple example can be given in R2. Let P = −I2 denote the 180 ◦ rotation in 2D. Then, 
+
+ReLU  P (1 , 1) T = ReLU(( −1, −1) T) = (0 , 0) T̸
+
+= ( −1, −1) T = P ReLU((1 , 1) T),
+
+showing that ReLU does not map vectors to vectors in an equivariant way. These basic examples illustrate that equivariance is usually not obtained “for free” but often requires careful design of equivariant architectures. 
+
+Key point. Coordinate frames are needed for nu-merical computation, but results obtained in dif-ferent coordinate systems must be consistent. This consistency is formalized via the concept of equiv-ariance; physical laws can be viewed as equivariant algorithms.    
+
+> 1To be exact, the notion of covariance is typically used in the context of physical laws. An equation is said to be covariant if it relates physical quantities that transform consistently under changes of reference frame, so that the form of the equation is preserved. Equivariance, by contrast, is typically used in the context of functions, and means that applying a transformation to the input is equivalent to first applying the function and then applying the corresponding transformation to the output.
+
+III. GEOMETRIC DEEP LEARNING AND MESSAGE PASSING 
+
+Data from various domains, such as scans of 3D scenes, molecular structures, detections in particle collisions, or earth science measurements, can be viewed as a set of nodes positioned in Euclidean space and equipped with geometric node features. Concretely, a point cloud con-sists of nodes {i} with features {fi}, each located at a po-sition xi ∈ Rd. A Euclidean graph is a point cloud paired with edges (i, j ), for instance obtained from a point cloud by constructing a k-NN graph or a radius graph. A widely used deep learning approach for Euclidean graph is the class of message passing neural networks 
+
+(MPNNs), which iteratively combine and abstract infor-mation by sending messages along edges. In a typical layer, below indexed by k, every node i receives messages 
+
+mij from each node j in its neighborhood N (i) and ag-gregates them in a permutation-invariant way to update its node feature: 
+
+f (k+1)  
+
+> i
+
+= M 
+
+> j∈N (i)
+
+mij = M 
+
+> j∈N (i)
+
+h
+
+
+
+f (k) 
+
+> i
+
+, f (k) 
+
+> j
+
+, e ij , x i − xj
+
+
+
+.
+
+(4) Here, the message is constructed using a learnable mes-sage function (often an MLP) h. Besides the node feature vector of the sending node f (k) 
+
+> j
+
+, the message function may receive the feature of the receiving node f (k) 
+
+> i
+
+as input, as well as the relative position vector xi − xj and optional edge features eij . The L is a permutation-invariant ag-gregation operator such as sum or mean (or sometimes the component-wise max [19]). Using relative positions 
+
+xi − xj ensures translation invariance, since a global shift of all coordinates leaves all relative displacements un-changed. Since the node update given by Eq. (4) is per-mutation invariant with respect to the ordering of neigh-bors, the overall layer applied to each node i is permu-tation equivariant, i.e. permuting input nodes permutes the output node features accordingly. Stacking multiple message passing layers in a neural network allows information to propagate over longer dis-tances in the graph and allows to combine node features into higher-level, more abstract representations. In the context of molecular data, for example, nodes usually correspond to atoms (located in 3D space) and input fea-tures can encode atom types; message passing layers then combines local geometric information (which atoms are nearby and how are they positioned) into increasingly ab-stract chemical representations used to predict the target property. For global molecular properties, one typically applies a permutation-invariant readout (e.g. sum, mean or max pooling) over node features at the end of the net-work to produce a single prediction per molecule. MPNNs form a very general family of models. As a special case of the above, MPNNs can also be applied to 
+
+fully connected graphs, where each node is connected to all others, i.e. N (i) = {1, . . . , N } (including self-loops). 4From this perspective, the self-attention mechanism at the core of the Transformer architecture [20] can also be viewed as an instance of message passing with a learned, “content-dependent” aggregation. Given node features 
+
+fi ∈ Rd, we obtain queries, keys, and values from a linear embedding 
+
+qi = W Qfi, kj = W K fj , vj = W V fj , (5) and attention weights 
+
+αij = softmax j
+
+ qT 
+
+> i
+
+kj /pdk
+
+ := exp  qT 
+
+> i
+
+kj /√dk
+
+PNℓ=1 exp  qT 
+
+> i
+
+kℓ/√dk
+
+ ,
+
+(6) where W Q, W K , W V are learnable weight matrices and 
+
+dk is the dimension of the key and query vectors. The updated representation is then obtained by a normalized, weighted sum aggregation of the value vectors vj ,
+
+f (k+1)  
+
+> i
+
+=
+
+> N
+
+X
+
+> j=1
+
+αij vj , (7) In a Transformer block, this self-attention operation is typically followed by an MLP, a residual connection, and a normalization layer. Thus, Transformers can be viewed as MPNNs on fully connected graphs with attention-based message weights, illustrating the versatility of the message passing framework.  
+
+> IV. GROUPS AND SPATIAL SYMMETRIES
+
+A symmetry of a physical system is a transformation that leaves certain properties of the system unchanged. For example, in the absence of external fields, globally rotating a molecule changes its orientation but not its energy. In mathematical terms, the set of symmetry transformations is typically described as a group , i.e. a collection of transformations that can be composed and inverted. Formally, a group is defined as a set G equipped with a binary operation · : G × G → G that describes the composition of transformations and satisfies the following four axioms: • Closure: For all a, b ∈ G, the composition a · b is again an element of G.• Associativity: For all a, b, c ∈ G, (a·b)·c = a·(b·c).• Identity: There exists an element e ∈ G such that 
+
+e · a = a · e = a for all a ∈ G.• Inverse: For every a ∈ G there exists a−1 ∈ G
+
+such that a · a−1 = a−1 · a = e.In this tutorial we focus mostly on the Euclidean sym-metries: translations, rotations, and reflections. The or-thogonal group O( d) combines rotations and reflections, while the special orthogonal subgroup SO( d) ⊂ O( d) in-cludes only (orientation-preserving) rotations: 
+
+O( d) := {R ∈ Rd×d | RTR = I}, (8) 
+
+SO( d) := {R ∈ O(d) | det( R) = 1 }. (9) The condition RTR = I is equivalent to preserving inner products, i.e. (R u )T(R v ) = uTv for all u, v ∈ Rd, and 
+
+det( R) = −1 corresponds to orientation-reversing trans-formations (reflections). Translations t ∈ Rd (paired with addition) form a non-compact group, acting on points by x 7 → x + t. Combining rotations with translations yields the special Euclidean group of rigid motions SE( d).Concretely, we may represent a rigid motion by a pair 
+
+(R, t ) with R ∈ SO( d) and t ∈ Rd, acting on points in 
+
+d-dimensional space via 
+
+x 7 → R x + t. (10) The set of all such pairs becomes a group under compo-sition, with group product 
+
+(R1, t 1) · (R2, t 2) := ( R1R2, t 1 + R1t2), (11) identity (I, 0) , and inverse (R, t )−1 = ( RT, −RTt). The Euclidean group E( d) also includes reflections, i.e. R ∈
+
+O( d). 
+
+> V. GROUP REPRESENTATIONS AND EQUIVARIANCE
+
+As we have seen before, physical equations are formu-lated in a covariant (coordinate-independent) way, that is, they retain the same form under a change of coor-dinates. Interpreting a physical law as a map or algo-rithm from inputs to outputs, this covariance is precisely the requirement of equivariance . Namely, the left- and right-hand side of an equation must transform consis-tently under the same coordinate transformation. Group representations provide the mathematical framework to formalize how different geometric objects behave under (symmetry) transformations. As a basic example let us consider a velocity vector 
+
+v ∈ R3. It is a directed geometric quantity which under a rotation R ∈ SO(3) transforms as a vector, 
+
+v 7 → v′ = R v, i.e. v′ 
+
+> i
+
+= Rij vj . (12) Throughout this tutorial, we consistently use Einstein summation convention, i.e. the summation over indices that are repeated twice is implied. While the components of the velocity vector change, its length remains invariant: 
+
+∥v′∥22 = ( R v)T(R v) = vTRTR v = vTv = ∥v∥22, (13) using RTR = I for orthogonal matrices. Beyond vectors, some geometric quantities transform as higher-order ten-sors. For instance, the inertia tensor I ∈ R3×3 of a finite 5set of masses {mk} located at positions {xk ∈ R3} is defined as 
+
+Iij := X
+
+> k
+
+mk
+
+ ∥xk∥22 δij − xk,i xk,j 
+
+, (14) and transforms under R ∈ SO(3) as 
+
+I 7 → I ′ = R IRT, i.e. I′ 
+
+> ij
+
+= Rik Ikl Rjl , (15) which follows directly from the transformation of posi-tions xk 7 → R xk.
+
+Key point. These examples illustrate that differ-ent geometric objects live in different vector spaces and transform differently under the same symme-try transformation: scalars are invariant, vectors transform linearly, and higher-order Cartesian ten-sors transform by contracting each index with the rotation. 
+
+a. Group representation. Given a group G and a vector space V , a group representation ρ is a homomor-phism from G to the invertible matrices GL( V ), i.e. a mapping that fulfills 
+
+ρ(g1g2) = ρ(g1)ρ(g2), ∀g1, g 2 ∈ G, (16) where g1g2 is the group product and ρ(g1)ρ(g2) the stan-dard matrix product. The representation specifies how elements of the group act on vectors v ∈ V , i.e. in com-ponents (ρ(g)v)i = ρ(g)ij vj . The dimension of the rep-resentation ρ is defined to be the dimension of V . Con-dition (16) implies that ρ(g−1) = ( ρ(g)) −1, see e.g. [21] for details. 
+
+b. Cartesian tensor representations. Starting from the defining action of R ∈ O( d) on v ∈ Rd, (Rv )i = Rij vj ,one can obtain higher-order Cartesian tensor representa-tions by acting on each index. For an order-n tensor 
+
+Ti1...i n , we have 
+
+T ′ 
+
+> i1...i n
+
+= Ri1j1 · · · Rinjn Tj1...j n . (17) For instance, the outer product of two vectors Tij =(vw T)ij = viwj transforms as T ′ 
+
+> ij
+
+= (R v )i(R w )j =
+
+Rik Rjl Tkl . One can easily verify that Eq. (17) indeed satisfies the representation property Eq. (16). To avoid cumbersome indexing, let us illustrate the proof just for 
+
+Tij . Given R1, R 2 ∈ O( d), in components we have 
+
+[ρ(R1R2)T ]ij = ( R1R2)ik (R1R2)jl Tkl 
+
+= R1,im R1,jn R2,mk R2,nl Tkl 
+
+| {z } 
+
+> =[ ρ(R2)T]mn
+
+= [ ρ(R1)ρ(R2)T ]ij .
+
+where ρ(R) denotes the Cartesian tensor representation of R acting on T ∈ Rd×d. Consequently, order-n (or “rank-n”) Cartesian tensors form a dn-dimensional repre-sentation space of O( d).C CFH H  
+
+> Dipole moment Rotate Predict
+> FC CFH HF
+> Predict
+> CCFHHF
+> Rotate Rotated dipole moment
+> C CFH HF
+
+Figure 1. Equivariant prediction of a molecular dipole moment. Applying a global transformation to the molecular geometry before predicting the dipole moment yields the same result as first predicting the dipole moment and then applying the same transformation to the predicted vector. 
+
+c. Equivariance. Using the notion of group repre-sentations, we can now formalize the concept of equiv-ariance. Let G be a group and V, W two vector spaces equipped with group representations ρin and ρout respec-tively. A function φ : V → W is said to be equivariant 
+
+under the group G if the following holds: 
+
+ρout (g)φ(x) = φ(ρin (g)x), ∀g ∈ G, ∀x ∈ V
+
+where the input to φ transforms under the representation 
+
+ρin : V → GL( V ) and its output under the representa-tion ρout : W → GL( W ). If ρout (g) = I (identity) for all 
+
+g ∈ G, the function φ is said to be invariant. Intuitively, equivariance means that φ commutes with the group ac-tion, i.e. transforming the input and then applying φ is equivalent to first applying φ and then transforming the output, as illustrated in Fig. 1. As a direct consequence of the definition, an equivari-ant function φ is symmetry preserving, i.e. if the input 
+
+x has a certain symmetry, e.g. invariance under a sub-group H ⊂ G, then the output φ(x) will have the same symmetry, since for all h ∈ H we have 
+
+φ(x) = φ(ρin (h)x) = ρout (h)φ(x). (18) Therefore, φ(x) is also invariant under H.
+
+d. Example: the cross product is O(3) -equivariant. 
+
+A well-known yet non-trivial example of an O(3) -equivariant map is the cross product (or vector product) 
+
+u × v. It is an insightful exercise to show that indeed, 
+
+(R u) × (R v) = R (u × v) (19) for any R ∈ SO(3) and u, v ∈ R3. We start by writ-ing the cross product in components using the totally antisymmetric Levi-Civita symbol ϵijk ,
+
+(u × v)i = ϵijk uj vk, (20) 6with ϵijk = 1 if (i, j, k ) is an even permutation of (1 , 2, 3) ,
+
+ϵijk = −1 if it is an odd permutation, and ϵijk = 0 
+
+otherwise. Now, inserting uj → Rjl ul and vk → Rkm vm,we obtain 
+
+ (R u) × (R v) 
+
+> i
+
+= ϵijk (R u)j (R v)k = ϵijk Rjl Rkm ulvm.
+
+(21) To eliminate one of the matrices R on the right-hand side, we use the following general identity that connects the Levi-Civita symbol to the matrix determinant [22]: 
+
+ϵijk Rjl Rkm Rin = det( R) ϵlmn . (22) Contracting both sides with RT 
+
+> no
+
+and using RTR = I
+
+(i.e. Rin RT 
+
+> no
+
+= δio ) yields 
+
+ϵojk Rjl Rkm = det( R) ϵlmn Ron . (23) Renaming the free index o → i, inserting Eq. (23) into Eq. (21) and using that det( R) = 1 for rotation matrices, we can confirm the equivariance by 
+
+ (R u) × (R v) 
+
+> i
+
+= det( R)ϵlmn Rin ulvm = Rin ϵnlm ulvm
+
+=  R (u × v) 
+
+> i
+
+(24) For reflections (orientation-reversing transformations) with det( R) = −1, the cross product picks up a minus sign in the last step of the derivation. For example, for parity P = −I ∈ O(3) \ SO(3) ,
+
+(P u) × (P v) = det( P ) P (u × v) = − P (u × v).
+
+(25) Thus u × v is an axial vector (or pseudovector). Under a general orthogonal transformation R ∈ O(3) it trans-forms as 
+
+v′ 
+
+> i
+
+= det( R) Rij vj . (26) 
+
+e. Cartesian pseudotensor representation. As we have seen from the example of pseudovectors, the fact that the orthogonal matrices also include reflections can be used to distinguish the transformation behavior of geometric objects with respect to orientation-reversing transformations (with determinant −1). The following transformation behavior defines another representation, namely the one of pseudotensors :
+
+P ′ 
+
+> i1...i n
+
+= det( R)Ri1,j 1 ... R in,j n Pj1...j n . (27) The proof that the pseudotensor representation forms a group representation (i.e. satisfies Eq. (16)) works exactly as the one for the tensor representation above, additionally using the fact that the determinant is multiplicative: det( AB ) = det( A) det( B).
+
+Key point. Group representations specify how symmetry transformations act on different geomet-ric objects living in separate vector spaces. They form the basis for transforming features between different (local) reference frames in our tensorial message passing approach.   
+
+> VI. SPHERICAL HARMONICS AND THE IRREDUCIBLE REPRESENTATIONS OF SO(3)
+
+In this section, we demonstrate how the Cartesian tensor representations of Eq. (17) can be decomposed into irreducible subrepre-sentations of SO(3) , realized by the so-called Wigner-D matrices. We further illustrate that spherical harmonics, which form a complete orthonormal basis for (square-integrable) functions on the sphere S2, trans-form precisely under these irreducible representation of SO(3) . Based on that, we introduce the notion of 
+
+spherical tensors .
+
+a. Irreducible subrepresentations. Formally, a sub-space W ⊂ V is called G-invariant , with respect to a representation ρ : G → GL( V ), if ρ(g)w ∈ W for all g ∈ G and w ∈ W . In this case, the restriction 
+
+ρ|W : G → GL( W ), g 7 → ρ(g) defines a subrepresenta-tion . A representation is called irreducible if it has no non-trivial G-invariant subspaces, i.e. if the only invari-ant subspaces are {0} and V itself [21]. 
+
+b. Example: rank-2 Cartesian tensors are reducible. 
+
+Consider the rank-2 Cartesian tensor representation of 
+
+SO(3) acting on T ∈ R3×3 by 
+
+T 7 → T ′ = R T R T, i.e. T ′ 
+
+> ij
+
+= Rik Rjl Tkl . (28) This representation is reducible because it contains the one-dimensional invariant subspace spanned by the iden-tity matrix span {I}. Indeed, for T = aI ∈ span {I} we have T ′ = aRIR T = aI ∈ span {I}. This component is often called the trace part because every rank-2 tensor admits the canonical decomposition 
+
+T =
+
+
+
+T − tr( T )3 I
+
+| {z }
+
+> traceless part
+
++ tr( T )3 I
+
+| {z } 
+
+> (isotropic) trace part
+
+, (29) and the coefficient of the isotropic basis tensor I is fully determined by tr( T ). We will see how to further decom-pose a rank-2 Cartesian tensor in Sec. VII below. 
+
+c. Spherical Harmonics. Spherical harmonics are scalar functions on the sphere S2 = {ˆr ∈ R3 : ∥ˆr∥2 = 1 },indexed by an integer degree l ∈ { 0, 1, 2, . . . } and an order 
+
+m ∈ {− l, . . . , l }. One may work either with the complex 
+
+spherical harmonics Y C 
+
+> lm
+
+: S2 → C or with an equivalent 
+
+real spherical harmonics basis Y R 
+
+> lm
+
+: S2 → R. In either case, the set of functions {Ylm }l,m forms a complete or-thonormal basis of L2(S2), that is, any square-integrable real-valued function f : S2 → R can be expanded into spherical harmonics as 
+
+f (ˆ r) = 
+
+> ∞
+
+X
+
+> l=0
+> l
+
+X
+
+> m=−l
+
+clm Y C
+
+> lm
+
+(ˆ r), (30) with coefficients clm ∈ C. Importantly, for f to be real-valued, the coefficients in the complex basis are not in-7dependent but satisfy the following constraint 2
+
+cl, −m = ( −1) m clm (m = 1 , . . . , l ), (31) where clm denotes the complex conjugate. For given l, we may change between the complex spher-ical harmonics Y C and the real ones Y R using the follow-ing conversion [24]: 
+
+Y R
+
+> lm
+
+(ˆ r) := √2 ( −1) |m| Im  Y C
+
+> l|m|
+
+(ˆ r), m < 0, (32) 
+
+Y R 
+
+> l0
+
+(ˆ r) := Y C 
+
+> l0
+
+(ˆ r), m = 0 , (33) 
+
+Y R
+
+> lm
+
+(ˆ r) := √2 ( −1) m Re  Y C
+
+> lm
+
+(ˆ r), m > 0. (34) The general form of the complex spherical harmonics of degree l is given by 
+
+Y C
+
+> lm
+
+(θ, ϕ ) ∝ P ml (cos θ) e imϕ , (35) where P ml are the associated Legendre polynomials. In spherical coordinates (θ, ϕ ), ϕ ∈ [0 , 2π) denotes the az-imuthal angle in the xy -plane from the positive x-axis and θ ∈ [0 , π ] is the polar angle from the positive z-axis. Since, in the complex basis, the azimuthal dependence of 
+
+Y C 
+
+> lm
+
+is given by eimϕ , in the real basis, Y R 
+
+> lm
+
+correspond to cos( mϕ )- and sin( mϕ )-type angular dependences, re-spectively. Up to normalization, the lowest-degree complex har-monics are given by 
+
+Y C
+
+> 00
+
+(θ, ϕ ) ∝ 1, Y C
+
+> 10
+
+(θ, ϕ ) ∝ cos θ, Y C
+
+> 1,±1
+
+(θ, ϕ ) ∝ sin θ e±iϕ,
+
+and the corresponding real harmonics (for l = 1 ) are 
+
+Y R
+
+> 1,−1
+
+(θ, ϕ ) ∝ sin θ sin ϕ, Y R
+
+> 10
+
+(θ, ϕ ) ∝ cos θ, (36) 
+
+Y R
+
+> 11
+
+(θ, ϕ ) ∝ sin θ cos ϕ. (37) In machine learning one typically uses the real basis so that all features and activations remain real-valued. Figure 2 shows a visualization of the lowest-degree real spherical harmonics as functions on the sphere. For us, the key property is that, under any rotation 
+
+R ∈ SO(3) , spherical harmonics of a given degree l mix 
+
+only among themselves . Concretely, stacking all orders into a vector-valued map 
+
+Y (l) : S2 → R2l+1 , Y (l)(ˆ r) :=  Y R
+
+> l, −l
+
+(ˆ r), . . . , Y R
+
+> l,l
+
+(ˆ r)T
+
+(38) (here in the real basis) one obtains a linear transforma-tion law 3
+
+Y (l)(R ˆr) = D(l)(R) Y (l)(ˆ r), R ∈ SO (3) , (39)                
+
+> 2This assumes the usual Condon-Shortley phase convention
+> YC
+> l, −m= ( −1) mYC
+> lm [23].
+> 3The transformation here should be understood in the following way: we fix the coordinate system, and with it the spherical harmonics functions, and simply evaluate these functions at the (physically) rotated unit vector Rˆr.
+
+where D(l)(R) ∈ R(2 l+1) ×(2 l+1) is the so-called Wigner-D
+
+matrix in that basis. We will discuss in Sec. VI A how to compute D(l)(R) efficiently. Let us explicitly study the transformation behavior of the spherical harmonics of the lowest degrees. For l = 0 ,we have Y00 ∝ 1, hence Y (0) (R ˆr) = Y (0) (ˆ r), correspond-ing to the trivial (invariant) representation. For l = 1 ,we recognize that the real harmonics are (up to permu-tations) equal standard spherical coordinates with radius 
+
+r = 1 . For that compare, Eq. (36) with 
+
+x = r sin θ cos ϕ, y = r sin θ sin ϕ, z = r cos θ. 
+
+(40) Consequently, one can choose a suitable real basis such that 
+
+Y (1) (ˆ r) ∝ ˆr. (41) In this basis the Wigner-D matrices for l = 1 coincide with the standard rotation matrices, 
+
+D(1) (R) = R. (42) This convention (used e.g. in the equivariant ML library 
+
+e3nn [13]) emphasizes that degree-1 harmonics transform like ordinary vectors. 
+
+d. Irreducible representations and spherical tensors. 
+
+A standard classification result in representation theory tells us that the finite-dimensional irreducible represen-tations (irreps) of SO(3) are unique, can be indexed by 
+
+l ∈ { 0, 1, 2, . . . } and have dimension 2l + 1 [25]. Since for each l the functions {Ylm }lm=−l span a (2 l + 1) -dimensional subspace that is invariant under rotations, the induced actions of R ∈ SO(3) on these subspaces are (up to a change of basis) exactly the unique irre-ducible representation of of R ∈ SO(3) . This motivates the definition of a spherical tensor of degree l as a vector 
+
+x ∈ C2l+1 (or in a real basis x ∈ R2l+1 ) that transforms according to 
+
+(D(l)(R)x(l))m =
+
+> l
+
+X
+
+> m′=−l
+
+D(l) 
+
+> mm ′
+
+(R) x(l) 
+
+> m′
+
+. (43) Further, we can distinguish between even and odd par-ity spherical tensors, which transform under the same 
+
+SO(3) Wigner-D matrices but differ by a sign under re-flections: We use that any orientation-reversing transfor-mation R ∈ O(3) \SO(3) can be written as R = P R ′ with 
+
+P = −I and R′ := P R ∈ SO(3) to differentiate between an even-parity spherical tensor x(l)+ and an odd-parity spherical tensor x(l) 
+
+> −
+
+, which transform as 
+
+x(l)+ 7 → D(l)(R′) x(l)+ , x(l) 
+
+> −
+
+7 → − D(l)(R′) x(l) 
+
+> −
+
+. (44) for R = P R ′ ∈ O(3) \ SO(3) .8               
+
+> Figure 2. Visualization of the lowest-degree real spherical harmonics YR
+> lm as functions on the sphere. For m= 0 the harmonics are axially symmetric around the z-axis, while for m̸= 0 they have a characteristic cos( mϕ )- or sin( mϕ )-type angular dependence in the xy -plane. The degree ldetermines the number of nodal lines (circles where the function changes sign).
+
+Key point. Cartesian tensors, Eq. (17), transform under a reducible representation, and can there-fore be decomposed into spherical tensors, Eq. (43), which transform via Wigner-D matrices, i.e. un-der the irreducible representations of SO(3) . In Sec. VII, we see explicitly how to perform this de-composition.   
+
+> A. Computing Wigner-Dmatrices
+
+A fast and practical method for computing D(l)(R) for a given R ∈ SO(3) is described by Pinchon and Hoggan [26]. Their construction works entirely in the real basis and evaluates D(l)(R) in O(l3) time using precomputed, degree-dependent building blocks. Since the Wigner-D
+
+matrices are tied to the transformation behavior of the spherical harmonics by Eq. (39), we construct the rep-resentation matrices by studying how the spherical har-monics transform under rotations. Following [26], we or-der the real spherical harmonics for fixed l as 
+
+ Y R 
+
+> l0
+
+, Y R 
+
+> l1
+
+, Y R
+
+> l, −1
+
+, Y R 
+
+> l2
+
+, Y R
+
+> l, −2
+
+, . . . , Y R 
+
+> ll
+
+, Y R
+
+> l, −l
+
+T. (45) As we have seen before, in this convention, Y R 
+
+> lm
+
+and Y R
+
+> l, −m
+
+(for m > 0) carry the azimuthal dependence cos( mϕ ) and 
+
+sin( mϕ ), respectively. A rotation about the z-axis by angle α acts as ϕ 7 → ϕ + α and therefore mixes each pair (cos( mϕ ), sin( mϕ )) by a planar rotation of angle 
+
+mα . Consequently, the representation matrix for Rz (α)
+
+is block-diagonal: 
+
+X(l)(α) = diag 
+
+
+
+1, R (α), R (2 α), . . . , R (lα )
+
+
+
+,
+
+where R(ϑ) = 
+
+cos ϑ − sin ϑ
+
+sin ϑ cos ϑ
+
+
+
+,
+
+(46) which corresponds to Eq. (12) in [26]. To leverage that rotations around the z-axis take this particularly simple form, we decompose any rotation R ∈ SO(3) via a z-y-z
+
+Euler decomposition 
+
+R = Rz (α) Ry (β) Rz (γ), (47) where Rz (·) and Ry (·) are rotations around the z- and y-axes, respectively, and α, β, γ are the corresponding Euler angles. The Wigner-D matrix for R can then be com-puted from the homomorphism property of representa-tions (cf. Eq. (16)): 
+
+D(l)(R) = X(l)(α) D(l)(Ry (β)) X(l)(γ). (48) The key idea by Pinchon and Hoggan [26] is to reduce the remaining, more complicated y-rotation to a z-rotation by conjugation with the (orthogonal) coordinate swap 
+
+J : (x, y, z ) 7 → (x, z, y ), J ∈ O(3) \ SO(3) , J2 = I. 
+
+(49) Based on the transformation rules of Eq. (44) for orientation-reversing orthogonal transformations, J in-duces a well-defined linear operator J(l) ∈ R(2 l+1) ×(2 l+1) 9on space of degree-l spherical tensors. The induced op-erator similarly satisfies 
+
+(J(l))2 = I ⇒ (J(l))−1 = J(l). (50) Using once more the homomorphism property of the Wigner-D matrices, we can write the more complicated 
+
+y-rotation as 
+
+D(l)(Ry (β)) = J(l) X(l)(β) J(l). (51) The matrices J(l) can be precomputed once per degree l.In [26] they are constructed recursively by propagating the known action of J at l = 1 (i.e. on (x, y, z )) to higher degrees. Combining Eq. (47) and (51) yields the efficient Pinchon-Hoggan factorization 
+
+D(l)(R) = X(l)(α) J(l) X(l)(β) J(l) X(l)(γ), (52) where each X(l)(·) is cheap to evaluate (independent 2×2
+
+blocks R(m ·)), and J(l) is fixed for a given l and can be reused across all rotations. This yields an accurate and practical O(l3) scheme for computing Wigner-D matrices in the real basis. 
+
+VII. DECOMPOSITION OF CARTESIAN TENSORS AND THE TENSOR PRODUCT 
+
+We have established that Cartesian tensor represen-tations (cf. Eq. (17)) are in general reducible , while the irreducible SO(3) representations are realized by the Wigner-D matrices D(l)(R) ∈ R(2 l+1) ×(2 l+1) . In this sec-tion, we connect both representation types and introduce the tensor product and its irreducible (Clebsch-Gordan) decomposition. The latter is one of the key building blocks in state-of-the-art SO(3) -equivariant neural net-works [5, 27, 28]. 
+
+a. Tensor products of representations. Given two tensors Ai1...i n and Bj1...j m , their tensor (outer) product is defined component-wise by 
+
+(A ⊗ B)i1...i n j1...j m := Ai1...i n Bj1...j m . (53) If A and B are Cartesian tensors and transform under rotations as in Eq. (17), then A ⊗ B transforms as 
+
+(A ⊗ B)′ 
+
+> i1...i nj1...j m
+
+= Ri1k1 · · · Rinkn Rj1ℓ1 · · · Rjmℓm (A ⊗ B)k1...k n ℓ1...ℓ m ,
+
+(54) so the tensor product again forms a tensor representa-tion. The same statement holds if x(l1) and y(l2) are spherical tensors, then x(l1) ⊗ y(l2) transforms under the product representation D(l1) ⊗ D(l2). While the tensor (outer) product yields an equivariant output tensor by construction, stacking outer products in a neural network would quickly lead to a combinatorial blow-up in the feature dimensionality. This motivates the decomposing into irreps, that is, a set of smaller, more manageable building blocks with well-defined transformation behavior. 
+
+b. Decomposition of Cartesian tensors. Cartesian tensors of rank 0 (scalars) and rank 1 (vectors) are al-ready irreducible under SO(3) . The first non-trivial case is a rank-2 Cartesian tensor. To keep track of the di-mensions in a tensor decomposition, we introduce the shorthand d to denote an irrep of dimension d, that is, 
+
+2l + 1 refers to the unique (2 l + 1) -dimensional irrep la-beled by l (cf. Sec. VI). Since a rank-2 Cartesian tensor has the same transformation behavior, T ′ 
+
+> ij
+
+= Rik Rjℓ Tkℓ ,as the tensor (outer) product of two vectors, we asso-ciate Tij with 3 ⊗ 3. First, we define the symmetric and antisymmetric parts of Tij by 
+
+Sij = 12 (Tij + Tji ), Aij = 12 (Tij − Tji ). (55) Both span invariant subspaces (subrepresentations), since for example 
+
+S′ 
+
+> ij
+
+= 12 (T ′ 
+
+> ij
+
++ T ′
+
+> ji
+
+) = Rik Rjℓ 12 (Tkℓ + Tℓk ) = Rik Rjℓ Skℓ ,
+
+(56) and similarly for Aij . The antisymmetric subspace is 3-dimensional and is isomorphic to a pseudovector by use of the Levi-Civita symbol: 
+
+ak := 12 ϵkij Aij , Aij = ϵijk ak. (57) In fact, it is easy to confirm 4 that in this form a trans-forms as a′ = R a for R ∈ SO(3) acting on Aij and that a′
+
+picks up an additional sign under reflections, cf. Eq. (26). Thus, the antisymmetric part realizes the same 3 irrep as an ordinary vector, but with different parity under O(3) .The symmetric part further decomposes into trace and traceless parts. As we have seen before (cf. Eq. (29)), the trace part forms a closed subspace equipped with the trivial (invariant) representation ( l = 0 ). The remaining symmetric traceless part 
+
+˜Sij := Sij − δij Tr( S)3 (58) is 5-dimensional and can be shown to correspond to the 
+
+l = 2 irrep. Altogether, in dimension notation, 
+
+3 ⊗ 3 = 1 ⊕ 3 ⊕ 5. (59) 
+
+c. Clebsch-Gordan decomposition and the coupled tensor product. More generally, the tensor product of two SO(3) irreps decomposes as 
+
+2l1 + 1 ⊗ 2l2 + 1 = 
+
+> l1+l2
+
+M
+
+> L=|l1−l2|
+
+2L + 1 . (60)               
+
+> 4In the case where Tis given by an outer product Tij =viwj,plugging in the definition of Aij reveals that ais actually pro-portional to the cross product v×w.
+
+10 Using Gauss’s summation formula, one may easily verify that the dimensions match by showing that 
+
+> l1+l2
+
+X
+
+> L=|l1−l2|
+
+(2 L + 1) = (2 l1 + 1)(2 l2 + 1) . (61) As an example, we can use Eq. (60) to examine how a rank-3 Cartesian tensor decomposes into irreps. A rank-3
+
+Cartesian tensor corresponds to 3 ⊗ 3 ⊗ 3. Using Eq. (59) iteratively yields 
+
+3 ⊗ 3 ⊗ 3 = (1 ⊕ 3 ⊕ 5) ⊗ 3= 1 ⊗ 3 ⊕ 3 ⊗ 3 ⊕ 5 ⊗ 3= 3 ⊕ (1 ⊕ 3 ⊕ 5) ⊕ (3 ⊕ 5 ⊕ 7) = 1 ⊕ 3 ⊕ 3 ⊕ 3 ⊕ 5 ⊕ 5 ⊕ 7 (62) i.e. one scalar, three vector-type components, two l = 2 
+
+components, and one l = 3 component. While Eq. (60) provides a decomposition in terms of subspace dimensions, the numerical irreps decomposition of spherical tensors is implemented by so-called Clebsch-Gordan (CG) coefficients, which define a change of basis from the product basis (irrep 1 ⊗ irrep 2) to a coupled basis (direct sum of irreps): Let x(l1) and y(l2) be spherical tensors transforming as 
+
+(D(l1)(R)x(l1))m1 =
+
+> l1
+
+X
+
+> m′
+> 1=−l1
+
+D(l1)
+
+> m1m′
+> 1
+
+(R) x(l1)
+
+> m′
+> 1
+
+,
+
+(D(l2)(R)y(l2))m2 =
+
+> l2
+
+X
+
+> m′
+> 2=−l2
+
+D(l2)
+
+> m2m′
+> 2
+
+(R) y(l2)
+
+> m′
+> 2
+
+.
+
+Their tensor product transforms under the product rep-resentation: 
+
+ (D(l1)(R) ⊗ D(l2)(R))( x(l1) ⊗ y(l2))
+
+> m1m2
+
+= X
+
+> m′
+> 1,m ′
+> 2
+
+D(l1)
+
+> m1m′
+> 1
+
+(R) D(l2)
+
+> m2m′
+> 2
+
+(R) x(l1)
+
+> m′
+> 1
+
+y(l2)
+
+> m′
+> 2
+
+. (63) To extract the L-irrep component of the product repre-sentation, we define the Clebsch-Gordan (coupled) prod-uct 
+
+z(L) = x(l1) ⊗CG y(l2),z(L) 
+
+> M
+
+:= X
+
+> m1,m 2
+
+CLM l1m1, l 2m2 x(l1) 
+
+> m1
+
+y(l2) 
+
+> m2
+
+, (64) with |l1 −l2| ≤ L ≤ l1 +l2 and −L ≤ M ≤ L. The famous Clebsch-Gordan coefficients are denoted as CLM l1m1, l 2m2 .In the literature, the Clebsch-Gordan product is often referred to simply as “tensor product”, which can be con-fusing since the CG product combines the usual tensor (outer) product with an additional change of basis af-terwards. We use the notation ⊗CG vs. ⊗ to make this distinction explicit. The defining property of the CG coefficients is that the resulting coupled tensor z(L) = x(l1) ⊗CG y(l2) transforms as an L-type spherical tensor under R ∈ SO(3) . This condition is equivalent to imposing equivariance of the CG tensor product. Concretely, equivariance of the CG decomposition requires that, for all R ∈ SO(3) ,
+
+z(L) D(l1)(R)x(l1), D (l2)(R)y(l2)
+
+= D(L)(R) z(L) x(l1), y (l2), (65) i.e. we equate “transform then couple” with “couple then transform”. Expanding both sides and using that this equation must hold for any tensors of x(l1), y (l2), we ob-tain the three-D equation. In components, we require that for any R ∈ SO(3) 
+
+> l1
+
+X
+
+> m1=−l1
+> l2
+
+X
+
+> m2=−l2
+
+CLM l1m1, l 2m2 D(l1)
+
+> m1m′
+> 1
+
+(R) D(l2)
+
+> m2m′
+> 2
+
+(R)=
+
+> L
+
+X 
+
+> M′=−L
+
+D(L)  
+
+> M M ′
+
+(R) CLM ′ 
+
+> l1m′
+> 1, l 2m′
+> 2
+
+. (66) Together with a normalization and a phase conven-tion, this constraint determines the coefficients uniquely. As discussed in Sec. VI A, in the complex spherical-harmonics convention, a z-rotation acts diagonally on spherical tensors, i.e. D(l) 
+
+> mm ′
+
+(Rz (α)) = e−imα δmm ′ . Plug-ging R = Rz (α) into Eq. (66) yields, for all α,
+
+e−i(m′ 
+
+> 1+m′
+> 2)α
+
+CLM l1m′ 
+
+> 1, l 2m′
+> 2
+
+= e−iM α CLM l1m′
+
+> 1, l 2m′
+> 2
+
+⇒ CLM l1m′ 
+
+> 1, l 2m′
+> 2
+
+= 0 unless M = m′ 
+
+> 1
+
++ m′
+
+> 2
+
+, (67) which is one of the standard Clebsch-Gordan selection rules. The same sparsity structure holds for the CG coefficients in the real basis. In practice, CG coefficients are rarely computed by solving Eq. (66) directly. In-stead, one evaluates so-called Wigner 3j symbols using fast recursion schemes [29, 30]. 
+
+d. Excursion: angular-momentum coupling as intu-ition for CG rules. In fact, there is a deep mathematical connection between the coupling of spherical tensors and angular momentum coupling in quantum mechanical two-spin systems. In quantum mechanics, spatial rotations act on state vectors via unitary operators; mathematically, this action is formulated via the special unitary group SU(2) . Intuitively, this means that the complex vectors, on which these unitary matrices act, return to themselves only after a 720 ◦ rotation. However, there is a one-to-one correspondence between integer-l
+
+representations of SU(2) and the irreps of SO(3) . In this correspondence, l and m can be interpreted as the total angular momentum and its z-component, respectively. In the coupling of two spins, the z-components simply add up, which explains the selection rule M = m1 + m2,while the allowed total angular momenta L ranges from |l1 − l2| (maximal anti-alignment of the individ-ual angular momenta) to l1 +l2 (maximal alignment). [24] 11 
+
+e. Computational scaling of the CG product. The coupled product Eq. (64) is a structured contraction with a rank-3 CG tensor. Treating this contraction naively, the cost of one CG product for a single (l1, l 2, L ) path is often reported as O(ℓ3) when l1, l 2, L ∼ ℓ.5 In many equivariant architectures one carries all irreps up to a maximal degree L [28, 31, 32]. Then there are O(L2)
+
+input pairs (l1, l 2), each producing O(L) many output spherical tensors. Hence, there are O(L3) input to out-put paths in total. Combining this with O(L3) per path yields a naive overall scaling of O(L6) for evaluating all tensor product couplings up to degree L.This cost can become a practical bottleneck: in many equivariant neural networks CG tensor products are executed at essentially every layer. Recent work by Passaro and Zitnick [31] reduce the cost by convert-ing SO(3) -convolutions to mathematically equivalent 
+
+SO(2) -convolutions, bringing down the total complexity from O(L6) to O(L3).
+
+Key point. The outer product of tensors is equiv-ariant, but the output representation is reducible. To keep the representations of feature vectors in neural networks compact, we therefore additionally apply an equivariant Clebsch-Gordan decomposi-tion into irreducible representations. In practice, the decomposition is realized by a change of basis using the Clebsch-Gordan coefficients.  
+
+> VIII. ROTATIONAL EQUIVARIANCE IN DEEP LEARNING
+
+With the representation-theoretic background in place, we can now illustrate how equivariance can be achieved in neural networks. In this chapter we focus on 
+
+rotational equivariance, as this is the most involved part of Euclidean symmetry handling; including reflections as well is mostly straightforward. Permutation equiv-ariance is typically ensured by construction in message passing networks, as the aggregation over neighbors is a set operation, and translation invariance is typically achieved by using only relative coordinates xi − xj and distances ∥xi − xj ∥2 (cf. Sec. III). Rotational equivari-ance, in contrast, requires a well-defined transformation behavior of all geometric features under SO(3) (at least for some approaches). Below we give a brief overview of the most common techniques; for a broader discussion of equivariant message passing we refer the reader to [4].  
+
+> 5This matches the common convention to count the full contrac-tion cost without exploiting sparsity.
+
+a. Data augmentation (learned, approximate equiv-ariance). In general, the simplest way to achieve (approximate) equivariance with respect to a set of transformations is to augment the training data, i.e. present the model with randomly transformed samples during training. This strategy is completely independent of the model and works with any architec-ture and any group. However, the equivariance must be learned and is therefore not guaranteed (in particular, it may fail out-of-distribution), and the learned equiv-ariance is not exact. Still, data augmentation can be very effective in practice and is, for instance, success-fully used in large-scale systems such as AlphaFold 3 [33]. 
+
+b. Equivariance using tensorial internal representa-tions. Historically the first approach to exact rotational 
+
+invariance (as special case of equivariance) was to feed only invariant geometric inputs, such as distances, angles, or dihedral angles, into a standard (non-equivariant) net-work [34–38]. While this allows the use of typical deep learning building blocks (linear layers, activations, norm layers, etc.), these approaches are not able to commu-nicate non-scalar geometric information (such as direc-tions) during message passing. To overcome this limita-tion, several approaches for built-in rotational equivari-ance have been developed that leverage tensorial internal features that transform under specified group represen-tations. Tracking the representation (i.e. transformation behavior) of internal features enables these models to predict equivariant outputs. Tensorial internal features have also shown to improve performance even when the final target is invariant [39, 40]. In particular, higher-order tensor representations are helpful in tasks where angular information matters, e.g. for predicting forces in molecules [15, 41]. Exact equivariance in these architec-tures is ensured by requiring that every layer is equiv-ariant. Two widely used families of such architectures are (i) group-convolutional networks based on the regu-lar representation (see Sec. VIII A below), and (ii) tensor field networks based on irreducible representations (see Sec. VIII B).  
+
+> A. Equivariance via Group Convolutions
+
+For discrete groups, a conceptually clean approach to equivariance is to represent features in the network as 
+
+functions on the group . In practice, this is achieved by a lifting step: an input signal f : X → RC (e.g. an im-age on X = Z2) with C feature channels is mapped to a group-indexed feature map F : G → RC by evaluating the signal in all possible transformed frames (indexed by elements g ∈ G). Subsequent layers then process F via convolutions over G. We will see that, in this way, equiv-ariance is realized as an indexing symmetry of the lifted feature map [1, 42, 43]. To explicitly follow the construction, we first introduce yet another group representation: the (left) regular rep-12 
+
+resentation . Concretely, let G be a finite group that acts on an input domain X (e.g. planar rotations by 90 ◦ act-ing on X = Z2). Then, we can define the left action on signals f : X → RC ,
+
+[Luf ]( x) := f (u−1 · x), u ∈ G, x ∈ X, (68) which acts on a function f by evaluating it in trans-formed coordinates. We again take the viewpoint that the function itself remains unchanged while the argument at which it is evaluated is transformed. On a group-indexed feature map F : G → RC , the analogous left regular action is given by 
+
+[LuF ]( g) := F (u−1g), u, g ∈ G. (69) This action defines a group representation, since the ho-momorphism condition Lu1 Lu2 = Lu1u2 (compare to Eq. (16)) follows directly from the associativity of the group G.
+
+a. Lifting as a G-correlation. To move from a sig-nal f : X → RC to a group-indexed feature map, one applies a lifting layer. Following [1], the lift is conve-niently written as a cross-correlation with a learnable fil-ter ψ : X → RC×C′
+
+:
+
+F (g) = [ f ⋆ ψ ]( g) := X
+
+> x∈X
+
+f (x) ψ(g−1 · x), g ∈ G. 
+
+(70) That is, the filter ψ(g−1·x) is applied on the input signal f
+
+“transformed” by g, exactly as in the usual Zd correlation 
+
+[f ⋆ ψ ]( t) = P 
+
+> x
+
+f (x)ψ(x − t)). 6 The output of the lift is now a function on G, and transforms under the left regular action. Indeed, the lifting defined by Eq. (70) is 
+
+G-equivariant in the sense that transforming the input signal and then lifting is equivalent to lifting and then applying the left regular action on the group index: 
+
+[( Luf ) ⋆ ψ ]( g) = [ Lu(f ⋆ ψ )]( g), ∀u, g ∈ G, (71) which can be shown as follows: 
+
+[( Luf ) ⋆ ψ ]( g)= X
+
+> x∈X
+
+(Luf )( x) ψ(g−1 · x) = X
+
+> x∈X
+
+f (u−1 · x) ψ(g−1 · x)
+
+> x=u·y
+
+= X
+
+> y∈X
+
+f (y) ψ(g−1 · (u · y)) = X
+
+> y∈X
+
+f (y) ψ(( u−1g)−1 · y)= [f ⋆ ψ ]( u−1g) = [ Lu(f ⋆ ψ )]( g), (72) where we used that x 7 → u · x is a bijection on X (e.g. a permutation of pixels for discrete rotations). Thus, the lift turns an input transformation ( [Luf ]( x) = f (u−1· x))into a re-indexing of the group coordinate ( [LuF ]( g) = 
+
+F (u−1g)).          
+
+> 6Most papers use the term “convolution” also for cross-correlations; the distinction is whether the filter is flipped, which is practically irrelevant for learned filters.
+
+b. Group convolution on G. Once features live on 
+
+G, the natural analogue of translation correlation is cor-relation over the group. Given F : G → RC and a filter 
+
+κ : G → RC×C′
+
+, we define a group convolution as 
+
+[F ⋆ κ ]( g) := X
+
+> h∈G
+
+F (h) κ(g−1h), g ∈ G. (73) This is the direct generalization of Zd convolution: the kernel depends only on the relative group element g−1h,i.e. on the displacement from g to h measured in group coordinates. The group convolution (73) is equivariant with respect to the left regular action: 
+
+[( LuF ) ⋆ κ ]( g) = [ Lu(F ⋆ κ )]( g), ∀u, g ∈ G. (74) The proof uses again a change of variables, completely analogous to the one above. In practice, e.g. for images, one typically retains the spatial index in the lifting and correlates jointly over space and group. A convolution over the group combined with a kernel that is local in X (as in ordinary CNNs) then takes the following form: 
+
+(F ⋆ κ )( x, g ) := X
+
+> y∈X
+
+X
+
+> h∈G
+
+F (y, h ) κ(x − y, g −1h), (75) so the kernel depends on the relative spatial displacement 
+
+x−y and the relative group displacement g−1h. This set-ting is used, for example, in roto-translation equivariant 
+
+SE(2) CNNs [42]. 
+
+c. Nonlinearities and readout. A practical benefit of this construction is that the left regular action (69) acts by re-indexing the group coordinate and does not mix the channel values in RC . Therefore, channel-wise nonlinear-ities commute with the action: for any scalar nonlinear-ity σ, we have σ(LuF ) = Luσ(F ). This allows standard deep learning layers of alternating group-correlations and channel-wise nonlinearities. In the end, the group index is typically removed by pooling (e.g. averaging) over g,which is invariant under re-indexing to obtain an invari-ant or equivariant output (e.g. a segmentation that is equivariant under global rotations by 90 ◦ [44]). Since the feature maps carry an explicit group index, the cost scales with the size |G| of the finite group. In 2D, discretizing SO(2) is straightforward by sampling an-gles equidistant on [0 , 2π], forming the dihedral rotation group. In 3D, however, using a subgroup with exact clo-sure under composition becomes restrictive: beyond the dihedral rotation group (which is only planar), the only finite closed rotation groups correspond to the rotational symmetries of the Platonic solids (tetrahedral, octahe-dral, icosahedral) [45]. While finer discretizations im-prove the approximation of the full group, they increase runtime and memory, making the choice of resolution a practical accuracy-efficiency trade-off [46]. 13  
+
+> B. Equivariance via Internal Tensorial Representations
+
+Probably the most widely used approach for exact 
+
+SO(3) equivariance is the method of tensor field net-works 7, also referred to as e3nn-style networks, which are often based on the Python package e3nn [13]. In this approach, internal features transform as direct sums of irreducible representations of SO(3) and equivariance is enforced by composing equivariant building blocks [5, 6, 13, 27, 39, 47]. In contrast to group convolution networks, these architectures can no longer treat every internal activation as an individual number: the coordi-nates of vectors (and higher-order tensors) must be pro-cessed jointly to maintain equivariance. As a result, ten-sor field networks rely on representation-aware building blocks, such as equivariant linear maps, equivariant non-linearities, and norm layers, as well as specialized tensor operations (the Clebsch-Gordan product introduced in Sec. VII) to mix the information of spherical tensors of different l.Concretely, node features consist of spherical tensors 
+
+f (l) 
+
+> i
+
+∈ R2l+1 transforming under Wigner-D matrices. Messages are constructed from tensorial node features and tensorial convolution filters coupled through the Clebsch-Gordan product. The convolution filters in a typical SO(3) -convolution consist of a learnable (scalar) radial function, and an angular part given by spherical harmonics [13, 39, 47]: 
+
+h
+
+f (l1) 
+
+> j
+
+⊗CG 
+
+ R(rij ) Y (l2)(ˆ rij )i(l3)
+
+> m3
+
+=
+
+> l1
+
+X
+
+> m1=−l1
+> l2
+
+X
+
+> m2=−l2
+
+Cl3m3 
+
+> l1m1, l 2m2
+
+f (l1) 
+
+> j,m 1
+
+R(rij ) Y (l2) 
+
+> m2
+
+(ˆ rij ),
+
+(76) where rij = ∥xi − xj ∥2 and ˆrij = ( xi − xj )/∥xi − xj ∥,and ⊗CG denotes the tensor product followed by a de-composition into spherical tensors (cf. Sec. VII). 
+
+a. Equivariant linear layers, normalization, and non-linearities. Equivariant linear layers respect the repre-sentation structure: for each degree l, one may freely mix channels within the l-type, but not between different de-grees. Concretely, if a node carries Cl channels of degree-l
+
+features, we collect them as f (l) ∈ RCl×(2 l+1) with com-ponents f (l)
+
+> cm
+
+, where c ∈ { 1, . . . , C l} indexes the channel and m ∈ {− l, . . . , l } the (2 l +1) irrep components. Then, an equivariant linear map may mix channels but must act identically on all irrep components, i.e. in components 
+
+f (l)′ 
+
+> c′m
+
+=
+
+> Cl
+
+X
+
+> c=1
+
+W (l) 
+
+> c′c
+
+f (l)
+
+> cm
+
+, W (l) ∈ RC′  
+
+> l×Cl
+
+. (77)    
+
+> 7Here, we use the notion of tensor field networks not only to refer to the initial approach presented by Thomas et al. [47] but more broadly for the class of models described in this section.
+
+That is, the same weight matrix W (l) is applied for every 
+
+m. This preserves equivariance because the SO(3) action, in contrast, acts on the m-index. For nonlinearities, scalar ( l = 0 ) features can use stan-dard pointwise activations. For l > 0, a popular choice are gated nonlinearities [48]: in each feature vector, we reserve one scalar feature sc per tensorial feature f (l) 
+
+> c
+
+.Then, we apply a nonlinearity σ to sc to obtain a scalar prefactor, and scale the tensor, i.e. all its components, by 
+
+f (l) 
+
+> cm
+
+7 → σ(sc) f (l) 
+
+> cm
+
+( no sum over c ). (78) Since σ(sc) is a scalar, the scaling commutes with rota-tions and hence preserves equivariance. In a similar way, normalization layers are typically defined through invari-ant statistics so that they do not introduce direction-dependent biases [6]. A very related line of work are steerable CNNs developed specifically for data on regular Cartesian grids (images and 3D volumes) [48, 49]. Steerable CNNs and 
+
+SO(3) -equivariant message passing on point clouds share the same principle: feature channels carry representa-tions and convolution kernels are constrained so that each layer is equivariant. The main difference, besides the data domain, is the operational form of the kernels. Steerable CNNs implement equivariance via constrained filter banks and standard discrete convolutions, whereas in tensor field message passing kernels are continuous functions. In both cases, equivariance is obtained by composing equivariant operations. Related to the idea of bundling node features in spher-ical tensors transforming under SO(3) irreps, specialized architectures exist which use elements of the projective geometric (or Clifford) algebra to achieve Euclidean rota-tion and translation equivariance [50, 51]. Notably, there is also an alternative line of work that uses Cartesian ten-sor representations instead of irreps and that avoids the use of costly CG tensor products [52–55].  
+
+> C. Canonicalization-Based Approaches
+
+Nonetheless, many popular message passing architec-tures operating on Euclidean graphs are not equivariant per se [19, 56, 57]. Canonicalization offers an alternative route to exact equivariance that can be built around non-equivariant backbone architectures and avoids specialized architectural building blocks. 
+
+a. Group averaging. In principle, a simple con-struction to guarantee invariance (or equivariance) is 
+
+group averaging . For that, one applies a set of trans-formations to the input (similar to the lifting described in Sec. VIII A), runs the same backbone network for each transformed input, and average the outputs. While this provides a principled guarantee, it can be computationally expensive when the group is large or 14         
+
+> (a) Local Canonicalization (b) Global Canonicalization Figure 3. Local vs. global canonicalization of a molec-ular geometry. Left: Local canonicalization with distinct local frames constructed from nearest-neighbor directions. The left and right molecular substructures, which differ only by a 180 ◦rotation, are equivalent under local canonicaliza-tion. Right: Under global canonicalization, all “local” frames are identical. Consequently, identical local substructures ap-pearing in different orientations are not treated equivalently. While both approaches achieve global equivariance, only local canonicalization also realizes local equivariance.
+
+continuous (and one must approximate the average by a finite set). Practical variants include averaging over a small set predicted from the input, as in frame-averaging methods for rotation equivariance [58, 59]. 
+
+b. Global canonicalization. Instead of averaging over multiple group elements, one may also pick one 
+
+canonical pose in an equivariant way, transform the input into that canonical frame, and then apply astandard backbone. Concretely, a small network (or heuristic) predicts a global orientation, and one canonicalizes the geometric input before processing it with the main model [60]. This factors out the global orientation of the input so that the model output will be invariant. Thus, canonicalization approaches avoid the need for specialized equivariant layers and can provide exact equivariance when the canonical pose is well-defined. The canonical orientation can be estimated in various ways depending on the data modality by using subnetworks [61], PCA-like heuristics [62], asymmetric units [63], anchor points [7], or as a combination of local orientations [64, 65]. Importantly, if the downstream task requires an equivariant (non-scalar) output, one can “undo” the canonicalization at the end of the pipeline. That is, one predicts a geometric quantity in the canonical frame and rotates the prediction back to the original frame using the inverse of the estimated pose. 
+
+c. Local canonicalization. Similar to equivariance by global orientation estimation, one can achieve equiv-ariance using local canonicalization [8, 66–69]. In local canonicalization, one equivariantly predicts a local co-ordinate frame for each node, into which the geometric input features are transformed. As for global canoni-calization, this ensures that the local coordinates of the node features are independent of the global orientation of the input and are thus invariant. One advantage of using local reference frames rather than a single global frame is that geometrically similar substructures are de-scribed by similar local features. This may be viewed as a form of local equivariance, as illustrated in Fig. 3. More precisely, under local canonicalization, the same local substructure appearing in different orientations is represented by the same local features, because the local reference frame is constructed from the local geometry and therefore rotates together with the substructure. In other words, when expressed in its local frame, the geom-etry “looks” the same irrespective of its global orientation. By contrast, under global canonicalization all local fea-tures are expressed in a single global frame, so identical local substructures appearing in different orientations are not represented equivalently. Local canonicalization can thus capture local symmetries that global canonicaliza-tion cannot, which may improve learning and generaliza-tion. However, a practical hurdle for local canonicalization is the following communication barrier : the same geomet-ric object expressed in different local frames has different coordinates. Therefore, naive message passing between nodes with different frames does not communicate di-rect geometric information faithfully. Many existing ap-proaches for local canonicalization do not address this issue, which substantially limits the communication be-tween nodes that have different local frames [14]. The authors of [67] and [8] try to learn an approximate frame-to-frame transition, and in a recent line of work, ex-act frame-to-frame transitions are used to enable faith-ful communication of directed, tensor-valued informa-tion [14, 70, 71]. One conceptual, and potentially practical, caveat of (local) canonicalization approaches is the possible dis-continuity of the predicted local reference frames used to canonicalize geometric features. From a theoretical perspective, there are impossibility results showing that globally continuous canonicalization maps cannot exist in full generality [72]. Intuitively, discontinuities arise whenever the input geometry does not uniquely deter-mine an orientation. For perfectly symmetric objects (e.g. a sphere), the choice of frame is irrelevant: any ref-erence frame “sees” the same input. The more delicate regime is approximate symmetry. Consider an almost spherical shape with a tiny dent. Even if this asymme-try is infinitesimal, it singles out a preferred direction, e.g. the x-axis of our predicted frame. However, remov-ing the infinitesimal dent and making a dent in another place, which overall amounts to an infinitesimal deforma-tion, can therefore induce a finite change in the predicted 
+
+x-direction. In other words, a near-symmetric input can lead to a locally ill-conditioned orientation estimate. In practice, one can show that local frames are 15                                                            
+
+> Table I. Qualitative comparison of common approaches to rotational equivariance in geometric deep learning.
+> ✓indicates the property typically holds, ✗indicates it typically does not hold. Continuous Gmeans the method supports continuous (infinite) groups without discretizing the group itself. Architectural flexibility indicates whether equivariance is achieved without enforcing architecural constraints, such as representation-aware nonlinearities. Non-scalar messages refers to whether the method allows to communicate directed geometric information during message passing. The limitations of each approach are highlighted in red circles.
+> Approach Exact Contin. GNon-scalar Local Architectural Continuous equiv. messages equiv. flexibility predictions
+> Data augmentation ✗✓✓✗✓✓
+> Group CNNs ✓✗✓✓✓✓
+> Tensor field networks ✓✓✓✓✗✓
+> Global canonicalization ✓✓✓✗✓✗
+> Local canonicalization ✓✓✗✓✓✗
+> Local can. + tensor msg. ✓✓✓✓✓✗
+
+typically robust to random perturbations of the in-put geometry, in particular when trained with noisy data [14]. Another promising mitigation strategy is 
+
+frame averaging , e.g. in the form proposed by Pozd-nyakov and Ceriotti [59]. The idea is to predict multiple local frames per node and downweigh contributions from those that are close to being discontinuous with respect to the input geometry. 
+
+Key point. Data augmentation offers a straight-forward approach to learn approximate equivari-ances but exact equivariance is typically achieved by stacking specialized layers that are equivariant by design, such as group convolutions or SO(3) -convolutions based on the Clebsch-Gordon tensor product. Canonicalization approaches avoid archi-tectural constraints but rely on the prediction of a well-defined reference pose to canonicalize geomet-ric inputs. In summary, we have discussed five main approaches to achieve rotational equivariance in geometric deep learning: data augmentation, group convolutions (group CNNs), tensor field networks, global canonicalization, and local canonicalization. Each of these approaches has its own advantages and limitations. Data augmentation is simple but only provides approximate equivariance. Group convolution and internal tensorial representations achieve exact equivariance but require specialized archi-tectural designs and can be computationally expensive. Global canonicalization avoids architectural constraints but may not capture local symmetries effectively. Lo-cal canonicalization can additionally capture local sym-metries. A qualitative comparison of the different ap-proaches to rotational equivariance is given in Table I.  
+
+> D. Conceptual Links between Different Approaches
+
+a. Data augmentation and canonicalization. 
+
+Clearly, a global change of reference frame is equivalent to a global rotation of a geometric structure. Using global canonicalization, where the reference frame is chosen canonically and in an equivariant way, the resulting representation becomes independent of the original global orientation (as is shown further below). If, however, the frame is chosen randomly rather than by a principled construction, global “canonicalization” effectively reduces to data augmentation by random global rotations. A similar perspective applies to local canonicalization. First we note that global canonicalization can in fact be viewed as a special case of local canonicalization: if all local frames are chosen identically, this is equivalent to se-lecting a single global reference frame (see Fig. 3). How-ever, with local frames constructed equivariantly from the local geometry, the model can achieve local equiv-ariance, as described above. This provides a useful in-ductive bias, since local motifs that appear in different orientations can then be recognized as rotated versions of the same underlying pattern. This raises the ques-tion of what happens when local frames are chosen at random. In that case, the model should not rely on in-formation encoded in the specific frame choice; its predic-tions should be independent of the chosen gauge, that is, of the particular set of local frames. This viewpoint con-nects local canonicalization to gauge-equivariant neural networks [73, 74], which likewise make use of local frames but construct their operations so that predictions are in-dependent of the specific frame choice. An ablation study in [14] compares geometrically constructed local frames with randomly chosen ones. The results suggest that informative, geometry-adapted local frames are beneficial when the model is allowed to exploit them explicitly. This highlights an important trade-off between robustness to frame choice and the additional geometric signal that can be extracted from informative canonical frames. 16 
+
+b. A scalarization and tensorization perspective on canonicalization. At the core of (local) canonicalization stands the idea that by transforming geometric features into equivariantly predicted (local) reference frames, the coordinates of the geometric features become invariant. Concretely, each local frame is represented by a rotation matrix R ∈ SO(3) whose rows nT1 , nT2 , nT3 are geometric basis vectors that transform equivariantly under global rotations. Concretely, 
+
+Ri = ( ni, 1, ni, 2, ni, 3)T =
+
+ ni, 1
+
+ni, 2
+
+ni, 3
+
+ . (79) In the literature, this change of coordinates, which amounts to a projection onto the basis vectors ni, is sometimes referred to as scalarization [8]. After process-ing the resulting invariant quantities with standard (non-equivariant) building blocks, the output is transformed back to the global frame, a step that can be viewed as 
+
+tensorization .Let us briefly illustrate the perspective of scalarization and tensorization in formulae. Let x ∈ R3 be a vector-valued feature in the global frame and let R ∈ SO(3) de-note the local frame with Rij = ( ni)j , i.e. Rij is given by the j-th component of the i-th basis vector. When trans-forming x into the local frame R, we obtain a scalarized 
+
+representation of x in the form of its local coordinates, 
+
+s = Rx ∈ R3, with si = nT 
+
+> i
+
+x, i = 1 , 2, 3.
+
+(80) That is, in the transformation into the local frame the vector x is projected onto each basis vector ni to obtain scalar coordinates si. If the input is rotated by a global rotation Q ∈ SO(3) , the vector transforms as x 7 → x′ =
+
+Qx. Furthermore, equivariant frame prediction implies that R 7 → R′ = RQ T, since ni 7 → n′ 
+
+> i
+
+= Qni for each i
+
+(cf. Eq. 79). Consequently, 
+
+s′ = R′x′ = ( RQ T)( Qx) = Rx = s, (81) so the coordinates si are indeed invariant under global rotations. After processing si with an arbitrary (non-equivariant) function, we obtain new scalar coordinates. Let us group three of these into ˜si, i = 1 , 2, 3. Then, to produce an equivariant vector output ˜x, we tensorize ˜si
+
+by rotating back into the global frame via 
+
+˜x = RT ˜s or equivalently ˜x =
+
+> 3
+
+X
+
+> i=1
+
+˜sini. (82) That is, the transformation back into the global frame of reference amounts to a linear combination of the basis vectors ni with the scalar coefficients ˜si. Indeed, since the basis vectors are predicted equivariantly, it follows directly that ˜x transforms equivariantly under a global rotation Q, i.e. ˜x′ = Q˜x.The same viewpoint extends to rank-2 Cartesian ten-sors, which are transformed into a local frame, i.e. scalar-ized, via 
+
+S = R T R T ∈ R3×3, with Sij = nT 
+
+> i
+
+T nj .
+
+(83) Equivalently, nine invariant local features grouped into 
+
+˜S ∈ R3×3 are tensorized by transforming them back into the global frame of reference via 
+
+˜T = RT ˜S R, or equivalently ˜T = X
+
+> i,j
+
+˜Sij ninT 
+
+> j
+
+.
+
+(84) Clearly, as a sum of outer products of the basis vec-tors ni, the output ˜T transforms equivariantly under global rotations. Higher-order Cartesian tensors follow analogously: one scalarizes by contracting each index with a basis vector of the local frame, and tensorizes by expanding back with the same basis. 
+
+c. Connection to tensor field networks and irreducible representations. This perspective of scalarization and tensorization can be used to connect (local) canonical-ization to e3nn-style architectures and equivariant mes-sage passing based on SO(3) -convolutions as discussed in Sec. VIII B. The coupled Clebsch-Gordan product be-tween spherical tensor features f (l1) and the spherical harmonics Y (l2)(ˆ rij ), cf. Eq. (76), contains a scalar out-put path exactly if l1 = l2 = l due to the composition rule Eq. (60). In that case, we may interpret the scalar output channel 
+
+f (0) :=  f (l) ⊗CG Y (l)(ˆ rij )(0) =
+
+> l
+
+X
+
+> m=−l
+
+f (l) 
+
+> m
+
+Ylm (ˆ rij ) (85) as a scalarization, in which we project the feature 
+
+f (l) onto the basis given by the spherical harmonics 
+
+Ylm (ˆ rij ). The resulting scalar feature f (0) is invariant under global rotations and is typically processed with unconstrained building blocks in e3nn-style architectures (as in canonicalization-based approaches). Afterwards, a CG-tensor product with spherical harmonics Y (l)(ˆ rij )
+
+can be used to tensorize the scalar features ˜f (0) through the only available path: 
+
+  ˜f (0) ⊗CG Y (l)(ˆ rij )(l) = ˜f (0) Y (l)(ˆ rij ) =: ˜f (l), (86) i.e. the scalar multiplication of the vector of spherical harmonics Y (l)(ˆ rij ), resulting in a spherical tensor ˜f (l).Focusing only on the scalar paths of the Clebsch-Gordan tensor product in the beginning of the pipeline (scalarization) and on the scalar multiplication of spher-ical features provided by the spherical harmonics in the end (tensorization) reveals an interesting connection be-tween canonicalization and e3nn-style architectures. One key difference (besides the other tensorial channels in 17 e3nn-style architectures) is that in (local) canonicaliza-tion, we project and expand tensorial features with a complete basis, i.e. three orthonormal vectors, instead of the projection only defined by the relative distance vector 
+
+ˆrij in the case of e3nn-style architectures.  
+
+> IX. PROBLEMS WITH ROTATIONAL EQUIVARIANCE IN PRACTICE
+
+As we have seen, equivariant architectures are concep-tually well motivated and have become a standard tool in geometric deep learning for good reasons. In prac-tice, however, the specialized building blocks are usu-ally computationally more demanding or do not align as well with highly optimized hardware primitives, such as dense matrix multiplication, leading to substantial run-time overheads [31]. Further, the constraints imposed by exact equivariance can complicate optimization: ini-tialization and training recipes are less standardized, and several works report that such models require careful tun-ing and can be difficult to train successfully at scale [75– 78]. For example, Pertigkiozoglou et al. [76] emphasize that equivariant models “can be difficult to optimize and require careful hyperparameter tuning to train success-fully”. These issues matter in different ways across con-texts: while large-scale industrial settings may afford substantial compute, the dominant bottleneck is often human time for model development, and debugging; in academic settings, both compute budgets and the added engineering complexity can become limiting factors. As a consequence, while exact equivariance remains desirable in principle, relaxing or even dropping built-in symmetries has become a (re-)emerging pattern in prac-tice, particularly in molecular machine learning [75, 79– 83]. A prominent example is AlphaFold 3, where the authors state that “we find that no invariance or equiv-ariance with respect to global rotations and translation of the molecule are required in the architecture and so we omit them to simplify the machine learning architec-ture” [33]. This trend highlights a central tradeoff: we would like the physical guarantees of exact equivariance, but without sacrificing the architectural freedom and ef-ficiency of standard deep learning components. In the context of rotational equivariance, some recent works even suggest that enforcing exact symmetries may hinder optimal scaling behavior as more data becomes available [75, 78]. This hypothesis resonates with the tough message of Richard Sutton’s “bitter lesson” [84]: while incorporating prior knowledge into architectures can yield short-term gains and is intellectually satisfy-ing, Richard Sutton postulates that it inhibits the long-run progress of deep learning that comes from scaling general-purpose architectures. One may argue that we have indeed observed Sutton’s bitter lesson in practice in two prominent examples. First, deep learning mod-els in general apply end-to-end representation learning, where the network discovers its own features from data, instead of using hand-crafted input features. Second, transformer-based Large Language Models (LLMs) are immensely successful at scale and rely on the general-purpose self-attention mechanism (see Sec. III), which can be interpreted as a content-dependent dynamic rout-ing of information; in this sense, the model learns content-dependent patterns (or biases) from data rather than enforcing these. Relatedly, modern LLMs utilize content-dependent routing mechanisms such as mixture-of-experts [85, 86], another example of data-driven spe-cialization. At the same time, even transformers incorpo-rate inductive biases. As discussed in Sec. III, they can be seen as an instance of message passing networks and as such enforce exact permutation equivariance. At least for such a large symmetry group, enforcing equivariance is indispensable, right? Regarding rotational equivariance, for in-stance, Batzner et al. [15] reported improved data efficiency for models with built-in symmetry, arguing that such models need not allocate network capacity to learning the symmetry from data. The least we can say today is that the current picture is less clear [87] and that there is conflicting empirical evidence. This connects to the recent finding that built-in equivariance via local canonicalization can be more data efficient – in the sense that model performance improves faster as more data becomes available – while data augmentation can yield better accuracies in the low-data regime [14, 70, 71]. Put differently, equivariance often corresponds to a steeper scaling curve, but a steeper slope does not necessarily imply better absolute accuracy for small datasets. For these reasons, across-the-board prescriptions to either always enforce equivariance, or never enforce equivariance, seem unhelpful. In practice, it is rarely clear a priori how important exact symmetry is for a given problem, and how this interacts with dataset size, target quantity, and the optimization landscape. We believe that conducting more systematic side-by-side comparisons of approximate equivariance via data augmentation and built-in equivariance is an interesting avenue for future research.  
+
+> X. CONCLUSION
+
+Rotational equivariance provides a principled way to encode coordinate independence in machine learning models for 3D data, ensuring that models respond to rotations in a structured and physically meaningful way. This tutorial has developed the subject from first prin-ciples to practical constructions, beginning with symme-try and coordinate independence, and building through geometric deep learning, group representations, spher-ical harmonics, Wigner matrices, tensor products, and Clebsch-Gordan decomposition to the main architectural strategies used in modern equivariant learning. By relat-ing these ingredients to one another and making explicit the conceptual links between different formalisms, the tu-18 torial aims to give readers a coherent understanding of a field whose central ideas are often introduced in different mathematical and architectural languages. Understanding rotational equivariance is useful not only because it clarifies the theoretical foundations of modern 3D machine learning, but also because it informs practical model design. In applications, one must choose between different ways of incorporating geometric struc-ture, each with its own trade-offs in expressivity, compu-tational efficiency, implementation complexity, and nu-merical stability. It is therefore important to understand when exact symmetry should be built into a model, when approximate methods may be sufficient, and how dif-ferent architectural choices reflect different assumptions about the task and the data. This is particularly relevant in scientific and engineering settings, where high-quality 3D data are often limited and simulation data can be costly to obtain, so that appropriate symmetry-aware in-ductive biases can play an important role in improving data efficiency and generalization. 
+
+ACKNOWLEDGMENTS 
+
+This work has received funding from the Klaus Tschira Stiftung gGmbH (Simplaix project) and the Wildcard program from the Carl Zeiss Stiftung. Further, it is supported by Deutsche Forschungsgemeinschaft (DFG) under Germany’s Excellence Strategy EXC-2181/1 –390900948 (the Heidelberg STRUCTURES Excellence Cluster) as well as under project number 240245660 – SFB 1129. The authors acknowledge support by the state of Baden-Württemberg through bwHPC and the Ger-man Research Foundation (DFG) through grant INST 35/1597-1 FUGG. 
+
+REFERENCES 
+
+[1] T. Cohen and M. Welling, Group equivariant convolu-tional networks, in International conference on machine learning (PMLR, 2016) pp. 2990–2999. [2] T. S. Cohen, M. Geiger, and M. Weiler, A general theory of equivariant cnns on homogeneous spaces, Advances in neural information processing systems 32 (2019). [3] M. M. Bronstein, J. Bruna, T. Cohen, and P. Veličković, Geometric deep learning: Grids, groups, graphs, geodesics, and gauges, arXiv preprint arXiv:2104.13478 (2021). [4] A. Duval, S. V. Mathis, C. K. Joshi, V. Schmidt, S. Miret, F. D. Malliaros, T. Cohen, P. Liò, Y. Bengio, and M. Bronstein, A hitchhiker’s guide to geometric gnns for 3d atomic systems, arXiv:2312.07511 [cs.LG] (2024), arXiv:2312.07511 [cs.LG]. [5] I. Batatia, D. P. Kovacs, G. Simm, C. Ortner, and G. Csanyi, MACE: Higher order equivariant message passing neural networks for fast and accurate force fields, in Advances in Neural Information Processing Systems ,Vol. 35 (2022) pp. 11423–11436. [6] Y.-L. Liao, B. M. Wood, A. Das, and T. Smidt, EquiformerV2: Improved equivariant transformer for scaling to higher-degree representations, in The Twelfth International Conference on Learning Representations 
+
+(2024). [7] Y. Lou, Z. Ye, Y. You, N. Jiang, J. Lu, W. Wang, L. Ma, and C. Lu, Crin: rotation-invariant point cloud analysis and rotation estimation via centrifugal reference frame, in Proceedings of the AAAI Conference on Artificial In-telligence , Vol. 37 (2023) pp. 1817–1825. [8] Y. Du, L. Wang, D. Feng, G. Wang, S. Ji, C. P. Gomes, Z.-M. Ma, et al. , A new perspective on building efficient and expressive 3D equivariant graph neural networks, Advances in Neural Information Processing Systems 36 
+
+(2024). [9] S. Aykent and T. Xia, Gotennet: Rethinking efficient 3d equivariant graph neural networks, in The Thirteenth International Conference on Learning Representations 
+
+(2025). [10] R. Lam, A. Sanchez-Gonzalez, M. Willson, P. Wirns-berger, M. Fortunato, F. Alet, S. Ravuri, T. Ewalds, Z. Eaton-Rosen, W. Hu, et al. , Learning skillful medium-range global weather forecasting, Science 382 , 1416 (2023). [11] J. Spinner, V. Bresó, P. De Haan, T. Plehn, J. Thaler, and J. Brehmer, Lorentz-equivariant geometric algebra transformers for high-energy physics, in Advances in Neural Information Processing Systems , Vol. 37 (2024) 2405.14806. [12] R. Remme, T. Kaczun, T. Ebert, C. A. Gehrig, D. Geng, G. Gerhartz, M. K. Ickler, M. V. Klockow, P. Lipp-mann, J. S. Schmidt, S. Wagner, A. Dreuw, and F. A. Hamprecht, Stable and accurate orbital-free density func-tional theory powered by machine learning, Journal of the American Chemical Society 147 , 28851 (2025). [13] M. Geiger and T. Smidt, e3nn: Euclidean neural net-works, arXiv preprint arXiv:2207.09453 (2022). [14] P. Lippmann, G. Gerhartz, R. Remme, and F. A. Ham-precht, Beyond canonicalization: How tensorial messages improve equivariant message passing, in International Conference on Representation Learning , Vol. 2025, edited by Y. Yue, A. Garg, N. Peng, F. Sha, and R. Yu (2025) pp. 88067–88087. [15] S. Batzner, A. Musaelian, L. Sun, M. Geiger, J. P. Mailoa, M. Kornbluth, N. Molinari, T. E. Smidt, and B. Kozinsky, E(3)-equivariant graph neural networks for data-efficient and accurate interatomic potentials, Nature communications 13 , 2453 (2022). [16] J. T. Frank, O. T. Unke, K.-R. Müller, and S. Chmiela, A euclidean transformer for fast and stable machine learned force fields, Nature Communications 15 , 6539 (2024). [17] R. Kondor, The principles behind equivariant neural net-works for physics and chemistry, Proceedings of the Na-tional Academy of Sciences 122 , e2415656122 (2025). [18] J. Han, Y. Rong, T. Xu, and W. Huang, Geometri-cally equivariant graph neural networks: A survey, arXiv preprint arXiv:2202.07230 (2022). [19] C. R. Qi, L. Yi, H. Su, and L. J. Guibas, Pointnet++: Deep hierarchical feature learning on point sets in a met-ric space, Advances in neural information processing sys-tems 30 (2017). [20] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, Ł. Kaiser, and I. Polosukhin, At-tention is all you need, Advances in Neural Information 19 
+
+Processing Systems 30 (2017). [21] N. Jeevanjee, An introduction to tensors and group theory for physicists (Springer, 2011). [22] S. Lipschutz and M. L. Lipson, Linear algebra 
+
+(MacGraw-Hill, 2009). [23] G. Arfken and J. Romain, Mathematical methods for physicists (1967). [24] A. R. Edmonds, Angular momentum in quantum me-chanics , Vol. 4 (Princeton university press, 1996). [25] W. Fulton and J. Harris, Representation theory: a first course (Springer Science & Business Media, 2013). [26] D. Pinchon and P. E. Hoggan, Rotation matrices for real spherical harmonics: general rotations of atomic orbitals in space-fixed axes, Journal of Physics A: Mathematical and Theoretical 40 , 1597 (2007). [27] A. Musaelian, S. Batzner, A. Johansson, L. Sun, C. J. Owen, M. Kornbluth, and B. Kozinsky, Learning local equivariant representations for large-scale atomistic dy-namics, Nature Communications 14 , 579 (2023). [28] Y.-L. Liao, B. M. Wood, A. Das, and T. Smidt, Equiformerv2: Improved equivariant transformer for scaling to higher-degree representations, in The Twelfth International Conference on Learning Representations 
+
+(2024). [29] K. Schulten and R. G. Gordon, Exact recursive evalu-ation of 3 j-and 6 j-coefficients for quantum-mechanical coupling of angular momenta, Journal of Mathematical Physics 16 , 1961 (1975). [30] H. T. Johansson and C. Forssén, Fast and accurate evalu-ation of wigner 3 j, 6 j, and 9 j symbols using prime factor-ization and multiword integer arithmetic, SIAM Journal on Scientific Computing 38 , A376 (2016). [31] S. Passaro and C. L. Zitnick, Reducing SO(3) convolu-tions to SO(2) for efficient equivariant gnns, in Interna-tional Conference on Machine Learning (PMLR, 2023) pp. 27420–27438. [32] X. Fu, B. M. Wood, L. Barroso-Luque, D. S. Levine, M. Gao, M. Dzamba, and C. L. Zitnick, Learning smooth and expressive interatomic potentials for physical prop-erty prediction, arXiv preprint arXiv:2502.12147 (2025). [33] J. Abramson, J. Adler, J. Dunger, R. Evans, T. Green, A. Pritzel, O. Ronneberger, L. Willmore, A. J. Bal-lard, J. Bambrick, et al. , Accurate structure prediction of biomolecular interactions with alphafold 3, Nature 630 ,493 (2024). [34] K. T. Schütt, H. E. Sauceda, P.-J. Kindermans, A. Tkatchenko, and K.-R. Müller, Schnet–a deep learn-ing architecture for molecules and materials, The Journal of Chemical Physics 148 (2018). [35] J. Gasteiger, J. Groß, and S. Günnemann, Directional message passing for molecular graphs, in International Conference on Learning Representations (2020). [36] X. Li, R. Li, G. Chen, C.-W. Fu, D. Cohen-Or, and P.-A. Heng, A rotation-invariant framework for deep point cloud analysis, IEEE transactions on visualization and computer graphics 28 , 4503 (2021). [37] J. Gasteiger, F. Becker, and S. Günnemann, Gem-net: Universal directional graph neural networks for molecules, Advances in neural information processing systems 34 , 6790 (2021). [38] Y. Liu, L. Wang, M. Liu, Y. Lin, X. Zhang, B. Oztekin, and S. Ji, Spherical message passing for 3d molecular graphs, in International conference on learning represen-tations (2022). [39] F. Fuchs, D. Worrall, V. Fischer, and M. Welling, SE(3)-transformers: 3D roto-translation equivariant attention networks, Advances in neural information processing sys-tems 33 , 1970 (2020). [40] J. Brandstetter, R. Hesselink, E. van der Pol, E. J. Bekkers, and M. Welling, Geometric and physical quan-tities improve E(3) equivariant message passing, in Inter-national Conference on Learning Representations (2022). [41] L. Zitnick, A. Das, A. Kolluru, J. Lan, M. Shuaibi, A. Sri-ram, Z. Ulissi, and B. Wood, Spherical channels for mod-eling atomic interactions, Advances in Neural Informa-tion Processing Systems 35 , 8054 (2022). [42] E. J. Bekkers, M. W. Lafarge, M. Veta, K. A. Eppen-hof, J. P. Pluim, and R. Duits, Roto-translation covari-ant convolutional networks for medical image analysis, in International conference on medical image computing and computer-assisted intervention (Springer, 2018) pp. 440–448. [43] E. J. Bekkers, S. Vadgama, R. D. Hesselink, P. A. Van der Linden, and D. W. Romero, Fast, ex-pressive se (n) equivariant networks through weight-sharing in position-orientation space, arXiv preprint arXiv:2310.02970 (2023). [44] D. Worrall and G. Brostow, Cubenet: Equivariance to 3d rotation and translation, in Proceedings of the European Conference on Computer Vision (ECCV) (2018) pp. 567– 584. [45] N. Beisert, Symmetries in physics, ETH Zurich (2015). [46] M. M. Islam, R. Anand, D. R. Wessels, F. de Kruiff, T. P. Kuipers, R. Ying, C. I. Sánchez, S. Vadgama, G. Bök-man, and E. J. Bekkers, Platonic transformers: A solid choice for equivariance, arXiv preprint arXiv:2510.03511 (2025). [47] N. Thomas, T. Smidt, S. Kearnes, L. Yang, L. Li, K. Kohlhoff, and P. Riley, Tensor field networks: Rotation- and translation-equivariant neural networks for 3d point clouds, arXiv:1802.08219 [cs.LG] (2018), arXiv:1802.08219 [cs.LG]. [48] M. Weiler, M. Geiger, M. Welling, W. Boomsma, and T. S. Cohen, 3D steerable cnns: Learning rotationally equivariant features in volumetric data, Advances in Neu-ral Information Processing Systems 31 (2018). [49] M. Weiler and G. Cesa, General E(2)-Equivariant Steer-able CNNs, in Conference on Neural Information Pro-cessing Systems (NeurIPS) (2019). [50] J. Brehmer, P. de Haan, S. Behrends, and T. S. Cohen, Geometric algebra transformer, in Advances in Neural In-formation Processing Systems , Vol. 36 (2023) pp. 35472– 35496. [51] D. Ruhe, J. Brandstetter, and P. Forré, Clifford group equivariant neural networks, in Advances in Neural In-formation Processing Systems , Vol. 36 (2023) pp. 62922– 62990. [52] C. Deng, O. Litany, Y. Duan, A. Poulenard, A. Tagliasac-chi, and L. J. Guibas, Vector neurons: A general frame-work for SO(3)-equivariant networks, in Proceedings of the IEEE/CVF International Conference on Computer Vision (2021) pp. 12200–12209. [53] V. G. Satorras, E. Hoogeboom, and M. Welling, E (n) equivariant graph neural networks, in International con-ference on machine learning (PMLR, 2021) pp. 9323– 9332. [54] B. Cheng, Cartesian atomic cluster expansion for ma-chine learning interatomic potentials, npj Computational 20 
+
+Materials 10 , 157 (2024). [55] G. Simeon and G. De Fabritiis, TensorNet: Cartesian tensor representations for efficient learning of molecular potentials, in Advances in Neural Information Processing Systems , Vol. 36 (2023) pp. 37334–37353. [56] Y. Liu, B. Fan, S. Xiang, and C. Pan, Relation-shape convolutional neural network for point cloud analysis, in 
+
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition (2019) pp. 8895–8904. [57] Y. Wang, Y. Sun, Z. Liu, S. E. Sarma, M. M. Bronstein, and J. M. Solomon, Dynamic graph cnn for learning on point clouds, ACM Transactions on Graphics (tog) 38 , 1 (2019). [58] O. Puny, M. Atzmon, E. J. Smith, I. Misra, A. Grover, H. Ben-Hamu, and Y. Lipman, Frame averaging for in-variant and equivariant network design, in International Conference on Learning Representations (2022). [59] S. Pozdnyakov and M. Ceriotti, Smooth, exact rotational symmetrization for deep learning on point clouds, in Ad-vances in Neural Information Processing Systems , Vol. 36 (2023) pp. 79469–79501. [60] S.-O. Kaba, A. K. Mondal, Y. Zhang, Y. Bengio, and S. Ravanbakhsh, Equivariance with learned canonicaliza-tion functions, in International Conference on Machine Learning (PMLR, 2023) pp. 15546–15566. [61] C. R. Qi, H. Su, K. Mo, and L. J. Guibas, Pointnet: Deep learning on point sets for 3d classification and segmenta-tion, in Proceedings of the IEEE conference on computer vision and pattern recognition (2017) pp. 652–660. [62] F. Li, K. Fujiwara, F. Okura, and Y. Matsushita, A closer look at rotation-invariant deep point cloud analysis, in 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision (2021) pp. 16218–16227. [63] J. Baker, S.-H. Wang, T. de Fernex, and B. Wang, An explicit frame construction for normalizing 3D point clouds, in Forty-first International Conference on Ma-chine Learning (2024). [64] Y. Zhao, T. Birdal, J. E. Lenssen, E. Menegatti, L. Guibas, and F. Tombari, Quaternion equivariant cap-sule networks for 3D point clouds, in European conference on computer vision (Springer, 2020) pp. 1–19. [65] C. Zhao, J. Yang, X. Xiong, A. Zhu, Z. Cao, and X. Li, Rotation invariant point cloud analysis: Where local ge-ometry meets global topology, Pattern Recognition 127 ,108626 (2022). [66] Z. Zhang, B.-S. Hua, W. Chen, Y. Tian, and S.-K. Yeung, Global context aware convolutions for 3D point cloud understanding, in 2020 International Conference on 3D Vision (IEEE, 2020) pp. 210–219. [67] X. Wang and M. Zhang, Graph neural network with local frame for molecular potential energy surface, in Proceed-ings of the First Learning on Graphs Conference (PMLR, 2022) pp. 19:1–19:30. [68] S. Luo, J. Li, J. Guan, Y. Su, C. Cheng, J. Peng, and J. Ma, Equivariant point cloud analysis via learn-ing orientations for message passing, in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (2022) pp. 18932–18941. [69] W. Du, H. Zhang, Y. Du, Q. Meng, W. Chen, N. Zheng, B. Shao, and T.-Y. Liu, Se (3) equivariant graph neu-ral networks with complete local frames, in Interna-tional Conference on Machine Learning (PMLR, 2022) pp. 5583–5608. [70] G. Gerhartz, P. Lippmann, and F. A. Hamprecht, Equiv-ariance by local canonicalization: A matter of represen-tation, in NeurIPS 2025 Workshop on Symmetry and Ge-ometry in Neural Representations (2025). [71] J. Spinner, L. Favaro, P. Lippmann, S. Pitz, G. Gerhartz, T. Plehn, and F. A. Hamprecht, Lorentz local canonical-ization: How to make any network lorentz-equivariant, in The Thirty-ninth Annual Conference on Neural Infor-mation Processing Systems (2025). [72] N. Dym, H. Lawrence, and J. W. Siegel, Equivariant frames and the impossibility of continuous canonicaliza-tion, in International Conference on Machine Learning 
+
+(PMLR, 2024) pp. 12228–12267. [73] T. Cohen, M. Weiler, B. Kicanaoglu, and M. Welling, Gauge equivariant convolutional networks and the icosa-hedral cnn, in International conference on Machine learn-ing (PMLR, 2019) pp. 1321–1330. [74] P. De Haan, M. Weiler, T. Cohen, and M. Welling, Gauge equivariant mesh cnns: Anisotropic convolutions on geo-metric graphs, arXiv preprint arXiv:2003.05425 (2020). [75] Y. Wang, A. A. Elhag, N. Jaitly, J. M. Susskind, and M. A. Bautista, Swallowing the bitter pill: Sim-plified scalable conformer generation, arXiv preprint arXiv:2311.17932 (2023). [76] S. Pertigkiozoglou, E. Chatzipantazis, S. Trivedi, and K. Daniilidis, Improving equivariant model training via constraint relaxation, Advances in Neural Information Processing Systems 37 , 83497 (2024). [77] A. A. Elhag, T. K. Rusch, F. Di Giovanni, and M. Bron-stein, Relaxed equivariance via multitask learning, arXiv preprint arXiv:2410.17878 (2024). [78] E. Qu and A. Krishnapriyan, The importance of being scalable: Improving the speed and accuracy of neural network interatomic potentials across chemical domains, Advances in Neural Information Processing Systems 37 ,139030 (2024). [79] M. F. Langer, S. N. Pozdnyakov, and M. Ceriotti, Prob-ing the effects of broken symmetries in machine learning, arXiv preprint arXiv:2406.17747 (2024). [80] M. Eissler, T. Korjakow, S. Ganscha, O. T. Unke, K.-R. MÃžller, and S. Gugler, How simple can you go? an off-the-shelf transformer approach to molecular dynamics, arXiv preprint arXiv:2503.01431 (2025). [81] A. Manolache, L. F. O. Chamon, and M. Niepert, Learn-ing (approximately) equivariant networks via constrained optimization, in The Thirty-ninth Annual Conference on Neural Information Processing Systems (2025). [82] T. Berndt and J. Stühmer, Approximate equivari-ance via projection-based regularisation, arXiv preprint arXiv:2601.05028 (2026). [83] F. Bigi, P. Pegolo, A. Mazitov, and M. Ceriotti, Pushing the limits of unconstrained machine-learned interatomic potentials, arXiv preprint arXiv:2601.16195 (2026). [84] R. Sutton, The bitter lesson, Incomplete Ideas (blog) 13 ,38 (2019). [85] R. A. Jacobs, M. I. Jordan, S. J. Nowlan, and G. E. Hinton, Adaptive mixtures of local experts, Neural com-putation 3, 79 (1991). [86] W. Fedus, B. Zoph, and N. Shazeer, Switch transform-ers: Scaling to trillion parameter models with simple and efficient sparsity, Journal of Machine Learning Research 
+
+23 , 1 (2022). [87] J. Brehmer, S. Behrends, P. de Haan, and T. Co-hen, Does equivariance matter at scale?, arXiv preprint arXiv:2410.23179 (2024).

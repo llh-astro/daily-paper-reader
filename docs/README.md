@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-08-30</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-08</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 37 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 43 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>24</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>30</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>13</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-08-30 23:12:11 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-08 23:17:13 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日共处理论文37篇，精读24篇、速读13篇，其中两篇获满分推荐。</p>
-<p>最值得关注：三维二次微分系统对称雅可比矩阵猜想的优雅解析，以及利用稳定性约束揭示径向速度系外行星的真实质量。</p>
-<p>建议普通读者优先浏览AI物理验证与信息融合类速读文章，拓宽交叉学科视野。</p>
+<p>今日共扫描43篇论文，精读30篇、速读13篇，重点锁定系外行星与AI科学计算两大方向。最值得关注的是两项满分研究：DAVINCI任务的金星光谱基准破解了陆地行星光谱简并性，以及精确恒星年龄约束如何重塑宜居带演化认知。建议普通读者可从速读篇目中的PDS 70c环行星流模拟入手，直观感受系外卫星形成场景。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">24 篇</strong>
+    <strong class="dpr-home-dashboard-count">30 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="An Elegant Analytical Resolution of the Sprott-Zeraoulia Conjecture for Three-Dimensional Quadratic Differential Systems with Symmetric Jacobian Matrices">An Elegant Analytical Resolution of the Sprott-Zeraoulia Conjecture for Three-Dimensional Quadratic Differential Systems with Symmetric Jacobian Matrices</span></li><li><span class="dpr-home-dashboard-paper-title" title="The true masses of radial-velocity exoplanets constrained by stability">The true masses of radial-velocity exoplanets constrained by stability</span></li><li><span class="dpr-home-dashboard-paper-title" title="Precise Modeling of a Complex Solenoidal Magnetic Field Using a Combination of Analytic Functions and a PINN">Precise Modeling of a Complex Solenoidal Magnetic Field Using a Combination of Analytic Functions and a PINN</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="The Venus Benchmark: Resolving Degeneracies in Terrestrial Exoplanet Spectra with DAVINCI">The Venus Benchmark: Resolving Degeneracies in Terrestrial Exoplanet Spectra with DAVINCI</span></li><li><span class="dpr-home-dashboard-paper-title" title="Precise Stellar Age Constraints and Habitable Zone Evolution in Exoplanet Systems">Precise Stellar Age Constraints and Habitable Zone Evolution in Exoplanet Systems</span></li><li><span class="dpr-home-dashboard-paper-title" title="Atmospheric escape fractionates secondary but not primary atmospheres">Atmospheric escape fractionates secondary but not primary atmospheres</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>15</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>9</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>24</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>4</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -89,9 +87,9 @@
     <strong class="dpr-home-dashboard-count">13 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Information fusion and machine learning for sensitivity analysis using physics knowledge and experimental data">Information fusion and machine learning for sensitivity analysis using physics knowledge and experimental data</span></li><li><span class="dpr-home-dashboard-paper-title" title="VERaiPHY -- Validation &amp; Evaluation for Robust AI in PHYsics">VERaiPHY -- Validation &amp; Evaluation for Robust AI in PHYsics</span></li><li><span class="dpr-home-dashboard-paper-title" title="A (Purely) Graph-Theoretic Approach to Synchronization of Nonlinear Dynamical Networks">A (Purely) Graph-Theoretic Approach to Synchronization of Nonlinear Dynamical Networks</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Learning the Geometry of Admissible Hypotheses through Inductive Bias in Training Distributions">Learning the Geometry of Admissible Hypotheses through Inductive Bias in Training Distributions</span></li><li><span class="dpr-home-dashboard-paper-title" title="Three-dimensional circumplanetary flows in a PDS 70c-inspired system: hydrodynamic simulations with FARGO3D and analysis with FARGOpy">Three-dimensional circumplanetary flows in a PDS 70c-inspired system: hydrodynamic simulations with FARGO3D and analysis with FARGOpy</span></li><li><span class="dpr-home-dashboard-paper-title" title="Geometry-aware Latent Autoregressive Generative Model for PDEs in Complex Domains">Geometry-aware Latent Autoregressive Generative Model for PDEs in Complex Domains</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>7</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>6</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>7</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>4</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>2</strong></span></div>
 </section>
 </div>
 
