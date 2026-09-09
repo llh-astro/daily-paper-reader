@@ -1,0 +1,318 @@
+Title: Introductory Notes on Learning^2
+
+URL Source: https://arxiv.org/pdf/2609.06546v1
+
+Published Time: Wed, 09 Sep 2026 01:17:36 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# Introductory Notes on Learning² 
+
+Sai S. Siddharth 
+
+Department of Mechanical Engineering, Thiagarajar College of Engineering Department of Aeronautics & Astronautics, Massachusetts Institute of Technology 
+
+siddharthaerospace@gmail.com or saisidd@mit.edu 
+
+Maniarasu Ravi 
+
+Department of Mechanical Engineering Thiagarajar College of Engineering 
+
+rmumech@tce.edu 
+
+# Abstract 
+
+Although machine learning can be used to predict the evolution of physical systems from data, a formulation that learns only the system state at each time leaves the temporal and dynamical structure of the solution to be resolved within a broad hypothesis space. We introduce Learning 2, a representation-level framework that structures this space by coupling a primary representation to a second representation through a known physical transformation. The resulting cross-representation con-straint restricts the effective hypothesis space and provides an ante-hoc, physically interpretable criterion for excluding solutions that satisfy the primary representation alone. We instantiate Learning 2 through EuLaNet , an Eulerian–Lagrangian repre-sentation for fluid dynamics. Given the velocity state u(x, t ), EuLaNet constructs its induced Lagrangian flow map X(a, t ) through ˙X(a, t ) = u(X(a, t ), t ), from which material transport and finite-time deformation are derived. The resulting representation couples the predicted state to the dynamical consequences it induces, providing a second consistency criterion beyond state-level agreement. We formalize this construction through an effective hypothesis space HL2 ⊆ H 
+
+and define the conditions under which a consequence representation provides discriminative constraints on candidate solutions. EuLaNet is implemented as a model-independent representation module, separating the physical constraint from the downstream learning architecture. This construction provides an ante-hoc mechanism for physically interpretable constraint in scientific learning and offers a basis for developing and evaluating broader classes of Learning 2 architectures.The implementation is open-sourced, with a research community being built around Learning 2 to develop and extend the architecture across scientific domains. 
+
+# 1 Introduction 
+
+Machine learning is increasingly being used to approximate the evolution of physical systems that are otherwise governed by computationally expensive partial differential equations. In fluid mechanics, data-driven methods have been developed for reduced-order modeling, flow prediction, control, and simulation, with learned models increasingly operating directly on spatiotemporal flow data [Brunton et al., 2020, Raissi et al., 2019, Karniadakis et al., 2021]. A central formulation is to learn the evolution of a discretized physical state, 
+
+ˆut+∆ t = fθ (ut), (1) where ut = u(x, t ) denotes the flow state on a fixed spatial domain. This formulation has led to increasingly expressive architectures, from models designed around discretized differential operators 
+
+> Preprint. arXiv:2609.06546v1 [math.NA] 6 Sep 2026
+
+[Long et al., 2018] to neural operators that learn mappings between function spaces [Lu et al., 2021, Li et al., 2021, Kovachki et al., 2023]. For fluid mechanics, however, the field u(x, t ) is only one representation of the dynamics. A flow can also be described by following material points through the domain. Given a velocity field u(x, t ),the corresponding Lagrangian flow map is 
+
+dX(a, t )
+
+dt = u(X(a, t ), t ), X(a, t 0) = a, (2) where a denotes the initial position of a material point. Eulerian and Lagrangian descriptions are therefore two representations of the same flow. The Eulerian description resolves the state over space, whereas the Lagrangian description resolves how material is transported through that state. Lagrangian descriptions are particularly natural for transport, dispersion, mixing, and particle motion [Toschi and Bodenschatz, 2009, Schroder and Schanz, 2023]. This distinction has direct consequences for learned fluid models. A model trained only on Eulerian states learns a mapping between field representations. A model that also represents material trajecto-ries has access to a second description whose evolution is determined by the predicted field itself. The relationship is therefore not one of simply adding another set of features. The two representations are coupled by the kinematics of the flow. This provides an architectural opportunity that is different from increasing network capacity or augmenting the input with independent measurements. We explore this opportunity through EuLaNet , an Eulerian–Lagrangian architecture for learning fluid dynamics. EuLaNet starts from an Eulerian CFD solution and constructs its corresponding Lagrangian representation through the flow map. The architecture retains the Eulerian field as the primary spatial representation while introducing the trajectories generated by that field as a second representation of the same evolving system. The resulting model can therefore be viewed as learning a physical state together with a representation of the motion implied by that state. The idea is closely related to a broader class of approaches that build physical structure into learned dynamics. PDE-Net incorporates differential operators into a neural architecture for learning dynami-cal systems [Long et al., 2018], while physics-informed methods introduce governing equations and physical constraints into the learning objective [Raissi et al., 2019, Karniadakis et al., 2021]. Learned simulators have also explored particle and mesh representations as alternative state spaces for physical dynamics [Sanchez-Gonzalez et al., 2020, Pfaff et al., 2021]. EuLaNet takes a different architectural route by coupling two representations that are analytically related through the underlying flow. We refer to this construction as Learning 2. The notation denotes learning in two coupled represen-tations of a physical system. In the present case, the first representation is Eulerian and the second is Lagrangian. The purpose of Learning 2 is not to prescribe a particular neural architecture or a particular loss function. It is a design principle for asking whether the learning of one physical representation can be organized through another representation of the same dynamics. EuLaNet is our concrete realization of this principle for fluid flow. This viewpoint is also distinct from recent Eulerian–Lagrangian neural models. DeepLag combines Eulerian observations with adaptively sampled Lagrangian particles and uses inferred particle dy-namics to improve fluid prediction [Ma et al., 2024]. Our emphasis is instead on the representation coupling itself. EuLaNet is used to examine what changes when the Eulerian state and its dynamically induced Lagrangian description are made components of the same learning architecture. The resulting questions concern prediction accuracy, the behavior of the learning process, the stability of the learned dynamics, and the consistency between the field that is predicted and the trajectories that it generates. The contribution of this work is therefore architectural. We formalize Learning 2 as a way of constructing scientific learning systems from multiple dynamically related representations, instantiate it through EuLaNet for Eulerian–Lagrangian fluid dynamics, and study the resulting learning behavior against an Eulerian-only formulation. The objective is not to close the space of possible Learning 2
+
+architectures, but to provide a concrete construction from which that space can be explored. The Eulerian–Lagrangian pair is one such physically motivated instance. 
+
+# 2 Learning 2
+
+We introduce Learning 2 as an architectural principle for learning problems in which the target admits multiple mathematically related representations. The principle is to use one representation not merely 2as additional information about the target, but as a structural constraint on how another representation is learned. This distinguishes Learning 2 from standard representation learning, in which intermediate representations primarily provide progressively transformed features for the final prediction [Bengio et al., 2013, LeCun et al., 2015, Goodfellow et al., 2016]. 
+
+2.1 Learning through representation 
+
+Consider a target y inferred from an input x. A conventional learning problem seeks a mapping 
+
+ˆy = fθ (x), (3) with solutions selected according to a loss defined on the target representation. Let R(y) denote another representation of the same underlying quantity. Learning 2 considers architectures in which the relation between y and R(y) is incorporated into the construction of the learning problem. The distinction is important. An additional representation can be supplied to a model as another source of information without changing the structure of the underlying learning problem. Learning 2
+
+instead requires the relationship between representations to constrain the construction of the solution. The second representation therefore acts on the space of admissible solutions rather than simply increasing the information available to the learner. Let H denote the hypothesis space associated with the single-representation problem. The introduction of a coupled representation defines an effective hypothesis space 
+
+HR = {f ∈ H | f ∼ R (y)} , (4) where ∼ denotes the mathematical relationship imposed between the target representation and R(y).When this relationship excludes otherwise admissible hypotheses, 
+
+HR ⊆ H . (5) Learning 2 therefore introduces structure into the hypothesis space through a representation that is coupled to the quantity being learned. This provides a mechanism by which a learning architecture can reduce its effective search space without requiring the target itself to be represented in a lower-dimensional space or the model to have greater capacity. 
+
+2.2 Architectural consequence 
+
+The effect of the second representation is consequently not restricted to the final prediction. By constraining the set of admissible solutions, the representation relation changes the geometry of the learning problem and can alter the optimization trajectory through that space. This is consistent with the established role of architectural structure as an inductive bias, where restrictions imposed by a model architecture determine which functions can be represented or preferentially learned [Cohen and Shashua, 2016, Bronstein et al., 2021]. The distinction can be expressed by comparing the two learning spaces 
+
+S1 = {ˆy | ˆy ∈ H} , (6) and 
+
+S2 = {ˆy | ˆy ∈ H R} . (7) The Learning 2 construction is useful when the additional representation contains structure that is informative about the admissibility of a solution, rather than merely information that improves prediction. The resulting gain may therefore arise from the organization of the learning space itself, including changes in convergence, stability, generalization, or long-horizon behavior. This establishes the central distinction of Learning 2. The objective is not to learn multiple repre-sentations independently, nor simply to augment a model with auxiliary features. The objective 3is to construct a learning system in which a mathematically related representation participates in determining the space through which the target representation is learned. 
+
+2.3 Design principle 
+
+Learning 2 does not prescribe a particular network, loss function, or representation. Its defining components are a target representation y, a related representation R(y), and a mechanism by which their relationship constrains the learning process. The choice of this relationship determines the resulting architecture and the structure introduced into its learning space. This formulation provides a general design principle for scientific machine learning. Whenever a physical system admits multiple mathematical descriptions of the same underlying state, those descriptions need not be treated as independent modeling choices. One representation can instead be used to structure the learning of another. In the present work, we test this principle through EuLaNet by coupling Eulerian and Lagrangian descriptions of fluid dynamics. 
+
+# 3 EuLaNet 
+
+EuLaNet instantiates the Learning 2 principle for fluid dynamics by constructing a coupled Eulerian– Lagrangian representation directly from time-resolved CFD solutions. The representation preserves the complete Eulerian flow field while introducing a sparse material description derived from the same velocity field. The two descriptions are connected through explicit spatial and temporal correspondence rather than being treated as independent feature sets. 
+
+3.1 Eulerian state 
+
+Let the CFD solution be available at discrete times tnT −1 
+
+> n=0
+
+on a possibly time-dependent computational mesh. At each snapshot, the mesh coordinates and corresponding flow variables are 
+
+Xn = {xi,n }Ni=1 , En = {ei,n }Ni=1 , (8) where xi,n ∈ R2 denotes the physical location of mesh point i at time tn and ei,n ∈ RdE contains the corresponding CFD state. The complete Eulerian representation is therefore 
+
+E ∈ RT ×N ×dE , X ∈ RT ×N ×2. (9) The representation retains the full CFD state rather than reducing the solution to a prescribed subset of observables. For the validated NACA0015 case, this gives 
+
+E ∈ R150 ×44100 ×20 , X ∈ R150 ×44100 ×2. (10) The CFD solutions are generated with SU2, an open-source framework for PDE analysis and PDE-constrained optimization on unstructured meshes [Economon et al., 2016]. The use of time-dependent and moving meshes is consistent with the dynamic-mesh formulations developed within the SU2 framework for unsteady aerodynamic problems [Economon et al., 2015]. 
+
+3.2 Lagrangian material representation 
+
+The second representation is constructed from material probes embedded in the Eulerian solution. Let 
+
+P0 = {xp, 0}Np 
+
+> p=1
+
+(11) denote the initial probe locations. Each probe is treated as a passive material point whose trajectory is determined by the Eulerian velocity field, 
+
+dxp
+
+dt = u(xp, t ), xp(t0) = xp, 0. (12) 4For the reference configuration, the initial probes are generated from a 40 × 40 grid and filtered against the computational domain, yielding Np = 1184 valid material probes. The probe set is therefore sparse relative to the 44 ,100 -point Eulerian field, while remaining embedded in the same physical domain. Because the CFD velocity is available only at discrete snapshots, EuLaNet constructs the velocity used during particle integration by temporal interpolation. For t = tn + α∆t, with α ∈ [0 , 1] ,
+
+u(x, t ) = (1 − α)un(x) + αun+1 (x). (13) The resulting trajectory is integrated using fourth-order Runge–Kutta. For a substep h,
+
+k1 = f (xn, t n), (14) 
+
+k2 = f
+
+
+
+xn + h
+
+2 k1, t n + h
+
+2
+
+
+
+, (15) 
+
+k3 = f
+
+
+
+xn + h
+
+2 k2, t n + h
+
+2
+
+
+
+, (16) 
+
+k4 = f (xn + hk3, t n + h), (17) with 
+
+xn+1 = xn + h
+
+6 (k1 + 2 k2 + 2 k3 + k4) . (18) The resulting discrete flow map is 
+
+Φtt0 : x0 7 → x(t; x0, t 0), (19) which records the material position generated by the Eulerian velocity field. For the reference case, the complete trajectory representation has shape 
+
+Φ ∈ R150 ×1184 ×2. (20) 
+
+3.3 Finite-time deformation 
+
+Particle displacement alone describes transport but does not characterize the deformation of the material neighborhood surrounding a particle. EuLaNet therefore derives local deformation from the flow map. For a trajectory initialized at x0, the deformation gradient is 
+
+F tt0 (x0) = ∂Φtt0 (x0)
+
+∂x0
+
+. (21) For an infinitesimal initial displacement δx0, the corresponding displacement at time t satisfies 
+
+δxt ≈ F tt0 δx0. (22) The deformation gradient therefore provides a local linearization of the material transport map. EuLaNet subsequently forms the right Cauchy–Green deformation tensor 
+
+Ctt0 =  F tt0
+
+T F tt0 . (23) For an infinitesimal material vector, 5|δxt|2 = δxT 
+
+> 0
+
+Ctt0 δx0. (24) The eigenvalue problem 
+
+Ctt0 ni = λini (25) then provides the principal directions and squared principal stretches of the material deformation. In two dimensions, the largest eigenvalue λmax determines the maximum principal stretch 
+
+σmax = pλmax . (26) EuLaNet also derives the finite-time Lyapunov exponent over a window T = t − t0,
+
+FTLE = 12|T | log λmax 
+
+ Ctt0
+
+ , (27) providing a scalar measure of finite-time material stretching [Shadden et al., 2005, Allshouse and Peacock, 2015]. For the rolling-window representation used in the dataset, deformation is computed between the current and future flow-map states. If 
+
+Jk = ∂x(tk)
+
+∂x0
+
+, Jk+W = ∂x(tk+W )
+
+∂x0
+
+, (28) then the deformation over the window is 
+
+Fk→k+W = Jk+W J−1 
+
+> k
+
+. (29) This formulation measures deformation relative to the material state at the beginning of the selected window rather than relative to the original release configuration. 
+
+3.4 Eulerian–Lagrangian correspondence 
+
+The two representations cannot be combined by simple concatenation. A Lagrangian particle changes spatial position with time, while the Eulerian field is indexed by the spatial coordinates of the CFD mesh at each snapshot. EuLaNet therefore introduces an explicit correspondence operator. For particle p at snapshot tn, let 
+
+i∗ = arg min  
+
+> i
+
+|xp(tn) − xi,n |2 . (30) The corresponding Eulerian state is then associated with the same-time mesh location 
+
+xp(tn) ←→ xi∗,n , (31) with correspondence distance 
+
+dp(tn) = |xp(tn) − xi∗,n |2 . (32) The correspondence is constructed independently at every CFD snapshot. Consequently, the mapping is 
+
+C : ( p, n ) 7 → (i∗, n, d p), (33) 6rather than a fixed spatial mapping from the initial particle position to the mesh. This distinction is essential for the moving-mesh configuration, because the physical location of a mesh point changes with time. Learning² assumes that a meaningful secondary representation and a known transformation between representations are available. Its effectiveness is consequently dependent on the choice of repre-sentations and the quality of the underlying physical description. The present work demonstrates the framework through Eulerian–Lagrangian fluid dynamics, and its applicability to other physical systems remains to be established.All reported EuLaNet computations were CPU-only. The im-plementation was executed on an Intel i5-10300H CPU (4C/8T, 2.50 GHz) with 15.8 GB RAM. Lagrangian flow-map generation for the 40 × 40 probe grid required approximately 3.4 hours using single-core Python, with peak memory usage below 2 GB. Subsequent EuLaNet dataset construction required less than 1 minute. 
+
+3.5 Complete representation 
+
+The resulting EuLaNet representation consists of three coupled components, 
+
+D = ( E, X, L, C) , (34) where E is the complete Eulerian field, X is the time-dependent mesh geometry, L contains the sparse Lagrangian transport and deformation state, and C defines their spatial and temporal correspondence. For the validated reference case, 
+
+L ∈ R148000 ×16 . (35) The Lagrangian feature vector contains the initial and current particle positions, displacement, deformation quantities, principal stretches, stretch directions, FTLE, and validity information. The complete representation consequently retains both the instantaneous Eulerian state and finite-time material response rather than replacing one with the other. This construction is intentionally model-independent. EuLaNet does not specify whether the resulting representation is consumed by a CNN, GNN, Transformer, recurrent model, or another learning architecture. Its role is to expose the physical relation between the two representations in a form that can subsequently be incorporated into a learning system. This provides the concrete realization of Learning 2 studied in this work. The Eulerian state defines the field representation, while the Lagrangian flow map and its derived deformation quantities provide a mathematically related representation that constrains and organizes the learning problem through explicit correspondence. The subsequent experiments test whether this additional structure produces the predicted reduction in effective search space and corresponding gains in learning behavior relative to field-only learning. 
+
+# 4 Learning 2 as a Representation Constraint 
+
+EuLaNet provides a concrete instance of a more general architectural construction. The defining property is not the use of multiple representations, but the existence of a structured transformation between them that imposes an additional consistency condition on candidate solutions. Let R1(U ) denote the primary representation of a physical state U . A Learning 2 construction introduces a second representation through a transformation 
+
+R2(U ) = T [R1(U )] , (36) where T is a physically or mathematically defined operator. The transformation must preserve a relationship between the two representations that is intrinsic to the underlying system. Coordinate changes, tensor reshaping, arbitrary embeddings, or direct concatenation do not satisfy this criterion. The second representation must additionally provide a discriminative constraint on candidate solutions. Let ˆU1 and ˆU2 be two candidate solutions that are approximately equivalent under the primary 7Physical state U      
+
+> Primary representation
+> R1(U)
+> Consequence representation
+> R2(U)R2(U) = T[R1(U)]
+> Cross-representation consistency constraint
+
+Figure 1: Learning 2 representation constraint. A second representation is generated from the primary representation through a physically or mathematically defined transformation and provides an independent consistency condition on candidate solutions. representation, 
+
+d1(R1( ˆU1), R 1(U ⋆)) ≈ d1(R1( ˆU2), R 1(U ⋆)) . (37) A valid Learning 2 representation provides a second metric under which these candidates can be distinguished, 
+
+d2(T [R1( ˆU1)] , R 2(U ⋆)) ̸ = d2(T [R1( ˆU2)] , R 2(U ⋆)) . (38) The second representation therefore acts as a constraint on the effective solution space rather than as an additional feature channel. For EuLaNet, the primary representation is the Eulerian velocity field, 
+
+RE (U ) = u(x, t ), (39) and the consequence representation is the Lagrangian flow map, 
+
+RL(U ) = X(a, t ), dX dt = u(X, t ). (40) The transformation T is therefore the material evolution operator. Finite-time deformation provides further consequences of this mapping, 
+
+u T
+
+−→ X ∇a
+
+−−→ F F TF
+
+−−−→ C λmax 
+
+−−−→ FTLE . (41) These quantities depend on the temporal evolution induced by the field and cannot be reduced to an independent observation at a single Eulerian location. The resulting admissible solution set can be written as 
+
+SE (ϵ) = 
+
+n ˆU : dE (RE ( ˆU ), R E (U ⋆)) ≤ ϵ
+
+o
+
+, (42) for an Eulerian-only learner, and 
+
+SL2 (ϵ, δ ) = 
+
+n ˆU ∈ S E (ϵ) : dL(T [RE ( ˆU )] , R L(U ⋆)) ≤ δ
+
+o
+
+. (43) Hence, 
+
+SL2 (ϵ, δ ) ⊆ S E (ϵ). (44) The inclusion describes a restriction of the effective hypothesis space, not a reduction in neural parameter dimensionality. Candidate fields that satisfy the primary representation but produce inconsistent dynamical consequences are excluded by the coupled representation. This formulation also defines the intended role of EuLaNet within a larger model architecture. Eu-LaNet supplies the representation constraint through Eulerian–Lagrangian correspondence, material transport, and finite-time deformation. The downstream learner remains independent of this construc-tion and may be implemented using neural operators, graph networks, convolutional architectures, sequence models, or other learned dynamical systems. The representation layer can therefore be treated as a module rather than as a complete neural architecture. 8The resulting design space is defined by the choice of R1, the transformation T , and the resulting consequence representation R2. A new Learning 2 architecture requires a representation pair for which the transformation is structurally defined and the second representation provides discriminative constraints that are not captured by the primary representation alone. EuLaNet establishes this construction for Eulerian and Lagrangian fluid dynamics. Extending the framework to other physical systems reduces to identifying analogous representation pairs and their corresponding transformations. Learning 2 therefore defines a representation-level constraint on scientific learning systems. EuLaNet is one realization in which material dynamics provide that constraint. The resulting formulation provides a direct basis for constructing new architectures whose objective is not only to reproduce a physical state, but also to reject solutions whose induced dynamics are inconsistent with that state. The implementation and accompanying tools are publicly available at the EuLaNet GitHub repository [Siddharth, 2026], providing a starting point for developing and evaluating new Learning 2
+
+architectures. 
+
+# References 
+
+Michael R. Allshouse and Thomas Peacock. Surfaces of uniform stretch in lagrangian coherent structures. 
+
+Chaos , 25(9):097617, 2015. doi: 10.1063/1.4923740. Yoshua Bengio, Aaron Courville, and Pascal Vincent. Representation learning: A review and new perspectives. 
+
+IEEE Transactions on Pattern Analysis and Machine Intelligence , 35(8):1798–1828, 2013. Michael M. Bronstein, Joan Bruna, Taco Cohen, and Petar Veliˇ ckovi´ c. Geometric deep learning: Grids, groups, graphs, geodesics, and gauges. arXiv preprint arXiv:2104.13478 , 2021. Steven L. Brunton, Bernd R. Noack, and Petros Koumoutsakos. Machine learning for fluid mechanics. Annual Review of Fluid Mechanics , 52:477–508, 2020. Nadav Cohen and Amnon Shashua. Inductive bias of deep convolutional networks through pooling geometry. In 
+
+International Conference on Learning Representations , 2016. Thomas D. Economon, Francisco Palacios, and Juan J. Alonso. Unsteady continuous adjoint approach for aerodynamic design on dynamic meshes. AIAA Journal , 53(9):2437–2453, 2015. doi: 10.2514/1.J053763. Thomas D. Economon, Francisco Palacios, Sean R. Copeland, Trent W. Lukaczyk, and Juan J. Alonso. Su2: An open-source suite for multiphysics simulation and design. AIAA Journal , 54(3):828–846, 2016. doi: 10.2514/1.J053813. Ian Goodfellow, Yoshua Bengio, and Aaron Courville. Deep Learning . MIT Press, 2016. George E. Karniadakis, Ioannis G. Kevrekidis, Lu Lu, Paris Perdikaris, Sifan Wang, and Liu Yang. Physics-informed machine learning. Nature Reviews Physics , 3:422–440, 2021. Nikola Kovachki, Zongyi Li, Burigede Liu, Kamyar Azizzadenesheli, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Neural operator: Learning maps between function spaces with applications to pdes. 
+
+Journal of Machine Learning Research , 24(89):1–97, 2023. Yann LeCun, Yoshua Bengio, and Geoffrey Hinton. Deep learning. Nature , 521(7553):436–444, 2015. Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Fourier neural operator for parametric partial differential equations. In International Conference on Learning Representations , 2021. Zichao Long, Yiping Lu, Xianzhong Ma, and Bin Dong. Pde-net: Learning pdes from data. In International Conference on Machine Learning , pages 3214–3222, 2018. Lu Lu, Pengzhan Jin, Guofei Pang, Zhongqiang Zhang, and George E. Karniadakis. Learning nonlinear operators via deeponet based on the universal approximation theorem of operators. Nature Machine Intelligence , 3: 218–229, 2021. Qilong Ma, Haixu Wu, Lanxiang Xing, Shangchen Miao, and Mingsheng Long. Deeplag: Discovering deep lagrangian dynamics for intuitive fluid prediction. In Advances in Neural Information Processing Systems ,volume 37, 2024. Tobias Pfaff, Meire Fortunato, Alvaro Sanchez-Gonzalez, and Peter Battaglia. Learning mesh-based simulation with graph networks. In International Conference on Learning Representations , 2021. 
+
+9Maziar Raissi, Paris Perdikaris, and George E. Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics , 378:686–707, 2019. Alvaro Sanchez-Gonzalez, Jonathan Godwin, Tobias Pfaff, Rex Ying, Jure Leskovec, and Peter Battaglia. Learning to simulate complex physics with graph networks. In International Conference on Machine Learning , volume 119, pages 8459–8468, 2020. Andreas Schroder and Daniel Schanz. 3d lagrangian particle tracking in fluid mechanics. Annual Review of Fluid Mechanics , 55:511–540, 2023. Shawn C. Shadden, Francois Lekien, and Jerrold E. Marsden. Definition and properties of lagrangian coherent structures from finite-time lyapunov exponents in two-dimensional aperiodic flows. Physica D: Nonlinear Phenomena , 212(3–4):271–304, 2005. doi: 10.1016/j.physd.2005.10.007. Sai Siddharth. EuLaNet: Eulerian–lagrangian flow representation. https://github.com/EuLaNet/EuLaNet ,2026. Implementation of the Learning 2 architecture. Federico Toschi and Eberhard Bodenschatz. Lagrangian properties of particles in turbulence. Annual Review of Fluid Mechanics , 41:375–404, 2009. 
+
+# A Technical appendices and supplementary material 
+
+A.1 Experimental Setup 
+
+We provide the complete experimental configuration, including the dataset construction, train and test cases, temporal sampling, spatial resolution, and all parameters required to reproduce the reported experiments. The experiments use the Eulerian–Lagrangian representation described in the main paper. The complete implementation and data-generation procedure are available in the EuLaNet repository [Siddharth, 2026]. 
+
+A.2 Computational Resources 
+
+All reported EuLaNet computations were CPU-only. The implementation was executed on an Intel i5-10300H CPU (4C/8T, 2.50 GHz) with 15.8 GB RAM. Lagrangian flow-map generation for the 40 ×40 probe grid required approximately 3.2–3.5 hours using single-core Python, with peak memory usage below 2 GB. Subsequent EuLaNet dataset construction required less than 1 minute. 
+
+A.3 Reproducibility 
+
+The EuLaNet implementation, configuration files, dataset-generation scripts, and instructions required to reproduce the reported representation are provided in the accompanying repository. The exact command used to construct the reported 40 × 40 representation is documented there. 
+
+A.4 Limitations and Assumptions 
+
+Learning 2 assumes that a meaningful secondary representation and a known transformation between repre-sentations are available. Its effectiveness is therefore dependent on the choice of representations and the physical description used to construct the transformation. The present work demonstrates the framework through Eulerian–Lagrangian fluid dynamics, and its applicability to other physical systems remains to be established. 
+
+A.5 Statistical Considerations 
+
+Where applicable, experimental variability and repeated runs are reported with the corresponding results. Since the present study focuses primarily on the representation and its construction rather than statistical estimation across a population of independent samples, statistical significance tests are not used unless otherwise stated. 
+
+A.6 Existing Assets and Licenses 
+
+The implementation uses the documented software dependencies and publicly available scientific computing tools listed in the repository. Their respective licenses and versions are retained in the project documentation. Any external datasets, software packages, or other assets used in the experiments are identified with their corresponding sources and licenses. 
+
+10 A.7 New Research Assets 
+
+EuLaNet introduces a new Eulerian–Lagrangian representation and associated dataset-generation tools. Their construction, assumptions, processing procedure, and usage are documented in the repository accompanying this submission. 
+
+A.8 Ethics and Responsible Research 
+
+This work does not involve human participants, human-subject research, crowdsourcing, personal data, or personally identifiable information. The experiments use computational fluid dynamics data and derived Eulerian–Lagrangian representations. No sensitive or human-related data are collected or processed. The released implementation is intended for scientific research and is accompanied by documentation of its computational requirements and usage. To the best of our knowledge, this work does not introduce foreseeable risks related to privacy, discrimination, surveillance, deception, or harm to individuals. 
+
+11

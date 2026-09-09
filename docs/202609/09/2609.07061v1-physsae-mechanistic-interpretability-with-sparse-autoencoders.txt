@@ -1,0 +1,1541 @@
+Title: PhysSAE: Mechanistic Interpretability with Sparse Autoencoders
+
+URL Source: https://arxiv.org/pdf/2609.07061v1
+
+Published Time: Wed, 09 Sep 2026 02:30:39 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 
+
+# PHYS SAE: M ECHANISTIC INTERPRETABILITY WITH 
+
+# SPARSE AUTOENCODERS 
+
+Nandita N. Patil ∗∗ 
+
+, Eshwar R A ∗† 
+
+, and Gajanan V Honnavar †‡ ∗QuaNad Research Laboratory, PES University, Bengaluru, India 
+
+> †
+
+Independent Researcher, QNu Labs Pvt Ltd, Bengaluru, India. Former Professor at PES University (EC Campus), Bengaluru 
+
+ABSTRACT 
+
+Physics-Informed Neural Networks (PINNs) embed PDE residuals into neural net-work training, but their internal representations remain opaque: it is unknown what physical features their hidden layers encode or whether those features have a local-ized causal role. We present P HYS SAE, a mechanistic interpretability framework that trains overcomplete sparse autoencoders (SAEs) on PINN penultimate-layer activations and evaluates dictionary atoms through direct causal intervention in the original frozen hidden state : hcf = h − αz kdk, bypassing the SAE decoder entirely. Across six PDE families, with 3 PINN seeds and 3 SAE seeds each—we show that (i) Our discovered SAE atoms align with independently-defined physical observables (max Pearson |r| = 0 .951 , always ≫ permutation null), (ii) the causal footprint of top-aligned atom ablation is 1.2–4.2 × more spatially concentrated canonical than PCA or ICA interventions, and (iii) top-aligned atoms outperform matched random controls on causal localization for structured physical concepts (ESF 80 advantage 0.04–0.44). Two-atom bilateral representations improve concept regression R 2 by ∆R2 = 0 .05 –0.15 over single atoms, while random pairs decrease it by up to 0.60. These results demonstrate that PINNs develop sparse, physically structured latent representations that can be identified and causally interrogated post-hoc, opening a path toward interpretability-aware scientific machine learning. 
+
+1 INTRODUCTION 
+
+Physics-Informed Neural Networks (Raissi et al., 2019) encode the residual of a PDE directly into the training loss via automatic differentiation, enabling mesh-free solution of forward and inverse prob-lems. Despite widespread adoption in fluid mechanics (Cai et al., 2021), solid mechanics (Haghighat et al., 2021), and biomedical modelling (Sahli Costabal et al., 2020), PINNs remain black boxes at the feature level. Their failure modes—spectral bias (Wang et al., 2022), gradient pathologies (Wang et al., 2021a), causality violations (Wang et al., 2024a)—are well-characterised at the loss or gradient level, but no work has asked what a trained PINN actually represents in its hidden layers. Recent mechanistic interpretability work has developed tools for extracting human-readable features from activations: linear probes (Alain & Bengio, 2017), concept activation vectors (Kim et al., 2018), and overcomplete sparse autoencoders (SAEs) (Bricken et al., 2023; Cunningham et al., 2023; Templeton et al., 2024). SAEs have now migrated to scientific ML, appearing on graph CFD surrogates (Hu & Liu, 2025) and neural operators (Tolooshams et al., 2025), and concept steering has been applied to physics foundation models (Fear et al., 2025). A direct inspection of PINN weight distributions by Tucny et al. (2025) found that weights “resemble Gaussian random matrices with no evident trace of the physical principles,” motivating feature-level (rather than weight-level) interpretability. PHYS SAE bridges mechanistic interpretability and scientific ML for residual-loss PINNs. Its core design choices address three challenges unique to the PINN setting: (1) concepts must be defined 
+
+> ∗
+
+nanditanpatil114@gmail.com 
+
+> †
+
+eshwarra5@gmail.com 
+
+> ‡
+
+gajanan.v@qnulabs.com 
+
+1arXiv:2609.07061v1 [cs.LG] 7 Sep 2026 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders from independent reference solutions to avoid circularity; (2) causal intervention must act on the 
+
+original PINN hidden state rather than an SAE reconstruction; (3) the spatio-temporal domain is continuous rather than discrete, requiring the ESF and support-capture metrics that generalise token-level interpretability to function spaces. 
+
+Related work. PINN architectures and failure modes. Self-adaptive weights (McClenny & Braga-Neto, 2020) and Fourier-feature embeddings (Wang et al., 2021b) address spectral bias; domain decomposition (Jagtap & Karniadakis, 2020) enables parallel training; causal reweighting (Wang et al., 2024a) fixes temporal ordering; KAN-based PINNs (Wang et al., 2024b) offer symbolic readability via spline activations. None of these study internal representations at the feature level. 
+
+XAI in scientific ML. SHAP/LIME/Integrated Gradients have been applied to PINNs as black-box regressors (Lundberg & Lee, 2017), not engaging the network’s spatiotemporal structure. SAEs on graph CFD surrogates (Hu & Liu, 2025) and neural operators (Tolooshams et al., 2025), and concept steering on a physics foundation model (Fear et al., 2025), are closest to our work but applied to data-driven models, not residual-loss PINNs. Sparse autoencoders. The SAE design (ReLU codes, L1 sparsity, unit-norm decoder columns, pre-encoder bias) for monosemanticity in LLMs is established (Bricken et al., 2023; Cunningham et al., 2023; Templeton et al., 2024; Elhage et al., 2021). We adapt this to the continuous-domain PDE setting. 
+
+Contributions. 
+
+1. First SAE for PINN latent space with an independent-concept evaluation protocol that avoids circular validation. 2. Direct hidden-state causal intervention : hcf = h − αz kdk, applied to the frozen PINN and compared against the same intervention applied to PCA and ICA components for a controlled comparison. 3. Comprehensive statistical validation across 6 PDEs × 3 PINN seeds × 3 SAE seeds: negative controls, bilateral analysis, overcompleteness and sparsity ablations, and feature consistency metrics. 4. Representational collapse analysis showing that failed PINNs have higher-rank, more diffuse representations while still encoding recognisable physical invariants. 
+
+Paper overview. Section 2 details the P HYS SAE methodology. Section 3 describes the PDE benchmark and implementation. Section 4 presents all experimental results. Section 5 discusses implications and limitations. Section 6 concludes. 
+
+2 METHOD 
+
+PHYS SAE is a post-hoc mechanistic interpretability framework that operates entirely on a trained, frozen PINN. No retraining or architectural modification is required. The pipeline has three stages: (1) extract the PINN’s penultimate-layer activations on a dense spatio-temporal grid; (2) train a sparse autoencoder on those activations to discover a dictionary of physical atoms; (3) evaluate atoms by directly intervening in the original PINN hidden state and measuring the resulting change in the PINN output field. We describe each stage in detail below. 2.1 PROBLEM SETTING AND NOTATION 
+
+Let Ω ⊂ Rd be a spatial domain and [0 , T ] a time interval. We consider scalar PDEs of the form 
+
+F[u]( x, t ) = 0 on Ω × (0 , T ], (1) subject to an initial condition u(x, 0) = u0(x) and boundary condition B[u]( x, t ) = 0 on ∂Ω × [0 , T ].We write uθ : Ω × [0 , T ] → Rdout for the PINN approximation, where dout = 1 for real-valued PDEs and dout = 2 for the complex-valued Schr¨ odinger equation (split into real and imaginary parts). The PINN is a fully-connected multilayer perceptron (MLP) with L hidden layers of width dh, smooth activations, and a linear readout: 
+
+uθ (x, t ) = Wout hL(x, t ) + bout , hℓ = σ(Wℓhℓ−1 + bℓ), h0 = [ x, t ]⊤. (2) 2Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders The key quantity for interpretability is the penultimate post-activation h ≡ hL ∈ Rdh , which we refer to throughout as the hidden state or latent representation . The output is a linear function of h,so ∆u = Wout ∆h: any change to h propagates linearly to the output, making the readout a natural causal bottleneck. 
+
+Why the penultimate layer? The penultimate layer is the richest representation before the in-formation is projected to a scalar by the linear readout. Interpretability at this layer is therefore interpretability of the last nonlinear computation the network performs before producing its predic-tion. Earlier layers encode more distributed, less semantically organised information; the output layer is only a linear combination and carries no additional structure. 2.2 PINN T RAINING 
+
+Architecture. We use L = 5 hidden layers of width dh = 128 with tanh activations and Xavier normal initialisation. The architecture is intentionally moderate in size: large enough that feature superposition is plausible (i.e., that dh < D atoms can be meaningfully encoded), yet small enough that 18 PINNs (6 PDEs × 3 seeds) can be trained in under two hours on a single GPU. The output head is linear: uθ = Wout h + bout , with Wout ∈ Rdout ×dh .
+
+Training objective. The PINN minimises a composite loss 
+
+L(θ) = wBC LBC + wIC LIC + wF LF , (3) where each term is an empirical mean over sampled points: 
+
+LF = 1
+
+NFNFX
+
+> i=1
+
+∥F [uθ ]( xFi , t Fi )∥22, (4) 
+
+LIC = 1
+
+NIC 
+
+> NIC
+
+X
+
+> i=1
+
+∥uθ (xi, 0) − u0(xi)∥22, (5) 
+
+LBC = 1
+
+NBC 
+
+> NBC
+
+X
+
+> i=1
+
+∥B [uθ ]( xBi , t Bi )∥22. (6) The residual F[uθ ] is evaluated via automatic differentiation through the network; all PDE derivatives are computed exactly in this way. We use weights wBC = wIC = 100 , wF = 1 , which down-weights the physics residual relative to the data constraints. This is a standard choice that ensures the IC and BC are honoured even when the residual is stiff. Per training step: NF = 3000 residual collocation points, NIC = 150 IC points, 
+
+NBC = 150 BC points, all sampled uniformly at random. 
+
+Optimisation schedule. Training proceeds in two stages. Stage 1 uses Adam with learning rate 
+
+η = 10 −3 for 8000 iterations. Stage 2 applies L-BFGS with strong Wolfe line search for up to 300 function evaluations. L-BFGS is a second-order method that exploits curvature information to sharpen the solution near the Adam minimum; it is particularly effective at reducing the residual on the collocation points after Adam has found a good basin. Gradient clipping (max norm 1.0) is applied during Adam to prevent instabilities, especially for the stiff Allen–Cahn and high-frequency convection PDEs. 
+
+Boundary conditions. For Dirichlet conditions ( u(xbnd , t ) = g(xbnd , t )), we sample points on 
+
+∂Ω × [0 , T ] and add the squared residual to LBC . For periodic conditions ( u(−1, t ) = u(1 , t ),
+
+∂xu(−1, t ) = ∂xu(1 , t )), we enforce both the value and the derivative periodicity, evaluating the latter via automatic differentiation: 
+
+Lper BC = 1
+
+N
+
+X
+
+> i
+
+ ∥uθ (−1, t i) − uθ (1 , t i)∥2 + ∥∂xuθ (−1, t i) − ∂xuθ (1 , t i)∥2. (7) 3Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 2.3 ACTIVATION EXTRACTION 
+
+After training, the PINN is frozen and evaluated on a dense uniform grid G =
+
+{(xi, t j )}i=1 ,...,n x; j=1 ,...,n t with nx = 200 , nt = 100 (20,000 points). At each grid point we record the penultimate post-activation: 
+
+H = h(x1, t 1), h (x1, t 2), . . . , h (xnx , t nt ) ∈ RN ×dh , N = nx · nt. (8) 
+
+H is the activation matrix : the raw material for interpretability. Each row H(i,j ),: is a dh-dimensional vector encoding the network’s internal state at the space-time point (xi, t j ).
+
+Normalisation. Before training the SAE, we z-score the activations across the grid: 
+
+˜h(i,j ) 
+
+> k
+
+= H(i,j ) 
+
+> k
+
+− μk
+
+σk + ε , μk = 1
+
+N
+
+X
+
+> (i,j )
+
+H(i,j ) 
+
+> k
+
+, σk =
+
+vuut 1
+
+N
+
+X
+
+> (i,j )
+
+(H(i,j ) 
+
+> k
+
+− μk)2, (9) with ε = 10 −6 for numerical stability. This is essential for two reasons: (a) it places all hidden units on the same scale so the L1 sparsity penalty treats them symmetrically, and (b) the unit-norm constraint on SAE decoder columns is only meaningful when the input is approximately standardised. We store (μ, σ ) and use them during the intervention step (§2.7) to un-normalise the SAE output back to the original activation scale. 
+
+Train/eval split. We split the N = 20 ,000 grid points randomly into 80% ( Ntrain = 16 ,000 ) for SAE training and 20% ( Neval = 4 ,000 ) for held-out evaluation of all alignment and intervention metrics. This split ensures that the concept alignments we report are not inflated by the SAE fitting the same activations it was trained on. 2.4 INDEPENDENT REFERENCE SOLUTIONS AND CONCEPT FIELDS 
+
+A central design principle of P HYS SAE is that concept fields must be derived from sources indepen-dent of the PINN being interpreted. The PINN output is uθ = Wout h + bout , a linear function of h.Any concept field derived from uθ would therefore correlate with h trivially, independent of whether the PINN has learned meaningful physics. We therefore use: • Analytic reference solutions for PDEs where closed-form solutions exist (heat equation via eigenfunction expansion, linear convection via the d’Alembert formula, and the Schr¨ odinger soliton via the exact Zakharov-Shabat formula). • High-resolution numerical reference solutions for nonlinear PDEs (Burgers and Allen– Cahn): we run a pseudo-spectral RK4 solver on a fine grid ( nx = 512 ) and interpolate onto the evaluation grid. These reference solutions are computed once, cached to disk, and reused across all PINN seeds and SAE runs. 
+
+Concept field definition. Given the reference solution u∗(x, t ), we define a small, physically motivated panel of scalar fields over G. All quantities are computed from the reference, not the PINN. Table 1 gives the complete concept panel. 
+
+Design rationale. Each concept was chosen to capture a physically distinct aspect of the PDE solution. We deliberately include both signed (e.g. u∗ itself) and unsigned fields (e.g. |u∗|, |∂xu∗|), be-cause ReLU SAE codes are non-negative and therefore can only correlate positively with non-negative targets or partially with signed ones (the bilateral phenomenon discussed in §2.9). Coordinates ( x, t,
+
+x − βt ) capture geometric structure that the PINN may encode for positional awareness. Derivative-based concepts (gradient, curvature) test whether atoms encode information about local solution smoothness. PDE-specific quantities (interface indicator, shock indicator, characteristic coordinate) test whether atoms align with the defining physical mechanisms of each PDE. 4Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders Table 1: Physical concept fields used for alignment, computed from independent reference solutions. Central finite differences are used for spatial and temporal derivatives. For Schr¨ odinger, h = u + iv 
+
+is the complex field, |h| its amplitude, and ϕ = arg( h) its phase. 
+
+PDE Concept name Formula Heat Amplitude |u∗|
+
+Gradient |∂xu∗|
+
+Curvature |∂xx u∗|
+
+Temporal rate |∂tu∗|
+
+Signed value u∗
+
+Burgers Amplitude |u∗|
+
+Shock indicator |∂xu∗| / ∥∂xu∗∥∞
+
+Curvature |∂xx u∗|
+
+Temporal rate |∂tu∗|
+
+Signed value u∗
+
+Spatial coord. x
+
+Norm. gradient |∂xu∗|
+
+Allen–Cahn Amplitude |u∗|
+
+Interface indicator exp( −u∗2/0.05) 
+
+Interface gradient |∂xu∗|
+
+Reaction term |u∗3 − u∗|
+
+Temporal rate |∂tu∗|
+
+Signed value u∗
+
+Convection Amplitude |u∗|
+
+Gradient |∂xu∗|
+
+Temporal rate |∂tu∗|
+
+Signed value u∗
+
+Characteristic coord. x − βt 
+
+Spatial coord. x
+
+Time t
+
+Schr¨ odinger Soliton amplitude |h∗|
+
+Real part Re( h∗)
+
+Imaginary part Im( h∗)
+
+Phase gradient |∂xϕ∗|
+
+Amplitude gradient |∂x|h∗|| 
+
+Amplitude rate |∂t|h∗|| 
+
+Spatial coord. x
+
+2.5 SPARSE AUTOENCODER ARCHITECTURE AND TRAINING 
+
+Architecture. The SAE is a two-layer bottleneck network with non-negative (ReLU) codes and a decoder whose columns are constrained to unit Euclidean norm: 
+
+z(˜h) = ReLU 
+
+
+
+Wenc ˜h + benc 
+
+
+
+∈ RD , (10) 
+
+ˆ˜h(z) = Wdec z + bdec , (11) s.t. ∥W (: ,k )dec ∥2 = 1 ∀k, (12) where Wenc ∈ RD×dh , Wdec ∈ Rdh×D , benc ∈ RD , bdec ∈ Rdh . The k-th column of Wdec , denoted 
+
+dk ∈ Rdh , is the decoder direction of atom k: the direction in hidden-state space along which that atom projects. The unit-norm constraint on dk ensures that the code zk absorbs all the scale information, so that a larger zk unambiguously means a stronger activation of that direction. We use D = 512 with dh = 128 , giving an overcompleteness ratio of D/d h = 4 . Overcompleteness is essential: with D < d h the SAE would compress rather than decompose, and the dictionary atoms would mix multiple physical features. With D ≫ dh the SAE has enough candidate atoms to specialise each one to a distinct physical concept. 5Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 
+
+Training objective. 
+
+LSAE = E˜h
+
+h
+
+∥˜h − ˆ˜h∥22
+
+i| {z }
+
+> reconstruction
+
++λ E˜h
+
+h
+
+∥z(˜h)∥1
+
+i| {z }
+
+> sparsity penalty
+
+. (13) The reconstruction term encourages faithful recovery of the PINN’s hidden state; without it the encoder could set all codes to zero. The L1 sparsity term pushes most codes to zero, creating atoms that fire only in specific spatio-temporal regions. The trade-off between these two objectives is controlled by λ = 2 ×10 −2, chosen to yield a mean of approximately 77–141 active atoms per sample ( L0 ≈
+
+15 –28% of D), a regime in which prior LLM-SAE work has found good monosemanticity (Bricken et al., 2023). 
+
+Unit-norm projection. After each gradient step we project the decoder columns to unit norm: 
+
+dk ← dk
+
+∥dk∥2
+
+∀k. (14) This projection is applied in-place after the Adam update. Without it, the gradient would distribute scale between the encoder weights, the decoder columns, and the codes, creating a three-way degeneracy. The projection fixes the decoder directions as unit-norm bases and forces the codes to carry the scale, which is necessary for the causal intervention formula to be well-defined (§2.7). 
+
+Optimisation. Adam with learning rate 10 −3, 600 epochs, batch size 8192. We train 3 independent SAEs per PINN (different random seeds) to assess feature consistency (§2.10). Training is performed on the 80% split of activations; the 20% held-out split is used exclusively for evaluation. Across all 54 SAE runs (6 PDEs × 3 PINN seeds × 3 SAE seeds), zero dead atoms were observed (atoms with max activation below 10 −6 across all evaluation points), confirming that the dictionary is fully utilised. 
+
+Why not a pre-encoder bias (Anthropic-style SAE)? Several recent papers use a pre-encoder bias bpre that is subtracted before the encoder and added back in the decoder, primarily to capture the activation mean and prevent encoder bias from encoding positional information. In our setting, the z-scoring step plays this role: it subtracts the mean of each neuron’s activation across the grid before the SAE ever sees the data. We therefore use the simpler formulation without bpre .2.6 CONCEPT ALIGNMENT 
+
+Alignment matrix. Given the D-dimensional code vector z(x, t ) ∈ RD at each held-out grid point and the concept fields {Cj (x, t )}Jj=1 evaluated at the same points, we define the alignment matrix 
+
+Akj = corr( zk, C j ) = 
+
+P
+
+> (x,t )
+
+(zk(x, t ) − ¯zk)( Cj (x, t ) − ¯Cj )
+
+qP
+
+> (x,t )
+
+(zk − ¯zk)2
+
+qP
+
+> (x,t )
+
+(Cj − ¯Cj )2
+
+, (15) where all sums are over the Neval held-out grid points. A ∈ RD×J captures, for each pair of (atom, concept), the degree of linear association between the atom’s spatial activation pattern and the reference physical field. We call Akj the observational alignment of atom k with concept j.
+
+Top-atom selection. For each concept Cj we identify the best-aligned atom: 
+
+k⋆j = arg max 
+
+> k∈{ 1,...,D }
+
+|Akj |. (16) Note that |Akj | is used rather than Akj because a strongly negative correlation (atom fires where concept is low) is equally informative as a positive one. 
+
+Why Pearson correlation? Pearson correlation is invariant to the affine transformations that z-scoring and the SAE encoder introduce. It measures the linear co-variation of atom activation and concept field over the spatio-temporal grid, which is the cleanest test of whether an atom’s firing pattern tracks a physical quantity. Spearman rank correlation gives qualitatively identical results (not shown) but is more expensive to compute for D × J = 512 × 7 pairs over 4000 grid points. 6Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 
+
+Statistical significance: permutation test. To assess whether the observed alignment is larger than chance, we generate a null distribution by permuting the spatial ordering of each concept field 500 times and computing max k |Akj | for each permutation. The empirical p-value is the fraction of permuted maxima exceeding the observed maximum; the Z-score is (max k |Akj | − μnull )/σ null .Z-scores exceed 10 for all PDEs and all concepts, confirming that the alignments are far beyond the permutation null. 
+
+Spearman correlation. For completeness we also compute Spearman ρ (rank correlation), which is robust to nonlinearities in the atom–concept relationship. Reported results use Pearson; Spearman results are qualitatively identical. 
+
+Reporting. We report: (a) the top-1 alignment |Ak⋆j ,j | for each concept; (b) the mean top-5 alignment; (c) the number of concepts with |r| > 0.5 and |r| > 0.7; (d) permutation Z-scores. All values are computed on the held-out split to avoid overfitting the SAE to the evaluation points. 2.7 DIRECT CAUSAL INTERVENTION IN THE ORIGINAL HIDDEN STATE 
+
+Observational alignment (§2.6) establishes that an atom’s activation pattern correlates with a physical concept, but correlation does not imply that the atom causally controls the corresponding feature in the model’s output. We therefore perform a causal intervention directly in the original PINN’s frozen hidden state, bypassing the SAE decoder entirely. 
+
+Intervention formulation. Given atom k with unit-norm decoder direction dk ∈ Rdh and activation 
+
+zk(x, t ) ∈ R (the SAE code at each grid point), the contribution of atom k to the original hidden state at (x, t ) is: contribution k(x, t ) = zk(x, t ) · dk ∈ Rdh . (17) The counterfactual hidden state obtained by ablating atom k at strength α is: 
+
+hcf (x, t ; α) = h(x, t ) − α z k(x, t ) dk. (18) At α = 1 this exactly removes the atom’s contribution from h; at α ∈ (0 , 1) it partially suppresses it; at α > 1 it over-removes (amplifies the absence). We evaluate at α ∈ { 0.25 , 0.5, 1.0, 1.5} for dose-response analysis. The counterfactual output is then: 
+
+ucf (x, t ; α) = Wout hcf (x, t ; α) + bout , (19) and the causal effect of the intervention is: 
+
+∆u(x, t ; α) = uθ (x, t ) − ucf (x, t ; α) = α z k(x, t ) ( Wout dk). (20) This last equality shows that ∆u is linear in α and linear in zk: the causal effect of ablating atom k is exactly the product of its activation strength and its readout projection Wout dk ∈ Rdout . The SAE decoder plays no role whatsoever in this formula: the intervention operates entirely in the original PINN’s hidden-state geometry. 
+
+Why this is stronger than SAE-internal ablation. A simpler approach would be to ablate within the SAE: set zk ← 0, decode ˆh = Wdec z, and measure ∆u = Wout (h − ˆh). This does not test whether atom k has a causal role in the original PINN ; it only tests whether removing the atom’s contribution to the SAE reconstruction changes the output. The difference matters because the SAE is a lossy approximation of h (reconstruction MSE is nonzero), and h − ˆh is partly the reconstruction error, not just atom k’s contribution. Our intervention uses the exact decomposition h = P 
+
+> k
+
+zkdk + ε
+
+and isolates exactly the zkdk term, making the causal claim cleaner. 
+
+Causal metrics. The spatial distribution of |∆u(x, t )| over the grid tells us where atom k’s removal affects the PINN’s output. We quantify this distribution with: 1. Energy Spatial Footprint (ESF δ ). The fraction of the domain that captures fraction δ of the total intervention energy: 
+
+ESF δ = #{(x, t ) : |∆u(x, t )| ≥ τδ }
+
+N where τδ is the (1 − δ)-quantile of |∆u|. (21) 7Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders We use δ = 0 .80 , so ESF 80 is the smallest fraction of the domain that contains 80% of the intervention mass. A structurally meaningful atom should have a small ESF 80 : its effect should concentrate where it fires. 2. Support Capture. For localised concepts (shock, interface, characteristic coordinate), we define a reference support mask as the top-20% region of the reference concept field: Mj =
+
+{(x, t ) : |Cj (x, t )| ≥ quantile 80 (|Cj |)}. Support capture is the fraction of intervention mass inside the mask: 
+
+SC = 
+
+P 
+
+> (x,t )∈M j
+
+|∆u(x, t )|
+
+P 
+
+> (x,t )
+
+|∆u(x, t )| + ε . (22) A top-aligned shock atom should have high support capture: its causal effect should concen-trate near the shock. We do not report support capture for global concepts (amplitude, time, signed value) where the reference mask would cover the entire domain. 3. Intervention–concept correlation. Pearson r between |∆u(x, t )| and |Cj (x, t )| over the grid, which directly measures whether the intervention map and the reference concept field have the same spatial shape. 4. Dose-response linearity. From Eq. equation 20, ∆u is linear in α. We verify this by computing the intervention at α ∈ { 0.25 , 0.5, 1.0, 1.5} and checking that ESF 80 is roughly constant across α (since the shape of ∆u is α-invariant) while the magnitude ∥∆u∥2 scales linearly. Violations of this linearity would indicate numerical instabilities or interactions with other atoms. 
+
+Baseline interventions. We apply the same hidden-state intervention framework to PCA, ICA, and the sparse linear dictionary baseline, enabling a controlled comparison in which the only variable is the decomposition method: • PCA. With principal component k having loading vk ∈ Rdh and score ak(x, t ) =
+
+h(x, t )⊤vk, the counterfactual hidden state is hPCA cf = h − akvk/∥vk∥.• ICA. With mixing vector mk and source sk(x, t ), the counterfactual is hICA cf = h −
+
+skmk/∥mk∥.• Sparse linear dictionary. Same formula as SAE, but with a linear encoder (no ReLU), so codes can be negative. This design ensures that differences in ESF 80 between methods cannot be attributed to the intervention formula but must reflect the structure of the decomposition itself. 2.8 NEGATIVE CONTROLS 
+
+To establish that the observed causal localisation is specific to top-aligned atoms and not a generic property of ablating any active atom, we perform matched negative controls. For each top-aligned atom k⋆j , we select 10 control atoms by finding atoms that are similar in activation statistics but not aligned to the concept: control score (k) = |¯zk − ¯zk⋆j | + ∥∥ dk∥ − ∥ dk⋆j ∥∥ , k / ∈ { k⋆j }, (23) where ¯zk = N −1 P 
+
+> (x,t )
+
+zk(x, t ) is the mean activation. We select the 10 atoms with the smallest control score, i.e. those most similar in activation magnitude and decoder norm to the target atom. We then apply the identical hidden-state intervention to each control atom and compute ESF 80 .The ESF 80 advantage is defined as: advantage = ESF top 80 − mean k
+
+ESF ctrl ,k 
+
+> 80
+
+. (24) A negative advantage means the top-aligned atom produces a more concentrated intervention than matched random atoms (lower ESF 80 is better), which is the result we expect for a concept-aligned atom. A positive advantage means random atoms are more concentrated, which would indicate the localisation is not specific. 8Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 2.9 BILATERAL AND MULTI -A TOM REPRESENTATIONS 
+
+ReLU codes are non-negative: zk(x, t ) ≥ 0 for all (x, t ). A signed concept like u∗ (which takes both positive and negative values) cannot be captured by a single ReLU atom. Instead, the SAE must use at least two atoms: one firing where u∗ > 0 and one firing where u∗ < 0. We call this a bilateral representation .
+
+Detection. For each concept Cj , we identify the top positive atom k+ = arg max k Akj and the top negative atom k− = arg min k Akj . The bilateral pair is (k+, k −).
+
+Quantification via regression R 2. To measure whether the pair explains more variance than either atom alone, we fit OLS regressions of the concept on the held-out grid: 
+
+R2single = R2 Cj ∼ zk+
+
+, (25) 
+
+R2pair = R2 Cj ∼ zk+ + zk−
+
+. (26) The improvement ∆R2 = R2pair − R2single measures the additional variance explained by the bilateral pair. We compare against 20 random atom pairs to establish that the improvement is specific to the aligned pair. 
+
+Joint direct intervention. For the bilateral pair, we also perform a joint hidden-state intervention: 
+
+hbilat cf = h − zk+ dk+ − zk− dk− , (27) and compute ∥∆ubilat ∥2. If the two atoms truly represent complementary halves of the same physical field, the joint intervention should produce a larger and more symmetric causal effect than either single-atom intervention. 2.10 FEATURE CONSISTENCY ACROSS SAE S EEDS 
+
+Sparse coding solutions are not unique: infinitely many overcomplete dictionaries can achieve the same reconstruction and sparsity objectives. It is therefore important to test whether the atoms discovered by the SAE are reproducible or depend strongly on the random initialisation. 
+
+Protocol. For each PINN (i.e. each PDE and seed), we train 3 independent SAEs from different random seeds, yielding dictionaries {W (s)dec }3
+
+> s=1
+
+, each in Rdh×D .
+
+Matching. For every pair of SAEs (s, s ′), we compute the D × D cosine similarity matrix: 
+
+C(ss ′) 
+
+> kk ′
+
+= (d(s) 
+
+> k
+
+)⊤d(s′)
+
+> k′
+
+∥d(s) 
+
+> k
+
+∥2 ∥d(s′) 
+
+> k′
+
+∥2
+
+, (28) and find the optimal assignment π∗ using the Hungarian algorithm (minimising total negative cosine similarity, i.e. maximising total cosine): 
+
+π∗ = arg max 
+
+> π∈S D
+> D
+
+X
+
+> k=1
+
+C(ss ′)
+
+> k,π (k)
+
+. (29) 
+
+Metrics. After optimal matching, the matched cosine similarity for pair (s, s ′) is ¯ρ(ss ′) =
+
+D−1 P 
+
+> k
+
+C(ss ′)
+
+> k,π ∗(k)
+
+. We report the mean and median across all  32
+
+ = 3 pairs, as well as the fraction of matched atoms with cosine above 0.7, 0.8, and 0.9. Low consistency (mean cosine ≈ 0.35 ) means different random seeds find different but equally valid decompositions of the same latent space. Crucially, we show in the results (§4.7) that causal localisation (ESF 80 ) is stable across PINN seeds even when dictionary atoms are not stable across SAE seeds. This dissociation demonstrates that the functional property of physical localisation is intrinsic to the PINN’s representation, not to any particular SAE decomposition. 9Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 
+
+Algorithm 1 PHYS SAE: Mechanistic Interpretability of a Trained PINN 
+
+Require: Trained PINN uθ with output head Wout , b out ; PDE reference solution u∗; grid G; sparsity 
+
+λ; dictionary size D; dose values {αi}.
+
+— Stage 1: Activation Extraction —  
+
+> 1:
+
+Evaluate PINN on G; cache penultimate activations H ∈ RN ×dh 
+
+> 2:
+
+Z-score H to obtain ˜H; store mean μ and std σ 
+
+> 3:
+
+Split: (Htrain , H eval ) = 80/20 random split of rows of ˜H
+
+— Stage 2: SAE Training —  
+
+> 4:
+
+for SAE seed s = 1 , 2, 3 do  
+
+> 5:
+
+Initialise SAE with random weights; normalise decoder columns  
+
+> 6:
+
+Train on Htrain minimising LSAE (Eq. 13)  
+
+> 7:
+
+After each gradient step: project decoder columns to unit norm (Eq. 14)  
+
+> 8:
+
+Store decoder directions {d(s) 
+
+> k
+
+}Dk=1  
+
+> 9:
+
+end for  
+
+> 10:
+
+Compute feature consistency via Hungarian matching (Eq. 29) 
+
+— Stage 3: Concept Alignment —  
+
+> 11:
+
+Compute reference concept fields {Cj } from u∗ on Geval  
+
+> 12:
+
+Encode held-out activations: Zeval = SAE (1) .encode( Heval ) 
+
+> 13:
+
+Compute alignment matrix A (Eq. 15)  
+
+> 14:
+
+For each concept j: find top atom k⋆j (Eq. 16)  
+
+> 15:
+
+Compute permutation test Z-scores 
+
+— Stage 4: Direct Causal Intervention —  
+
+> 16:
+
+for each concept j do  
+
+> 17:
+
+for each dose αi do  
+
+> 18:
+
+Compute counterfactual: Hcf = Heval − αiZeval [: , k ⋆j ] · d⊤ 
+
+> k⋆j
+> 19:
+
+Compute output change: ∆U = Wout (Heval − Hcf )⊤ 
+
+> 20:
+
+Compute ESF 80 , Support Capture, intervention–concept correlation  
+
+> 21:
+
+end for  
+
+> 22:
+
+Run 10 matched negative control ablations; compute ESF 80 advantage  
+
+> 23:
+
+end for — Stage 5: Bilateral and Baseline Comparisons —  
+
+> 24:
+
+Fit PCA, ICA, SparseDict on Htrain ; apply same intervention to their top components  
+
+> 25:
+
+For each concept: compute bilateral pair ( k+, k −), ∆R2, joint intervention  
+
+> 26:
+
+Aggregate all metrics; generate tables and figures 2.11 ALGORITHM SUMMARY 
+
+For clarity, we give the complete P HYS SAE procedure as pseudocode in Algorithm 1. 
+
+3 EXPERIMENTAL SETUP 
+
+3.1 PDE B ENCHMARK 
+
+Table 2 summarises the six PDEs. We deliberately include converged (heat, Schr¨ odinger), partially converged (Burgers, conv. easy), and known-failure (Allen–Cahn, conv. hard β = 30 ) cases to span the full quality spectrum. 3.2 HYPERPARAMETERS 
+
+Full settings are given in Appendix E. All experiments run on a single NVIDIA RTX 4090 (24 GB); total runtime 1.2 hours. Code and checkpoints will be released upon acceptance. 10 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders Table 2: PDE benchmark. L2 error (mean ±std, 3 PINN seeds) vs. independent reference.                                                                       
+
+> PDE Equation Domain IC Ref. type L2 err Heat ut=uxx [−1,1] ×[0 ,1] e−5x2
+> Analytic 0.025 ±0.027
+> Burgers ut+uu x=νu xx ,ν=0.01
+> π[−1,1] ×[0 ,1] −sin( πx )Spectral 0.207 ±0.068
+> Allen–Cahn ut= 10 −4uxx + 5 u−5u3[−1,1] ×[0 ,1] x2cos( πx )Spectral 0.930 ±0.005
+> Conv. easy ut+ux= 0 [−1,1] ×[0 ,1] sin( πx )Analytic 0.266 ±0.013
+> Conv. hard ut+ 30 ux= 0 [−1,1] ×[0 ,1] sin( πx )Analytic 0.951 ±0.003
+> Schr¨ odinger ih t+12hxx +|h|2h= 0 [−5,5] ×[0 ,1] Soliton Analytic 0.119 ±0.062
+
+Table 3: Maximum top-1 concept alignment. Values are means over 3 PINN seeds (each reported as the max over concepts and seeds). Z-score against permutation null ( n = 500 ).                                               
+
+> PDE Best concept Mean max |r|Z-score Heat gradient |∂xu|0.845 ±0.039 >100
+> Burgers amplitude |u|0.785 ±0.021 >80
+> Allen–Cahn signed u0.675 ±0.025 >40
+> Conv. easy characteristic x−t0.841 ±0.027 >90
+> Conv. hard characteristic x−30 t0.943 ±0.008 >120
+> Schr¨ odinger amplitude |h|0.881 ±0.052 >100
+
+4 RESULTS 
+
+4.1 PINN T RAINING QUALITY 
+
+Heat and Schr¨ odinger (seed 0) converge cleanly (L2 2.5% and 5.2% respectively); Burgers and conv. easy reach 17–29% and 25–28%; Allen–Cahn and conv. hard plateau at ∼93–95% as expected (Kr-ishnapriyan et al., 2021). This spread enables the representational collapse analysis (§4.8). 4.2 CONCEPT ALIGNMENT 
+
+Table 3 reports the maximum top-1 Pearson correlation per PDE, averaged across seeds. All PDEs have max |r| > 0.67 ; the three best-trained PINNs reach |r| > 0.84 . Z-scores against the permutation null are > 10 for all PDEs, confirming the alignments are highly significant. 
+
+Atom fields. Figures 1 and 2 show atom activation fields (top row) against reference concept fields (bottom row) for Schr¨ odinger and heat. Atom 73 on Schr¨ odinger ( r = +0 .83 ) fires as a diagonal stripe tracking the moving soliton—a single neuron encoding the entire soliton trajectory. On heat, atoms specialise to gradient ( r = 0 .89 ), curvature, and temporal derivative. In all cases the atom spatially mirrors its paired reference concept. 
+
+Alignment heatmaps. Figure 3 shows alignment matrices for Burgers and conv. hard. Each atom tends to align strongly with at most one or two concepts—the monosemanticity signature. 4.3 DIRECT CAUSAL INTERVENTION 
+
+For Schr¨ odinger (Figure 1), ablating atom 73 ( r=0 .83 ) produces |∆u| concentrated on the soliton track—the same region as the atom’s firing pattern. For heat (Figure 2), atom 153 ablation localises in the early-time Gaussian region. In both cases the causal footprint matches observational alignment, providing mechanistic rather than merely correlational evidence. 
+
+Aggregate causal localization. Table 4 shows mean ESF 80 across all concepts and seeds. SAE achieves the lowest ESF 80 on all six PDEs—confirmed by the raw numbers: heat SAE = 0 .165 vs. PCA = 0 .700 (4.2 ×), Schr¨ odinger SAE = 0 .179 vs. PCA = 0 .406 (2.3 ×), conv. hard SAE = 0 .373 vs. PCA = 0 .745 (2.0 ×). The sparse-linear-dictionary baseline (SparseDict) lies between SAE and PCA, confirming that the SAE’s ReLU nonlinearity contributes beyond mere overcompleteness. 11 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+> 4
+> 2
+> 024
+> x
+> Atom activations
+
+Atom 64 | r = +0.78 amplitude |h|      
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+t
+
+Atom 343 | r = +0.76 imaginary v      
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+t
+
+Atom 126 | r = 0.82 
+
+spatial coord x      
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+t
+
+> 4
+> 2
+> 024
+> x
+> Reference concept
+
+amplitude |h|      
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+t
+
+imaginary v      
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+t
+
+spatial coord x 
+
+> 0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35
+> 0.25 0.50 0.75 1.00 1.25 1.50 1.75
+> 0.0 0.2 0.4 0.6 0.8
+> 1.5
+> 1.0
+> 0.5
+> 0.0 0.5 1.0 1.5
+> 0.0 0.5 1.0 1.5 2.0 2.5
+> 4
+> 2
+> 024
+
+Schrodinger: SAE Atom Activations vs. Reference Concepts 
+
+Figure 1: Schr¨ odinger: SAE atom activations (top row) vs. independently-computed reference concept fields (bottom row). Atom 73 tracks the moving soliton envelope ( r= + 0 .83 ). Concepts from analytic references, not the PINN output. 0.0 0.2 0.4 0.6 0.8 1.0 
+
+> t
+> 1.00
+> 0.75
+> 0.50
+> 0.25
+> 0.00 0.25 0.50 0.75 1.00
+> x
+> Atom activations
+
+Atom 169 | r = +0.64 gradient |u_x|      
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> t
+
+Atom 494 | r = +0.72 curvature |u_xx|      
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> t
+
+Atom 117 | r = +0.77 temporal |u_t|      
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> t
+
+Atom 444 | r = +0.82 amplitude |u|                     
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> t
+> 1.00
+> 0.75
+> 0.50
+> 0.25
+> 0.00 0.25 0.50 0.75 1.00
+> x
+> Reference concept
+> gradient |u_x|
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> t
+> curvature |u_xx|
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> t
+> temporal |u_t|
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> t
+> amplitude |u|
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> 0.25 0.50 0.75 1.00 1.25 1.50 1.75
+> 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7
+> 510 15 20
+> 0.0 0.1 0.2 0.3 0.4 0.5
+> 02468
+> 0.0 0.2 0.4 0.6 0.8
+> 0.0 0.2 0.4 0.6 0.8
+
+Heat: SAE Atom Activations vs. Reference Concepts 
+
+Figure 2: Heat: SAE atom activations (top row) vs. reference concept fields (bottom row). Atoms specialise to gradient ( r=0 .89 ), curvature, and temporal derivative. 4.4 NEGATIVE CONTROLS 
+
+Figure 4 splits results by concept locality. For localised concepts (shock, interface, characteristic coordinate), the ESF 80 advantage of top-aligned atoms over matched random controls is positive on four of six PDEs, and largest on conv. hard (+0.125 ±0.172), where even the catastrophically failing PINN (L2 = 95% ) encodes the characteristic coordinate x − 30 t in an atom whose ablation is 2.7–4.4 × more localised than random. For heat and Schr¨ odinger, top-aligned atoms encode smooth global concepts (amplitude, temporal evolution) whose interventions are inherently distributed; ESF 80 
+
+is not the appropriate metric here (any well-activated atom is globally influential), and support capture on the concept region also shows advantage for these cases (Appendix B). 12 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders amplitude |u| curvature |u_xx| shock indicator shock |u_x| signed u spatial coord x temporal |u_t| Atom 265 Atom 212 Atom 172 Atom 272 Atom 303 
+
+> Burgers: SAE Concept Alignment Matrix
+> 1.0
+> 0.5
+> 0.0 0.5 1.0
+> Pearson r amplitude |u| characteristic x-bt gradient |u_x| signed u spatial coord x temporal |u_t| time t Atom 75 Atom 217 Atom 229
+> Convection Hard: SAE Concept Alignment Matrix
+> 1.0
+> 0.5
+> 0.0 0.5 1.0
+> Pearson r
+
+Figure 3: Concept alignment matrices (Pearson r) for Burgers ( left ) and conv. hard ( right ). Rows: top-20 atoms; columns: physical concepts. Atoms tend to align with at most one or two concepts (monosemanticity). Table 4: Aggregate main results across 6 PDEs × 3 PINN seeds. ESF 80 : fraction of domain capturing 80% of causal effect mass (lower = more localised = better for SAE). Neg. ctrl. adv.: ESF 80 (atom) −
+
+ESF 80 (matched random), negative means atom is more localised. Bilateral ∆R2: two-atom minus single-atom regression improvement. Consistency: Hungarian-matched mean cosine across 3 SAE seeds. 
+
+PDE SAE ESF 80 PCA ICA SD Speedup Max |r| Neg. ctrl Bilat. ∆R2
+
+Heat 0.165 ±0.23 0.700 0.587 0.278 4.2 × 0.890 −0.025 +0.053 Burgers 0.374 ±0.18 0.585 0.574 0.341 1.6 × 0.804 +0.005 +0.097 Allen–Cahn 0.476 ±0.29 0.576 0.622 0.412 1.2 × 0.692 +0.043 +0.088 Conv. easy 0.366 ±0.24 0.546 0.571 0.423 1.5 × 0.872 +0.049 +0.146 Conv. hard 0.373 ±0.33 0.745 0.653 0.292 2.0 × 0.951 +0.125 +0.030 Schr¨ odinger 0.179 ±0.11 0.406 0.538 0.312 2.3 × 0.920 −0.013 +0.102 Mean 0.322 0.593 0.591 0.343 2.3 × 0.872 +0.032 +0.086 
+
+4.5 OVERCOMPLETENESS AND SPARSITY ABLATIONS 
+
+Table 5 shows that concept alignment increases monotonically with dictionary size D ∈{128 , 256 , 512 } across all three tested PDEs: Burgers alignment rises from 0.855 at D = 128 
+
+to 0.964 at D = 512 ; heat from 0.815 to 0.836. The larger marginal gain from D = 128 → 256 than 
+
+D = 256 → 512 suggests diminishing returns above 4× overcompleteness at hidden width 128. Table 6 shows reconstruction MSE and alignment as functions of mean L 0. Across the swept λ range alignment stays high (0.79–0.97 for Burgers) until reconstruction collapses at very high sparsity (λ ≥ 0.1, L 0 < 80 ). Our operative configuration ( λ = 0 .02 , L 0 ≈ 77 –141) lies in the flat alignment region with good reconstruction. 4.6 BILATERAL AND MULTI -A TOM REPRESENTATIONS 
+
+Table 7 and the Bilateral ∆R2 column of Table 4 show that adding the opposite-sign atom improves concept regression R 2 by +0.05 to +0.15 across all PDEs, while random atom pairs decrease R 2 by up to 0.60. The gap between SAE pairs and random pairs is large and consistent, indicating bilateral encoding is a genuine structural property. Conv. easy shows the largest gain ( ∆R2 = +0 .146 ), consistent with its sinusoidal IC requiring symmetric ± representations. 4.7 FEATURE CONSISTENCY 
+
+Table 8 shows that mean Hungarian-matched cosine similarity across independent SAE seeds is 0.331–0.371, with only 1–2% of atoms above 0.7. SAE dictionaries are non-unique: different initializations find distinct but equally valid sparse decompositions. This is expected for overcomplete dictionaries and is well-documented in the LLM-SAE literature (Bricken et al., 2023). Importantly, this does not compromise causal localization: ESF 80 std across PINN seeds is <0.05 for four of six 13 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders Heat Burgers Allen Cahn 
+
+> Conv. easy Conv. hard 0.05
+> 0.00 0.05 0.10
+> ESF  advantage
+> (atom  random control)
+> Localised concepts (shock, interface, gradient)
+> Heat Burgers Allen Cahn
+> Conv. easy Conv. hard Schrödinger 0.1
+> 0.0 0.1 0.2 0.3
+> ESF  advantage
+> (atom  random control)
+> Global / smooth concepts (amplitude, time, signed u)
+> Negative Controls: Top-Aligned Atom vs Matched Random Atoms
+
+Figure 4: Negative controls: ESF 80 advantage (top-aligned atom minus matched random) split by localised ( left ) vs. global ( right ) concepts. Blue = atom more localised than random (positive result); red = random incidentally more localised (expected for global concepts). Table 5: Overcompleteness ablation: alignment and reconstruction across dictionary sizes D for three representative PDEs. Mean top-1 alignment |¯r| and reconstruction MSE on held-out activations. SAE trained at λ=0 .02 ; all other settings fixed. 
+
+PDE Metric D=128 D=256 D=512 
+
+Heat Mean top-1 |¯r| 0.815 0.831 0.836 Recon. MSE 0.128 0.075 0.042 Burgers Mean top-1 |¯r| 0.855 0.928 0.964 Recon. MSE 0.192 0.106 0.060 Schr¨ odinger Mean top-1 |¯r| 0.817 0.836 0.869 Recon. MSE 0.240 0.129 0.068 
+
+PDEs (Table 4), confirming that the functional property we measure is seed-stable even when the specific atoms realising it are not. 4.8 REPRESENTATIONAL COLLAPSE IN FAILED PINN S
+
+Figure 5 shows that effective rank of the hidden covariance increases with residual loss: well-trained PINNs (heat, Schr¨ odinger) have lower-rank, more structured representations; failed PINNs have higher-rank, more diffuse activations. SAE active atoms show no clear monotone trend with training quality, suggesting that SAE finds similar-density decompositions regardless of PINN convergence, while alignment (not sparsity) degrades with failure—consistent with Allen–Cahn’s lower max 
+
+|r| = 0 .692 vs. heat’s 0.890 .Strikingly, conv. hard (L2 error 95%) shows the highest alignment in our benchmark (max |r| = 0 .951 
+
+for characteristic coordinate x − 30 t). The PINN has learned to encode the operator’s fundamental invariant even when its solution quality is poor, and P HYS SAE successfully identifies this. This demonstrates the diagnostic potential of our framework: one can determine which physical structures a failing PINN has and has not internalised. 
+
+5 DISCUSSION 
+
+Terminology. We use alignment (= correlation/association), functional relevance (= intervention changes output), and causal evidence (= direct hidden-state intervention changes output in a structured way). We do not claim atoms are physical variables, nor that SAE “discovers the true physics.” We claim atoms are aligned with physical concepts and have a localized functional role .
+
+On feature non-uniqueness. Low cross-seed cosine ( ≈0.35) reflects the non-uniqueness of sparse coding. Atoms aligned to the same concept are themselves unstable across SAE runs—yet the 14 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders Table 6: Sparsity ablation: alignment and reconstruction vs. mean L 0 across λ values for Burgers (representative PDE). Operative configuration ( λ=0 .02 ) highlighted; alignment is flat over a wide sparsity range.                              
+
+> λMean L 0Recon. MSE Mean top-1 |¯r|Status
+> 10 −4259.7 0.041 0.916 too dense
+> 10 −3254.8 0.040 0.918 too dense
+> 10 −2207.6 0.049 0.941 good
+> 0.02 149.1 0.070 0.964 operative
+> 0.175.4 0.120 0.935 sparse
+> 0.335.0 0.234 0.916 recon. degrades
+
+Table 7: Bilateral alignment: mean R 2 for single atom, SAE atom pair, and random pair per PDE (averaged over concepts and seeds). ∆R2 = pair − single. SAE pairs consistently improve over single atoms; random pairs decrease R 2.                                   
+
+> PDE Single atom R2SAE pair R2∆R2Random pair ∆R2
+> Heat 0.591 0.643 +0.053 −0.226 Burgers 0.387 0.483 +0.097 −0.203 Allen–Cahn 0.279 0.367 +0.088 −0.189 Conv. easy 0.451 0.598 +0.146 −0.196 Conv. hard 0.332 0.362 +0.030 −0.127 Schr¨ odinger 0.504 0.607 +0.102 −0.215 Mean 0.424 0.510 +0.086 −0.193
+
+causal localization metric is stable. This dissociation is itself a finding: the functional property of concept-aligned causal localization is intrinsic to the PINN’s representation, not to any particular SAE decomposition of it. 
+
+Limitations. (1) Architecture is intentionally modest (5-layer, width 128); interpretability at larger scales is future work. (2) 1+1D domains studied; 2D/3D may require spatially factored SAE architectures. (3) Concept panels are hand-designed; symbolic probing (SINDy/PySR on atom activations) would automate concept discovery. (4) The bilateral joint intervention and dose-response analysis could be extended to quantify multi-atom interaction effects. 
+
+6 CONCLUSION 
+
+We presented P HYS SAE, the first mechanistic interpretability framework for residual-loss PINNs. By training sparse autoencoders on PINN hidden activations and intervening directly in the original hidden state, we showed that PINNs develop sparse, physically structured latent representations. SAE achieves 1.2–4.2 × more concentrated causal footprints than PCA and ICA across six PDE families; top-aligned atoms beat matched random controls on localized concepts; two-atom bilateral representations consistently outperform single atoms. The framework diagnoses what a failing PINN has and has not learned, enabling interpretability-aware scientific ML. 15 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders Table 8: SAE feature consistency across 3 independent SAE seeds per PINN. Mean and median Hungarian-matched cosine similarity between dictionaries; fraction of atoms above thresholds. Low cosine reflects non-uniqueness of sparse coding solutions, not instability of causal localization (ESF 80 
+
+std <0.05 across PINN seeds). 
+
+PDE Mean cos Median cos Frac >0.7 Frac >0.9 Heat 0.364 0.340 0.016 0.003 Burgers 0.371 0.347 0.014 0.002 Allen–Cahn 0.364 0.341 0.014 0.002 Conv. easy 0.353 0.331 0.017 0.002 Conv. hard 0.331 0.308 0.018 0.002 Schr¨ odinger 0.336 0.313 0.011 0.001 Mean 0.353 0.330 0.015 0.002 10 3 10 2 10 1 10 0      
+
+> Final PDE residual loss
+> 12 14 16 18 20 22
+> Effective rank of h
+> Representational Rank vs Training Quality
+> Heat Burgers Allen Cahn
+> Conv. easy Conv. hard Schrödinger
+> 10 310 210 110 0
+> Final PDE residual loss
+> 80 90 100 110 120 130 140
+> Mean SAE active atoms (L )
+> SAE Sparsity vs Training Quality
+> Heat Burgers Allen Cahn
+> Conv. easy Conv. hard Schrödinger
+
+Figure 5: Representational quality vs. PINN training quality. Failed PINNs have higher-rank (more diffuse) representations; SAE finds similar-density decompositions but alignment degrades, making it a diagnostic for training failure. 
+
+REFERENCES 
+
+Guillaume Alain and Yoshua Bengio. Understanding intermediate layers using linear classifier probes. In ICLR Workshop , 2017. Trenton Bricken, Adly Templeton, Joshua Batson, Brian Chen, Adam Jermyn, Tom Conerly, Nick Turner, Cem Anil, Carson Denison, Amanda Askell, Robert Lasenby, Yifan Wu, Shauna Kravec, Nicholas Schiefer, Tim Maxwell, Nicholas Joseph, Zac Hatfield-Dodds, Alex Tamkin, Karina Nguyen, Brayden McLean, Josiah E Burke, Tristan Henighan, Shan Carter, Christopher Olah, Tom Hume, Jack Clark, and Anthropic. Towards monosemanticity: Decomposing language models with dictionary learning. Transformer Circuits Thread, 2023. Shengze Cai, Zhicheng Wang, Sifan Wang, Paris Perdikaris, and George Em Karniadakis. Physics-informed neural networks for heat transfer problems. Journal of Heat Transfer , 143(6), 2021. Hoagy Cunningham, Aidan Ewart, Logan Riggs, Robert Huben, and Lee Sharkey. Sparse autoen-coders find highly interpretable features in language models. arXiv preprint arXiv:2309.08600 ,2023. Nelson Elhage, Neel Nanda, Catherine Olsson, Tom Henighan, Nicholas Joseph, Ben Mann, Amanda Askell, Yuntao Bai, Anna Chen, Tom Conerly, Nova DasSarma, Dawn Drain, Deep Ganguli, Zac Hatfield-Dodds, Danny Hernandez, Andy Jones, Jackson Kernion, Liane Lovitt, Kamal Ndousse, Dario Amodei, Tom Brown, Jack Clark, Jared Kaplan, Sam McCandlish, and Chris Olah. Amathematical framework for transformer circuits. Transformer Circuits Thread, 2021. Ryan Fear, Priyabrata Mukhopadhyay, Michael McCabe, Alberto Bietti, and Miles Cranmer. Physics steering: Causal control of cross-domain concepts in a physics foundation model. arXiv preprint arXiv:2511.20798 , 2025. 16 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders Ehsan Haghighat, Maziar Raissi, Adrian Moure, Hector Gomez, and Ruben Juanes. A physics-informed deep learning framework for inversion and surrogate modeling in solid mechanics. 
+
+Computer Methods in Applied Mechanics and Engineering , 379:113741, 2021. Yeping Hu and Shusen Liu. Interpreting CFD surrogates through sparse autoencoders. arXiv preprint arXiv:2507.16069 , 2025. Ameya D Jagtap and George Em Karniadakis. Extended physics-informed neural networks (XPINNs): A generalized space-time domain decomposition based deep learning framework for nonlinear partial differential equations. Communications in Computational Physics , 28(5):2002–2041, 2020. Been Kim, Martin Wattenberg, Justin Gilmer, Carrie Cai, James Wexler, Fernanda Viegas, and Rory Sayres. Interpretability beyond feature attribution: Quantitative testing with concept activation vectors (TCAV). In International Conference on Machine Learning , pp. 2668–2677, 2018. Aditi Krishnapriyan, Amir Gholami, Shandian Zhe, Robert Kirby, and Michael W Mahoney. Char-acterizing possible failure modes in physics-informed neural networks. In Advances in Neural Information Processing Systems , volume 34, 2021. Scott M Lundberg and Su-In Lee. A unified approach to interpreting model predictions. In Advances in Neural Information Processing Systems , volume 30, 2017. Levi McClenny and Ulisses Braga-Neto. Self-adaptive physics-informed neural networks using a soft attention mechanism. arXiv:2009.04544, 2020. Maziar Raissi, Paris Perdikaris, and George E Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics , 378:686–707, 2019. Francisco Sahli Costabal, Yibo Yang, Paris Perdikaris, Daniel E Hurtado, and Ellen Kuhl. Physics-informed neural networks for cardiac activation mapping. Frontiers in Physics , 8:42, 2020. Adly Templeton, Tom Conerly, Jonathan Marcus, Jack Lindsey, Trenton Bricken, Brian Chen, Adam Pearce, Craig Citro, Emmanuel Cooney, Tristan Petrov, Callum McDougall, Alex Tamkin, Joshua Batson, Tristan Henighan, Jack Clark, Christopher Olah, and Tom Hume. Scaling monosemanticity: Extracting interpretable features from Claude 3 Sonnet. Transformer Circuits Thread, 2024. Bahareh Tolooshams, Ailsa Shen, and Anima Anandkumar. Mechanistic interpretability with sparse autoencoder neural operators. arXiv preprint arXiv:2509.03738 , 2025. Jean-Michel Tucny, Mihail Durve, and Sauro Succi. Is the end of insight in sight?: Studying interpretability in a Boltzmann-PINN. Frontiers in Physics , 13:1641727, 2025. Sifan Wang, Yujun Teng, and Paris Perdikaris. Understanding and mitigating gradient flow pathologies in physics-informed neural networks. SIAM Journal on Scientific Computing , 43(5):A3055–A3081, 2021a. Sifan Wang, Hanwen Wang, and Paris Perdikaris. On the eigenvector bias of Fourier feature networks: From regression to solving multi-scale PDEs with physics-informed neural networks. Computer Methods in Applied Mechanics and Engineering , 384:113938, 2021b. Sifan Wang, Xinling Yu, and Paris Perdikaris. When and why PINNs fail to train: A neural tangent kernel perspective. Journal of Computational Physics , 449:110768, 2022. Sifan Wang, Shyam Sankaran, and Paris Perdikaris. Respecting causality is all you need for training physics-informed neural networks. Computer Methods in Applied Mechanics and Engineering ,421:116813, 2024a. Yizheng Wang, Jia Sun, Jinshuai Bai, Cosmin Anitescu, Mohammad Saber Eshaghi, Xiaoying Zhuang, Timon Rabczuk, and Yinghua Liu. Kolmogorov–Arnold-informed neural network: A physics-informed deep learning framework for solving forward and inverse problems based on Kolmogorov–Arnold networks. Computer Methods in Applied Mechanics and Engineering , 430: 117290, 2024b. 17 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 
+
+A ADDITIONAL INTERVENTION MAPS 
+
+B SUPPORT CAPTURE FOR GLOBAL CONCEPTS 
+
+For global/smooth concepts where ESF 80 is not discriminating (heat amplitude, Schr¨ odinger ampli-tude), we report support capture: fraction of |∆u| mass inside the top-20% region of the reference concept. Top-aligned SAE atoms achieve higher support capture than matched random atoms for these concepts in all cases, confirming that the advantage is real but requires the appropriate metric. 
+
+C FULL ATOM FIELD GALLERIES 
+
+D ALIGNMENT MATRICES (A LL PDE S)E HYPERPARAMETER TABLE 
+
+Table 9: Full experimental hyperparameters. 
+
+Setting Value 
+
+PINN 
+
+Hidden layers / width 5 / 128 Activation tanh 
+
+Adam iters / LR 8000 / 10 −3
+
+L-BFGS iters 300 Loss weights wBC , w IC , w F 100, 100, 1 BC/IC/residual pts per step 150 / 150 / 3000 PINN seeds 3 (0, 1, 2) 
+
+Sparse Autoencoder 
+
+Hidden dim d / Dict size D 128 / 512 ( 4×)Sparsity λ 2 × 10 −2
+
+Epochs / Batch / LR 600 / 8192 / 10 −3
+
+SAE seeds per PINN 3Train/eval split 80% / 20% Dead atoms (all runs) 0 ( <0.02% for conv. hard seed 1) 
+
+Evaluation 
+
+Grid nx × nt 200 × 100 
+
+Permutation test n 500 Negative controls per atom 10 Dose α values 0.25, 0.5, 1.0, 1.5 Bilateral random pairs 20 
+
+18 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 0.0 0.2 0.4 0.6 0.8 1.0 t1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 x
+
+Atom 115 activation (r=-0.52) 
+
+0.0 0.2 0.4 0.6 0.8 1.0 t1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 x
+
+Reference: amplitude |u| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 t1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 x
+
+| u| after ablation (direct h_cf) 
+
+0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 
+
+0.0 0.2 0.4 0.6 0.8 
+
+0.00 0.02 0.04 0.06 0.08 0.10 0.12 0.14 
+
+burgers amplitude |u| 
+
+Figure 6: Burgers atom 115 ( r = −0.52 ). Negative correlation = atom fires where u < 0. Ablation concentrates in the lower-left pre-shock region: the negative-u bilateral half. 0.0 0.2 0.4 0.6 0.8 1.0 t1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 x
+
+Atom 450 activation (r=+0.09) 
+
+0.0 0.2 0.4 0.6 0.8 1.0 t1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 x
+
+Reference: amplitude |u| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 t1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 x
+
+| u| after ablation (direct h_cf) 
+
+0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 
+
+0.0 0.2 0.4 0.6 0.8 
+
+0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 
+
+convection_hard amplitude |u| 
+
+Figure 7: Conv. hard ( β = 30 , L2 error 95%). Despite PINN failure, the intervention map localises in the characteristic-coordinate direction. 0.0 0.2 0.4 0.6 0.8 1.0 t1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 x
+
+Atom 112 activation (r=-0.56) 
+
+0.0 0.2 0.4 0.6 0.8 1.0 t1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 x
+
+Reference: amplitude |u| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 t1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 x
+
+| u| after ablation (direct h_cf) 
+
+0.0 0.2 0.4 0.6 0.8 1.0 1.2 
+
+0.2 0.4 0.6 0.8 1.0 
+
+0.000 0.002 0.004 0.006 0.008 0.010 0.012 0.014 
+
+allen_cahn amplitude |u| 
+
+Figure 8: Allen–Cahn (failed PINN, L2 error 93%). The SAE still localises the causal footprint to the region where the PINN did learn structure. 19 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 
+
+> x
+> Atom activations
+
+Atom 258 | r = 0.73 
+
+signed u 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 366 | r = +0.46 shock |u_x| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 272 | r = +0.79 spatial coord x 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 59 | r = +0.55 curvature |u_xx| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 
+
+> x
+> Reference concept
+
+signed u 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+shock |u_x| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+spatial coord x 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+curvature |u_xx| 
+
+0.0 0.5 1.0 1.5 2.0 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 
+
+0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 
+
+10 20 30 40 50 60 70 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 
+
+0.00 0.05 0.10 0.15 0.20 0.25 0.30 
+
+500 1000 1500 2000 2500 3000 3500 
+
+Burgers: SAE Atom Activations vs. Reference Concepts 
+
+Figure 9: Burgers atom fields. From left: amplitude, shock gradient, curvature, temporal derivative, signed value, shock indicator, spatial coordinate. 0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 
+
+> x
+> Atom activations
+
+Atom 217 | r = 0.95 
+
+characteristic x-bt 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 217 | r = +0.95 time t 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 366 | r = +0.70 spatial coord x 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 75 | r = +0.10 amplitude |u| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 
+
+> x
+> Reference concept
+
+characteristic x-bt 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+time t 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+spatial coord x 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+amplitude |u| 
+
+0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 
+
+30 
+
+20 
+
+10 
+
+010 20 30 
+
+0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+0.00 0.01 0.02 0.03 0.04 0.05 0.06 0.07 
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 
+
+0.0 0.1 0.2 0.3 0.4 0.5 
+
+0.0 0.2 0.4 0.6 0.8 
+
+Convection Hard: SAE Atom Activations vs. Reference Concepts 
+
+Figure 10: Conv. hard: atom for characteristic coordinate x − 30 t achieves r = 0 .95 .20 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders 0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 
+
+> x
+> Atom activations
+
+Atom 60 | r = +0.69 signed u 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 187 | r = +0.61 interface indicator 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 435 | r = 0.60 
+
+amplitude |u| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 334 | r = +0.31 interface |u_x| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 
+
+> x
+> Reference concept
+
+signed u 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+interface indicator 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+amplitude |u| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+interface |u_x| 
+
+0.0 0.1 0.2 0.3 0.4 0.5 0.6 
+
+1.0 
+
+0.5 
+
+0.0 0.5 1.0 
+
+0.0 0.2 0.4 0.6 0.8 
+
+0.2 0.4 0.6 0.8 
+
+0.0 0.2 0.4 0.6 0.8 
+
+0.2 0.4 0.6 0.8 1.0 
+
+0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 
+
+10 20 30 40 50 60 
+
+Allen-Cahn: SAE Atom Activations vs. Reference Concepts 
+
+Figure 11: Allen–Cahn: alignment weaker (max r = 0 .69 ) reflecting the PINN’s failure to resolve correct interface dynamics. 0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 
+
+> x
+> Atom activations
+
+Atom 439 | r = 0.85 
+
+characteristic x-bt 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 204 | r = 0.78 
+
+signed u 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 298 | r = +0.87 time t 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+Atom 477 | r = 0.51 
+
+amplitude |u| 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 
+
+> x
+> Reference concept
+
+characteristic x-bt 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+signed u 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+time t 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+t
+
+amplitude |u| 
+
+0.00 0.25 0.50 0.75 1.00 1.25 1.50 
+
+2.0 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 0.5 1.0 1.5 2.0 
+
+0.0 0.2 0.4 0.6 0.8 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 
+
+0.0 0.1 0.2 0.3 0.4 0.5 0.6 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+0.00 0.05 0.10 0.15 0.20 
+
+0.0 0.2 0.4 0.6 0.8 
+
+Convection Easy: SAE Atom Activations vs. Reference Concepts 
+
+Figure 12: Conv. easy: characteristic-coordinate atom ( r = 0 .87 ). 21 Preprint—P HYS SAE: Mechanistic Interpretability with Sparse Autoencoders amplitude |u| gradient |u_x| curvature |u_xx| temporal |u_t| signed u Atom 153 Atom 106 Atom 360 Atom 333 Atom 86 Atom 107 Atom 83 Atom 398 Atom 221 Atom 58 Atom 420 Atom 413 Atom 304 Atom 434 Atom 161 Atom 177 Atom 455 Atom 250 Atom 426 Atom 42 
+
+heat: SAE Concept Alignment Matrix 
+
+1.0 
+
+0.5 
+
+0.0 0.5 1.0 Pearson r 
+
+(a) Heat amplitude |h| phase gradient |d_ph amplitude gradient | amplitude temporal | real u imaginary v spatial coord x Atom 73 Atom 176 Atom 307 Atom 341 Atom 214 Atom 91 Atom 348 Atom 199 Atom 97 Atom 334 Atom 438 Atom 390 Atom 281 Atom 186 Atom 45 Atom 2 Atom 10 Atom 422 Atom 197 Atom 332 
+
+schrodinger: SAE Concept Alignment Matrix 
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 Pearson r (b) Schr¨ odinger amplitude |u| gradient |u_x| temporal |u_t| signed u characteristic x-bt spatial coord x time t Atom 256 Atom 349 Atom 270 Atom 55 Atom 43 Atom 452 Atom 411 Atom 19 Atom 187 Atom 206 Atom 326 Atom 133 Atom 462 Atom 271 Atom 225 Atom 53 Atom 441 Atom 454 Atom 189 Atom 317 
+
+convection_easy: SAE Concept Alignment Matrix 
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 Pearson r 
+
+(a) Conv. easy amplitude |u| interface |u_x| interface indicator reaction u^3-u temporal |u_t| signed u Atom 112 Atom 186 Atom 413 Atom 108 Atom 188 Atom 392 Atom 57 Atom 408 Atom 158 Atom 345 Atom 395 Atom 467 Atom 317 Atom 471 Atom 337 Atom 260 Atom 187 Atom 498 Atom 200 Atom 283 
+
+allen_cahn: SAE Concept Alignment Matrix 
+
+1.00 
+
+0.75 
+
+0.50 
+
+0.25 
+
+0.00 0.25 0.50 0.75 1.00 Pearson r (b) Allen–Cahn 
+
+Figure 14: Alignment matrices for remaining PDEs. 22

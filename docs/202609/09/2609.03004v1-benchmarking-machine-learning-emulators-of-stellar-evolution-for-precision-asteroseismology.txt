@@ -1,0 +1,555 @@
+Title: Benchmarking Machine Learning Emulators of Stellar Evolution for Precision Asteroseismology
+
+URL Source: https://arxiv.org/pdf/2609.03004v1
+
+Published Time: Fri, 04 Sep 2026 00:04:17 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+> Draft version September 4, 2026 Typeset using L ATEX twocolumn style in AASTeX631
+
+Benchmarking Machine Learning Emulators of Stellar Evolution for Precision Asteroseismology 
+
+Naomi Gluck, 1 Earl P. Bellinger, 2, 3 Yan Liang, 2 Ebraheem Farag, 2 Nicholas Saunders, 2 Selim Kalici, 2 Christopher J. Lindsay, 2
+
+and Sarbani Basu 2
+
+> 1Department of Physics, Yale University, New Haven, CT 06510, USA
+> 2Department of Astronomy, Yale University, New Haven, CT 06510, USA
+> 3Institute for Foundations of Data Science, Yale University, New Haven, CT 06510, USA
+
+ABSTRACT Fast and accurate stellar evolution emulators—surrogate models that approximate expensive simulation outputs with machine learning (ML)—are powerful tools for modern stellar characterization, hierarchical inference, and population synthesis. We analyze the grid density required for reliable emulation by training ML algorithms on main-sequence models with masses 𝑀 ∈ [ 0.7, 1.2] 𝑀 ⊙ . This range is challenging to emulate due to rapidly varying evolutionary behavior caused by the radiative-to-convective core transition, as well as the requirement to match the part-per-thousand seismic precision that has been delivered for such stars from the NASA Kepler 
+
+mission. Generating grids from analytical models, as well as MESA , YREC , MIST , and ASTEC , we compare linear interpolation, k-nearest neighbors, random forests, and neural networks (NNs) in interpolating the stellar observables 𝑇 eff , 𝐿 , Δ𝜈 , and 𝜈 max . While NNs outperform other methods, sparse grids induce localized failures in the core-transition region, resulting in unstable derivatives, ensemble disagreement, and fragmented posterior distributions during inference. Performance gains from denser grids are non-uniform, suggesting that adaptive grid generation should be favored over uniform refinement. Finally, we show that NN ensembles allow for localized uncertainty propagation, more accurately reflecting emulator reliability across parameter space than global uncertainty estimates. As we consider only the two-dimensional case of varying only stellar mass and age along the main sequence, these results represent a lower bound on the challenge in emulating stellar evolution simulations for precision asteroseismology. 
+
+Keywords: asteroseismology, stellar evolution, astrostatistics 
+
+1. INTRODUCTION Asteroseismology—the study of stellar oscillations—has transformed our ability to infer precise stellar properties, in-cluding mass, radius, and age across large stellar populations (Aerts et al. 2010). Extracting these properties to characterize stars from observations requires stellar evolution models that reproduce the internal structure and hence oscillation frequen-cies of stars spanning a broad range of masses, metallicities, and evolutionary stages, and span the theoretical uncertainties underpinning the simulations. Large-scale surveys, and particularly the NASA Kepler 
+
+(Borucki 2016) and TESS (Ricker et al. 2022) missions, have delivered high-quality asteroseismic measurements that enable detailed study of the internal stellar structure (e.g., 
+
+> Corresponding author: Naomi Gluck naomi.gluck@yale.edu
+
+Bellinger et al. 2017, 2019a; Buchele et al. 2024, 2025) and greatly improve inferences of fundamental stellar properties (e.g., Quirion et al. 2010; Bellinger et al. 2016; Nielsen et al. 2020; Li et al. 2023; Theodoridis et al. 2025). Such inferences support a wide variety of endeavors, such as characterizing exoplanetary systems (e.g., Van Eylen et al. 2014; Campante et al. 2015; Silva Aguirre et al. 2015; Bellinger et al. 2019b) and inferring detailed information about the formation and evolution of the Milky Way (e.g., Miglio et al. 2013; Pinson-neault et al. 2014; Sharma et al. 2016; Stokholm et al. 2023; Lindsay et al. 2025). The number of observed asteroseismic targets is expected to increase more than tenfold in the coming years (Huber et al. 2019) with the coming launch of the ESA PLATO (Rauer et al. 2024) and NASA Roman (Weiss et al. 2025) spacecraft. State-of-the-art stellar evolution codes like MESA (Paxton et al. 2011, 2013, 2015, 2018, 2019; Jermyn et al. 2023), 
+
+ASTEC (Christensen-Dalsgaard 2007), PARSEC (Bressan et al. 2012; Nguyen et al. 2025), YREC (Demarque et al. 2008; arXiv:2609.03004v1 [astro-ph.SR] 2 Sep 2026 2Pinsonneault et al. 2025; Pinsonneault et al. 2026), along with many others, have become essential tools for stellar astrophysics and galactic archaeology (see Basu & Hekker 2020, for review). Stellar evolution simulations output one evolutionary track per star, consisting of many models , or snapshots, used to record changes in fundamental param-eters throughout a star’s evolution. In an ideal case with infinite computing resources and simulations that run instan-taneously, a simulated version of every observed star could be generated for analysis. However, running such simulations with high precision is impossible due to the high computa-tional cost. To mitigate this, tracks are stacked to create a 
+
+grid , which is then interpolated using numerical or machine-learning methods as efficient emulators to provide continuous coverage of a discrete parameter space. Several widely-used pre-computed grids are publicly avail-able, including BaSTI (Pietrinferni et al. 2004; Hidalgo et al. 2018), Geneva Stellar Evolution Tracks (Ekström et al. 2012), 
+
+YaPSI (Spada et al. 2017), and MIST (Choi et al. 2016; Dot-ter 2016), among others. These grids and similar ones have previously been interpolated with various methods: linear and cubic spline interpolation (Clara et al. 2025), random forest regression (Bellinger et al. 2016), Gaussian process re-gression (Li et al. 2022), artificial neural networks (ANNs, Lyttle et al. 2021; Maltsev et al. 2024; Saunders et al. 2024; Scutt et al. 2026), and normalizing flows (Hon et al. 2024; Stone-Martinez et al. 2025), among others. More specifically, emulators, or interpolators, of these stel-lar grids facilitate the inference of stellar masses, radii, and ages from asteroseismic measurements by providing a dif-ferentiable, probabilistic mapping that accounts for model uncertainty. For solar-like oscillators (stars with an outer convective envelope), the mapping between observed quan-tities and fundamental stellar properties includes two global asteroseismic quantities derived from stochastically excited acoustic pressure modes: Δ𝜈 (the average spacing between consecutive overtones of the same spherical degree) and 𝜈 max 
+
+(the frequency at maximum oscillation power), which scale with the mass and radius (Equations 1 and 2, respectively). Based on these relations, the uncertainties of both Δ𝜈 and 
+
+𝜈 max propagate directly into the characterization of the stellar mass and radius, and by extension, the age (e.g., Ulrich 1986; Gough 1987; Christensen-Dalsgaard 1988; Kjeldsen & Bed-ding 1995; Stello et al. 2009; Basu et al. 2010; Creevey et al. 2012; Stancliffe et al. 2016; Bellinger 2019; Bellinger et al. 2019c). Beyond refinement of single-star characterization, the abil-ity to rapidly propagate these probabilistic mappings facili-tates hierarchical modeling (e.g., Lyttle et al. 2021). In this statistical framework, individual stellar parameters are treated as draws from a shared population distribution, allowing for the simultaneous inference of both individual properties and population-level parameters that govern the ensemble. Fur-thermore, these efficient surrogates would enable constraints on additional physical processes (such as reaction rates, e.g., Bellinger & Christensen-Dalsgaard 2022), and serve as the backbone for both single and binary star evolution (Srivas-tava et al. 2024; Teng et al. 2025) within population synthesis codes like POSYDON (Fragos et al. 2023; Andrews et al. 2025). The ability of the aforementioned advancements in stellar characterization is highly dependent on the underlying grid. If the grid of tracks is not sufficiently dense, accurate and precise interpolation becomes challenging. This is especially true in regions of rapidly changing physics, where interpo-lation errors can exceed observational uncertainties and bias inferred stellar parameters. However, this is rarely thoroughly checked. To mitigate this, it is essential that the uncertainty of the interpolation is rigorously quantified and propagated when using an interpolated grid to characterize an observed system. Figure 1 highlights the “difficult" transition region for 15 representative tracks from a MESA -generated grid in which only the initial mass and age are varied (see Sec. 2.1.2 for additional details). On the main sequence (MS), stars be-low ∼ 1.145 𝑀 ⊙ retain radiative cores, whereas stars above 
+
+∼ 1.185 𝑀 ⊙ have convective cores. By contrast, stars in the range 1 .145 ≤ 𝑀 /𝑀 ⊙ ≤ 1.185 begin with radiative cores but later develop convective cores. The mass values that define this transition region depend on the physics implementations within the simulation and the initial conditions used to gen-erate the tracks. As the core temperature rises, CNO burning becomes in-creasingly important because its energy generation rate is much more temperature-sensitive than that of the proton-proton (pp) chain; it steepens the central radiative temperature gradient and eventually drives core convection. The resulting convective mixing causes rejuvenation , as this process brings fresh hydrogen into the core, and hence, the central hydrogen abundance, 𝑋 𝑐 , is no longer strictly monotonic. This causes the standard “equivalent evolutionary phase” (EEP, Prather 1976) construction based on monotonic central-hydrogen de-pletion to fail in this mass range. Stars that undergo this rejuvenation then go on to have the characteristic hook fea-ture in the HR diagram at the end of the main sequence. Rejuvenation also produces a local non-monotonicity in the mass–lifetime relation: normally, higher mass stars evolve faster, but the higher-mass 1 .145 𝑀 ⊙ model remains on the main sequence longer than the lower-mass 1 .13 𝑀 ⊙ model. This transition underlies a persistent debate over the internal structure of 𝛼 Centauri A and whether it has a convective core (Brandão et al. 2014; Bazot et al. 2016; Nsamba et al. 2018). The nature of the core in this mass range is made even more challenging by uncertainties in convective boundary mixing (which extends the size of the core) and in notable nuclear 36000 6050 6100 6150 6200 6250 6300 6350 6400 
+
+Teff [K]          
+
+> 1.0 1.5 2.0 2.5 3.0 3.5
+> L [L ]
+> Median uncertainty
+> Terminal Age Main Sequence Zero Age Main Sequence
+> Kepler stars K2 stars
+> Xc= 0.1
+> Xc= 0.3 Convective Core Radiative Core
+> 0123456
+
+Star Age [Gyr]                
+
+> 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7
+> Central Hydrogen Abundance  Xc
+> Rejuvenation
+> 1.099 M
+> 1.107 M
+> 1.115 M
+> 1.122 M
+> 1.130 M
+> 1.135 M
+> 1.142 M
+> 1.150 M
+> 1.157 M
+> 1.165 M
+> 1.172 M
+> 1.177 M
+> 1.185 M
+> 1.192 M
+> 1.200 M
+
+Figure 1. Left : HR diagram showing 15 example MESA stellar evolution tracks for masses 𝑀 ∈ [ 1.099 , 1.2] 𝑀 ⊙ with initial metallicity 
+
+𝑍 0 = 0.02 that evolve to the end of the MS (full grid in the background). These models illustrate the transition region between stars that are born with radiative cores and those born with convective cores. We overplot the Kepler -LEGACY and K2 stars with their uncertainties (luminosity uncertainties from Gaia ) that fit within this narrow region. We show the combined median uncertainty for both surveys. Right :The evolution of the central hydrogen fractional abundance 𝑋 𝑐 as a function of stellar age for the same set of stars is shown in the right panel. Stars with 𝑀 ∈ [ 1.145 , 1.17 ] 𝑀 ⊙ are rejuvenated due to the onset of convection partway through the main sequence. The non-monotonicity is a justification for our focus on this mass range and evolutionary phase. 
+
+reaction rates such as 14 N( 𝑝, 𝛾 )15 O, the slowest CNO cycle rate, which can heavily influence the size of main-sequence convective cores. Such uncertainties in principle should be propagated when characterizing stars in this mass range, thus adding more dimensions to the simulations to be emulated. Before using any generated grid for interpolation, regard-less of the scientific goal, one should ask if the grid is of sufficient density and smoothness for interpolation. While internal numerical convergence (e.g., MESA consistently sim-ulates the same evolutionary track for the same initial condi-tions) is necessary, it does not guarantee global smoothness across a grid. Small discontinuities or nonlinearities between neighboring tracks can induce interpolation errors that exceed current observational uncertainties. In this work, we showcase a pipeline for emulating grids of stellar tracks with various ML methods, quantifying success within the context of observational survey capabilities, and propagating emulator uncertainty. We focus on the mass range 𝑀 ∈ [ 0.7, 1.2] 𝑀 ⊙ , as it marks the transition on the MS from a radiative to a convective core. This transition is both numerically challenging to model and numerically challenging to interpolate. We systematically show the impact of having an insuffi-ciently dense grid, and how increasing the amount of training data allows for the random uncertainties from the interpola-tion to be subdominant to the observational uncertainties. We also show how the uncertainty is propagated from asteroseis-mic quantities to fundamental stellar parameters, allowing for an asteroseismic precision threshold determined by the sci-ence case that must be met by the interpolator. Furthermore, we present a comparison of several algorithms that are widely used for interpolating stellar evolution simulations: linear in-terpolation, k-nearest neighbors, random forests, and artificial neural networks. We provide a framework for determining sufficient grid density rather than a single number, as this should be individually determined for each science case. The remainder of this paper is organized as follows. Sec-tion 2 presents the grid specifications (§ 2.1), the machine learning methods for interpolation (§ 2.2), and uncertainty calculations (§ 2.3). We quantify the success of various ML methods on an analytical grid in Section 3.1, explore the im-plications of grid density in Section 3.2, quantify and propa-gate the uncertainty in Section 3.3, and interpolate precom-puted grids in Section 3.4. We discuss previous interpolation efforts in Section 4.1, and potential pipeline improvements in Section 4.2. We summarize our findings, discuss implications for higher-dimensional emulation and individual frequency interpolation, and offer broader conclusions for the field in Section 5. 
+
+2. METHODS 2.1. Grid Generation and Preprocessing 4We employ two grids in this work: a numerical grid we generate using MESA , and an analytical grid we generate using the (Hurley et al. 2000) single-star evolution fitting formulae. We use the analytical grid to complement our analysis because it isolates numerical artifacts that can arise in stellar evolution simulations. Each generated grid in this work contains three categories of variables: input interpolation parameters, output interpo-lation parameters, and track number. Figure 1 shows 15 representative tracks of a simple 200-track MESA grid varying only initial mass and age. The top left panel of Figure 11 in Appendix A shows 50 representative tracks of a 2000-track analytical grid following Hurley et al. (2000). Input interpolation parameters include varied initial mass (𝑀 ∈ [ 0.7, 1.2] 𝑀 ⊙ of various step sizes) and age. Age, as opposed to the stellar radius or the central Hydrogen abun-dance, is used due to its monotonicity along the track, and is thus preferred when building a well-defined, non-injective mapping. For the most straightforward interpolation case, we keep constant values of initial metallicity 𝑍 0, helium mass fraction 𝑌 0, mixing-length parameter 𝛼 MLT , core overshoot 
+
+𝑓 ov ,core , and shell overshoot 𝑓 ov ,shell . Output parameters in-clude the effective temperature 𝑇 eff , luminosity 𝐿 , Δ𝜈 , and 
+
+𝜈 max , where Δ𝜈 and 𝜈 max are calculated using the following scaling relations: 
+
+Δ𝜈 ≈
+
+ 𝑀 𝑀 ⊙
+
+1/2  𝑅 𝑅 ⊙
+
+ −3/2
+
+Δ𝜈 ⊙ (1) 
+
+𝜈 max ≈ 𝑀 𝑀 ⊙
+
+ 𝑅 𝑅 ⊙
+
+ −2  𝑇 eff 
+
+𝑇 eff ,⊙
+
+ −1/2
+
+𝜈 max ,⊙ (2) where 𝑇 eff ,⊙ = 5777 K, Δ𝜈 ⊙ = 135 .1 𝜇 Hz, and 𝜈 max ,⊙ =
+
+3090 𝜇 Hz (see e.g., García & Ballot 2019, for review). We note that these scaling relations are approximations, and a more accurate calculation of Δ𝜈 and 𝜈 max uses the individual mode frequencies. We also include a unique track identifier used to keep full tracks together when splitting the full grid into training, val-idation, and testing data. Prior to any interpolation, we log-scale only the output quantities ( 𝑇 eff , 𝐿 , Δ𝜈 , and 𝜈 max ), and then apply individual standard scalers (fit to only the training data) to each input and output parameter within the entire grid. After training, we obtain predictions and residuals from the held-out test set, which are computed in the described trans-formed space and converted back to physical units. A linear age spacing (in Gyr) is used rather than a logarithmic spacing to avoid spurious extrapolation when predicting parameters at very young ages. 2.1.1. Analytical Grids 
+
+To determine how many tracks are needed to train the algorithms in an idealized case (without numeri-cal noise from a simulation), we generate an analytical grid following Hurley et al. (2000) using Starpasta 1.These analytical fitting formulae for stellar evolution are based on stellar models computed in Pols et al. (1998) for masses 𝑀 ∈ [0.5, 50 ] 𝑀 ⊙ , metallicities 𝑍 =
+
+[0.0001 , 0.0003 , 0.001 , 0.004 , 0.01 , 0.02 , 0.03 ], and 𝛼 MLT =
+
+2.0. For each 𝑍 , they compute 25 tracks varying in mass with an approximate spacing of 0 .1 in log (𝑀 ), with four additional models within 𝑀 ∈ [ 0.8, 2.0] 𝑀 ⊙ due to rapidly changing MS path shapes in this range. They additionally consider over-shoot with a free parameter 𝛿 ov = 0.12 (different from the commonly used definition that relates the overshooting dis-tance to the pressure scale height) to obtain formulae that are within 5% of detailed models from Pols et al. (1998). This allows us to quickly generate large grids with thousands of tracks (each track takes approximately 5 seconds to complete) and determine a baseline requirement for a sufficient number of tracks for training and validating the emulator. Below a mass of 0 .8 𝑀 ⊙ , the analytical tracks diverge from the behavior of stars at and above this mass due to different fitting relations, producing a discontinuity in the HR diagram. To avoid this artifact, we restrict the analytical grid to 0 .8 ≤
+
+𝑀 /𝑀 ⊙ ≤ 1.2. We also use their pre-provided system of EEP-like points for the full stellar evolutionary path, where a value of ‘1’ represents the end of the MS. Using the analytical grid does not impact the development of an interpolator for stellar simulations, as the goal is to create a baseline to follow when using simulation-based grids. Thus, our analytical grid consists of 2000 tracks with ap-proximately 100 models per track, evenly spaced in mass, 
+
+𝑀 ∈ [ 0.8, 1.2] 𝑀 ⊙ , for a constant metallicity, 𝑍 = 0.02. We only include up to the end of the main sequence (e.g., TAMS), and do not use mass loss, though it is possible to include it. The top left panel in Figure 11 shows 50 representative tracks within this grid. To avoid introducing any additional uncer-tainty, we do not resample or interpolate along the track (in stellar age, an age proxy, etc.). While this makes for an im-perfect model-density comparison to the MESA grids, it is the best way to isolate the uncertainty injected by the interpola-tion methods themselves. 2.1.2. MESA Grids 
+
+We generate a 200-track grid using MESA (Modules for Evolution in Stellar Astrophysics, version r24.03.1, Paxton et al. 2011, 2013, 2015, 2018, 2019; Jermyn et al. 2023). The MESA stopping condition is determined by the depletion of central hydrogen, defined by a central mass fraction of 
+
+𝑋 𝑐 < 10 −3. For our simple grid, OPAL opacities (Iglesias & Rogers 1993, 1996) are used with 𝑍 init = 0.02, 𝑌 init =
+
+0.27, 𝛼 MLT = 2.0, and solar abundance mixture (Grevesse & Sauval 1998). Overshoot is implemented as overmixing with  
+
+> 1Python implementation: https://github.com/hersfeldtn/Starpasta.git
+
+5an exponential profile (Herwig et al. 1999) core overshoot 
+
+( 𝑓 ov ,core = 0.01 ), and shell overshoot ( 𝑓 ov ,shell = 0.005 ). The outer boundary condition adopts the Eddington 𝑇 − 𝜏 relation. To ensure that the MESA tracks begin from the same evo-lutionary stage, we trim each track to span exactly from the zero-age main sequence (ZAMS) to the terminal-age main sequence (TAMS). ZAMS is identified using 
+
+𝑋 𝑐 < 1 − 𝑍 0 − 𝑌 0 − 0.01 (3) where 𝑋 𝑐 is the central hydrogen abundance and 𝑍 0 and 𝑌 0
+
+are the initial metallicity and initial helium abundance, re-spectively. As the exact model satisfying this condition dif-fers per track, we use a local linear interpolation between the bracketing models to produce a consistent starting point. The stellar age is then shifted so that 𝑡 = 0 corresponds to ZAMS for every track. TAMS is identified analogously, when 
+
+𝑋 𝑐 = 10 −3, and a similar interpolation ensures uniform ter-mination points. On average, these tracks have 1,000 models (where the number of models per track ranges from approx-imately 800 to 1175). With 1,000 CPU cores and using a single CPU per track, a 1,000-track grid takes approximately 9 wall-clock hours and 6 GB of memory to run. These run-times would vary depending on the available hardware. To avoid introducing additional sources of uncertainty, we do not interpolate along the already dense MESA tracks. Thus, all interpolation burden falls on the cross-track direction, such that the ML methods described in Section 2.2 must learn to navigate between evolutionary tracks of neighboring masses, including through the non-monotonic transition region where the standard EEP construction fails. The smoothness and density of the grid in the mass direction, therefore, directly determine the difficulty of the interpolation problem, moti-vating the grid density analysis in Section 3.2. 2.2. Machine Learning Interpolation Methods 
+
+Let the ground-truth simulator (e.g., from MESA or another generated grid) be defined as a mapping from the parameter input space to the observable output space 
+
+𝑓 : Θ → Y , 𝜃 ↦ → 𝑓 (𝜃 ) (4) where 𝜃 ∈ Θ represents input parameters (e.g., mass, metal-licity, etc.), and 𝑦 = 𝑓 (𝜃 ) ∈ Y is the vector of output observ-ables ( 𝑇 eff , 𝐿, Δ𝜈, 𝜈 max ). An emulator is a computationally efficient surrogate function, ˜𝑓 , designed to approximate 𝑓 
+
+based on a finite training set D = {( 𝜃 𝑖 , 𝑦 𝑖 )} 𝑛 𝑖 =1 computed at discrete points, 𝑖 , within the grid. Because D is finite, ˜ 𝑓 must interpolate between grid points, which can introduce error. The severity of this error depends on the local structure of 𝑓 :in regions where 𝑓 is highly non-linear, interpolation is less accurate. We therefore model the emulator output as ˜𝑓 (𝜃 ) = 𝑓 (𝜃 ) + 𝜖 em (𝜃 ) (5) where 𝜖 em (𝜃 ) represents the interpolation error or structural discrepancy. As we will show, some regions of parameter space are more challenging to interpolate than others due to degeneracies. To evaluate the sensitivity of interpolation error to model complexity, we apply four methods of increasing flexibil-ity: linear interpolation, k-nearest neighbors (kNN), random forests (RF), and JAX -based neural networks (FLAX). Each method and the relevant hyperparameters are summarized in plain terms in Appendix A. 2.2.1. Interpolator Training Pipeline 
+
+A key design choice in our interpolation pipeline is that we treat mass and age as simultaneous inputs to a single 2D inter-polation, rather than adopting the two-step approach used in some prior works (Rodrigues et al. 2017; Maltsev et al. 2024; Clara et al. 2025), which first interpolates along tracks (in age or an age proxy) and then across tracks (in mass). While this two-step approach is intuitively appealing as it respects the physical structure of the grid by treating the along-track and cross-track directions separately, it introduces additional complexity. Any errors introduced in the first interpolation step propagate into the second. By contrast, treating mass and age as joint inputs allows the ML methods to learn the full 2D mapping directly from the data, without imposing assumptions about the separability of the two directions. This becomes crucial in the transition re-gion, where along-track and cross-track behaviors are strongly coupled. The age at which a star develops a convective core depends on its mass, and the resulting non-monotonicity in 𝑋 𝑐 
+
+means that a single age value can correspond to qualitatively different evolutionary states depending on which side of the transition the stars fall on. We describe the shared pipeline in Appendix B, which notes any method-specific differences where relevant. 2.2.2. Interpolation Errors on the Test Set 
+
+Interpolation errors are quantified using absolute-valued fractional residuals between the emulator predictions and the underlying stellar model grid used for testing. These residuals are directly compared to the minimum observational uncer-tainties from the Kepler -LEGACY asteroseismic sample of MS stars (Lund et al. 2017), thereby placing interpolation er-rors in an astrophysically meaningful context. For Δ𝜈 , the best targets from Kepler -LEGACY have a fractional uncertainty on the order of 0.1%. This comparison allows us to assess whether the numerical precision of the interpolated grid is sufficient for precision asteroseismology and its applications. If all of the per-model interpolation residuals of the test set are smaller than the minimum observational uncertainties, the grid can be considered adequately smooth and dense for 6
+
+Table 1. Specifications for the machine learning models used within this work for grid interpolation.                                                                               
+
+> Hyperparameters Linear kNN RF FLAX A FLAX B FLAX C FLAX D Neighbors 2Weights Distance p2Estimators 989 Max. depth 16 Min. samples split 3Min. samples leaf 2Max. features SQRT Max. samples 0.7 Batch size 128 64 256 64 Hidden dims. (128,64,32,8) (128,64,32,16,8) (128,64,32,8) (128,64,32,8) Learning rate (LR) 5e-4 –3e-3 5e-4
+> Scheduler cosine –––Warm-up frac. 0.03 –––End LR frac. 0.05 –0.3 0.05 Loss MSE WMSE MSE –Epochs 10,000 –––EMA decay 0.97 –––Weight decay 0–––Dropout 0–––Update WMSE weights per –5 epochs ––WMSE power –2––WMSE weight clip –(0.05, 20) ––Note—For FLAX, all models use the gelu activation function. WMSE refers to the weighted-MSE scheme, outlined in Section 2.2.1. FLAX Version B shows the changes from Version A, and so on. The kNN and RF hyperparameter values were determined by
+> Optuna , based on the 200-track MESA grid. Additionally, the FLAX models were run using JAX v0.7.2 on one NVIDIA RTX 5000 Ada GPU on the Yale Bouchet HPC.
+
+precision inference. Conversely, if residuals exceed this ob-servational error floor, interpolation error becomes a limiting factor and biases inferred stellar parameters. Beyond evaluating the overall magnitude of the residuals, we also examine their distribution within the input param-eter (here, mass and age) space, and identify the location of the largest interpolation errors. Mapping residual struc-ture across these dimensions allows us to diagnose regions of sparse sampling, rapid structural evolution, or sharp tran-sitions in stellar properties that may degrade interpolation performance. Including other varying input parameters, like metallicity or mixing length, will likely further influence in-terpolation smoothness without additional refinement. 2.3. Uncertainty 
+
+While residuals provide a diagnostic of the interpolator’s local performance, they also form the basis for a formal treat-ment of the emulator errors inherent in the surrogate model-ing process. To ensure robust stellar characterization, these approximate errors must be integrated into a comprehensive uncertainty framework alongside observational and physical constraints. In this problem, there are four types of uncertainty ( 𝜎 ), all of which must be correctly quantified and propagated: obser-vational uncertainty (data noise), emulator uncertainty (ML-method imperfection), physics uncertainty (assumptions em-bedded in the stellar grid itself), and inference uncertainty (posterior geometry in parameter space). Only the first two types enter the likelihood, but all four contribute to the struc-ture and interpretation of the final posterior distributions. Observational uncertainty, 𝜎 obs , is the random and irre-ducible noise in the measured stellar quantities, or our output parameters ( 𝑇 eff , 𝐿, Δ𝜈, 𝜈 max ). We construct an observational covariance matrix 
+
+Σobs = diag 
+
+
+
+𝜎 21 , 𝜎 22 , ... 
+
+
+
+(6) which is propagated directly into the likelihood. This ma-trix sets the baseline width of the posterior distribution and dominates the total uncertainty budget when emulator errors are negligible (which is the ideal scenario). In practice, if 7correlations between observed quantities are known, they can also be incorporated through non-zero off-diagonal terms. Emulator uncertainty, 𝜎 em , arises from limited training data, finite model capacity, and stochastic optimization. The neural network approximates the mapping 
+
+𝑓 (𝜃 ) = (𝑇 eff , 𝐿, Δ𝜈, 𝜈 max ) (7) where 𝜃 is the set of input parameters (e.g., mass, age, etc.), so that the emulator prediction satisfies 
+
+𝑦 NN (𝜃 ) = 𝑦 true (𝜃 ) + 𝜖 em (𝜃 ) (8) where 𝜖 em (𝜃 ) represents the approximation error at a single point 𝜃 for a single trained network. This true error 𝜖 em (𝜃 ) is only directly measurable at grid points in the test set; we char-acterize it through the residual distribution ˆ 𝑦 NN (𝜃 𝑖 ) − 𝑦 𝑖 on these test-set points, which sets a floor on the approximation error and reflects how it varies across parameter space. In addition to this approximation error, we capture uncertainty due to stochastic variation in training using an ensemble of 
+
+𝑁 independently trained networks differing only in random seed. The predictive covariance across the ensemble, 
+
+Σem = Cov (𝑦 NN ) (9) quantifies sensitivity to training stochasticity, capturing vari-ance and cross-output correlations induced by the model. We note that Σem and the test set residual distribution are com-plementary: the former reflects stochastic uncertainty, while the latter reflects systematic approximation error. If Σem does not adequately capture the residual distribution, particularly in regions of high non-linearity, the uncertainty model may be misstated. The total output covariance entering the likelihood is therefore 
+
+Σtotal = Σ obs + Σem (10) and defines a single linearized consensus posterior. We also evaluate the ensemble mixture distribution (in the case of neural networks), defined as the average of the individual posteriors from each network, 
+
+𝑃 (𝜃 | 𝐷 ) = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+N ( 𝜃 | ˆ𝜃 𝑖 , Σ𝑖 ) (11) where 𝜃 is the parameter vector (independent variable of the PDF), ˆ𝜃 𝑖 is the maximum a posteriori (MAP) estimate, or mean parameter vector produced by the 𝑖 -th neural network, and Σ𝑖 is the posterior covariance associated with the 𝑖 -th network. For additional detail about computing the likelihood for an ensemble mixture model, see Appendix D. 
+
+3. RESULTS We visualize the interpolation residuals using the Cumula-tive Distribution Function (CDF), where we refer to the “CDF 10 9 10 6 10 3
+
+| Fractional Residual | 
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> CDF
+> exceeds obs. precision
+> FLAX KNN LINEAR RF
+> Kepler LEGACY
+> FLAX KNN LINEAR RF 0.0 0.2 0.4 0.6 0.8 1.0
+> Fraction Exceeding Obs.
+> 0.04 0.37 0.55 0.77
+
+Figure 2. Cumulative Distribution Function (CDF) for the absolute-valued fractional residuals from four ML-methods: linear interpola-tion, kNN, RF, and FLAX A. Each was trained on a 200-track subset of the full 2000-track analytical grid. Left: Each curve shows the CDF for the Δ𝜈 absolute value of fractional residuals for the test data. The shaded region delineates the values of these residuals that exceed the observational precision. The dot on each curve represents the median residual value for each method. Right: A summary plot where each point is labeled with the fraction of models in the test set with residuals that exceed the observational precision. 
+
+value" as the value that denotes the fraction of test-set models with absolute-valued fractional residuals below the minimum observational uncertainty. We report the fractional residual as a signal-to-noise ratio (SNR) relative to the minimum fractional Kepler -LEGACY uncertainty ( 𝜎 obs /𝜎 em ). An SNR ≫ 1 indicates that the emulator error is negligible and is safe for high-precision missions. An SNR ≈ 1 indicates that the emulator is on-par with the best data, though caution is needed in hierarchical fits. Finally, an SNR < 1 indicates a dominating emulator error and results biased by interpolation artifacts. We discuss the importance of grid density in Section 3.2, uncertainty quantification and propagation in Section 3.3, and the interpolation of pre-computed grids in Section 3.4. All results until Section 3.4 will use the various subsets of the same 2000-track analytical grid, and the same set of 399 test tracks from this grid will be used for consistency. 3.1. Quantifying the Success of ML Methods 
+
+To quantify the success of various machine learning meth-ods, we define our metric as the number of predictions with absolute fractional residual values that are lower than the best fractional uncertainty in Δ𝜈 from Kepler -LEGACY, on the order of 0.1%. 85000 6000 
+
+Teff [K]
+
+1234
+
+> L/L
+
+LINEAR 
+
+5000 6000 
+
+Teff [K]KNN 
+
+5000 6000 
+
+Teff [K]RF 
+
+5000 6000 
+
+Teff [K]FLAX 
+
+0.05 0.10 0.15 |Fractional Residual|     
+
+> Figure 3. HR diagram of interpolated test set tracks, as obtained by linear interpolation, kNN, RF, and FLAX A, colored by the absolute-valued fractional residual of Δ𝜈 . A subset of 200 tracks from the 2000-track analytical grid is used for training and validation. The gray points, mainly visible with FLAX, show the models within each test set track that have an absolute-valued fractional residual below the minimum fractional
+> Δ𝜈 observational uncertainty from Kepler -LEGACY.
+
+For a preliminary test, we use 200 of the remaining tracks after setting aside the consistent testing set, for training and validation (161 and 39 tracks, respectively). We use linear interpolation, kNN, RF, and FLAX A (see Table 1 for specifi-cations) as interpolators, such that they can be used to predict 
+
+𝑇 eff , 𝐿 , Δ𝜈 , and 𝜈 max of the test set. The main panel of Fig-ure 2 shows these results as a CDF plot, spanning from 0 to 1. The best-case scenario is that the entirety of any CDF curve should be to the left of the shaded region that denotes residuals exceeding observational precision. However, as none of these curves fall into the best-case scenario, the location at which they cross the observational precision line becomes important. This provides a broad un-derstanding of the percentage of models within the test set that have an absolute-valued fractional residuals that are greater than the observational precision. The Δ𝜈 CDF value for the linear interpolation line is 0.452, indicating that approx-imately 45% of models within the testing set have absolute-valued fractional residuals that are less than the minimum fractional Δ𝜈 Kepler -LEGACY uncertainty. The Δ𝜈 CDF val-ues are 63% for kNN, 24% for RF, and 96% for FLAX. The right panel offers a complementary summary to the CDFs, where a point is plotted per method to show the fraction of models within the test set that have residuals exceeding the observational uncertainty. Linear interpolation, kNN, and RF all had SNR values that indicate a dominant emulator error: 0.005, 0.007, and 0.006, respectively. FLAX has an SNR of 0.07, which is a significant improvement over the other machine learning methods, but would still yield results that are emulator-error dominated and biased by interpolation artifacts. Determining how emulator residuals compare with obser-vational uncertainties provides a baseline for emulator per-formance. However, the location of these high-residual mod-els within the larger grid is more important in obtaining a deeper understanding of how to construct more informative grids and more flexible emulators for precise asteroseismol-ogy. Figure 3 shows an HR diagram of the testing set colored by the emulator’s absolute-valued fractional residuals in Δ𝜈 
+
+for linear interpolation, kNN, RF, and FLAX. The location of the highest-residual models, along the transition between radiative and convective cores, is most apparent for the FLAX results, where most of the test set has residuals lower than the minimum Kepler -LEGACY uncertainty. Figure 4 shows the interpolation ability of each ML method for a test track of mass 𝑀 = 1.019 𝑀 ⊙ , in the transition re-gion between having a radiative core (smooth and continuous increase in luminosity) and having a convective core (dis-continuous jump in luminosity). The panels also include 10 tracks from the training set that surround this test track. Lin-ear interpolation begins relatively well until the luminosity reaches 1.25 𝐿 ⊙ . Beyond this point, linear interpolation pre-dicts that this track has a radiative core. Additionally, it does not fully reach the TAMS location of the true track and in-stead stops short. The kNN method shows improvement but exhibits a bifurcation in the predicted path, reflecting the in-stability of the nearest-neighbor selection when the test point lies between disparate evolutionary regimes. Like linear in-terpolation, the kNN-interpolated track truncates prematurely relative to the TAMS. The RF model avoids the bifurcation seen in kNN by consistently mapping the star to a convective core regime, yet it deviates from the true track right before and after the discontinuous jump in luminosity. FLAX, while not perfect, shows a significant improvement in all regions where the other methods struggled, including reaching the correct TAMS location. 95600 5800 6000 6200 
+
+Teff + offset [K] 
+
+> 0.8 1.0 1.2 1.4 1.6 1.8 2.0 2.2
+> L [L ]
+
+FLAX RF KNN LINEAR True Neighbors 
+
+M = 1.019 M
+
+Figure 4. Comparison of the same true test track of mass 𝑀 =
+
+1.0189 𝑀 ⊙ to the predicted tracks from linear interpolation, kNN, RF, and FLAX. For readability, we offset each set of true + predicted tracks for each of the ML methods. A subset of 200 tracks from the 2000-track analytical grid is used for training and validation. The gray, dashed lines are the 50 training tracks that surround this test track. 
+
+3.2. Grid Density 
+
+To determine how many analytical tracks are necessary to achieve test-set residuals below the observational uncertainty, we train FLAX networks using the restricted training sets of 25, 200, and 500 tracks as defined in Section 2.2.1, increasing the number of tracks available for training and validation while holding the test set fixed. Figure 5 shows the CDF of the absolute-valued fractional residuals as we increase the size of the available training and validation data sets. FLAX 25 (network C) has 25 tracks (21 for training and 4 for validation), FLAX 200 (network A) has 200 tracks (161 for training and 39 for validation), and FLAX 500 (network B) has 500 tracks (401 for training and 99 for validation). To see the full configuration details, see Table 1. The Δ𝜈 CDF value for FLAX 25 is 0.618, indicating that approximately 62% of models within the testing set have absolute-valued fractional residuals that are less than the min-imum fractional Δ𝜈 Kepler -LEGACY uncertainty. For FLAX 200, this value increases to 96%, and for FLAX 500, we see that 99% of testing set models have residuals lower than the minimum fractional Kepler -LEGACY uncertainty. There is a similar improvement in the median fractional residual. We obtain an SNR of 1.35 for FLAX 25, indicating that with 25 tracks used for training and validation, the emu-10 8 10 6 10 4 10 2
+
+| Fractional Residual |  
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> CDF
+> exceeds obs. precision
+> FLAX 25 FLAX 200 FLAX 500
+> Kepler LEGACY
+> FLAX 500 FLAX 200 FLAX 25 0.0 0.2 0.4 0.6 0.8 1.0
+> Fraction Exceeding Obs.
+> 0.01 0.04 0.38
+
+Figure 5. CDF for the absolute-valued fractional residuals of Δ𝜈 
+
+as we increase the size of the available training and validation sets. From the 2000-track analytical grid, FLAX 25 (network C, 25 tracks), FLAX 200 (network A, 200 tracks), and FLAX 500 (net-work B, 500 tracks) were each tested using the same test set. Asummary plot is included, showing the fraction of test-set models with residuals exceeding the observational uncertainty: 1%, 4%, and 38% for FLAX 500, 200, and 25, respectively. 
+
+lator error is comparable to the observational error and thus needs to be used with caution for hierarchical fits. For FLAX 200, the SNR increases to 5.55, and for FLAX 500, the SNR further increases to 7.1. Increasing the size of the training and validation set results in emulators with errors that are of the same order of magnitude as observational errors, but are not entirely immune to future high-precision missions (e.g. 
+
+PLATO ) where there will be many more observations of stars in the transition region. We also note the SNR for comparing the minimum Kepler -LEGACY uncertainties to the maximum fractional residuals. For FLAX 25, the SNR is 0.01, indicating that the worst-case interpolation suffers significantly from dominant emulator error. For FLAX 200, the SNR is increased to 0.07, which is still well within the range for dominant emulator error. For FLAX 500, the SNR is again increased to 0.1. Although this is not a sufficiently high SNR for the emulator errors to be considered on-par with the observational errors, it indicates that uniformly increasing the grid density does not entirely remove the ridge of models in the transition region that have residuals higher than the observational uncertainty. The utility of an emulator is defined by its computational efficiency relative to direct simulation. If we let 𝑁 stars be the number of targets to be characterized and 𝑁 eval be the number of model evaluations required per star (e.g., within an MCMC sampler), the cost of an “on-the-fly" approach is 10 
+
+𝑁 stars × 𝑁 eval . For the emulator to be a viable alternative, the number of simulations required to train the grid, 𝑁 grid ,must satisfy 𝑁 grid ≪ 𝑁 stars × 𝑁 eval . If 𝑁 grid approaches or exceeds this product, the overhead of grid generation defeats the purpose of the surrogate model. Consequently, rather than simply increasing the global density of the training set, we discuss more sophisticated strategies for handling these “difficult" regions in Section 4.2. While the global metrics discussed in this section demon-strate the overall ability of various ML methods in emulating, or interpolating, stellar tracks, the picture of a method’s utility for scientific inference is incomplete. A method may achieve a low mean squared error across a broad training set, yet still exhibit localized instabilities that only become apparent when the emulator is used to infer stellar parameters from observa-tions. In Section 3.3, we therefore shift focus from residual statistics to inference reliability, quantifying how emulator uncertainty propagates into the posterior distribution on stel-lar mass. 3.3. Uncertainty Quantification and Propagation 
+
+Uncertainty quantification requires a distinction between random uncertainty (the fixed noise in seismic observa-tions) and emulator uncertainty (the ML-model disagreement caused by gaps in the training data). Mass inference requires inverting the ML-model to find the input mass that matches a specific seismic observation. Therefore, the reliability of the result is tied to the local slope, or Jacobian, of the inter-polation. In regions of sparse training data, NNs introduce small-scale numerical instabilities that are almost invisible when plotting the predicted track with the true track. How-ever, these instabilities are magnified during the inference process: they cause fluctuations of the local gradient, blowing up small observational errors into large mass uncertainties, and creating false solutions. Additional details regarding mass inference can be found in Appendix D. 
+
+To provide an intuition for how the Δ𝜈 uncertainty propa-gates, Figure 6 shows a simplified mapping of the expected theoretical mass uncertainty as 
+
+𝜎 𝑀 /𝑀 ≈ 4√︃ 𝜎 2 
+
+> Δ𝜈, obs
+
++ 𝜎 2 
+
+> Δ𝜈, em
+
+(12) for any given observational and emulator Δ𝜈 uncertainties. It is important to note that this plot serves as a sensitivity anal-ysis rather than a full statistical characterization. To isolate the effect of Δ𝜈 , we assume all other output parameters ( 𝑇 eff ,
+
+𝐿 , and 𝜈 max ) are known without error. Furthermore, while the standard scaling relation between Δ𝜈 and mass (Eq. 1) is analytical and thus technically does not include any emulator uncertainty, we use its sensitivity ( |𝜕 ln (𝑀 )/ 𝜕 ln (Δ𝜈 )| ≈ 4) as a proxy to visualize how the emulator’s internal scatter propagates into a final mass estimate. 0.0 0.5 1.0 1.5 2.0 Observed Uncertainty [%]             
+
+> 0.0 0.5 1.0 1.5 2.0 Emulator  Uncertainty [%]
+> FLAX 25 max
+> FLAX 25 mean
+> FLAX 500 max
+> FLAX 500 mean
+> Kepler  LEGACY
+> Dominated  by  emulator  errors Dominated  by  random  errors
+> 0.0% 0.2% 0.5% 1.0% 2.0% 5.0% 10.0% Theoretical Mass Uncertainty [%]
+> Figure 6. The scaling mass uncertainty for the 2000-track analytical grid as a function of observational and emulator Δ𝜈 uncertainties. Above (below) the white, the dashed line represents mass uncertain-ties dominated by emulator (random/observational) uncertainty. We plot the maximum (solid) and mean (dashed) ensemble model uncer-tainties for FLAX 25 (yellow) and FLAX 500 (cyan). We show the range of Kepler -LEGACY uncertainties as the gray shaded region.
+
+The diagonal represents an equal contribution from both components, while above (below) the diagonal represents masses dominated by emulator (random/observational) er-rors. Thus, the ideal scenario for any given interpolation is that the total mass uncertainty is dominated by random errors from observation, and not from the emulator itself. 3.3.1. FLAX Ensemble Models 
+
+We create two ensembles of 15 FLAX neural networks each, only varying the random seed that controls the training process. The number of ensemble members is determined by calculating the per-test-track residual divided by the en-semble uncertainty as a function of increasing the number of included members. The standard deviation of this quan-tity approaches 1.0 if the ensemble accurately estimates the emulator uncertainty. With 15 members, the aforementioned quantity is 1.1 for Δ𝜈 , indicating that the ensemble moderately underestimates its emulator uncertainty. Although going be-yond 15 members does continue to reduce this quantity closer to 1.0, there are diminishing returns with each additional en-semble member. The longer training time and computational cost is not worth the marginal improvement in uncertainty calibration. One ensemble is based on the FLAX 25 configuration, and the other is based on the FLAX 500 configuration. They are tested on the same test set of 399 tracks. The goal is to quantify the impact of a lack of training data across the parameter space. Fig. 6 overplots the maximum and mean uncertainties obtained by the two emulators. It is clear that while the means for FLAX 25 and FLAX 500 are similar, the 11 4750 5000 5250 5500 5750 6000 6250 
+
+Teff [K] 
+
+> 0.5 1.0 1.5 2.0 2.5 3.0 3.5 4.0
+> L [L ]
+> FLAX 25
+> 4750 5000 5250 5500 5750 6000 6250
+
+Teff [K]    
+
+> FLAX 500
+> 0.10 0.31 0.52 0.73 0.94 1.15 1.36
+> Ensemble uncertainty of  [ Hz]
+> Figure 7. HR diagrams of the 399-track analytical grid test set for ensembles of FLAX 25 (left) and FLAX 500 (right), colored by the ensemble uncertainty of Δ𝜈 . We set an ensemble uncertainty floor of 0.1 𝜇 Hz, such that models with an uncertainty below it are instead plotted in gray.
+
+maximum uncertainties are not. For the Kepler -LEGACY uncertainty in Δ𝜈 (shaded band), characterizing a star’s mass using FLAX 500 results in a mass uncertainty of up to 1-2%, while the mass uncertainty using FLAX 25 is up to 10%. Figure 7 shows an HR diagram to map the uncertainty level of the predicted Δ𝜈 from the test set within each ensemble. The left panel shows the FLAX 25 ensemble, where a ridge of higher ensemble uncertainty appears. It starts at the base of the transition region and continues upwards at the loca-tion where stars with convective cores have a discontinuous jump in luminosity. This is the same region that had higher absolute-valued fractional residuals in Fig. 3, most visible with the FLAX model. It is no coincidence that the region with the highest residuals overlaps with the region that shows the most disagreement between ensemble model members. The right panel shows the FLAX 500 ensemble, where the ridge seen with FLAX 25 has essentially disappeared. With FLAX 500, there are only a handful of individual models in which the ensemble uncertainty was above the 0.1 𝜇 Hz floor. These few models still lie within the transition region of radiative-to-convective cores. Figure 8 shows a direct comparison of the two ensembles as they perform on a track within the transition region, corre-sponding to a star of 1 .0189 𝑀 ⊙ . The top left panel of Fig. 8 shows the results for the FLAX 25 ensemble. The residuals in the lower left panel range from approximately [− 1, 1], where residuals are simply calculated by subtracting the individual ensemble model member predictions (or the ensemble mean) from the true value of Δ𝜈 . We highlight the ages within the evolution that have residuals higher than a residual threshold (here, = ±0.48), calculated as half of the maximum resid-ual value over all ensemble members. We plot these ages in the inset HR diagram in red as well, to show that this corre-sponds to the portion of the evolutionary track that is different between stars with a purely radiative core and those with a convective core. Stars with a purely radiative core will not have the sharp increase in luminosity. The right panel of Fig. 8 shows the improvement in the same track when using FLAX 500. There is no shaded re-gion in the residual panel, as none of the residuals in this ensemble went beyond the threshold value calculated by the FLAX 25 ensemble. We see a tighter agreement between the individual members of the ensemble model, with significant improvements in the region where FLAX 25 struggled. 3.3.2. Posterior Distributions and Model Consensus 
+
+Figure 9 shows how the differences in predicted Δ𝜈 from each ensemble member of FLAX 25 and FLAX 500, seen in Fig. 8, translate into probability distributions of the in-ferred stellar mass at a particular stellar age. The posterior distribution function (PDF) for each ensemble is computed as a mixture of Gaussians, where each ensemble member con-tributes an individual Gaussian centered at the mass inferred from its predicted Δ𝜈 and the local Jacobian. We normalize each PDF to integrate to 1.0, and then divide by the global maximum across both panels such that the PDF ranges from [0,1]. Since the global maximum is set by the sharpest poste-rior across both panels, the broader posteriors in the left panel do not peak at 1.0. Given the relative heights, a taller peak in-dicates stronger ensemble consensus, and a peak aligned with the “true mass" (the mass as given in the testing set) indicates an unbiased inference. Multiple peaks indicate disagreement 12 60 80 100 120 140 160 [ Hz] 
+
+> FLAX 25 Ensemble Mean True
+
+0 2 4 6 8 10 Age [Gyr] 1
+
+01resid [ Hz]  
+
+> 5500 5600 5700 5800 5900
+> Teff [K] 1.0 1.5 2.0
+> L [L ]
+> HR Diagram
+> FLAX 500 Ensemble Mean True
+
+0 2 4 6 8 10 Age [Gyr]  
+
+> 5500 5600 5700 5800 5900
+> Teff [K] 1.0 1.5 2.0
+> L [L ]
+> HR Diagram
+
+M = 1.0189 M
+
+Figure 8. Comparison of ensemble model results FLAX 25 (left) and FLAX 500 (right) for a 𝑀 = 1.0189 𝑀 ⊙ star in the analytical grid test set. Top panels show the true, ensemble mean, and individual ensemble predictions of Δ𝜈 as a function of star age. Bottom panels show the residuals (individual and ensemble member values minus the true value) for the individual ensemble members. The red shaded region on the lower left residual panel highlights where the residuals in Δ𝜈 are larger than half of the maximum residual value across the ensemble members. That same region is plotted in red within the HR diagram. 
+
+among the ensemble members, with each peak corresponding to a distinct cluster of predicted Δ𝜈 values. The left side of Figure 9 compares the normalized PDFs for a star of true mass 𝑀 = 1.0189 𝑀 ⊙ and age 8 .91 Gyr, from two ensemble models. To isolate the effect of uncertainty in Δ𝜈 on the mass, the Jacobian ignores the other output parameters. The observational parameter values for this star used to characterize its mass are: 𝑇 eff = 5841 .82 K, 𝐿 =
+
+1.862 𝐿 ⊙ , Δ𝜈 = 88 .399 𝜇 Hz, and 𝜈 max = 872 .342 𝜇 Hz. The inset HR diagram shows the true mass and age of the inferred star being characterized. For the FLAX 500 ensemble, the posterior is unimodal and peaks at approximately 1 .0189 𝑀 ⊙ . This single peak indicates a strong consensus among the ensemble members. In contrast, the FLAX 25 ensemble produces a wide, multi-modal distribution with three peaks. This is a direct result of the instability within the Jacobian, which created multiple local regions where the predicted Δ𝜈 matches the observa-tion, leading the model to suggest several contradictory mass solutions. These results demonstrate that while sparse data may produce a visually plausible track, it lacks the derivative stability required for precision asteroseismic inference. We perform a sensitivity analysis by reducing the observa-tional uncertainty to 0.01%, an order of magnitude less than 
+
+Kepler -LEGACY, such that the main source of error must come from the neural network itself. The right side of Fig. 9 shows the results of this experiment. FLAX 500 now has mul-tiple peaks ranging between 1.0187 and 1.0192 𝑀 ⊙ where the highest central peak remains at 1.0189 𝑀 ⊙ . This behavior in-dicates that the ensemble has largely reached a consensus where the error budget is no longer dominated by observa-tional (random) uncertainty, but is instead approaching the noise floor of the interpolation. FLAX 25 has 15 peaks (cor-responding to the seven ensemble members) ranging between 1.0177 and 1.0193 𝑀 ⊙ , where each peak is much sharper. This behavior confirms that for low-density training sets, the error budget is entirely dominated by emulator uncertainty. Specifically, it creates interpolation artifacts where the em-ulator’s manifold lacks the resolution to track the likelihood surface. These results suggest that for future high-precision missions (e.g., PLATO), the density of the training grid is as critical as the choice of the physical model itself, as observa-tional gains can be entirely dominated by emulator-induced biases. It should be noted that although the spread of the ensemble member predictions is relatively contained, even for FLAX 25 (spanning approximately 1.018–1.02 𝑀 ⊙ ), this performance represents a “best-case" scenario for a sparse ensemble. Addi-13 1.017 1.018 1.019 1.020 1.021 
+
+Mass [ M ]
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Normalized PDF
+
+M = 1.0189 M | obs = 0.1%     
+
+> FLAX 500 FLAX 25 1.017 1.018 1.019 1.020 1.021
+
+Mass [ M ]
+
+M = 1.0189 M | obs = 0.01%  
+
+> 5500 5600 5700 5800 5900
+> Teff [K]
+> 1.0 1.5 2.0
+> L [L ]
+> Age = 8.910 Gyr
+
+Figure 9. Comparison of normalized mass posterior distributions using only the Δ𝜈 contribution for an analytical grid test-set star ( 𝑀 =
+
+1.0189 𝑀 ⊙ , age = 8.910 Gyr; see inset HR diagram) using the FLAX 25 and FLAX 500 ensembles. Left : Distributions under a 0.1% observational uncertainty for Δ𝜈 . Right : Reducing the observational uncertainty by an order of magnitude (0.01%) exposes discretization artifacts in the underlying grid. The dashed vertical line indicates the true stellar mass. This shows that grid density becomes important as one decreases the uncertainties. 
+
+tionally, this may represent an artificial precision floor created by the lack of competing physical solutions in a simplified grid. In this sparse regime, the FLAX 25 emulator is unable to capture the nuanced non-linearities of stellar evolution, particularly in the transition region. While Fig. 8 highlights how increasing the data available for training and validation from 25 to 500 tracks resolves dis-crepancies between ensemble model members, the broader impact of this is best understood through its effect on the final inferred stellar parameters. The ensemble spread defines an intrinsic emulator uncertainty for a single model evaluation, which must be below the observational uncertainty for pre-cision stellar characterization. Regardless of how small the observational uncertainty is, a dominant emulator uncertainty will lead to an incorrect characterization. Having established the grid density requirements for reli-able emulation and uncertainty propagation using controlled analytical grids, we now ask whether the widely-used pre-computed grids available to the community – ASTEC , MIST ,and YREC – meet these requirements for precision asteroseis-mology in the transition mass range. 3.4. Interpolating Precomputed Grids 
+
+We now show the results of interpolating other widely-used grids: ASTEC , MIST , and YREC (see Appendix A and Fig. 11 for details). Figure 10 compares the CDF for the Δ𝜈 
+
+absolute-valued fractional residuals for the 2D cases of the 
+
+ASTEC , MIST , YREC , and MESA grids, as described above. The 
+
+MESA grid generation is discussed in Section 2.1.2. 10 7 10 5 10 3 10 1
+
+| Fractional Residual | 
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> CDF
+> exceeds obs. precision
+> MESA ASTEC MIST YREC
+> Kepler LEGACY
+> MESA ASTEC MIST YREC 0.0 0.2 0.4 0.6 0.8 1.0
+> Fraction Exceeding Obs.
+> 0.07 0.39 0.73 0.90
+
+Figure 10. Left: The CDF for the Δ𝜈 absolute-valued fractional residuals for the 2D cases of the ASTEC , MIST , YREC , and MESA (see Section 2.1.2) grids. We used interpolator configurations FLAX A, FLAX D, FLAX D, and FLAX C, respectively (see Table 1 for details). Right: A summary plot, as in Fig. 2. 
+
+These results demonstrate that the grid density require-ments are not met in the transition mass range under Ke-pler -LEGACY precision requirements. This has direct im-plications for any stellar characterization that relies on these grids without accounting for interpolation uncertainty. In 14 Section 4, we contextualize these findings within the broader landscape of prior interpolation efforts, and discuss strategies for addressing the grid density problem in future work.  
+
+> 4.
+
+DISCUSSION 4.1. Interpolation Efforts 
+
+Previous interpolation efforts span a wide range of algorith-mic choices, grid configurations, and evaluation criteria, mak-ing direct comparison challenging. Nonetheless, we compare our results quantitatively, especially noting the precision met-ric applied, and whether emulator uncertainty is propagated into the final stellar characterization. Clara et al. (2025) is the most directly comparable work, as their MESA -generated grid has a narrow mass range (1 .15 − 1.35 𝑀 ⊙ ), which includes part of our transition region defined by the analytical grid, at fixed metallicity. Their best configuration (cubic spline along tracks, linear interpolation across tracks, with central density as the age proxy) returns a maximum absolute frequency error of 1 .2 𝜇 Hz. Addition-ally, they use the residual as the sole diagnostic for their mass posterior. In our work, the FLAX 25 ensemble achieves un-certainties in Δ𝜈 well below 1 𝜇 Hz for most of the test set, and FLAX 500 reduces this further (see Fig. 7). We also explicitly propagate the interpolation error into the mass posterior, in addition to the test-set residuals. Rodrigues et al. (2017) extends to three input dimensions (mass, age, and metallicity), complicating direct comparison to our work. Their grid, which consists of only 21 evolu-tionary tracks per metallicity, results in a 5% mass precision and 19% age precision. Bringing this 3D grid into the 2D case of only varying initial mass and age, it becomes compa-rable to our FLAX 25 scenario where mass uncertainties are approximated to be at the 5-10% level (see Fig. 6). Instead of emulating the forward model, Bellinger et al. (2016) uses random forests in the inverse direction to learn the mapping from observables directly to stellar parameters in a 6D grid. This RF inverse mapping produces a point estimate; thus, the uncertainty cannot be propagated into the posterior. Our comparison of RF performance in Section 3.1 (CDF score 0.24 for Δ𝜈 ) confirms that RF is less accurate than FLAX as a forward emulator in the transition region. However, the 6D grid is substantially richer in physical realism, and the direct comparison in Section 3.4 (which uses the 20-track 
+
+YREC subset for a Δ𝜈 CDF value of 0.102) illustrates the compounded challenge of interpolating over a sparse grid with a less flexible model. In the likely case where degeneracies exist within the grid, such that different combinations of input parameters are able to produce the same observable quantity, machine learning methods that offer one-to-one predictions, like random forest, are not sufficient. Li et al. (2022) explicitly test their un-certainty calibration using Gaussian process (GP) regression and find that it severely underestimates uncertainties in the 3D (mass, EEP, 𝑍 0) and 5D (mass, EEP, 𝑍 0, 𝑌 0, and 𝛼 MLT )cases. Like Clara et al. (2025), they also only rely on the test set errors as an estimate of the systematic uncertainty. On the other hand, our neural network ensemble approach computes calibrated, localized uncertainty estimates that cor-rectly identify the transition region as the high-uncertainty zone (Fig. 7). Lyttle et al. (2021) used a 4D (mass, 𝑍 0, 𝑌 0, and 𝛼 MLT )
+
+MESA -generated grid of 17,220 tracks to train an artificial neu-ral network. Using the Sun as a test case, they achieve preci-sions of 2.5% in mass, 1.2% in radius, and 12% in age. While they report uncertainties that appear well-calibrated, they do not explicitly propagate emulator error into the posterior co-variance. Scutt et al. (2026) uses a branching architecture to separate classical outputs from asteroseismic (individual mode frequencies) components. They further reduce the in-dividual mode frequencies by Principal Component Analysis (PCA, Brown et al. 1994) for training. However, they find that individual mode frequency uncertainties (0.3–1.1 𝜇 Hz) are emulator-error dominated. This is exactly the failure mode our ensemble analysis identifies. Critically, neither work tests what happens when grid density is reduced below the level needed for the transition region. Our Figs. 8 and 9 provide the first explicit demonstration of how emulator-induced mul-timodality propagates into the mass posterior. Hon et al. (2024) uses conditional normalizing flows with a 6D (mass, 𝑍 0, 𝑌 0, 𝛼 MLT , 𝑓 ov ,shell , and 𝑓 ov ,core ) MESA -generated grid to capture correlations in high-dimensional output space for red giants. Their emulator errors are below 1% in well-sampled regions, increasing near low-density or overlapping regions. While these results are quantitatively consistent with our findings, they do not test the specific radiative-to-convective core transition or provide a grid-density ablation. Stone-Martinez et al. (2025) uses observational data instead of a simulated MESA -generated grid. This choice avoids the high computational costs of generating a sufficiently dense grid, but requires thousands of well-characterized stars. The upper range of their age uncertainties (18-30%) corresponds to sparse regions of parameter space, justifying our pipeline for in-depth analyses of grid-density requirements. Maltsev et al. (2024) identify the same mass transition we study, noting that 𝑀 init /𝑀 ⊙ ∈ ( 1.16 , 1.5) requires a finer grid spacing than the rest of the MIST -based grid. To mit-igate this, they generate additional tracks in this region for a 𝛿𝑀 = 0.01 𝑀 ⊙ . However, their evaluation metric is the percent-precision on their output parameters ( 𝐿 , 𝑇 eff , and log (𝑔 )), and does not reference observational uncertainty thresholds. This makes the adequacy of their added tracks ambiguous for the specific science goal of asteroseismic char-acterization at Kepler -LEGACY precision. Kallinger (2026) ran a similar nested-sampling algorithm to focus on high 15 likelihood regions of parameter space. Their Bayesian in-ference pipeline was aimed at understanding the uncertain-ties stemming from near-surface effects, eliminating the need for ad-hoc surface corrections, thus improving asteroseismic characterization. Across the aforementioned prior works, the interpolation errors are reported as residual statistics without a specific observational precision threshold. Additionally, they are gen-erally not propagated in a way directly comparable to the posterior-level emulator-error treatment used here. We ad-dress the lack of specific observational context by adopting the minimum fractional Kepler -LEGACY observational un-certainty as an explicit threshold for interpolation residuals. This enables us to assess the emulator performance directly within the context of an observational survey rather than re-porting errors in isolation. We then provide a systematic grid-density ablation that identifies both the magnitude of interpolation failure and its location within the parameter space. From this, we show that the transition region between radiative and convective cores is the dominant source of em-ulator error across all methods and grid configurations tested. Finally, and most consequentially for future high-precision missions, we propagate emulator uncertainty into stellar mass posteriors, revealing that emulator-induced multimodality is a qualitatively different and more dangerous failure mode than elevated mean residuals, one that cannot be diagnosed from residual statistics alone. 4.2. Improvements in Track Selection During Training 
+
+The goal of grid interpolation is to reduce the number of tracks needed in the first place. However, currently, any in-terpolation scheme requires a full grid of tracks to interpolate between, and generally building a grid implies a set spacing between tracks, whether in stellar mass, 𝑍 0, 𝛼 MLT , etc. This set spacing, especially when considering the two-dimensional case of only varying initial mass and age, is unnecessary, as half of the grid is filled with “easy" tracks (low mass, radia-tive core). Under these conditions, when selecting tracks for training, validation, and testing, the emulator wastes precious computational resources fitting the numerous easy tracks. In this work, tracks are generated based on an even spacing in stellar mass. Alternatively, tracks can be generated using a Sobol (Sobol 1967) sequence such that input parameter values are chosen by a quasi-random distribution of points (Bellinger et al. 2016; Aguirre Børsen-Koch et al. 2022). However, not all regions of the parameter space are equally challenging to interpolate, and as previously indicated, there is a more methodical way to generate tracks. Tracks with fully radiative cores (below the transition region to convective cores, where the threshold is dependent on many other properties) follow a monotonic pattern on the MS. The transition region between radiative and convective cores is much less trivial, as there may be degeneracies depending on the physics used. Thus, fewer low-mass tracks should be needed to train the model, and a high density of tracks should be generated on-the-fly, as needed, in the transition region, when the emulator calculates high residuals using the validation set. We aim to incorporate this scheme in future iterations of this work, as its extension to a higher-dimensional input grid is crucial to avoid generating millions of tracks. A version of such active learning (see Settles 2009, for review) has been implemented within the context of stellar simulations, and is effective in improving efficiency and lowering computa-tional costs (Rocha et al. 2022). Grid generation and training will always take some amount of time; adaptive sampling seems to reduce this time, and this is a one-time cost that then enables “free" inference. Incorporating such adaptive strategies would directly address the bottleneck identified in Section 3.2, ensuring that computational resources are con-centrated precisely where the interpolation problem is most difficult.  
+
+> 5.
+
+CONCLUSIONS In this work, we have quantified the requirements for accu-rate and precise emulators for interpolating asteroseismic pa-rameters, contextualized by observational uncertainties. We focus on the mass range 𝑀 ∈ [ 0.7, 1.2] 𝑀 ⊙ because this range encapsulates where the onset of convective cores pro-duces non-monotonic evolutionary behavior seen in the cen-tral hydrogen fraction, 𝑋 𝑐 (see Fig. 1). Linear interpolation, k-Nearest Neighbors (kNN), random forest regression (RF), and FLAX neural networks are used to interpolate 2D (only varying the initial stellar mass and age) grids generated by 
+
+MESA , an analytical grid from Hurley et al. (2000), as well as grids from YREC , ASTEC , and MIST . The grids include input variables mass and age (linear in Gyr), and output variables 
+
+𝑇 eff , 𝐿 , Δ𝜈 , and 𝜈 max . Our main results in this work using the analytical grid are the following: 1. There is a clear advantage in using FLAX neural net-works when interpolating analytical stellar evolution grids for precision asteroseismology. With a 200-track training set, they achieve a much higher Δ𝜈 CDF score (96%) than linear interpolation (45%), kNN (63%), and RF (24%) (Fig. 2). 2. The models with the highest residuals lie along the transition region between stars born with radiative cores and those with convective cores (Fig. 3). 3. The size of the training set severely impacts the per-formance of neural networks in interpolating across tracks. The Δ𝜈 CDF value increases from 62% to 99% as the training set size increases from 25 to 500 tracks (Fig. 5). 16 4. Uncertainties are propagated to obtain posterior distri-butions of mass via ensemble models of neural net-works. Given a sparse grid of training data, the propa-gated uncertainty from Δ𝜈 , composed of the Kepler -LEGACY uncertainty and the emulator uncertainty, yields multi-modal peaks in the mass posterior for a star in the transition region. Increasing the size of the training data resolves the multimodality (Fig. 9). A natural extension of this work is the emulation of indi-vidual mode frequencies, rather than the global asteroseismic parameters Δ𝜈 and 𝜈 max , used here. High-level asteroseis-mic fitting typically involves direct comparison to individ-ual frequencies, which carry substantially more information about stellar interior structure than the global scaling rela-tions alone. Emulating individual frequencies introduces ad-ditional challenges beyond those demonstrated here: the num-ber of output dimensions grows with the number of observed modes, the frequencies are more sensitive to fine structure details near the core transition region, and the mapping from stellar parameters to individual frequencies is more nonlinear than the scaling-relation-based mapping used in this work. The ensemble uncertainty framework developed here, specifically the propagation of emulator covariance through the Jacobian into the stellar parameter posterior, is easily adaptable to this higher-dimensional output space, though the density requirements identified in Section 3.2 are likely to be more stringent. The recent work of Scutt et al. (2026), who emulate individual radial modes using a branching neural net-work and find emulator-dominated uncertainties at high radial order, suggests that grid density in the transition region will be an even more critical bottleneck for individual frequency emulation than it is for the global parameters studied here. We also emphasize that the challenges demonstrated here represent the most favorable interpolation scenario: a two-dimensional input space varying only stellar mass and age, limited to the main sequence, with all other physical pa-rameters held fixed. Varying other input dimensions like metallicity, helium abundance, mixing length, and convec-tive overshoot will introduce new regions of rapid structural change and additional degeneracies. The grid density re-quirements identified here are therefore a lower bound on what will be needed for a production emulator. If emulator-induced multimodality and unstable Jacobians arise in this simplified setting, one should expect them to be more severe, more widespread, and harder to diagnose as the dimension-ality of the input space grows. These considerations point to a broader lesson for the field: the reliability of an emulator cannot be assessed indepen-dently of the science case it is intended to serve. The adequacy of grid density, algorithm choice, and uncertainty quantifica-tion is defined by the precision demands of the observational survey at hand. As remarkably precise asteroseismic surveys grow in size, the emulators underpinning stellar characteriza-tion must be held to correspondingly higher standards. Ex-plicit precision thresholds, localized uncertainty diagnostics, and ensemble-based posterior propagation must be integral to any interpolation or emulation pipeline. The transition region between radiative and convective cores studied here is governed by rapidly changing physics. Understanding and resolving the interpolation failure in this region is a prerequi-site for the precise and unbiased stellar characterization that future surveys will demand. ACKNOWLEDGMENTS We thank Jørgen Christensen-Dalsgaard for valuable com-ments and feedback. This work was supported by a Yale AI Seed Grant (Project No. PJ117090) and the Yale Center for Research Computing. This material is based upon work sup-ported by the U.S. National Science Foundation under award No. 2606207. APPENDIX  
+
+> A.
+
+MODEL SPECIFICATIONS This appendix provides brief, self-contained descriptions of the four interpolation methods used in this work, along with definitions of the relevant hyperparameters, intended for readers less familiar with machine learning. 1. Linear Interpolation (Virtanen et al. 2020): Given a set of data points with known output values, linear interpolation estimates the output at a new location by determining nearby data points by Delaunay triangulation (Barber et al. 1996). It then computes a proportionally weighted average of their values based on how close the new point is to the surrounding points. Unlike machine learning methods, there is no model “training" in the traditional sense, and nothing is “learned". The data points directly define the interpolant without any optimization or hyperparameter tuning. A held-out test set is still used to evaluate the performance. It is fast and exact at the data points, but struggles significantly when the underlying relationship is nonlinear. 17 2. k-Nearest Neighbors (kNN, Altman 1992) : kNN predicts the output at a new point by averaging the outputs of the 𝑘 closest points in the training set, where closeness is measured by Euclidean distance in input space. “Training" here consists of storing the training data, and during prediction, the algorithm searches for the 𝑘 nearest neighbors. The 𝑘 parameter for the number of nearest neighbors is tunable and controls how local or global the prediction is. Since closeness is measured by Euclidean distance in input space, the inputs must be scaled, especially if they span a wide range of magnitudes. Without scaling, finding a nearest neighbor becomes an impossible task. Note that training time scales linearly with sample size as 
+
+O( 𝑁 ). Hyperparameters include: (a) The number of neighbors, 𝑘 : controls how local or global the prediction is, where smaller values produce more local but potentially noisier predictions, while larger values produce smoother but potentially oversmoothed predictions. (b) Weights: The “distance" weighting scheme determines how the contributions of 𝑘 neighbors are combined, such that closer neighbors receive proportionally higher weight. (c) 𝑝 : Controls the Minkowski distance metric. 𝑝 = 2 is the standard Euclidean distance. 3. Random Forests (RF, Biau 2012) : A random forest is an ensemble of decision trees, where each tree acts like a flowchart. Each tree partitions the input space into rectangular regions by learning a sequence of threshold rules (e.g., “if mass 
+
+< 1.01 𝑀 ⊙ , go right"), and predicts the average output within each region. Individual trees tend to overfit, so averaging the predictions of many trees trained on random subsets of the data and input features helps to reduce variance and improve generalization. Here, training scales with sample size on the order of O( 𝑁 log 𝑁 ), and consists of constructing these trees. Prediction is simply a lookup through the learned rules. No input scaling is required here, since the tree splits depend on the ordering of values, and not their magnitudes. This can easily be implemented in Python using sklearn (Pedregosa et al. 2011). Hyperparameters include: (a) Number of estimators: Controls how many trees are grown. (b) Maximum depth: Limits the number of splits each tree can make. Deeper trees fit the training data more closely, but are also more prone to overfitting. (c) Minimum samples split/leaf: Minimum number of training examples required to split a node/leaf. Both parameters prevent the tree from making splits based on too few data points. (d) Maximum features: Controls how many input features are considered at each split, where the square root of the total number of features (SQRT) is used. (e) Maximum samples: Specifies the fraction of training data used to grow each tree. 4. Neural Networks with JAX (FLAX) : JAX (Bradbury et al. 2018) is an open-source Python library developed for high-performance numerical computation. It provides automatic differentiation (computing the gradients of arbitrary functions automatically), and compiles numerical code to run efficiently on GPUs and TPUs. FLAX (Heek et al. 2024) is a neural network library built on top of JAX that provides modular building blocks (layers, activations, optimizers) for defining and training neural networks. A neural network maps inputs to outputs through a sequence of layers . Each layer computes a weighted sum of its inputs and passes the result through a nonlinear activation function , where the weights are the learnable parameters of the model. We contrast this with linear interpolation, where the weights are limited to linear functions. Training consists of adjusting these weights to minimize a loss function (e.g., MSE between predicted and true outputs for regression tasks) using gradient descent. The gradient of the loss with respect to all weights is computed automatically by JAX , and the weights are updated iteratively throughout the training process. The depth (number of layers) and width (number of units per layer) of the network control its learning capacity and are tuned (either through manual tuning or via grid-search algorithms like Optuna 
+
+(Akiba et al. 2019)) as hyperparameters. Neural networks are the most flexible of the four methods, and can capture complex nonlinear relationships, while efficiently scaling to large datasets on GPU hardware. However, they require more careful tuning and longer training times than the other methods described here. Additional training details, including the weighted loss function, exponential moving average of weights, and hyperparameter selection, are described in Section 2.2.1. Hyperparameters include: (a) Batch size: The number of training examples processed in each gradient update step. Smaller batches introduce more stochastic noise into the gradient estimates to escape local minima, while larger batches produce more stable but potentially less exploratory updates. 18 (b) Hidden dimensions: The depth (number of layers) and width (number of units per layer) of the network, together controlling the learning capacity. (c) Learning rate (LR): Controls the step size of each gradient update. (d) LR scheduler: Instead of a constant LR throughout the entire neural network training, a scheduler is used to vary the LR. We use cosine decay to gradually reduce the LR following the cosine curve, preventing the optimizer from making large destabilizing updates when the network is closer to convergence (Loshchilov & Hutter 2016). (e) Warm-up fraction: The proportion of total training steps during which the learning increases linearly from zero to its initial value before decay begins. This stabilizes early training by preventing large gradient updates before the network weights have reached a reasonable initialization. (f) End LR fraction: The minimum LR as a fraction of the initial value at the end of the cosine decay schedule, such that training continues to make small refinements in later epochs. (g) Loss function: The objective minimized during training. The difficulty-weighted variant of the MSE is described in Section 2.2.1. (h) Epochs: Sets the number of complete passes of the entire dataset to train and validate the ML model, updating the weights after each epoch to improve accuracy. (i) EMA decay parameter: Controls the exponential moving average of network weights (Polyak & Juditsky 1992). Values closer to 1 retain more history and produce smoother weight trajectories. Applying EMA during evaluation and inference reduces the impact of small fluctuations in stochastic gradient descent updates, improving the generalization to unseen data. (j) Weight decay: A regularization term that penalizes large network weights. We set this to 0, as otherwise the network does not converge. (k) Dropout: A regularization technique that randomly sets a fraction of network activations to zero during training. Similarly, it is also set to 0. (l) Update WMSE weights per: Determines how frequently the loss function weights are updated. Increased frequency can improve accuracy, but with a high computational cost. (m) WMSE power: Controls how aggressively difficult examples are up-weighted relative to the mean residual, with higher values concentrating gradient updates on the most poorly predicted regions of parameter space. This is especially important as the transition region between radiative and convective cores is narrow with respect to the rest of the parameter space. (n) WMSE weight clip: Prevents any single example from dominating the gradient update, preserving stable optimization dynamics throughout training (Zhang et al. 2019).  
+
+> B.
+
+FULL INTERPOLATION PIPELINE The full grid is split by track, ensuring that each evolutionary track appears entirely in either the training, validation, or testing set. This choice reflects the physical task of interpolating between tracks and prevents information leakage across evolutionary stages. Edge tracks (the first and last tracks of the grid if tracks are sorted by mass) are always included in the training set to avoid extrapolation during validation or testing. To ensure that we have the same tracks within the testing set for all analyses, we set aside 20% of the full grid. The rest of the data is used for training (64%) and validating (16%) the model. In some analyses, we further restrict the training and validation set to a subset of tracks drawn at equal mass intervals across the full grid, referred to as a restricted training set. This allows us to systematically study the effect of grid density on interpolation performance while holding the test set fixed (20% of the full grid). The restricted training sets used in Section 3.2 contain 25, 200, and 500 tracks, respectively, corresponding to average mass spacings of 0.02, 0.002, and 0.001 𝑀 ⊙ . The validation set in each case is composed of 20% of the restricted training set. Scalers are fit only on the training set after the training, validation, and testing data have been established, preventing data leakage. The fitted scaler is then applied to the full grid before training any interpolator. The scaler type, either robust or standard, is chosen based on the distribution and skewness of any given parameter. Note that for tree-based methods (e.g., RF), scaling the data isn’t necessary, as tree splits depend on order, not scale. For distance-based methods like kNN, scaling is necessary as the distance magnitude depends on scale. Similarly, scaling is also necessary for gradient and linear models like neural networks and linear or logistic regression, as gradients and regularization depend on scale. 19 For FLAX neural network models, there are many hyperparameters that can be tuned to optimize the training stability, convergence speed, and generalization performance. These include learning rate and its scheduling (e.g., constant, cosine decay, or warm-up schedules), weight decay for L2 regularization, dropout rate, network architecture parameters (number of hidden layers, hidden units per layer, activation functions), batch size, and optimizer configuration (e.g., AdamW momentum parameters, Loshchilov & Hutter 2019). Additional information on the selected architectures and hyperparameter values for the best-performing networks can be found in Table 1. Hyperparameters for kNN and RF are tuned via cross-validation. While FLAX hyperparameters (learning rate, weight decay, dropout, architecture, depth/width, etc.) can be optimized using automated hyperparameter search frameworks like Optuna 
+
+(Akiba et al. 2019), we found that manual tuning was often more efficient in practice given the relatively well-behaved loss landscape. The training time is proportional to both the number of tracks and the number of models per track. We train FLAX by minimizing a weighted regression loss in scaled output space. For each training example 𝑖 with residual vector r𝑖 = ˆy𝑖 − y𝑖 , the base loss is computed per example by averaging the chosen per-output mean squared error loss across the output dimensions. To emphasize difficult training examples, we introduce a per-example weight 𝑤 𝑖 derived from current model residuals. Periodically, a scalar difficulty metric (e.g., mean or percentile absolute residual) is computed per example on the validation set. Difficulties are scaled relative to the median residual and transformed via a power law 𝑤 𝑖 ∝ 𝑑 𝛼 𝑖 , then clipped to a bound interval to ensure numerical stability and renormalized to have unit mean so that the effective learning rate is preserved. The final objective minimized at each step is the weighted average loss 
+
+L = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+𝑤 𝑖 ℓ𝑖 (B1) where ℓ𝑖 is the per-example loss. This approach increases gradient contributions from systematically mispredicted regions of parameter space while maintaining stable optimization dynamics through clipping and normalization. For efficiency, all outputs are predicted jointly; we verified that joint prediction does not degrade performance relative to single-output models for the cases examined here. Note that training the analytical grids requires approximately 10 minutes to 75 minutes, on 10 CPUs, depending on the size of the training set. Training the MESA -based interpolator, where the grid has , more models per track than the analytical grid ,takes significantly more time: 2-3 hours on a single GPU, or 8-9 hours on 10 CPUs. Testing with any grid is almost instantaneous. It should be noted that it is not possible to run FLAX on GPUs such that the results are exactly reproducible (Shanmugavelu et al. 2024). For fully reproducible results, one must use CPUs, but sacrifice computation time as the grid size increases.  
+
+> C.
+
+OTHER GRIDS Figure 11 shows HR diagrams for a subsection of the 2000-track analytical grid (50 tracks for readability), and all tracks available in the 2D cases of MIST (19 tracks), ASTEC (50 tracks), and YREC (20 tracks), colored by mass. We trained FLAX networks A, D, D, and C (see Table 1), respectively, with a data split between training, validation, and testing as follows: ASTEC 
+
+(32,7,9), MIST (14,2,3), YREC (14,3,3), and MESA (126, 31, 38). The Δ𝜈 CDF scores are 0.608 for ASTEC , 0.272 for MIST , 0.102 for YREC , and 0.93 for MESA .The ASTEC grid (Christensen-Dalsgaard 2007) has 606 tracks in total, with 𝑀 ∈ [0.7, 1.7] 𝑀 ⊙ , 𝑋 =
+
+[0.694 , 0.6978 , 0.7017 , 0.7056 , 0.7094 , 0.7133 ], 𝑍 = 0.0193, and 𝛼 MLT = 2.1. Bringing this into the 2D case and matching the MESA and analytical grids in their parameter ranges such that 𝑀 ∈ [ 0.7, 1.2] 𝑀 ⊙ and 𝑋 = 0.7017, we are left with 48 tracks. For the training set, the average mass spacing in this grid subset is 0.01516 𝑀 ⊙ , with a maximum spacing of 0.04 𝑀 ⊙ . Although including tracks of varying 𝑋 in the same mass range would increase the grid density and the number of tracks we can allocate for training, varying 𝑋 results in additional “difficult" regions. Thus, to study how well an interpolator can handle the transition region between radiative and convective cores, there must be no other additional degeneracies present. From the MIST grid (Choi et al. 2016), out of 196 tracks with 𝑌 = 0.2703, 𝑍 = 0.014286, and 𝛼 MLT = 1.82 to obtain the 2D case, we select the 19 available tracks of 𝑀 ∈ [ 0.7, 1.2] 𝑀 ⊙ . We only select phases 0-4 to evolve stars until TAMS. Note that 
+
+MIST includes mass loss, so we note the initial mass spacing in the training set is 0.15 𝑀 ⊙ . Since 𝑋 𝑐 is available within the data, we use the same 𝑋 𝑐 -based TAMS cut as in Equation 3. From the YREC (Demarque et al. 2008) grid (see Sec. 3.2 of Metcalfe et al. 2021, for details of the grid), out of 92 total tracks with [Fe /H] = 0 and solar 𝛼 MLT , we select the 20 available tracks with 𝑀 ∈ [ 0.8, 1.2] 𝑀 ⊙ . As this grid does not include 𝑋 𝑐 as a variable, we estimate the TAMS location by a power-law, 𝐿 = 𝐶 (𝑇 eff )𝑘 , where 𝐶 is a non-zero constant. This grid has an average mass spacing for the training set of 0.036 𝑀 ⊙ , with a maximum spacing of 0.075 𝑀 ⊙ .20 0.5 1.0 1.5 2.0 2.5 3.0 3.5 4.0 
+
+> L [L ]
+
+Analytical MIST 
+
+> 4500 4750 5000 5250 5500 5750 6000 6250 6500
+
+Teff [K] 
+
+> 0.5 1.0 1.5 2.0 2.5 3.0
+> L [L ]
+
+ASTEC 
+
+> 4500 4750 5000 5250 5500 5750 6000 6250
+
+Teff [K] 
+
+YREC 
+
+> 0.80 0.85 0.90 0.95 1.00 1.05 1.10 1.15 1.20
+> Mass [ M ]
+
+Figure 11. An HR diagram for the 2000-track analytical grid (top left) following Hurley et al. (2000), only showing 50 representative tracks for readability, the full 2D subsample of the MIST grid (top right), the full 2D subsample of the ASTEC grid (bottom left), and the full 2D subsample of the YREC grid (bottom right). The tracks are colored by mass. D. UNCERTAINTY OF ENSEMBLE MIXTURE MODELS Comparing the consensus to the mixture allows us to diagnose cases where the networks disagree fundamentally (resulting in multi-modal or highly skewed distributions) rather than just exhibiting high variance. This provides a more robust check on the reliability of the emulator when using it to characterize stars. For the consensus case, the resulting likelihood surface (or posterior distribution) is then evaluated as: 
+
+L ∝ exp 
+
+
+
+− 12
+
+
+
+𝑦 obs − 𝑦 model 𝑇 
+
+Σ−1total 
+
+
+
+𝑦 obs − 𝑦 model 
+
+(D2) Importantly, Σem is the correlated emulator uncertainty, as it generally contains off-diagonal terms. For example, Δ𝜈 and 𝜈 max are correlated through stellar structure scaling relations, as are 𝑇 eff and 𝐿 . These correlations manifest as tilted degeneracy directions in input parameter space and must be accounted for to avoid biased inference. 21 To determine if the total uncertainty in the output parameters, Σtot , will significantly impact the uncertainty of the input parameters 𝜃 (e.g., mass, age, etc.), we propagate the output-space uncertainty through the Jacobian, 
+
+Σ𝜃 ≈
+
+
+
+𝐽 𝑇 Σ−1 
+
+> 𝑦
+
+𝐽 
+
+ −1
+
+(D3) where 𝐽 = 𝜕𝑦 /𝜕𝜃 and Σ𝑦 = Σ total . This linear approximation corresponds to a local Gaussian (Fisher matrix) expansion of the posterior. This approach enables efficient comparison of emulator-induced uncertainty across multiple machine-learning models while preserving the local curvature structure of the likelihood surface. In the limit of a perfectly behaved emulator and small uncertainties, the linearized propagation and the ensemble mixture should converge. Discrepancies between these two methods serve as a diagnostic for non-linearities in the emulator’s mapping or significant outliers within the ensemble. Alternatively, Σ𝜃 can be obtained through full Bayesian sampling (e.g., MCMC), which captures non-linear degeneracies and non-Gaussian structure in the posterior. The neural network itself does not prevent MCMC sampling of stellar parameters, since the sampling is performed over 𝜃 , not over the network weights. However, poorly behaved emulator surfaces (e.g., sharp interpolation artifacts or regions of sparse training coverage) can induce artificial structure in the posterior and must therefore be diagnosed carefully if utilized. Interpolation error in observable space does not necessarily translate into degraded precision in inferred stellar parameters (e.g., mass, age, etc.), as the mapping from observables to model parameters is non-linear. Errors in observables that do not strongly influence the stellar parameters will have little effect on the inferred mass or age. In contrast, errors that lie along degeneracy directions, where different parameter combinations produce similar observables, can significantly increase the uncertainty in the inferred parameters. It is therefore insufficient to assess emulator performance solely through residual statistics in observable space. By projecting output errors onto the principal directions of the Jacobian, we differentiate between benign emulator noise, which occurs in directions the observables are insensitive to, and critical noise that inflates the final uncertainties in 𝜃 . If emulator uncertainty remains subdominant to observational uncertainty after propagation, then the emulator fidelity is adequate for the intended application. If not, we quantify the degree to which parameter uncertainties are degraded. This procedure provides a direct, application-specific validation of emulator performance in terms of its impact on stellar characterization. In practice, mass inference proceeds as follows. As defined in Section 1, the emulator ˜ 𝑓 approximates the true simulator 𝑓 with a position-dependent interpolation error 𝜖 em (𝜃 ). Given a set of seismic observables (here, Δ𝜈 and 𝜈 max ) for a target star, we invert ˜𝑓 to find the input mass, 𝑀 , that satisfies ˜𝑓 Δ𝜈 (𝑀, 𝜃 −𝑀 ) = Δ 𝜈 obs (D4) where 𝜃 −𝑀 denotes the remaining input parameters held fixed at their inferred or assumed values, and ˜𝑓 Δ𝜈 denotes the Δ𝜈 
+
+component of ˜ 𝑓 (𝜃 ). The sensitivity of the inferred mass to perturbations in Δ𝜈 is governed by the local Jacobian 𝜕 ˜𝑓 Δ𝜈 /𝜕𝑀 , where by first-order error propagation, 
+
+𝜎 𝑀 ≈ 𝜕 ˜𝑓 Δ𝜈 
+
+𝜕𝑀 
+
+> −1
+
+𝜎 Δ𝜈 (D5) where 𝜎 2 
+
+> Δ𝜈
+
+= 𝜎 2 
+
+> Δ𝜈, obs
+
++𝜎 2 
+
+> Δ𝜈, em
+
+combines observational noise and the standard deviation of 𝜖 em (𝜃 ) projected onto the Δ𝜈 dimension, the latter estimated from the spread across an ensemble of independently trained FLAX networks. Numerical instabilities in ˜𝑓 
+
+manifest as local fluctuations in 𝜕 ˜𝑓 Δ𝜈 /𝜕𝑀 . Where this gradient is anomalously small, even modest Δ𝜈 uncertainties are amplified into large mass errors, and spurious local extrema can produce false solutions. REFERENCES 
+
+> Aerts, C., Christensen-Dalsgaard, J., & Kurtz, D. W. 2010, Asteroseismology (Springer Dordrecht), doi: 10.1007/978-1-4020-5803-5 Aguirre Børsen-Koch, V., Rørsted, J. L., Justesen, A. B., et al. 2022, MNRAS, 509, 4344, doi: 10.1093/mnras/stab2911 Akiba, T., Sano, S., Yanase, T., Ohta, T., & Koyama, M. 2019, Optuna: A Next-generation Hyperparameter Optimization Framework. https://arxiv.org/abs/1907.10902 Altman, N. S. 1992, The American Statistician, 46, 175. https://api.semanticscholar.org/CorpusID:17002880 Andrews, J. J., Bavera, S. S., Briel, M., et al. 2025, ApJS, 281, 3, doi: 10.3847/1538-4365/adfb78 Barber, C. B., Dobkin, D. P., & Huhdanpaa, H. 1996, ACM Trans. Math. Softw., 22, 469–483, doi: 10.1145/235815.235821 Basu, S., Chaplin, W. J., & Elsworth, Y. 2010, ApJ, 710, 1596, doi: 10.1088/0004-637X/710/2/1596
+
+22 
+
+Basu, S., & Hekker, S. 2020, Frontiers in Astronomy and Space Sciences, 7, 44, doi: 10.3389/fspas.2020.00044 Bazot, M., Christensen-Dalsgaard, J., Gizon, L., & Benomar, O. 2016, MNRAS, 460, 1254, doi: 10.1093/mnras/stw921 Bellinger, E. P. 2019, MNRAS, 486, 4612, doi: 10.1093/mnras/stz714 Bellinger, E. P., Angelou, G. C., Hekker, S., et al. 2016, ApJ, 830, 31, doi: 10.3847/0004-637X/830/1/31 Bellinger, E. P., Basu, S., Hekker, S., & Ball, W. H. 2017, ApJ, 851, 80, doi: 10.3847/1538-4357/aa9848 Bellinger, E. P., Basu, S., Hekker, S., & Christensen-Dalsgaard, J. 2019a, ApJ, 885, 143, doi: 10.3847/1538-4357/ab4a0d Bellinger, E. P., & Christensen-Dalsgaard, J. 2022, MNRAS, 517, 5281–5288, doi: 10.1093/mnras/stac1845 Bellinger, E. P., Hekker, S., Angelou, G. C., Stokholm, A., & Basu, S. 2019b, A&A, 622, A130, doi: 10.1051/0004-6361/201834461 —. 2019c, A&A, 622, A130, doi: 10.1051/0004-6361/201834461 Biau, G. 2012, Analysis of a Random Forests Model. https://arxiv.org/abs/1005.0208 Borucki, W. J. 2016, Reports on Progress in Physics, 79, 036901, doi: 10.1088/0034-4885/79/3/036901 Bradbury, J., Frostig, R., Hawkins, P., et al. 2018, JAX: composable transformations of Python+NumPy programs. http://github.com/google/jax Brandão, I. M., Cunha, M. S., & Christensen-Dalsgaard, J. 2014, MNRAS, 438, 1751, doi: 10.1093/mnras/stt2314 Bressan, A., Marigo, P., Girardi, L., et al. 2012, MNRAS, 427, 127–145, doi: 10.1111/j.1365-2966.2012.21948.x Brown, T. M., Christensen-Dalsgaard, J., Weibel-Mihalas, B., & Gilliland, R. L. 1994, ApJ, 427, 1013, doi: 10.1086/174208 Buchele, L., Bellinger, E. P., Hekker, S., & Basu, S. 2025, ApJ, 987, 97, doi: 10.3847/1538-4357/add697 Buchele, L., Bellinger, E. P., Hekker, S., et al. 2024, ApJ, 961, 198, doi: 10.3847/1538-4357/ad1680 Campante, T. L., Barclay, T., Swift, J. J., et al. 2015, ApJ, 799, 170, doi: 10.1088/0004-637X/799/2/170 Choi, J., Dotter, A., Conroy, C., et al. 2016, ApJ, 823, 102, doi: 10.3847/0004-637X/823/2/102 Christensen-Dalsgaard, J. 1988, in IAU Symposium, Vol. 123, Advances in Helio- and Asteroseismology, ed. J. Christensen-Dalsgaard & S. Frandsen, 295 Christensen-Dalsgaard, J. 2007, Ap&SS, 316, 13–24, doi: 10.1007/s10509-007-9675-5 Clara, M., Cunha, M. S., Avelino, P. P., et al. 2025, A&A, 694, A314, doi: 10.1051/0004-6361/202450514 Creevey, O. L., Doˇ gan, G., Frasca, A., et al. 2012, A&A, 537, A111, doi: 10.1051/0004-6361/201117037 Demarque, P., Guenther, D. B., Li, L. H., Mazumdar, A., & Straka, C. W. 2008, Ap&SS, 316, 31, doi: 10.1007/s10509-007-9698-y Dotter, A. 2016, ApJS, 222, 8, doi: 10.3847/0067-0049/222/1/8 Ekström, S., Georgy, C., Eggenberger, P., et al. 2012, A&A, 537, A146, doi: 10.1051/0004-6361/201117751 Fragos, T., J. Andrews, J., Bavera, S. S., et al. 2023, ApJS, 264, 45, doi: 10.3847/1538-4365/ac90c1 García, R. A., & Ballot, J. 2019, Living Reviews in Solar Physics, 16, 4, doi: 10.1007/s41116-019-0020-1 Gough, D. 1987, Nature, 326, 257, doi: 10.1038/326257a0 Grevesse, N., & Sauval, A. J. 1998, SSRv, 85, 161, doi: 10.1023/A:1005161325181 Heek, J., Levskaya, A., Oliver, A., et al. 2024, Flax: A neural network library and ecosystem for JAX, 0.12.0. http://github.com/google/flax Herwig, F., Blöcker, T., & Schönberner, D. 1999, in IAU Symposium, Vol. 191, Asymptotic Giant Branch Stars, ed. T. Le Bertre, A. Lebre, & C. Waelkens, 41, doi: 10.48550/arXiv.astro-ph/9811129 Hidalgo, S. L., Pietrinferni, A., Cassisi, S., et al. 2018, ApJ, 856, 125, doi: 10.3847/1538-4357/aab158 Hon, M., Li, Y., & Ong, J. 2024, ApJ, 973, 154, doi: 10.3847/1538-4357/ad6320 Huber, D., Basu, S., Beck, P., et al. 2019, Astro2020 Science White Paper: Stellar Physics and Galactic Archeology using Asteroseismology in the 2020’s. https://arxiv.org/abs/1903.08188 Hurley, J. R., Pols, O. R., & Tout, C. A. 2000, MNRAS, 315, 543–569, doi: 10.1046/j.1365-8711.2000.03426.x Iglesias, C. A., & Rogers, F. J. 1993, ApJ, 412, 752, doi: 10.1086/172958 —. 1996, ApJ, 464, 943, doi: 10.1086/177381 Jermyn, A. S., Bauer, E. B., Schwab, J., et al. 2023, ApJS, 265, 15, doi: 10.3847/1538-4365/acae8d Kallinger, T. 2026, MNRAS, 548, stag736, doi: 10.1093/mnras/stag736 Kjeldsen, H., & Bedding, T. R. 1995, A&A, 293, 87, doi: 10.48550/arXiv.astro-ph/9403015 Li, T., Davies, G. R., Lyttle, A. J., et al. 2022, MNRAS, 511, 5597, doi: 10.1093/mnras/stac467 Li, Y., Bedding, T. R., Stello, D., et al. 2023, MNRAS, 523, 916–927, doi: 10.1093/mnras/stad1445 Lindsay, C. J., Hon, M., Ong, J. M. J., et al. 2025, ApJ, 989, 189, doi: 10.3847/1538-4357/adeb56 Loshchilov, I., & Hutter, F. 2016, arXiv e-prints, arXiv:1608.03983, doi: 10.48550/arXiv.1608.03983 Loshchilov, I., & Hutter, F. 2019, Decoupled Weight Decay Regularization. https://arxiv.org/abs/1711.05101 Lund, M. N., Aguirre, V. S., Davies, G. R., et al. 2017, ApJ, 835, 172, doi: 10.3847/1538-4357/835/2/172 Lyttle, A. J., Davies, G. R., Li, T., et al. 2021, MNRAS, 505, 2427, doi: 10.1093/mnras/stab1368 23 
+
+Maltsev, K., Schneider, F. R. N., Röpke, F. K., et al. 2024, A&A, 681, A86, doi: 10.1051/0004-6361/202347118 Metcalfe, T. S., van Saders, J. L., Basu, S., et al. 2021, ApJ, 921, 122, doi: 10.3847/1538-4357/ac1f19 Miglio, A., Chiappini, C., Morel, T., et al. 2013, MNRAS, 429, 423, doi: 10.1093/mnras/sts345 Nguyen, C. T., Costa, G., Bressan, A., et al. 2025, å, 701, A258, doi: 10.1051/0004-6361/202556005 Nielsen, M. B., Ball, W. H., Standing, M. R., et al. 2020, A&A, 641, A25, doi: 10.1051/0004-6361/202037461 Nsamba, B., Monteiro, M. J. P. F. G., Campante, T. L., Cunha, M. S., & Sousa, S. G. 2018, MNRAS, 479, L55, doi: 10.1093/mnrasl/sly092 Paxton, B., Bildsten, L., Dotter, A., et al. 2011, ApJS, 192, 3, doi: 10.1088/0067-0049/192/1/3 Paxton, B., Cantiello, M., Arras, P., et al. 2013, ApJS, 208, 4, doi: 10.1088/0067-0049/208/1/4 Paxton, B., Marchant, P., Schwab, J., et al. 2015, ApJS, 220, 15, doi: 10.1088/0067-0049/220/1/15 Paxton, B., Schwab, J., Bauer, E. B., et al. 2018, ApJS, 234, 34, doi: 10.3847/1538-4365/aaa5a8 Paxton, B., Smolec, R., Schwab, J., et al. 2019, ApJS, 243, 10, doi: 10.3847/1538-4365/ab2241 Pedregosa, F., Varoquaux, G., Gramfort, A., et al. 2011, Journal of Machine Learning Research, 12, 2825, doi: 10.48550/arXiv.1201.0490 Pietrinferni, A., Cassisi, S., Salaris, M., & Castelli, F. 2004, ApJ, 612, 168–190, doi: 10.1086/422498 Pinsonneault, M. H., Elsworth, Y., Epstein, C., et al. 2014, ApJS, 215, 19, doi: 10.1088/0067-0049/215/2/19 Pinsonneault, M. H., Zinn, J. C., Tayar, J., et al. 2025, ApJS, 276, 69, doi: 10.3847/1538-4365/ad9fef Pinsonneault, M. H., van Saders, J. L., Cao, L., et al. 2026, arXiv e-prints, arXiv:2603.25792, doi: 10.48550/arXiv.2603.25792 Pols, O. R., Schröder, K.-P., Hurley, J. R., Tout, C. A., & Eggleton, P. P. 1998, MNRAS, 298, 525, doi: 10.1046/j.1365-8711.1998.01658.x Polyak, B. T., & Juditsky, A. B. 1992, SIAM Journal on Control and Optimization, 30, 838, doi: 10.1137/0330046 Prather, M. J. 1976, PhD thesis, Yale University, Connecticut Quirion, P.-O., Christensen-Dalsgaard, J., & Arentoft, T. 2010, ApJ, 725, 2176, doi: 10.1088/0004-637X/725/2/2176 Rauer, H., Aerts, C., Cabrera, J., et al. 2024, The PLATO Mission. https://arxiv.org/abs/2406.05447 Ricker, G. R., Winn, J., & Vanderspek, R. 2022, in Bulletin of the American Astronomical Society, Vol. 54, 406.02 Rocha, K. A., Andrews, J. J., Berry, C. P. L., et al. 2022, ApJ, 938, 64, doi: 10.3847/1538-4357/ac8b05 Rodrigues, T. S., Bossini, D., Miglio, A., et al. 2017, MNRAS, 467, 1433, doi: 10.1093/mnras/stx120 Saunders, N., van Saders, J. L., Lyttle, A. J., et al. 2024, ApJ, 962, 138, doi: 10.3847/1538-4357/ad1516 Scutt, O. J., Davies, G. R., Stokholm, A., et al. 2026, MNRAS, 546, stag018, doi: 10.1093/mnras/stag018 Settles, B. 2009, Active Learning Literature Survey, Computer Sciences Technical Report 1648, University of Wisconsin–Madison. http://axon.cs.byu.edu/~martinez/classes/ 778/Papers/settles.activelearning.pdf Shanmugavelu, S., Taillefumier, M., Culver, C., et al. 2024, arXiv e-prints, arXiv:2408.05148, doi: 10.48550/arXiv.2408.05148 Sharma, S., Stello, D., Bland-Hawthorn, J., Huber, D., & Bedding, T. R. 2016, ApJ, 822, 15, doi: 10.3847/0004-637X/822/1/15 Silva Aguirre, V., Davies, G. R., Basu, S., et al. 2015, MNRAS, 452, 2127, doi: 10.1093/mnras/stv1388 Sobol, I. M. 1967, Ussr Computational Mathematics and Mathematical Physics, 7, 86. https://api.semanticscholar.org/CorpusID:122581245 Spada, F., Demarque, P., Kim, Y.-C., Boyajian, T. S., & Brewer, J. M. 2017, ApJ, 838, 161, doi: 10.3847/1538-4357/aa661d Srivastava, P. M., Demir, U., Katsaggelos, A., et al. 2024, Irregularly Sampled Time Series Interpolation for Detailed Binary Evolution Simulations. https://arxiv.org/abs/2411.02586 Stancliffe, R. J., Fossati, L., Passy, J. C., & Schneider, F. R. N. 2016, A&A, 586, A119, doi: 10.1051/0004-6361/201527099 Stello, D., Chaplin, W. J., Basu, S., Elsworth, Y., & Bedding, T. R. 2009, MNRAS, 400, L80, doi: 10.1111/j.1745-3933.2009.00767.x Stokholm, A., Aguirre Børsen-Koch, V., Stello, D., Hon, M., & Reyes, C. 2023, MNRAS, 524, 1634, doi: 10.1093/mnras/stad1912 Stone-Martinez, A., Holtzman, J. A., Lu, Y., et al. 2025, AJ, 170, 66, doi: 10.3847/1538-3881/addd18 Teng, E., Demir, U., Doctor, Z., et al. 2025, Astronomy and Computing, 51, 100935, doi: 10.1016/j.ascom.2025.100935 Theodoridis, A. T., Morales, L., & Tayar, J. 2025, Asteroseismically Inferred Ages of 132,000 Red Giants with TESS. https://arxiv.org/abs/2505.08109 Ulrich, R. K. 1986, ApJL, 306, L37, doi: 10.1086/184700 Van Eylen, V., Lund, M. N., Silva Aguirre, V., et al. 2014, ApJ, 782, 14, doi: 10.1088/0004-637X/782/1/14 Virtanen, P., Gommers, R., Oliphant, T. E., et al. 2020, Nature Methods, 17, 261–272, doi: 10.1038/s41592-019-0686-2 Weiss, T. J., Downing, N. J., Pinsonneault, M. H., et al. 2025, ApJ, 987, 181, doi: 10.3847/1538-4357/adde5b Zhang, J., He, T., Sra, S., & Jadbabaie, A. 2019, arXiv e-prints, arXiv:1905.11881, doi: 10.48550/arXiv.1905.11881

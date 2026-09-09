@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-08</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-09</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 43 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 27 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>30</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>14</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>13</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-08 23:17:13 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-09 21:56:59 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日共扫描43篇论文，精读30篇、速读13篇，重点锁定系外行星与AI科学计算两大方向。最值得关注的是两项满分研究：DAVINCI任务的金星光谱基准破解了陆地行星光谱简并性，以及精确恒星年龄约束如何重塑宜居带演化认知。建议普通读者可从速读篇目中的PDS 70c环行星流模拟入手，直观感受系外卫星形成场景。</p>
+<p>今日27篇论文中精读14篇，重点聚焦X射线双星非线性预测与行星大气化学演化。</p>
+<p>高分推荐：Koopman算子建模X射线双星变率（9.0）、天王星海王星C/O比揭示不同演化路径（9.0），后者对理解冰巨星形成尤其关键。</p>
+<p>建议普通读者优先浏览两篇9分精读概览，速读中白矮星尘埃盘与恒星演化机器学习基准也值得一瞥。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">30 篇</strong>
+    <strong class="dpr-home-dashboard-count">14 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="The Venus Benchmark: Resolving Degeneracies in Terrestrial Exoplanet Spectra with DAVINCI">The Venus Benchmark: Resolving Degeneracies in Terrestrial Exoplanet Spectra with DAVINCI</span></li><li><span class="dpr-home-dashboard-paper-title" title="Precise Stellar Age Constraints and Habitable Zone Evolution in Exoplanet Systems">Precise Stellar Age Constraints and Habitable Zone Evolution in Exoplanet Systems</span></li><li><span class="dpr-home-dashboard-paper-title" title="Atmospheric escape fractionates secondary but not primary atmospheres">Atmospheric escape fractionates secondary but not primary atmospheres</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Learning and Predicting the Nonlinear Variability of X-ray Binaries with the Koopman Operator">Learning and Predicting the Nonlinear Variability of X-ray Binaries with the Koopman Operator</span></li><li><span class="dpr-home-dashboard-paper-title" title="Contrasting C/O ratios in Uranus and Neptune from disequilibrium chemistry: A clue to distinct evolutionary pathways?">Contrasting C/O ratios in Uranus and Neptune from disequilibrium chemistry: A clue to distinct evolutionary pathways?</span></li><li><span class="dpr-home-dashboard-paper-title" title="Variational Continuation for Double Pendulum Periodic Orbits">Variational Continuation for Double Pendulum Periodic Orbits</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>24</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>4</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>8</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>6</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -87,9 +89,9 @@
     <strong class="dpr-home-dashboard-count">13 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Learning the Geometry of Admissible Hypotheses through Inductive Bias in Training Distributions">Learning the Geometry of Admissible Hypotheses through Inductive Bias in Training Distributions</span></li><li><span class="dpr-home-dashboard-paper-title" title="Three-dimensional circumplanetary flows in a PDS 70c-inspired system: hydrodynamic simulations with FARGO3D and analysis with FARGOpy">Three-dimensional circumplanetary flows in a PDS 70c-inspired system: hydrodynamic simulations with FARGO3D and analysis with FARGOpy</span></li><li><span class="dpr-home-dashboard-paper-title" title="Geometry-aware Latent Autoregressive Generative Model for PDEs in Complex Domains">Geometry-aware Latent Autoregressive Generative Model for PDEs in Complex Domains</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Where planetary solids survive sublimation around young and hot white dwarfs">Where planetary solids survive sublimation around young and hot white dwarfs</span></li><li><span class="dpr-home-dashboard-paper-title" title="Equation Recast for Canonical Operator Learning Across Parametric PDEs">Equation Recast for Canonical Operator Learning Across Parametric PDEs</span></li><li><span class="dpr-home-dashboard-paper-title" title="Benchmarking Machine Learning Emulators of Stellar Evolution for Precision Asteroseismology">Benchmarking Machine Learning Emulators of Stellar Evolution for Precision Asteroseismology</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>7</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>4</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>7</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>5</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 </div>
 
