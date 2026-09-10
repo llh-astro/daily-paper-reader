@@ -1,0 +1,1695 @@
+Title: Solution-space heterogeneity shapes federated learning dynamics across partial differential equations
+
+URL Source: https://arxiv.org/pdf/2609.05012v1
+
+Published Time: Mon, 07 Sep 2026 00:51:38 GMT
+
+Number of Pages: 39
+
+Markdown Content:
+# Solution-space heterogeneity shapes federated learning dynamics across partial differential equations 
+
+Ping Luo 1, Jiahuan Wang 1, Ziqing Wen 1, Tao Sun 1* †, Dongsheng Li 1* †
+
+1PDL Lab, College of Computer Science and Technology, Changsha, 410073, China. *Corresponding author(s). E-mail(s): suntao.saltfish@outlook.com; dsli@nudt.edu.cn; Contributing authors: luoping@nudt.edu.cn; wangjiahuan@nudt.edu.cn; zqwen@nudt.edu.cn; 
+
+†These authors contributed equally to this work. 
+
+Abstract 
+
+Federated scientific machine learning enables institutions to train neural surrogates without cen-tralizing local physical data, yet studies of partial differential equations (PDEs) lack a transferable definition of non-independent and identically distributed data. Existing protocols partition coor-dinates, coefficients, boundary conditions, or geometries according to equation-specific rules. Here, we introduce solution-space PDE-Dirichlet, a protocol that converts continuous supervised responses into reusable solution bins and quantifies the realized separation between clients through optimal transport over the geometry of these bins. We derive an exact inverse relation between population allocation heterogeneity and the Dirichlet concentration, and we establish conditions under which response heterogeneity induces gradient disagreement, local-update dispersion, and parameter divergence. Across seven controlled and public PDE tasks, three neural-operator fam-ilies, and five random seeds, a lower concentration consistently increases the realized solution distance and optimization heterogeneity. The degradation in final error is task dependent: the largest effect occurs for low-viscosity Burgers, reaching 4.157 percentage points under the most heterogeneous setting, whereas additional communication or smoother dynamics can reduce the final gap despite persistent parameter separation. These results distinguish a reproducible geo-metric mechanism from task-dependent generalization outcomes and provide a common basis for evaluating non-IID federated PDE learning. 
+
+Keywords: federated learning, scientific machine learning, partial differential equations, neural operators, statistical heterogeneity, optimal transport 
+
+1arXiv:2609.05012v1 [cs.LG] 4 Sep 2026 1 Introduction 
+
+Partial differential equations are central to the mathematical description of transport, diffusion, fluid flow, wave propagation, and many other physical processes. High-fidelity numerical solvers remain indispensable, but repeated simulation, inversion, optimization, and uncertainty quantification can be prohibitively expensive. Scientific machine learning (SciML) reduces this computational burden by learning surrogate maps from data and physical constraints. Representative approaches include physics-informed neural networks (PINNs) [1] and neural operators such as DeepONet [2], the Fourier neural operator (FNO) [3], and more general operator-learning frameworks [4]. In many scientific and engineering settings, the relevant data are naturally distributed. Hospi-tals, laboratories, industrial facilities, sensor networks, and simulation centers may collect data under different operating regimes but be unable or unwilling to centralize their raw observations. Feder-ated learning (FL) allows these clients to optimize a shared model by communicating parameters rather than transferring data [5, 6]. Federated DeepONet [7] and federated SciML frameworks [8] have demonstrated the feasibility of collaborative operator learning and physics-informed learning. The central obstacle is statistical heterogeneity. In conventional classification benchmarks, class labels provide a natural discrete variable, and a symmetric Dirichlet distribution can vary the degree of label skew continuously [9]. PDE operator datasets have no analogous universal label. Their inputs may include initial conditions, boundary conditions, source functions, coefficient fields, geometries, physical parameters, or combinations of these quantities. Constructing a Dirichlet split directly in the input space therefore requires equation-specific choices of the partition axis, continuous-to-discrete mapping, distance, and normalization. A multifactor partition additionally requires a joint or hier-archical allocation rule. A rule defined for scalar viscosity cannot be transferred unchanged to a coefficient field or geometry. Similarly, a coordinate partition designed for PINN collocation points does not characterize heterogeneity among samples of an input-to-solution operator. Consequently, these protocols become increasingly complex as more physical factors are considered and provide no natural basis for comparison across PDEs. Proximity in the input space is also not equivalent to proximity in the response space. A PDE solution operator can amplify, suppress, or qualitatively transform an input perturbation, particularly in nonlinear, multiscale, advection-dominated, or near-transition regimes. Consequently, two clients with similar separation under an input norm may exhibit markedly different solution distributions and learning gradients, whereas heterogeneous inputs may produce similar responses. This ambiguity has three consequences. First, nominally similar non-IID experiments may control different physical factors and are therefore difficult to compare. Second, a selected partition variable may not predict the gradients that drive federated optimization. Third, a scalar severity parameter does not guarantee comparable realized heterogeneity across finite datasets, client counts, or PDE regimes. These limitations impede reproducibility and obscure whether an observed performance gap arises from the federated optimizer, the partition protocol, or the underlying PDE. We address these limitations with solution-space PDE-Dirichlet . Given a labeled operator-learning dataset, the protocol normalizes and discretizes continuous solution fields into response bins that serve as PDE pseudo-classes. A symmetric Dirichlet distribution then controls the allocation of these bins across clients. A discrete optimal-transport distance between client bin histograms, with the distances between solution centroids as the ground cost, quantifies the realized response-space heterogeneity. Because the construction operates on the supervised response rather than on a task-specific input axis, it provides a common interface for forward operators, temporal prediction, and inverse mappings. 2The contribution is not the Dirichlet distribution, clustering, or optimal transport in isolation. To the best of our knowledge, this work presents the first cross-equation FL-PDE benchmark that constructs non-IID clients by discretizing labeled solution fields and couples the resulting partition with a solution-geometry-aware transport metric and an explicit concentration-to-heterogeneity analysis. Our contributions are threefold. We introduce solution-space partitioning, in which normalized solution fields are discretized into reusable pseudo-classes and transport over their centroids measures the realized separation between clients. We establish an exact ( Kα + 1) −1 population concentration law and identify the conditions under which response heterogeneity induces gradient disagreement, local-update dispersion, and parameter divergence. We then test these predictions across controlled and application-oriented PDEs, multiple physical regimes, different client counts and optimizers, and three neural-operator families. FedAvg alternates local optimization and weighted model averaging [5]. When client objectives differ, multiple local updates can move client models in incompatible directions. FedProx [10] regu-larizes local objectives, while SCAFFOLD [11] uses control variates to reduce client drift. Broader surveys identify statistical heterogeneity as one of the defining challenges of FL [6]. Evaluation protocols are as important as optimization algorithms. Naturally partitioned bench-marks such as LEAF preserve user-level heterogeneity [12], whereas controlled studies commonly synthesize label skew through shard-based or Dirichlet partitions [9]. For non-classification tasks, FedNLP showed that continuous examples can be embedded, clustered into pseudo-labels, and sub-sequently allocated by a label-based Dirichlet procedure [13]. Thus, neither pseudo-label construction nor cluster-then-Dirichlet allocation is itself specific to, or introduced by, the present study. The unre-solved PDE-specific problem is to choose a representation and distance that remain interpretable across equations whose inputs and outputs are continuous fields. Input-based PDE partitions must select and discretize one or more task-specific factors, including coordinates, coefficients, boundary conditions, geometries, and regime parameters. The required bins, scales, and joint allocation rules differ across equations and can conflate covariate, parameter, geometric, and response shifts. PINNs incorporate differential-equation residuals and boundary or initial conditions into a learning objective [1]. Neural operators instead learn maps between function spaces and can amortize PDE solution over families of inputs. DeepONet represents an operator using branch and trunk subnetworks [2]; FNO parameterizes global integral operators in Fourier space [3]. A unified operator-learning perspective and approximation theory are reviewed in [4]. Public benchmarks have improved the reproducibility of SciML. PDEBench contains diverse for-ward and inverse PDE tasks, large simulation datasets, and multiple baselines [14]. CFDBench targets generalization across boundary conditions, fluid properties, and geometries in computational fluid dynamics [15]. OpenFWI provides large-scale synthetic seismic data and velocity models for full-waveform inversion [16], building on architectures such as InversionNet [17]. These benchmarks standardize the underlying scientific data, but they do not specify how to construct comparable federated non-IID clients. Moya and Lin introduced federated training for DeepONet and studied stochastic and adaptive optimization for dynamical-system operators [7]. Zhang et al. evaluated FedPINN and FedDeepONet and used the 1-Wasserstein distance to relate data heterogeneity to prediction error and weight diver-gence [8]. Their partitions are tailored to specific input domains, coordinates, or data-generation procedures. Such designs are useful for controlled, equation-specific studies, but their extension across PDE families requires new axes, scales, and allocation rules. Moreover, a partition along one coordinate or parameter is not directly comparable to a partition along another. 3Recent work has also incorporated differential-equation constraints into decentralized FL and ana-lyzed convergence or empirical robustness under heterogeneous data [18, 19]. These studies develop physics-informed learning and aggregation algorithms rather than a transferable protocol for construct-ing client distributions. In a related but non-federated direction, LAM-PINN clusters parameterized PDE tasks using PDE parameters and learning-affinity measurements to support modular meta-learning [20]. Its purpose is task transfer and model reuse, rather than the controlled allocation of labeled operator-learning samples among clients. Collectively, these studies establish the importance of PDE and task heterogeneity, while leaving open the definition of a common response-space coordinate for federated benchmark construction. Our objective is complementary. We do not introduce a new federated optimizer, and we do not claim the generic use of clustering, Dirichlet allocation, or Wasserstein distance as novel. We define a common response-space protocol for evaluating existing and future FL algorithms on labeled PDE datasets. The same construction applies to forward operators, temporal field prediction, and inverse mappings because it acts on the supervised response space rather than requiring a task-specific choice of input axis. The resulting transport geometry also permits direct comparison with input-space distance on the same realized partition. 
+
+# 2 Results 
+
+2.1 A concentration law links solution-space allocation to federated dynamics 
+
+This section summarizes the theoretical relation between the Dirichlet concentration and federated drift. The complete assumptions and proofs are provided in the appendices. 
+
+2.1.1 Concentration Controls Solution-Bin Heterogeneity 
+
+Let πb be the global proportion of bin b. For the population Dirichlet allocation, define the mass-adjusted raw client profile 
+
+ukb = Kπ bRkb , (1) where ( R1b, . . . , R Kb ) follows (25). Its client mean is exactly πb. Appendix C proves 
+
+E[Hu] = K − 1
+
+Kα + 1 
+
+> B
+
+X
+
+> b=1
+
+π2 
+
+> b
+
+, Hu = 1
+
+K
+
+X
+
+> k
+
+∥uk − π∥22. (2) For balanced bins, this becomes 
+
+E[Hu] = K − 1
+
+B(Kα + 1) . (3) This result is unconditional: the expected allocation heterogeneity decreases strictly as α increases. Client-mass normalization, multinomial sampling, and minimum-size repair perturb the exact population law and therefore motivate the use of diagnostics computed from the realized partitions. 42.1.2 Solution Geometry Transfers to Gradient Heterogeneity 
+
+Let Fb be the loss conditioned on solution bin b. Under random sampling within bins, 
+
+Fk(θ) = X
+
+> b
+
+qkb Fb(θ). (4) With G(θ) = [ ∇F1(θ), . . . , ∇FB (θ)], 
+
+∇Fk(θ) − ∇ F (θ) = G(θ)( qk − ¯q). (5) If G has restricted singular values 0 < m g ≤ Mg on the zero-sum histogram subspace, Appendix E establishes 
+
+m2 
+
+> g
+
+Hq ≤ H g ≤ M 2 
+
+> g
+
+Hq , (6) where 
+
+Hq = X
+
+> k
+
+pk∥qk − ¯q∥22, Hg = X
+
+> k
+
+pk∥gk − g∥22. (7) The lower bound does not hold automatically; it formalizes the requirement that the solution bins preserve distinctions that are relevant to the learning gradients. The centroid transport distance is also equivalent to histogram distance up to explicit constants when all off-diagonal centroid costs are positive and finite. Consequently, response transport predicts gradient heterogeneity whenever both the transport geometry and gradient identifiability conditions hold. 
+
+2.1.3 Local Update Dispersion 
+
+For E local gradient steps with learning rate η, smooth client objectives, and bounded gradients, Appendix F proves pDloc − ηE pHg ≤ η2LG 0E(E − 1) 2 . (8) Thus, 
+
+Dloc = η2E2Hg + O(η3E3). (9) For unbiased mini-batch SGD, an additional root-mean-square term proportional to ηpE P 
+
+> k
+
+pkσ2
+
+> k
+
+accounts for gradient noise. This result directly links solution-space heterogeneity to the dispersion of client updates. 
+
+2.1.4 Global Trajectory Drift Is a Second-Order Effect 
+
+Local dispersion alone does not imply that the aggregated model differs from a model obtained through centralized training. Let Hk = ∇2Fk(θ), H = P 
+
+> k
+
+pkHk, and g = P 
+
+> k
+
+pkgk. When FedAvg and a centralized comparator both perform E full-gradient steps from the same parameter, Appendix G derives 
+
+θ+FA − θ+C = η2 E(E − 1) 2
+
+X
+
+> k
+
+pk(Hk − H)( gk − g) + O(η3E3). (10) Under full participation and sample-count weighting, the first-order terms cancel. Therefore, a single local full-gradient step produces no deterministic drift in the aggregated trajectory, even when the 5client gradients differ. Multiple local steps reveal a covariance-like interaction between curvature and gradients. An upper bound follows from weighted Cauchy–Schwarz: 
+
+∥θ+FA − θ+C ∥2 ≤ η2 E(E − 1) 2
+
+pHH Hg + O(η3E3). (11) A monotone lower bound requires a non-cancellation condition or an alignment condition between curvature and gradients. Under this additional condition, the squared trajectory drift inherits an asymptotic dependence of order ( Kα + 1) −2. Without such alignment, a decrease in α can increase partition and gradient heterogeneity while the global drift remains non-monotonic. Finally, smoothness of the test risk gives 
+
+∆R − ∇R (θC)⊤(θFA − θC) ≤ LR
+
+2 ∥θFA − θC∥22. (12) Away from a stationary centralized solution, the linear term can have either sign. Signed error drift is therefore a conditional downstream observable rather than a quantity controlled unconditionally by the Dirichlet concentration. The centralized comparator in this local expansion is an analytical device that isolates the second-order effect of heterogeneous local objectives. In the experiments, we instead measure drift relative to a same-seed FedAvg trajectory with α = 100, thereby matching the optimizer, communication schedule, and number of local steps exactly. We therefore use the theory to predict gradient and parameter separation and interpret the sign of the paired empirical difference in test error as a conditional outcome. Unless stated otherwise, the curves show the mean across five seeds, and the shaded regions or error bars denote two-sided 95% Student-t confidence intervals. The signed excess error is reported in percentage points (pp) and is paired by seed: ∆e(s) 
+
+> α
+
+= 100 
+
+
+
+e(s) 
+
+> α
+
+− e(s)100 
+
+
+
+. (13) Thus, a value of zero indicates that the non-IID run and the corresponding near-IID FedAvg reference have the same relative test error, whereas a positive value indicates degradation. This paired definition removes variation arising from data generation and initialization, but it does not require a positive value for every seed or task. 
+
+2.2 Finite-Sample Partition Behavior 
+
+Fig. 1 illustrates the continuous-to-discrete construction before federated optimization. At α = 100, every client receives examples from nearly all ten solution bins and the client totals are comparatively balanced. At α = 1, several bins become specific to individual clients. At α = 0 .01, most clients are dominated by one or a few bins and their sample counts differ substantially. Importantly, this is a single finite realization rather than an averaged histogram; it therefore shows the actual partition used by FedAvg. The aggregate diagnostics in Fig. 2 confirm that the concentration parameter controls the intended degree of heterogeneity. Across the three controlled tasks, mean solution distance rises from 0 .15–0 .17 61 2 3 4 5 6 7 8 9 10 12345678910                                                                                           
+
+> Client
+> 78510 4811 718 11 610 66910 7212 413 10 375810 812 410 7214 10 11 2715 779587710 913 9811 5856612 15 9611 367877686749484697610 11 479911 12 6513 514 899712 5
+
+(a) α = 100          
+
+> 12345678910
+
+Client          
+
+> 050
+> Samples
+> 12345678910
+
+Solution bin                                                                                      
+
+> 132141 526 47111 515 2814 12 14 115 23361729 13 17 16 234126 111 7911 25 41511 31 1411 11 1151210 795729 2614 12 115 521 416 1912 212 157516257518 319 118 2110 11
+
+(b) α = 1          
+
+> 12345678910
+
+Client                                           
+
+> 0100
+> 12345678910
+> 46 81 70 3322222118111121321224156 67 71119 164 235122187 69 68
+
+(c) α = 0.01          
+
+> 12345678910
+
+Client 
+
+> 0200
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Within-client bin proportion
+
+Burgers: realized solution-bin allocation (seed 42; cell text = sample count) Fig. 1 A representative realized partition for the Burgers task (seed 42). Each heat-map row represents a client, and each column represents a solution bin. Color indicates the within-client bin proportion, and the text in each cell gives the corresponding sample count. The lower panels report the total sample count of each client. Decreasing α jointly increases solution-bin skew and quantity heterogeneity without duplicating or discarding samples. 
+
+at α = 100 to 0 .45–0 .50 at α = 1 and 0 .91–1 .13 at α = 0 .01. The same ordering holds for all four public tasks. The coefficient of variation of the client sample counts increases concurrently, indicating that the without-replacement protocol jointly generates compositional and quantity heterogeneity. The values are not identical across equations. In particular, Cylinder Flow has a solution distance of approximately 0 .48 even at α = 100, compared with 0 .17–0 .19 for the other public tasks. This task contains only 80 training examples distributed across ten clients and therefore exhibits greater granularity after multinomial sampling. Moreover, the allocation L1 error increases at α = 0 .01, when sparse target proportions, integer counts, and minimum-size repair interact most strongly. These observations support the use of the realized distance Dsol , rather than the nominal value of α alone, for comparisons across tasks. They also provide empirical support for the first part of RQ1: a smaller value of α reliably produces greater realized solution-space heterogeneity, subject to a visible finite-sample floor and saturation. 
+
+2.3 Controlled Tasks: Optimization Trajectories and Final Error 
+
+All controlled configurations learn the corresponding target operators, as shown in Fig. 3. At round 1000, the near-IID relative errors are 4 .42%, 18 .97%, and 4 .10% for Antiderivative, Burgers, and Diffusion-Reaction, respectively. The curves remain close on the logarithmic scale; therefore, the abso-lute test error alone obscures differences smaller than one percentage point. The paired excess-error trajectories in Fig. 4 reveal these differences directly. 7100 10 1 0.1 0.01 0.25 0.50 0.75 1.00 1.25                       
+
+> (a) Formal: Solution distance
+> 100 10 10.1 0.01 0.2 0.4 0.6 0.8 1.0
+> (b) Formal: Sample-count CV
+> 100 10 10.1 0.01 0.2 0.4 0.6 0.8
+> (c) Formal: Dirichlet realization L1
+> 100 10 10.1 0.01 0.25 0.50 0.75 1.00 1.25
+> (d) Public: Solution distance
+> 100 10 10.1 0.01 0.25 0.50 0.75 1.00 1.25
+> (e) Public: Sample-count CV
+> 100 10 10.1 0.01 0.2 0.4 0.6 0.8 1.0
+> (f) Public: Dirichlet realization L1
+
+Dirichlet concentration α     
+
+> Antiderivative Burgers Diffusion-Reaction Cylinder Flow Darcy Flow OpenFWI FlatVel-A Shallow Water
+
+Fig. 2 Realized partition statistics for the controlled tasks (top) and application-oriented public tasks (bottom). Points denote means across seeds, and error bars are 95% confidence intervals. Solution distance is computed from optimal transport over solution-bin centroids; sample-count CV measures quantity heterogeneity; Dirichlet realization 
+
+L1 measures the finite-sample discrepancy between the target and realized allocations. 
+
+Two findings emerge. First, pronounced heterogeneity can cause several percentage points of tran-sient excess error during the first tens of rounds, but much of this gap is reduced by continued communication. Second, the remaining round-1000 effect is task dependent. For Burgers, α = 0 .1and 0 .01 yield 0 .645 pp (95% CI [0 .271 , 1.018]) and 0 .916 pp ([0 .238 , 1.595]), respectively. Diffusion-Reaction also has a positive 0 .218 pp effect at α = 0 .01 ([0 .115 , 0.320]). By contrast, the mean for Antiderivative at α = 0 .01 is 0 .230 pp, with a confidence interval [ −0.292 , 0.751] that includes zero. Negative mean values at moderate heterogeneity do not contradict the proposed mechanism. A non-IID allocation changes the optimization trajectory and can occasionally improve generalization relative to a finite near-IID reference. Fig. 5 separates three relations that a single error metric would obscure. Solution distance is positively associated with initial gradient dissimilarity for all controlled tasks ( ρs = 0 .69, 0 .81, and 0.83) and with final parameter divergence ( ρs = 0 .66, 0 .65, and 0 .72). These consistent associations support the geometric and optimization relations examined in RQ1. The association with the final excess error is weaker and more task dependent: ρs = 0 .20 for Antiderivative, 0 .79 for Burgers, and 0 .59 for Diffusion-Reaction. Thus, the experiments support the chain from concentration to distance and then to gradients, but they do not support an unconditional claim that a smaller α must monotonically increase the final test error. 81 10 100 1000 10 −1 
+
+> 10 0
+
+(a) Antiderivative    
+
+> 110 100 1000 10 0
+> 2 × 10 −1
+> 3 × 10 −1
+> 4 × 10 −1
+> 6 × 10 −1
+
+(b) Burgers     
+
+> 110 100 1000 10 −1
+> 10 0
+
+(c) Diffusion-Reaction 
+
+Communication round (log scale) Test relative  L2 error               
+
+> Near-IID reference, α= 100 FedAvg, α= 10 FedAvg, α= 1 FedAvg, α= 0.1 FedAvg, α= 0.01
+
+Fig. 3 Test relative L2 error on the controlled tasks. All curves use sample-weighted FedAvg; α = 100 is the same-seed near-IID reference. Curves are evaluated at the recorded checkpoints through 1000 communication rounds. The logarithmic vertical scale emphasizes convergence over the full optimization trajectory. 1 10 100 1000 −5 0510 15 
+
+(a) Antiderivative     
+
+> 110 100 1000 −10 −5 0510 15 20
+
+(b) Burgers     
+
+> 110 100 1000 −4 −2 02468
+
+(c) Diffusion-Reaction 
+
+Communication round (log scale) Excess relative  L2 error (percentage points)            
+
+> FedAvg, α= 10 FedAvg, α= 1 FedAvg, α= 0.1 FedAvg, α= 0.01
+
+Fig. 4 Paired excess relative L2 error for the controlled tasks, measured against the same-seed α = 100 FedAvg trajectory. Positive values indicate non-IID degradation. The broad early confidence regions show that transient drift is substantially more variable than final-round drift. 
+
+The distinction is also visible in parameter space. At α = 0 .01, the mean relative parameter divergences are 0 .367, 0 .704, and 0 .513 for the three tasks, even though the Antiderivative excess-error interval includes zero. Parameter deviation is therefore a more sensitive indicator of non-IID optimization than downstream test error, although parameter deviation alone is insufficient to establish degraded generalization. Fig. S1 explains the wide intervals in the trajectory plots. The increasing trend is most reproducible for Burgers and for the most extreme Diffusion-Reaction setting. Antiderivative contains both positive 90.0 0.5 1.0 0.0 0.2 0.4 0.6 0.8    
+
+> Antiderivative  ρs= 0.69 (n= 20 )
+
+(a) Initial gradient dissimilarity      
+
+> 0.0 0.5 1.0 0.0 0.2 0.4
+> ρs= 0.66 (n= 20 )
+
+(b) Final parameter divergence      
+
+> 0.0 0.5 1.0 −0.5 0.0 0.5
+> ρs= 0.20 (n= 20 )
+
+(c) Final excess error (pp)                       
+
+> 0.25 0.50 0.75 1.00 0.0 0.2 0.4 0.6
+> Burgers
+> ρs= 0.81 (n= 20 )
+> 0.25 0.50 0.75 1.00 0.0 0.2 0.4 0.6 0.8 ρs= 0.65 (n= 20 )
+> 0.25 0.50 0.75 1.00 −1 01
+> ρs= 0.79 (n= 20 )
+> 0.25 0.50 0.75 1.00
+
+Solution-space distance       
+
+> 0.00 0.25 0.50 0.75
+> Diffusion-Reaction
+> ρs= 0.83 (n= 20 )
+> 0.25 0.50 0.75 1.00
+
+Solution-space distance        
+
+> 0.0 0.2 0.4 0.6 ρs= 0.72 (n= 20 )
+> 0.25 0.50 0.75 1.00
+
+Solution-space distance              
+
+> −0.50 −0.25 0.00 0.25 ρs= 0.59 (n= 20 )
+> α= 100 α= 10 α= 1 α= 0.1 α= 0.01
+
+Fig. 5 Mechanism diagnostics on the controlled tasks. Columns relate realized solution distance to initial gradient dissimilarity, round-1000 parameter divergence from the paired near-IID model, and round-1000 excess error. Each point represents a mean across five seeds; error bars denote 95% confidence intervals. Spearman correlations are computed from the 20 non-IID seed-level observations, excluding α = 100. 
+
+and negative seed-level effects. We consequently interpret confidence intervals that include zero as unresolved effects rather than as evidence that the partition has no effect on optimization. 
+
+2.4 Ablations: Client Count, Optimizer, and Physical Regime 
+
+Increasing the number of clients from 10 to 20 does not produce a uniform increase in signed excess error (Fig. S2). The clearest effect again occurs for Burgers: at α = 0 .01, the mean increases from 0.916 to 1 .151 pp, and both confidence intervals exclude zero. Diffusion-Reaction increases from 0 .218 to 0 .367 pp, whereas Antiderivative remains unresolved. The confidence intervals for the two client counts overlap, so the data support the robustness of the severe-Burgers effect but not a precise monotonic dependence on K. This result is expected because changing K modifies both the number of local objectives and the number of samples available to each objective. 10 100 10 1 0.1 0.01  
+
+> Dirichlet concentration α
+> −1 012345
+> Excess error at round 1000 (pp)
+
+Burgers physical-regime ablation       
+
+> ν= 0.1 ν= 0.05 ν= 0.01 Fig. 6 Burgers physical-regime ablation. Lower viscosity produces sharper solution features and a larger round-1000 excess error under severe solution-space heterogeneity.
+
+Optimizer choice materially changes the observed downstream drift. Momentum SGD produces smaller and non-monotonic excess errors, and all three confidence intervals at α = 0 .01 include zero. This result does not indicate that SGD eliminates the effects of non-IID data. The near-IID errors of SGD at round 1000 are 11 .54%, 24 .34%, and 12 .67% on Antiderivative, Burgers, and Diffusion-Reaction, compared with 4 .42%, 18 .97%, and 4 .10% for Adam. SGD therefore converges to a region with higher error, in which the paired error difference is compressed. The optimizer ablation supports the theoretical qualification that signed test-error drift depends on the optimization trajectory and local test-risk geometry, not only on the partition. The physical-regime ablation in Fig. 6 provides the strongest evidence for a downstream effect. At 
+
+α = 0 .01, reducing the viscosity from ν = 0 .1 to 0 .05 and 0 .01 increases the mean excess error from 0.916 pp to 3 .007 pp ([1 .963 , 4.052]) and 4 .157 pp ([3 .085 , 5.228]), respectively. The same ordering is already visible at α = 0 .1. Lower viscosity creates sharper transported structures and makes the operator-learning problem more difficult; consequently, client specialization in the solution space has a greater effect on the optimization trajectory. This result provides a more precise answer to RQ3: pronounced solution heterogeneity is most consequential in physically difficult regimes, whereas simple or strongly smoothed operators can absorb much of the perturbation. 
+
+2.5 Application-Oriented Public Benchmarks 
+
+The public tasks preserve the main mechanism while exhibiting different downstream behavior. The test errors of all configurations decrease and stabilize in Fig. 7. However, Fig. 8 demonstrates that a comparison restricted to the final round would overlook substantial transient effects. For Darcy Flow, severe heterogeneity produces roughly 4–5 pp excess error in the early rounds, but the mean decreases to 0 .465 pp by round 1000. The excess error for OpenFWI similarly peaks near 1 .5 pp before 11 1 10 100 1000 10 −1          
+
+> 2 × 10 −1
+> 3 × 10 −1
+> 4 × 10 −1
+> 6 × 10 −1
+> (a) Cylinder Flow
+> 110 100 1000 10 −1
+> 2 × 10 −1
+> 3 × 10 −1
+> 4 × 10 −1
+> 6 × 10 −1
+> (b) Darcy Flow
+> 110 100 1000 10 −1
+> 6 × 10 −2
+> 2 × 10 −1
+> (c) OpenFWI FlatVel-A
+> 110 100 1000 10 −3
+> 10 −2
+> 10 −1
+> (d) Shallow Water
+
+Communication round (log scale) Test relative  L2 error               
+
+> Near-IID reference, α= 100 FedAvg, α= 10 FedAvg, α= 1 FedAvg, α= 0.1 FedAvg, α= 0.01
+
+Fig. 7 Test relative L2 error on four public PDE benchmarks using FNO2D or InversionNet-lite. All trajectories are shown through round 1000 and the shaded regions are 95% confidence intervals across five seeds. 
+
+decreasing to 0 .228 pp. Continued communication can therefore reduce optimization delay even when the final models remain far apart in parameter space. At α = 0 .01, Cylinder Flow has a final excess error of 1 .091 pp ([0 .617 , 1.565]), whose confidence interval excludes zero. Darcy Flow yields 0 .465 pp ([ −0.254 , 1.184]), and OpenFWI yields 0 .228 pp ([ −0.038 , 0.495]); both confidence intervals include zero. Shallow Water has a much smaller absolute effect, 0 .033 pp ([0 .013 , 0.053]), but the interval excludes zero. Because its near-IID error is only 0.123%, this small percentage-point increase corresponds to an approximately 27% relative increase over the reference error. Absolute and relative interpretations should therefore both be considered. The public mechanism panels reinforce the distinction among the observables. The solution dis-tance has a positive Spearman correlation with gradient dissimilarity on all four tasks (0 .60–0 .91). Its association with final parameter divergence is 0 .90, 0 .88, and 0 .87 for Darcy Flow, OpenFWI, and Shallow Water, but only 0 .47 for the small Cylinder Flow dataset. By contrast, the correlation between distance and error ranges from 0 .03 for Darcy Flow to 0 .76 for Shallow Water. These results generalize the distance-to-gradient and distance-to-parameter evidence across FNO and inversion architectures, but do not support a universal monotonic relation between distance and final error. The seed-level results in Fig. S4 identify the source of uncertainty. The responses vary across seeds for Cylinder Flow, Darcy Flow, and OpenFWI, whereas the effect under severe heterogeneity is directionally consistent for Shallow Water despite its small magnitude. The public results therefore 12 1 10 100 1000 −4 −2 024
+
+(a) Cylinder Flow    
+
+> 110 100 1000 0.0 2.5 5.0 7.5 10.0
+
+(b) Darcy Flow    
+
+> 110 100 1000 −1 012
+
+(c) OpenFWI FlatVel-A    
+
+> 110 100 1000 −0.50 −0.25 0.00 0.25 0.50
+
+(d) Shallow Water 
+
+Communication round (log scale) Excess relative  L2 error (percentage points)            
+
+> FedAvg, α= 10 FedAvg, α= 1 FedAvg, α= 0.1 FedAvg, α= 0.01
+
+Fig. 8 Paired excess-error trajectories on the public PDE benchmarks. The non-IID penalty can be transient: Darcy Flow and OpenFWI exhibit the largest mean gaps before round 100 and substantially recover by round 1000. 
+
+Table 1 Round-1000 results at α = 0 .01. Errors and confidence intervals are in percentage points; Dθ is a dimensionless relative parameter distance. A confidence interval that excludes zero is shown in bold. Task Dsol Hnorm  
+
+> g
+
+Dθ 100 e100 ∆e0.01 95% CI Antiderivative 1.133 0.528 0.367 4.419 0.230 [−0.292 , 0.751] Burgers 0.955 0.488 0.704 18.969 0.916 [0.238 , 1.595 ]Diffusion-Reaction 0.906 0.619 0.513 4.100 0.218 [0.115 , 0.320 ]Cylinder Flow 1.000 0.974 1.275 12.114 1.091 [0.617 , 1.565 ]Darcy Flow 1.041 0.966 1.234 10.381 0.465 [−0.254 , 1.184] OpenFWI FlatVel-A 0.952 0.255 0.753 6.313 0.228 [−0.038 , 0.495] Shallow Water 1.043 0.658 1.009 0.123 0.033 [0.013 , 0.053 ]
+
+support the robustness of the proposed partition as a probe of the underlying mechanism, but do not imply that its effect on the final error is invariant across datasets. 
+
+2.6 Input-Space Comparison and Overall Findings 
+
+Table 2 provides a deliberately conservative answer to RQ2. The solution distance is comparable to the input-space W1 distance for gradient heterogeneity and is consistently more correlated with parameter divergence, but the input-space W1 distance is slightly more strongly correlated with the final excess 13 0.50 0.75 1.00 1.25 0.8 0.9 1.0    
+
+> Cylinder Flow  ρs= 0.61 (n= 20 )
+
+(a) Initial gradient dissimilarity        
+
+> 0.50 0.75 1.00 1.25 0.0 0.5 1.0 1.5 ρs= 0.47 (n= 20 )
+
+(b) Final parameter divergence       
+
+> 0.50 0.75 1.00 1.25 −2 02
+> ρs= 0.57 (n= 20 )
+
+(c) Final excess error (pp)                                      
+
+> 0.5 1.0 0.25 0.50 0.75 1.00
+> Darcy Flow  ρs= 0.60 (n= 20 )
+> 0.5 1.0 0.0 0.5 1.0 1.5 ρs= 0.90 (n= 20 )
+> 0.5 1.0 −0.5 0.0 0.5 1.0 ρs= 0.03 (n= 20 )
+> 0.25 0.50 0.75 1.00 0.0 0.1 0.2 0.3
+> OpenFWI FlatVel-A
+> ρs= 0.91 (n= 20 )
+> 0.25 0.50 0.75 1.00 0.00 0.25 0.50 0.75 ρs= 0.88 (n= 20 )
+> 0.25 0.50 0.75 1.00 −0.2 0.0 0.2 0.4
+> ρs= 0.43 (n= 20 )
+> 0.25 0.50 0.75 1.00 1.25
+
+Solution-space distance        
+
+> 0.0 0.5 1.0
+> Shallow Water  ρs= 0.67 (n= 20 )
+> 0.25 0.50 0.75 1.00 1.25
+
+Solution-space distance         
+
+> 0.0 0.5 1.0 ρs= 0.87 (n= 20 )
+> 0.25 0.50 0.75 1.00 1.25
+
+Solution-space distance              
+
+> 0.00 0.02 0.04 0.06 ρs= 0.76 (n= 20 )
+> α= 100 α= 10 α= 1 α= 0.1 α= 0.01
+
+Fig. 9 Mechanism diagnostics on the public PDE benchmarks. Definitions and statistical conventions follow Fig. 5. Solution distance remains positively associated with gradients and final parameters, whereas its association with final excess error varies by task. 
+
+error in these three controlled tasks. Thus, the evidence does not justify claiming that the solution distance is universally the best scalar predictor. Its advantage is instead conceptual and procedural: the same response-based construction and ground cost apply to input functions, coefficient fields, transient states, and inverse problems without selecting a different task-specific input axis. Taken together, the experiments answer the research questions as follows. First, moving from the near-IID reference towards smaller values of α produces substantially larger realized solution distance, quantity heterogeneity, gradient disagreement, and parameter deviation across all seven tasks, with 14 Table 2 Pearson correlations computed from the controlled seed– α records. Each entry reports the correlation for the solution distance followed by that for the input-space W1            
+
+> distance. Task Gradient Parameter Excess error Antiderivative 0.81/0.83 0.79/0.76 0.20/0.23 Burgers 0.88/0.86 0.77/0.73 0.72/0.75 Diffusion-Reaction 0.84/0.84 0.72/0.65 0.40/0.54
+
+finite-sample floors and saturation in the most concentrated regime. Second, the final signed error is a conditional response: it is largest and most reproducible for Burgers at low viscosity, while simple tasks and long training can substantially reduce the final gap. Third, client count and optimizer affect the magnitude but do not invalidate the partition mechanism. Finally, the consistent geometric trends across DeepONet, FNO2D, and InversionNet-lite support solution-space PDE-Dirichlet as a reproducible non-IID benchmark, while the seed-level intervals and non-monotonic cases define the limits of what can be claimed from the present evidence. 
+
+# 3 Discussion 
+
+Solution-space PDE-Dirichlet provides a common experimental coordinate for data types that would otherwise require unrelated partition rules. Across all seven tasks, reducing the concentration parameter increases the realized solution-transport distance and is accompanied by greater gradi-ent disagreement and final parameter divergence. The agreement across DeepONet, FNO2D, and InversionNet-lite indicates that this effect is not specific to a single neural-operator architecture. These observations support the use of solution geometry as a reproducible description of the optimization environment induced by a finite federated partition. Nevertheless, the response of the downstream test error is conditional rather than universal. The largest and most reproducible penalties occur for low-viscosity Burgers, for which sharper transported structures make specialization in the solution space consequential. By contrast, Darcy Flow and Open-FWI exhibit substantial transient penalties that largely diminish with additional communication, whereas several smoother controlled tasks show only small final differences. The choice of optimizer can also compress the signed gap by moving both the heterogeneous and reference trajectories towards a region with higher error. The solution distance should therefore be interpreted as a control variable and a probe of the underlying mechanism, not as a deterministic surrogate for final accuracy. This distinction clarifies the role of the proposed protocol. The protocol is intended for the offline construction and characterization of federated PDE benchmarks, rather than for the assignment of naturally private deployment data after federation has begun. A single response-based construction can be reused across input functions, coefficient fields, transient states, and inverse targets, while still revealing the heterogeneity realized after integer allocation and minimum-size repair. The comparison with the input-space W1 distance is deliberately conservative: neither scalar distance dominates for every downstream observable, but solution-space transport avoids the need to select a different physical axis for each equation and is more consistently associated with final parameter divergence in the controlled suite. Several limitations define the scope of these conclusions. The benchmark construction requires labeled responses and globally fitted cluster centers. K-means provides a finite Euclidean quantization 15 of a potentially multimodal solution manifold; therefore, the number of bins, response normalization, grid resolution, and response representation remain design choices. The present experiments fix B = 10 and use a normalized Euclidean centroid cost; they do not yet constitute an exhaustive sensitivity study over the bin count, representation, or ground metric. The exact concentration law applies to the raw population allocation, whereas multinomial sampling, unequal client totals, and minimum-size repair perturb the finite partition, particularly at α = 0 .01. Moreover, the transfer from solution heterogeneity to gradient heterogeneity requires identifiable bin-conditioned gradients, and the transfer from parameter divergence to degradation in the signed test error requires additional assumptions about the local test-risk geometry. The application-oriented datasets broaden the coverage of equations and architectures, but they are primarily synthetic and cannot replace observations that are naturally siloed across institutions. Together, the results establish a falsifiable benchmark rather than an unconditional law governing the final error. Important next steps are to calibrate solution-space distances against naturally occur-ring client partitions, replace Euclidean response quantization with physical representations that are stable under discretization, and determine whether solution-space diagnostics can guide client sam-pling or aggregation. These extensions could transform the present probe of the underlying mechanism into an actionable tool for federated scientific learning. 
+
+# 4 Methods 
+
+4.1 Federated operator-learning formulation 
+
+4.1.1 Supervised PDE Operator Learning 
+
+Let A be an input-function space, Λ a PDE-parameter space, and U a solution space. A PDE family induces a solution operator 
+
+S : A × Λ → U , (a, λ ) 7 → u. (14) The input a may represent an initial condition, forcing function, boundary condition, coefficient field, or observation field; λ denotes physical parameters; and u is a forward solution or inverse target. A discretized supervised sample is 
+
+zi = ( ai, λ i, u i), ui = Sλi (ai). (15) A neural operator Gθ is trained by minimizing 
+
+F (θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ℓ(Gθ (ai, λ i), u i) , (16) where the primary supervised loss is the mean squared error over the output grid. For Cartesian DeepONet, the branch network Bθb encodes an input function sampled at sensors, and the trunk network Tθt encodes an output coordinate y. The prediction is 
+
+Gθ (a)( y) = ⟨Bθb (a), T θt (y)⟩ + b0. (17) For regular two-dimensional fields, FNO layers provide a grid-based alternative. For seismic inversion, an encoder–decoder maps seismic shot gathers to a velocity image. 16 4.1.2 Federated Objective and Drift Observables 
+
+The training set is partitioned into disjoint local datasets D1, . . . , DK , with nk = |D k| and P 
+
+> k
+
+nk = N .Client k minimizes 
+
+Fk(θ) = 1
+
+nk
+
+X
+
+> z∈D k
+
+ℓ(θ; z), (18) and the global objective satisfies 
+
+F (θ) = 
+
+> K
+
+X
+
+> k=1
+
+pkFk(θ), pk = nk
+
+N . (19) At communication round t, every participating client receives θt, performs E local optimizer steps, and returns θt+1  
+
+> k
+
+. Standard sample-weighted FedAvg computes 
+
+θt+1 =
+
+> K
+
+X
+
+> k=1
+
+pkθt+1  
+
+> k
+
+. (20) We distinguish three notions of drift. Gradient heterogeneity measures disagreement among ∇Fk
+
+at a common initialization. Parameter divergence compares a non-IID FedAvg trajectory with a near-IID FedAvg trajectory generated using the same seed. Signed error drift compares the corresponding test errors. These quantities are related but not equivalent. In particular, a signed error difference can be negative even when the parameter trajectories differ substantially. 
+
+4.2 Solution-space PDE-Dirichlet construction 
+
+4.2.1 Global Response Normalization and Discretization 
+
+Let U ∈ RN ×du contain vectorized training responses. We compute ¯u = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ui, su = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∥ui − ¯u∥22
+
+!1/2
+
+, (21) and normalize each response as 
+
+eui = ui − ¯usu
+
+. (22) We use a single global scale because coordinate-wise standardization could disproportionately emphasize grid locations with low energy. We apply deterministic K-means++ initialization [21] followed by Lloyd iterations to solve min 
+
+> {cb}Bb=1 ,{yi}Ni=1
+> N
+
+X
+
+> i=1
+
+∥eui − cyi ∥22, yi ∈ { 1, . . . , B }. (23) The label yi is the solution bin of sample i. The response-space cost between bins is 
+
+Cbc = ∥cb − cc∥2. (24) 17 This discretization retains the coarse geometry of the solutions while avoiding the O(N 2) storage required by a full response-distance matrix. The benchmark construction is an offline simulation protocol and therefore has access to the labels in the benchmark training set, just as a classification benchmark can use class labels to construct synthetic clients. The protocol is not a privacy mechanism and does not assume that a deployed server can inspect naturally decentralized labels. In a real federation, the protocol can instead characterize a pre-existing partition when suitable aggregate bin statistics are available. 
+
+4.2.2 Dirichlet Allocation over Solution Bins 
+
+For each solution bin b, draw 
+
+rb = ( r1b, . . . , r Kb ) ∼ Dirichlet( α1K ). (25) Let Nb be the number of training samples in bin b. Integer client counts are sampled as (m1b, . . . , m Kb ) ∼ Multinomial( Nb, r b). (26) A small value of α produces sparse bin ownership, whereas a large value approaches a balanced alloca-tion within each bin. Because the total client mass nk = P 
+
+> b
+
+mkb is random, response heterogeneity and quantity heterogeneity arise jointly from the same allocation. Section 4.3.4 describes the finite-sample implementation, including exhaustive assignment and minimum-size handling. For each data-generation seed, the solution bins are fitted once and then reused for every value of 
+
+α. This design ensures that variation across values of α arises from client allocation rather than from refitting the response discretization. 
+
+4.2.3 Solution-Geometry Severity and Partition Diagnostics 
+
+The realized bin histogram of client k is 
+
+hkb = mkb 
+
+nk
+
+. (27) For histograms hi and hj , the discrete response-transport distance is 
+
+WC (hi, h j ) = min  
+
+> Γ≥0
+
+⟨C, Γ⟩ (28) subject to Γ1 = hi, Γ⊤1 = hj . (29) This is a finite optimal-transport problem [22]. The partition severity is the mean pairwise distance 
+
+Dsol = 2
+
+K(K − 1) 
+
+X
+
+> 1≤i<j ≤K
+
+WC (hi, h j ). (30) We additionally record the following diagnostics: 
+
+εpart = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+∥hk − htarget  
+
+> k
+
+∥1, (31) 18 εquant = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∥eui − cyi ∥2, (32) CV n = Std( n1, . . . , n K )Mean( n1, . . . , n K ) . (33) The first quantity measures finite allocation and repair error, the second measures information loss caused by discretization, and the third measures quantity heterogeneity. For comparison, the implementation also estimates an input-space W1 distance on the same client partition by using equal-size optimal matching between subsampled input functions. This diagnostic evaluates whether solution geometry predicts optimization heterogeneity more accurately than input geometry; it does not define a second partitioning method. 
+
+4.2.4 Optimization Diagnostics 
+
+At a shared initialization, let gk = ∇Fk(θ0) and ¯ g = P 
+
+> k
+
+pkgk. We use normalized gradient dissimilarity 
+
+Hnorm  
+
+> g
+
+=
+
+P 
+
+> k
+
+pk∥gk − ¯g∥22
+
+P 
+
+> k
+
+pk∥gk∥22 + ϵ . (34) Let θα and θIID denote the final FedAvg models trained from the same initialization and data-generation seed with concentration α and the near-IID reference αIID = 100, respectively. The parameter divergence is 
+
+Dθ = ∥θα − θIID ∥2
+
+∥θIID ∥2 + ϵ . (35) For relative test error 
+
+e(θ) = ∥G θ (Atest ) − Utest ∥2
+
+∥Utest ∥2
+
+, (36) the signed downstream drift is ∆e = e(θα) − e(θIID ). (37) 
+
+4.3 Experimental design and statistical analysis 
+
+4.3.1 Research Questions 
+
+The complete experimental design addresses the following questions. 
+
+• RQ1: Does decreasing α increase realized solution-transport distance and gradient heterogeneity? 
+
+• RQ2: How does solution-transport distance compare with input-space W1 as a predictor of gradient and parameter divergence on the same split? 
+
+• RQ3: Under which PDE regimes does stronger solution-space heterogeneity increase parameter and error drift relative to near-IID FedAvg? 
+
+• RQ4: Are the conclusions stable across client counts, optimizers, PDE parameters, random seeds, public datasets, and model families? 19 Table 3 Controlled operator-learning tasks. The training and test sets are generated independently for each random seed.                                             
+
+> Task Operator map Train/ Test Sensors/ Outputs Cartesian Deep-ONet Antiderivative a(x)7→u(x), where ux=aand
+> u(0) = 0 1000 /1000 100 /100 width 40, depth 2 Diffusion–reaction f(x)7→u(x, t ), where ut=κu xx +
+> ρu 2+f,κ=ρ= 0 .01 1000 /1000 101 /101 2width 100, depth 3Viscous Burgers u0(x)7→u(x, t ), where ut+uu x=
+> νu xx with periodic boundaries 800 /500 101 /101 2width 64, depth 2
+> Table 4 Application-oriented public datasets and model mappings.
+
+Task Source Learning map Model Train/Test Darcy flow PDEBench Permeability field 7 → pressure solution FNO2D 800 /200 Shallow water PDEBench Initial multi-channel water state 
+
+7→ future state FNO2D 800 /100 Cylinder flow CFDBench Initial velocity field 7 → future velocity field FNO2D 80 /20 Full-waveform inversion OpenFWI FlatVel-A Seismic shot gathers 7 → subsur-face velocity image InversionNet-lite 800 /200 
+
+4.3.2 Controlled Operator-Learning Tasks 
+
+The controlled suite uses input functions constructed from ten Chebyshev modes with independently sampled coefficients. We generate high-fidelity labels before partitioning the data. Table 3 summarizes the implementation. For Burgers, the main setting is ν = 0 .1, and the physical-regime study uses ν ∈ { 0.1, 0.05 , 0.01 }.Lower viscosity produces sharper structures and allows us to assess whether the solution discretization and federated diagnostics remain informative in more nonlinear regimes. 
+
+4.3.3 Application-Oriented Public Tasks 
+
+We further evaluate the same partition protocol on the public tasks listed in Table 4. PDEBench [14] provides Darcy-flow and radial dam-break shallow-water data, CFDBench [15] provides cylinder-flow cases, and OpenFWI [16] provides seismic shot gathers paired with velocity maps. These datasets represent engineering applications of PDEs but are generated predominantly through numerical simulation rather than obtained from field measurements. FNO2D uses four spectral layers, a width of 32, and 12 Fourier modes. InversionNet-lite retains a waveform encoder and an image decoder but uses a reduced width so that multiple federated client replicas fit on a workstation GPU. 20 Algorithm 1 Finite-Sample Solution-Space PDE-Dirichlet Partition 
+
+Input: Labeled training set {(xi, u i)}Ni=1 , client count K, bin count B, concentration α, minimum size nmin 
+
+Output: Disjoint client index sets {I k}Kk=1 1: Normalize the solution fields and fit B clusters to obtain labels bi and centroids cb 
+
+> 2:
+
+Initialize Ik ← ∅ for all k 
+
+> 3:
+
+for b = 1 , . . . , B do  
+
+> 4:
+
+Draw pb ∼ Dirichlet( α1K ) 
+
+> 5:
+
+Draw ( m1b, . . . , m Kb ) ∼ Multinomial( Nb, p b) 
+
+> 6:
+
+Randomly permute the Nb indices satisfying bi = b 
+
+> 7:
+
+Assign consecutive disjoint blocks of sizes m1b, . . . , m Kb to the clients  
+
+> 8:
+
+end for  
+
+> 9:
+
+while min k |I k| < n min do  
+
+> 10:
+
+Transfer one sample from a surplus client to a deficient client  
+
+> 11:
+
+end while  
+
+> 12:
+
+Verify Ik ∩ I ℓ = ∅ for k̸ = ℓ and S 
+
+> k
+
+Ik = {1, . . . , N } 
+
+> 13:
+
+return {I k}Kk=1 and sample weights |I k|/N 
+
+4.3.4 Finite-Sample Partition Implementation 
+
+For each data-generation seed, we fit the solution normalization and cluster centers once on the com-plete benchmark training set and assign the corresponding bin labels. We then reuse these quantities for every value of α. This procedure isolates the effect of client allocation from changes in the dis-cretization. For each solution bin, we draw a symmetric Dirichlet vector and convert it into integer client counts through multinomial sampling. We randomly permute the samples within that bin and assign all samples according to these counts. The assignment is therefore strictly without replacement: every training sample belongs to exactly one client, and no sample is duplicated or discarded. The resulting client totals are generally unequal; therefore, compositional heterogeneity and quan-tity heterogeneity arise from the same allocation rather than from two separate procedures. If a client receives fewer than the prescribed minimum number of samples, we transfer examples from clients with surplus samples while preserving the one-to-one global assignment. The default minimum is 16 samples, whereas the smaller CFDBench cylinder task uses a minimum of four samples. FedAvg sub-sequently weights the client updates by the realized sample fractions nk/N . Algorithm 1 summarizes the finite-sample construction. 
+
+4.3.5 Federated and Optimization Protocol 
+
+Unless otherwise stated, all experiments use 
+
+K = 10 , B = 10 ,α ∈ { 100 , 10 , 1, 0.1, 0.01 }, αIID = 100 . (38) The controlled experiments use five seeds {0, 1, 42 , 999 , 2026 } and 1000 communication rounds. During each round, every client performs five mini-batch optimization steps with shuffled local data, a batch size of 64, Adam [23], and a learning rate of 10 −3. For each seed, we train the near-IID FedAvg trajectory with α = 100 once and reuse it as the paired reference for every non-IID concentration. 21 All comparisons therefore use the same initialization, number of communication rounds, local-step budget, aggregation rule, and optimizer; only the realized client allocation varies. The reference is near-IID rather than the mathematical limit α → ∞ .Only the model parameters are broadcast and aggregated. The optimizer state of each client is retained locally across communication rounds and is not transmitted to the server. This implementa-tion detail is relevant to the Adam experiments because the first- and second-moment states remain specific to each client. The public field tasks use batch sizes between 8 and 16, depending on memory requirements. The client-count study additionally evaluates K = 20. The optimizer ablation uses SGD with a learning rate of 10 −2 and momentum of 0 .9; the model, partition, number of local steps, number of rounds, and seeds remain fixed. Adam retains its default learning rate of 10 −3, so the comparison uses an appropriate configuration for each optimizer rather than imposing the same learning rate on both optimizers. 
+
+4.3.6 Metrics and Statistical Reporting 
+
+The primary partition metrics are the realized solution transport Dsol , normalized input-space W1
+
+distance, target-to-realized histogram error, quantization error, coefficient of variation of client size, and minimum and maximum client sizes. The optimization metrics are the initial gradient dissimilarity (34), relative parameter divergence (35), relative test errors for near-IID and non-IID FedAvg, and signed excess error (37). We compute every aggregate from seed-level raw records. We report the mean, sample standard deviation, and two-sided 95% Student-t confidence interval ¯x ± t0.975 ,S −1
+
+s
+
+√S , S = 5 . (39) We compute correlations between the distance and optimization metrics from seed-level observations rather than only from means at each value of α. The near-IID reference is fixed and cached for each seed to avoid introducing retraining noise into comparisons across values of α.Each reproducibility record contains the task and dataset identifiers, architecture, optimizer and learning rate, number of clients, number of solution bins, concentration, random seed, local-step bud-get, communication-round budget, realized client sizes, client–bin count matrix, partition indices, and checkpoint-level optimization measurements. Figures and tables are generated from the seed-level records rather than from manually transcribed summary values. The normalization parameters and cluster centers are fitted once per data-generation seed and retained with the corresponding partition metadata. To distinguish transient optimization behavior from the final-round result, signed error drift is additionally recorded at communication rounds 
+
+r ∈ { 0, 1, 5, 10 , 20 , 50 , 100 , 200 , 500 , 1000 }. (40) At round r, we compare each non-IID FedAvg trajectory with the trajectory for α = 100 generated using the same seed and evaluated at the same communication round. Round zero verifies the shared initialization. We store these checkpoint measurements as seed-level raw records and construct confi-dence intervals across the five seeds rather than across checkpoints. The curves display all recorded checkpoints through round 1000, and every scalar “final” result is evaluated at round 1000. 22 4.3.7 Comparisons and Ablations 
+
+The principal comparisons examine non-IID FedAvg against a paired near-IID FedAvg reference, nom-inal α against realized solution transport, and solution transport against input-space W1 as predictors of gradient dissimilarity, parameter divergence, and excess error. The ablations compare Adam with momentum SGD, 10 clients with 20 clients, and three Burgers viscosity regimes. We further compare controlled DeepONet tasks with public FNO and inversion tasks. We retain the quantization error and partition-target error to identify settings in which discretization or minimum-size repair, rather than the intended concentration, dominates the result. 
+
+# Data availability 
+
+The controlled Antiderivative, Diffusion-Reaction, and Burgers datasets are generated from the equations and parameter ranges specified in Methods. The application-oriented experiments use PDEBench, CFDBench, and OpenFWI, which are publicly available from the repositories cited in the corresponding dataset publications. The processed partition indices, seed-level measurements, and derived datasets required to reproduce every figure will be deposited in a repository that assigns a DOI before publication. During review, these materials will be provided in the anonymous code archive. 
+
+# Code availability 
+
+The source code for data generation, solution-space partitioning, federated training, statistical aggre-gation, and figure production is maintained in a version-controlled repository. The submission archive contains the exact machine-readable configurations, environment specification, cached parti-tion indices, and commands used for all reported experiments. A public, immutable release with a persistent identifier will accompany the preprint. 
+
+# Appendix A Supplementary robustness figures 
+
+The following seed-level and ablation figures support the uncertainty and robustness analyses reported in the main text. 23 10 1 0.1 0.01 −0.75 −0.50 −0.25 0.00 0.25 0.50 0.75 
+
+(a) Antiderivative    
+
+> 10 10.1 0.01 −1.0 −0.5 0.0 0.5 1.0 1.5
+
+(b) Burgers    
+
+> 10 10.1 0.01 −0.4 −0.2 0.0 0.2
+
+(c) Diffusion-Reaction 
+
+Dirichlet concentration α
+
+> Round-1000 excess error (percentage points)
+
+Fig. S1 Seed-level round-1000 excess errors on the controlled tasks. Thin gray lines retain the paired result for each seed; colored markers show the mean and 95% confidence interval. Reporting all replicates prevents an apparently monotonic mean trend from concealing sensitivity to the seed. 100 10 1 0.1 0.01 −0.50 −0.25 0.00 0.25 0.50 0.75 
+
+(a) Antiderivative     
+
+> 100 10 10.1 0.01 −1.0 −0.5 0.0 0.5 1.0 1.5
+
+(b) Burgers     
+
+> 100 10 10.1 0.01 −0.4 −0.2 0.0 0.2 0.4 0.6
+
+(c) Diffusion-Reaction 
+
+Dirichlet concentration α 
+
+> Round-1000 excess error (percentage points)
+> K = 10 K = 20
+
+Fig. S2 Client-count ablation at round 1000. Both settings use sample-weighted FedAvg and the corresponding same-seed references with α = 100. Error bars denote 95% confidence intervals across five seeds. 
+
+24 100 10 1 0.1 0.01 −1.0 −0.5 0.0 0.5 
+
+(a) Antiderivative     
+
+> 100 10 10.1 0.01 −1.0 −0.5 0.0 0.5 1.0 1.5
+
+(b) Burgers     
+
+> 100 10 10.1 0.01 −0.4 −0.2 0.0 0.2
+
+(c) Diffusion-Reaction 
+
+Dirichlet concentration α     
+
+> Round-1000 excess error (percentage points)
+> Adam ( η= 10 −3 )SGD ( η= 10 −2 ,m= 0.9 )
+
+Fig. S3 Optimizer ablation at round 1000. Adam uses learning rate 10 −3; SGD uses learning rate 10 −2 and momentum 0.9. Each optimizer is compared with a reference that uses the same seed and optimizer with α = 100. 10 1 0.1 0.01 −3 −2 −1 0123
+
+(a) Cylinder Flow    
+
+> 10 10.1 0.01 −0.5 0.0 0.5 1.0
+
+(b) Darcy Flow    
+
+> 10 10.1 0.01 −0.2 0.0 0.2 0.4
+
+(c) OpenFWI FlatVel-A    
+
+> 10 10.1 0.01 0.00 0.02 0.04 0.06
+
+(d) Shallow Water 
+
+Dirichlet concentration α
+
+> Round-1000 excess error (percentage points)
+
+Fig. S4 Seed-level round-1000 excess errors on the public benchmarks. Thin gray trajectories show the paired result for each seed; colored markers report the means and 95% confidence intervals. 
+
+25 Appendix B Scope and Population Formulation 
+
+This appendix establishes the theoretical basis for solution-space non-IID partitioning in federated PDE learning. We distinguish three claims. First, decreasing the Dirichlet concentration parameter increases heterogeneity among clients in the solution-bin space. Second, this heterogeneity increases gradient and local-update dispersion when the bins preserve solution geometry that is relevant to learn-ing. Third, a monotonic increase in the signed test-error gap between FedAvg and centralized training requires additional assumptions about curvature and alignment. The first claim is distributional, the second is geometric, and the third depends on the optimization process. Let 
+
+Sλ : a 7 → u (B1) denote a PDE solution operator, where a is an initial condition, boundary condition, forcing field, or coefficient field; λ contains the PDE parameters; and u is the solution. A neural operator Gθ is trained using samples z = ( a, λ, u ) and the loss 
+
+ℓ(θ; z) = L(Gθ (a, λ ), u ) . (B2) The solution fields are mapped to B solution-geometry bins by b(u) ∈ { 1, . . . , B }. Let Pb be the data distribution conditioned on b(u) = b, and define 
+
+Fb(θ) = Ez∼P b [ℓ(θ; z)] . (B3) Client k has bin distribution qk = ( qk1, . . . , q kB )⊤ ∈ ∆B−1. If examples are sampled randomly within each bin, then 
+
+Fk(θ) = 
+
+> B
+
+X
+
+> b=1
+
+qkb Fb(θ). (B4) With standard FedAvg weights pk = nk/ P 
+
+> j
+
+nj ,
+
+F (θ) = 
+
+> K
+
+X
+
+> k=1
+
+pkFk(θ), (B5) ¯q =
+
+> K
+
+X
+
+> k=1
+
+pkqk, (B6) and hence 
+
+F (θ) = 
+
+> B
+
+X
+
+> b=1
+
+¯qbFb(θ). (B7) 
+
+Definition B.1 (Solution-bin heterogeneity) . The weighted solution-bin heterogeneity is 
+
+Hq =
+
+> K
+
+X
+
+> k=1
+
+pk∥qk − ¯q∥22. (B8) The mixture model isolates partition-induced heterogeneity. Finite-sample errors caused by integer allocation, sampling without replacement, and minimum-client-size repair are analyzed in Appendix J. 26 Appendix C Dirichlet Allocation in Solution Space 
+
+Let πb = Pr {b(u) = b} be the global mass of solution bin b. For each bin, draw 
+
+Rb = ( R1b, . . . , R Kb )⊤ ∼ Dirichlet( α1K ). (C1) The examples in bin b are then assigned without replacement according to Rb. We define the mass-adjusted raw profile, the corresponding client mass, and the normalized profile as 
+
+ukb = Kπ bRkb , sk =
+
+> B
+
+X
+
+> b=1
+
+ukb , qkb = ukb 
+
+sk
+
+. (C2) The scale factor K ensures E[sk] = 1, while 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+ukb = πb (C3) holds exactly because P 
+
+> k
+
+Rkb = 1. 
+
+Lemma C.1 (Symmetric Dirichlet moments) . For (C1) ,
+
+E[Rkb ] = 1
+
+K , (C4) Var( Rkb ) = K − 1
+
+K2(Kα + 1) , (C5) Cov( Rib , R jb ) = − 1
+
+K2(Kα + 1) , i̸ = j, (C6) 
+
+E[( Rib − Rjb )2] = 2
+
+K(Kα + 1) . (C7) 
+
+Proof. For a Dirichlet vector with parameters ( α1, . . . , α K ) and α0 = P 
+
+> k
+
+αk,
+
+E[Rk] = αk
+
+α0
+
+, (C8) Var( Rk) = αk(α0 − αk)
+
+α20(α0 + 1) , (C9) Cov( Ri, R j ) = − αiαj
+
+α20(α0 + 1) . (C10) Substituting αk = α and α0 = Kα proves the first three identities. Since Rib and Rjb have equal means, 
+
+E[( Rib − Rjb )2] = Var( Rib ) + Var( Rjb ) − 2 Cov( Rib , R jb ) (C11) = 2( K − 1) + 2 
+
+K2(Kα + 1) = 2
+
+K(Kα + 1) . (C12) 27 The first equality follows from the variance identity for a difference. 
+
+Theorem C.1 (Exact concentration law) . Assume equal client weights and define 
+
+Hu = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+∥uk − π∥22, π = ( π1, . . . , π B )⊤. (C13) 
+
+Then 
+
+E[Hu] = K − 1
+
+Kα + 1 
+
+> B
+
+X
+
+> b=1
+
+π2 
+
+> b
+
+. (C14) 
+
+For balanced bins, πb = 1 /B ,
+
+E[Hu] = K − 1
+
+B(Kα + 1) . (C15) 
+
+Thus, the expected raw allocation heterogeneity is strictly decreasing in α.Proof. Using E[Rkb ] = 1 /K , linearity of expectation, and Lemma C.1, 
+
+E[Hu] = 
+
+> B
+
+X
+
+> b=1
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+E[( Kπ bRkb − πb)2] (C16) =
+
+> B
+
+X
+
+> b=1
+
+K2π2 
+
+> b
+
+Var( Rkb ) (C17) = K − 1
+
+Kα + 1 
+
+> B
+
+X
+
+> b=1
+
+π2 
+
+> b
+
+. (C18) For balanced bins, P 
+
+> b
+
+π2 
+
+> b
+
+= B(1 /B )2 = 1 /B . Moreover, ddαK − 1
+
+Kα + 1 = − K(K − 1) (Kα + 1) 2 < 0, (C19) which proves strict monotonicity. 
+
+Lemma C.2 (Effect of client-mass normalization) . If |sk − 1| ≤ δ < 1 for all clients, then 
+
+∥qk − uk∥2 ≤ δ (C20) 
+
+and, under equal client weights, pHq − pHu ≤ δ. (C21) 
+
+Proof. Since uk is nonnegative and ∥uk∥1 = sk,
+
+∥qk − uk∥2 = 1
+
+sk
+
+− 1 ∥uk∥2 (C22) 28 ≤ 1
+
+sk
+
+− 1 ∥uk∥1 (C23) = |1 − sk| ≤ δ. (C24) The inequality ∥x∥2 ≤ ∥x∥1 was used. Let C(x)k = xk − K−1 P 
+
+> j
+
+xj be client centering and equip stacked vectors with ∥x∥2 
+
+> p
+
+= K−1 P 
+
+> k
+
+∥xk∥22. Centering is an orthogonal projection and is nonexpansive. The reverse triangle inequality therefore gives 
+
+|∥ C(q)∥p − ∥ C(u)∥p| ≤ ∥ C(q − u)∥p (C25) 
+
+≤ ∥ q − u∥p ≤ δ. (C26) The two centered squared norms are Hq and Hu, respectively. Theorem C.1 is exact for the raw allocation. Lemma C.2 specifies when this result transfers to the normalized client distributions. In finite experiments, the realized value of Hq must be reported because minimum-size repair can substantially modify extreme allocations. 
+
+# Appendix D Solution-Geometry Transport 
+
+Let C ∈ RB×B 
+
+> +
+
+be a solution-geometry-aware cost between solution bins, with Cbb = 0. In the experi-ments, Cbc is the Euclidean distance between globally normalized solution centroids, as defined in (24); it is therefore not assumed to encode an equation-specific energy norm or conservation law. Define 
+
+WC (q, q ′) = min 
+
+> Γ∈Π( q,q ′)
+> B
+
+X
+
+> b=1
+> B
+
+X
+
+> c=1
+
+Cbc Γbc , (D1) where Π( q, q ′) is the set of couplings with marginals q and q′. Let 
+
+cmin = min  
+
+> b̸=c
+
+Cbc > 0, cmax = max  
+
+> b,c
+
+Cbc < ∞. (D2) 
+
+Lemma D.1 (Transport–norm equivalence) . For q, q ′ ∈ ∆B−1,
+
+cmin TV( q, q ′) ≤ WC (q, q ′) ≤ cmax TV( q, q ′), (D3) 
+
+where TV( q, q ′) = ∥q − q′∥1/2. Consequently, 
+
+cmin 
+
+2 ∥q − q′∥2 ≤ WC (q, q ′) ≤ cmax 
+
+√B
+
+2 ∥q − q′∥2. (D4) 
+
+Proof. Every coupling must move at least TV( q, q ′) probability mass off the diagonal. Since each off-diagonal unit costs at least cmin , the lower bound in (D3) follows. For the upper bound, place the common mass min( qb, q ′
+
+> b
+
+) on the diagonal and transport the remaining surplus to the deficits. The moved mass is exactly TV( q, q ′), and each unit costs at most cmax .29 For x = q − q′, the norm inequalities 
+
+∥x∥2 ≤ ∥ x∥1 ≤ √B∥x∥2 (D5) hold. The second is Cauchy–Schwarz: P 
+
+> b
+
+|xb| ≤ (P 
+
+> b
+
+12)1/2(P 
+
+> b
+
+x2 
+
+> b
+
+)1/2. Substitution into (D3) proves (D4). Define 
+
+HW =
+
+> K
+
+X
+
+> k=1
+
+pkWC (qk, ¯q)2. (D6) Squaring (D4), multiplying by pk, and summing yields 
+
+c2min 
+
+4 Hq ≤ H W ≤ Bc 2max 
+
+4 Hq . (D7) Thus, the centroid cost converts categorical bin imbalance into a solution-space displacement while preserving the dependence on the concentration up to explicit constants. 
+
+# Appendix E Gradient Heterogeneity Induced by Solution Bins 
+
+Let 
+
+gb(θ) = ∇Fb(θ), G(θ) = [ g1(θ), . . . , g B (θ)] . (E1) Differentiating (B4) gives 
+
+gk(θ) − g(θ) = G(θ)( qk − ¯q). (E2) Define 
+
+Hg (θ) = 
+
+> K
+
+X
+
+> k=1
+
+pk∥gk(θ) − g(θ)∥22. (E3) 
+
+Assumption E.1 (Restricted gradient identifiability) . There are constants 0 < m g (θ) ≤ Mg (θ) such that 
+
+mg ∥v∥2 ≤ ∥ G(θ)v∥2 ≤ Mg ∥v∥2 (E4) 
+
+for every v satisfying 1⊤v = 0 .
+
+The upper inequality holds with Mg = ∥G∥op . The requirement mg > 0 is substantive because different solution-bin mixtures must induce distinguishable gradients. 
+
+Theorem E.1 (Bin-to-gradient transfer) . Under Assumption E.1, 
+
+m2 
+
+> g
+
+Hq ≤ H g ≤ M 2 
+
+> g
+
+Hq . (E5) 
+
+Proof. Both qk and ¯ q are probability vectors, so 1⊤(qk − ¯q) = 0. Apply (E4) to qk − ¯q, square the inequalities, multiply by pk ≥ 0, and sum over k. Identity (E2) then gives the result. Combining (D7) and (E5), 4m2
+
+> g
+
+Bc 2max 
+
+HW ≤ H g ≤ 4M 2
+
+> g
+
+c2min 
+
+HW . (E6) 30 This result formalizes the empirical relation between physical solution distance and gradient hetero-geneity. If the lower bound fails, the selected bins do not preserve solution geometry that is relevant to the gradients. 
+
+# Appendix F Local SGD Update Dispersion 
+
+Consider one round that starts from a common parameter θ. First, consider E local full-gradient steps: 
+
+θk, 0 = θ, θk,e +1 = θk,e − η∇Fk(θk,e ). (F1) Let ¯θE = P 
+
+> k
+
+pkθk,E and 
+
+Dloc =
+
+> K
+
+X
+
+> k=1
+
+pk∥θk,E − ¯θE ∥22. (F2) 
+
+Assumption F.1 (Local regularity) . Each Fk is L-smooth along the local paths, and ∥∇ Fk(x)∥2 ≤ G0
+
+there. 
+
+Theorem F.1 (First-order local-drift law) . Under Assumption F.1, with 
+
+RE = η2LG 0E(E − 1) 2 , (F3) 
+
+we have pDloc − ηE 
+
+q
+
+Hg (θ) ≤ RE . (F4) 
+
+Equivalently, 
+
+(ηE pHg − RE )2+ ≤ D loc ≤ (ηE pHg + RE )2. (F5) 
+
+Proof. Unrolling (F1), 
+
+θk,E = θ − ηEg k(θ) + rk,E , (F6) where 
+
+rk,E = −η
+
+> E−1
+
+X
+
+> e=0
+
+[∇Fk(θk,e ) − ∇ Fk(θ)] . (F7) By the triangle inequality, smoothness, and the gradient bound, 
+
+∥rk,E ∥2 ≤ ηL 
+
+> E−1
+
+X
+
+> e=0
+
+∥θk,e − θ∥2 (F8) 
+
+≤ ηL 
+
+> E−1
+
+X
+
+> e=0
+
+ηeG 0 (F9) = η2LG 0E(E − 1) 2 . (F10) The second inequality follows from 
+
+∥θk,e − θ∥2 ≤ η
+
+> e−1
+
+X
+
+> j=0
+
+∥∇ Fk(θk,j )∥2 ≤ ηeG 0. (F11) 31 Apply the weighted centering operator C from Lemma C.2. The reverse triangle inequality and nonexpansiveness of this orthogonal projection give 
+
+pDloc − ηE pHg ≤ ∥ C(rE )∥p (F12) 
+
+≤ ∥ rE ∥p ≤ RE . (F13) Hence, 
+
+Dloc = η2E2Hg + O(η3E3). (F14) For mini-batch SGD, write 
+
+bgk,e = ∇Fk(θk,e ) + ξk,e , (F15) with 
+
+E[ξk,e | F k,e ] = 0 , E[∥ξk,e ∥22 | F k,e ] ≤ σ2
+
+> k
+
+. (F16) The martingale-difference property and the law of iterated expectations eliminate the cross-step noise terms: 
+
+E
+
+> E−1
+
+X
+
+> e=0
+
+ξk,e 
+
+> 22
+
+=
+
+> E−1
+
+X
+
+> e=0
+
+E∥ξk,e ∥22 ≤ Eσ 2
+
+> k
+
+. (F17) The Minkowski inequality in L2 and weighted centering then yield 
+
+q
+
+EDSGD loc − ηE pHg ≤ RE + η
+
+s
+
+E X
+
+> k
+
+pkσ2
+
+> k
+
+, (F18) provided that the bounded-gradient condition also holds along the stochastic paths. SGD is therefore a convenient optimizer for the theoretical analysis because partition heterogeneity and sampling noise appear as separate terms. The analysis of adaptive methods requires additional assumptions about client-dependent preconditioners. 
+
+# Appendix G FedAvg–Centralized Trajectory Drift 
+
+Local dispersion differs from drift in the aggregated model. Consider two procedures that start from the same θ. In the first procedure, each client performs E full-gradient steps before weighted FedAvg aggregation, which produces θ+FA . In the second procedure, the centralized comparator performs E
+
+full-gradient steps on F = P 
+
+> k
+
+pkFk, which produces θ+C .
+
+Assumption G.1 (Second-order regularity) . Each Fk is twice continuously differentiable. Along all relevant paths, 
+
+∥∇ 2Fk(x)∥op ≤ L, (G1) 
+
+∥∇ 2Fk(x) − ∇ 2Fk(y)∥op ≤ ρ∥x − y∥2. (G2) 
+
+The gradients are also bounded by G0.
+
+Let 
+
+Hk = ∇2Fk(θ), H = X
+
+> k
+
+pkHk, cE = E(E − 1) 2 . (G3) 32 Theorem G.1 (Second-order trajectory drift) . Under Assumption G.1, for fixed E and sufficiently small η,
+
+θ+FA − θ+C = η2cEKX
+
+> k=1
+
+pk(Hk − H)( gk − g) + O(η3E3). (G4) 
+
+For E = 1 , full-participation FedAvg and the centralized full-gradient step are exactly equal. Proof. The Taylor theorem with an integral remainder gives 
+
+∇Fk(θ + d) = gk + Hkd + rk(d), (G5) where 
+
+∥rk(d)∥2 ≤ ρ
+
+2 ∥d∥22. (G6) Indeed, write the gradient increment as R 10 ∇2Fk(θ + τ d )d dτ , subtract Hkd, apply the Lipschitz continuity of the Hessian, and evaluate R 10 ρτ ∥d∥22 dτ .Induction over the local steps, using ∥θk,e − θ∥2 = O(ηeG 0), gives 
+
+θk,E = θ − ηEg k + η2cE Hkgk + O(η3E3). (G7) The coefficient cE = PE−1 
+
+> e=0
+
+e arises because the first-order displacement at step e is −ηeg k; substituting this displacement into the Hessian term contributes + η2eH kgk. The order of the remainder follows from (G6) and repeated application of the triangle inequality. Averaging (G7), 
+
+θ+FA = θ − ηEg + η2cE
+
+X
+
+> k
+
+pkHkgk + O(η3E3). (G8) Applying the same expansion to the centralized objective, 
+
+θ+C = θ − ηEg + η2cE Hg + O(η3E3). (G9) Subtracting cancels the common first-order term. Finally, 
+
+X
+
+> k
+
+pk(Hk − H)( gk − g) = X
+
+> k
+
+pkHkgk − Hg, (G10) because P 
+
+> k
+
+pkHk = H and P 
+
+> k
+
+pkgk = g.Define curvature heterogeneity 
+
+HH = X
+
+> k
+
+pk∥Hk − H∥2op . (G11) Submultiplicativity, the triangle inequality, and weighted Cauchy–Schwarz imply 
+
+X
+
+> k
+
+pk(Hk − H)( gk − g)
+
+> 2
+
+≤ X
+
+> k
+
+pk∥Hk − H∥op ∥gk − g∥2 (G12) 33 ≤ pHH Hg . (G13) Therefore, 
+
+∥θ+FA − θ+C ∥2 ≤ η2cE
+
+pHH Hg + O(η3E3). (G14) A lower bound requires the relevant terms not to cancel. 
+
+Assumption G.2 (Curvature–gradient alignment) . There is a constant κ > 0 such that 
+
+X
+
+> k
+
+pk(Hk − H)( gk − g)
+
+> 2
+
+≥ κHq (G15) 
+
+in the parameter region of interest. 
+
+Corollary G.1 (Conditional concentration dependence) . Under Assumptions E.1, G.1, and G.2, and under the balanced-mass population approximation, 
+
+∥θ+FA − θ+C ∥2 = Ω  η2E(E − 1) Hq
+
+ (G16) 
+
+as η → 0. Furthermore, 
+
+E∥θ+FA − θ+C ∥22 = Ω 
+
+ η4E2(E − 1) 2
+
+(Kα + 1) 2
+
+
+
+, (G17) 
+
+up to constants determined by the bin proportions and alignment. Proof. Insert (G15) into (G4). The third-order term vanishes relative to the second-order term as 
+
+η → 0. After squaring and taking the expectation, the Jensen inequality for the convex map x 7 → x2
+
+gives 
+
+E[H2 
+
+> q
+
+] ≥ (E[Hq ]) 2. (G18) Theorem C.1 and Lemma C.2 then yield (G17), up to the error introduced by mass normalization. Assumption G.2 is essential. Without this assumption, the matrix–vector terms in (G4) can cancel. Thus, a smaller value of α always increases the expected raw partition heterogeneity, but it does not necessarily induce monotonic signed global drift for every PDE, seed, and optimizer. 
+
+# Appendix H From Parameter Drift to Signed Test-Error Drift 
+
+Let R denote common test risk and define ∆R = R(θ+FA ) − R (θ+C ). (H1) A positive value indicates a higher test risk for FedAvg, whereas a negative value indicates a lower test risk in that run. 
+
+Proposition H.1 (Risk perturbation) . Suppose ∇R is LR-Lipschitz and let ∆θ = θ+FA − θ+C . Then 
+
+∆R − ∇R (θ+C )⊤∆θ ≤ LR
+
+2 ∥∆θ ∥22. (H2) 34 If R is also locally μR-strongly convex, 
+
+∆R ≥ ∇R (θ+C )⊤∆θ + μR
+
+2 ∥∆θ ∥22. (H3) 
+
+Proof. The fundamental theorem of calculus gives 
+
+R(x + d) − R (x) = 
+
+Z 10
+
+∇R (x + τ d )⊤d dτ. (H4) Subtract ∇R (x)⊤d, apply Cauchy–Schwarz and gradient Lipschitzness, and integrate: 
+
+R(x + d) − R (x) − ∇R (x)⊤d (H5) 
+
+≤
+
+Z 10
+
+∥∇R (x + τ d ) − ∇R (x)∥2∥d∥2 dτ (H6) 
+
+≤
+
+Z 10
+
+τ L R∥d∥22 dτ = LR
+
+2 ∥d∥22. (H7) Set x = θ+C and d = ∆ θ . Inequality (H3) is the defining first-order inequality of strong convexity. Near a stationary centralized comparator, for which ∇R (θ+C ) ≈ 0, local strong convexity ensures that the excess risk is nonnegative and proportional to ∥∆θ ∥22. Away from stationarity, the linear term in (H2) can have either sign. Negative empirical test-error drift therefore does not contradict the theoretical results for partitioning, transport, or gradient heterogeneity. 
+
+# Appendix I Exact Two-Bin Quadratic Witness 
+
+Consider a scalar parameter and two solution bins, 
+
+F1(θ) = h1
+
+2 (θ − a1)2, F2(θ) = h2
+
+2 (θ − a2)2, (I1) with h1, h 2 > 0. Client k has bin-1 mass qk and 
+
+Fk = qkF1 + (1 − qk)F2. (I2) At the common starting point, 
+
+hk = h2 + qk∆h, (I3) 
+
+gk = g2 + qk∆g, (I4) where ∆h = h1 − h2, ∆g = h1(θ − a1) − h2(θ − a2). (I5) Because the objectives are quadratic, two local steps are exact: 
+
+θk, 2 = θ − 2ηg k + η2hkgk. (I6) 35 Let h = P 
+
+> k
+
+pkhk and g = P 
+
+> k
+
+pkgk. Two centralized steps yield θC,2 = θ − 2ηg + η2hg . Hence 
+
+θFA ,2 − θC,2 = η2 X
+
+> k
+
+pkhkgk − hg 
+
+!
+
+(I7) = η2 Cov p(hk, g k) (I8) = η2 Var p(qk)∆ h ∆g. (I9) The last equality follows from the identity Cov( a + bX, c + dX ) = bd Var( X). Thus, nonzero global drift occurs exactly when client proportions vary and the bins differ in both curvature and gradient. The drift direction depends on sign(∆ h∆g), while its squared magnitude increases with Var p(qk)2.This example also proves why gradient heterogeneity alone is insufficient: if ∆ h = 0, second-order FedAvg drift vanishes even when the client gradients differ. 
+
+# Appendix J Finite-Sample and Without-Replacement Effects 
+
+Let bqk be the realized client-bin profile after finite integer allocation and minimum-size repair, and let 
+
+qk be its population target. Define 
+
+εpart = X
+
+> k
+
+pk∥bqk − qk∥22
+
+!1/2
+
+. (J1) 
+
+Proposition J.1 (Finite-partition stability) . If bHq is computed from bqk with the same weights, then 
+
+qbHq − pHq ≤ εpart . (J2) 
+
+If ∥G(θ)∥op ≤ Mg , then, apart from within-bin empirical-gradient noise, 
+
+qbHg − pHg ≤ Mg εpart . (J3) 
+
+Proof. Both heterogeneity square roots are norms of centered stacked profiles. The reverse triangle inequality and nonexpansiveness of weighted centering give 
+
+|∥ C(bq)∥p − ∥ C(q)∥p| ≤ ∥ C(bq − q)∥p (J4) 
+
+≤ ∥ bq − q∥p = εpart . (J5) This proves (J2). Apply ∥Gv ∥2 ≤ Mg ∥v∥2 to each centered perturbation to obtain (J3). Allocation without replacement is appropriate for a partition benchmark because each training example belongs to exactly one client. This procedure naturally produces unequal values of nk, so FedAvg must use pk = nk/ P 
+
+> j
+
+nj . This makes P 
+
+> k
+
+pkFk equal to the global empirical objective over the union of client datasets. Uniform client averaging would optimize a different objective whenever client sizes differ. 36 Integer rounding and a minimum size, for example nk ≥ 16, necessarily alter extreme draws. This effect is strongest for very small values of α. Therefore, nominal α is a control parameter, whereas the realized client sizes, bHq , and bHW quantify the effective non-IID severity and should be retained in the experimental record. 
+
+# Appendix K Falsifiable Theoretical Predictions 
+
+The analysis supports the following testable statements. 1. The raw solution-bin allocation obeys 
+
+E[Hu] = K − 1
+
+Kα + 1 
+
+X
+
+> b
+
+π2 
+
+> b
+
+. (K1) This is the unconditional link between α and partition heterogeneity. 2. A valid solution-geometry-aware ground cost gives HW = Θ( Hq ) through (D7). 3. Gradient-identifiable bins give Hg = Θ( Hq ) through (E5). 4. For a sufficiently small learning rate, 
+
+Dloc = η2E2Hg + O(η3E3), (K2) plus the explicit stochastic term in (F18). 5. The deterministic FedAvg–centralized trajectory difference begins at second order. With cE =
+
+E(E − 1) /2, ∆θ = η2cE
+
+X
+
+> k
+
+pk(Hk − H)( gk − g) + O(η3E3). (K3) Thus, one full-gradient local step has zero aggregated trajectory drift under full participation, although client gradients may be heterogeneous. 6. Monotonic growth of global trajectory drift as α decreases additionally requires curvature–gradient alignment and a sufficiently small partition-repair error. This growth is not a universal consequence of the Dirichlet law. 7. The sign of R(θFA ) − R (θC) is unrestricted away from a stationary, locally strongly convex cen-tralized comparator. Parameter drift, update dispersion, and gradient heterogeneity are therefore the primary theoretical observables; signed test-error drift is a downstream empirical quantity. These predictions motivate ablations over α, the number of local steps E, the learning rate η,the number of clients K, and the PDE regime. Reporting the realized bHq in addition to nominal α
+
+distinguishes the intended solution-space heterogeneity from finite-sample and minimum-size effects. 
+
+# References 
+
+[1] Raissi, M., Perdikaris, P. & Karniadakis, G. E. Physics-informed neural networks: A deep learn-ing framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics 378 , 686–707 (2019). 37 [2] Lu, L., Jin, P., Pang, G., Zhang, Z. & Karniadakis, G. E. Learning nonlinear operators via Deep-ONet based on the universal approximation theorem of operators. Nature Machine Intelligence 
+
+3, 218–229 (2021). [3] Li, Z. et al. Fourier neural operator for parametric partial differential equations. International Conference on Learning Representations (2021). [4] Kovachki, N. B. et al. Neural operator: Learning maps between function spaces with applications to PDEs. Journal of Machine Learning Research 24 , 1–97 (2023). [5] McMahan, H. B., Moore, E., Ramage, D., Hampson, S. & y Arcas, B. A. Communication-efficient learning of deep networks from decentralized data. Proceedings of the 20th International Conference on Artificial Intelligence and Statistics , Vol. 54 of Proceedings of Machine Learning Research , 1273–1282 (2017). [6] Kairouz, P. et al. Advances and open problems in federated learning. Foundations and Trends in Machine Learning 14 , 1–210 (2021). [7] Moya, C. & Lin, G. Fed-DeepONet: Stochastic gradient-based federated training of deep operator networks. Algorithms 15 , 325 (2022). [8] Zhang, H., Liu, L., Weng, K. & Lu, L. Federated scientific machine learning for approximating functions and solving differential equations with data heterogeneity. IEEE Transactions on Neural Networks and Learning Systems 36 , 18104–18117 (2025). [9] Hsu, T.-M. H., Qi, H. & Brown, M. Measuring the effects of non-identical data distribution for federated visual classification. arXiv preprint arXiv:1909.06335 (2019). [10] Li, T. et al. Federated optimization in heterogeneous networks. Proceedings of Machine Learning and Systems , Vol. 2, 429–450 (2020). [11] Karimireddy, S. P. et al. SCAFFOLD: Stochastic controlled averaging for federated learning. 
+
+Proceedings of the 37th International Conference on Machine Learning , Vol. 119 of Proceedings of Machine Learning Research , 5132–5143 (2020). [12] Caldas, S. et al. LEAF: A benchmark for federated settings. arXiv preprint arXiv:1812.01097 
+
+(2019). [13] Lin, B. Y. et al. FedNLP: Benchmarking federated learning methods for natural language pro-cessing tasks. Findings of the Association for Computational Linguistics: NAACL 2022 , 157–175 (2022). [14] Takamoto, M. et al. PDEBench: An extensive benchmark for scientific machine learning. Advances in Neural Information Processing Systems: Datasets and Benchmarks Track , Vol. 35 (2022). [15] Luo, Y., Chen, Y. & Zhang, Z. CFDBench: A large-scale benchmark for machine learning methods in fluid dynamics. arXiv preprint arXiv:2310.05963 (2023). 38 [16] Deng, C. et al. OpenFWI: Large-scale multi-structural benchmark datasets for full waveform inversion. Advances in Neural Information Processing Systems: Datasets and Benchmarks Track ,Vol. 35 (2022). [17] Wu, Y. & Lin, Y. InversionNet: An efficient and accurate data-driven full waveform inversion. 
+
+IEEE Transactions on Computational Imaging 6, 419–433 (2020). [18] Alfano, G. et al. Decentralized federated learning meets physics-informed neural networks. 
+
+Knowledge-Based Systems 323 , 113717 (2025). [19] Thalakanti, R. R. Physics-informed decentralized federated learning (PIDFL): Integrating domain knowledge into federated systems. Procedia Computer Science 282 , 674–693 (2026). [20] Park, B., Koh, M., Kong, H. & Lee, S.-W. Compositional meta-learning for mitigating task heterogeneity in physics-informed neural networks. Pattern Recognition 179 , 113797 (2026). [21] Arthur, D. & Vassilvitskii, S. k-means++: The advantages of careful seeding. Proceedings of the Eighteenth Annual ACM-SIAM Symposium on Discrete Algorithms , 1027–1035 (2007). [22] Peyr´ e, G. & Cuturi, M. Computational optimal transport. Foundations and Trends in Machine Learning 11 , 355–607 (2019). [23] Kingma, D. P. & Ba, J. Adam: A method for stochastic optimization. International Conference on Learning Representations (2015). 39
