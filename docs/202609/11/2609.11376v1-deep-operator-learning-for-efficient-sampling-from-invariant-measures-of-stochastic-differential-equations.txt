@@ -1,0 +1,2285 @@
+Title: Deep operator learning for efficient sampling from invariant measures of stochastic differential equations
+
+URL Source: https://arxiv.org/pdf/2609.11376v1
+
+Published Time: Fri, 11 Sep 2026 00:56:21 GMT
+
+Number of Pages: 40
+
+Markdown Content:
+# Deep operator learning for efficient sampling from invariant measures of stochastic differential equations 
+
+## Ling Guo ∗ a, Lei Li † b,c , and Jingtong Zhang ‡ baDepartment of Mathematics, Shanghai Normal University, Shanghai, China 
+
+> b
+
+## School of Mathematical Sciences, Shanghai Jiao Tong University, Shanghai, China 
+
+> c
+
+## Institute of Natural Sciences, MOE-LSC, Shanghai Jiao Tong University, Shanghai, China 
+
+Abstract 
+
+We introduce an amortized neural sampler that combines operator learning with flow methods for sampling. It maps SDE coefficient functions to pushforwards from a reference measure to the invariant measures, enabling efficient sampling across families of stochastic differential equations. Our framework shifts traditional sampling cost to an initial training phase, after which new SDE instances require only one encoder pass and a few ODE solver steps, independent of mixing time. To handle problems in high dimensions, we use Lagrangian trajectory sensors for the coefficient functions and cross attention in the architecture. We also theoretically establish the expressivity and resolution invariance of our framework. Experiments on 1D and 2D SDE families show competitive accuracy with substantial speedups over MCMC in regimes with slow mixing, transfer across sensor counts, and demonstration results on a 64D interacting particle SDE where traditional grid approaches are infeasible. 
+
+Keywords. operator learning, invariant measures, stochastic differential equations, amor-tized sampling, flow matching, uncertainty quantification 
+
+MSC 2020. 60H10, 65C05, 68T07 
+
+# 1 Introduction 
+
+Sampling from the invariant measures of Stochastic Differential Equations (SDEs) is a fun-damental task in applied mathematics, statistical physics, statistics and computer science, which enables the computation of stationary expectations, free energies and rare event probabilities for uncertainty quantification and stochastic control in related applications [23, 26, 17]. Traditional methods, such as Markov Chain Monte Carlo (MCMC) [24, 11, 32], rely on sequential simulations of the dynamics. These methods are intrinsically sequential and generally produce correlated samples. They require an initial equilibration period and a sufficiently long simulation to approach equilibrium, while time discretization may introduce an additional bias. More importantly, for multimodal or metastable systems, transitions be-tween separated regions can result in a prohibitively large mixing time and a small effective sample size. When the drift or diffusion coefficients vary across many problem instances, a new long simulation is usually required for every instance [32], and this repeated mixing cost can become the dominant computational bottleneck. 
+
+> ∗Email: lguo@shnu.edu.cn
+> †Email: leili2010@sjtu.edu.cn
+> ‡Email: sffred@sjtu.edu.cn
+
+1arXiv:2609.11376v1 [math.NA] 10 Sep 2026 Operator learning [22, 18, 15], which directly learns the map between functions, is gaining interest in scientific machine learning, and provides a natural framework for amortizing this cost over a family of stochastic systems. Consider the coefficient-indexed Stochastic Differential Equation (SDE) taking values in Rd
+
+dX = b(X) dt + σ(X) dW, (1.1) with X0 ∼ μ0, drift b : Rd → Rd, diffusion coefficient σ : Rd → Rd×dW , and standard Brownian motion W in RdW . Both dimensions are fixed within each coefficient family. Write a := ( b, σ ) for the pair of SDE coefficients throughout this paper, and denote its invariant measure by πa. Rather than constructing a separate sampler for each a, one may seek a generative sampler operator S satisfying S(a, ·)#γ ≈ πa, where γ is a simple reference distribution and # denotes the pushforward of measures. Thus, S takes the drift and diffusion functions, together with a latent random variable, as inputs and returns a sample from the corresponding invariant law. This provides a natural operator learning problem because the inputs a are functions. After an offline training stage over a suitable family of coefficients, such an operator could be evaluated on previously unseen SDEs and generate samples in parallel without repeating a long mixing simulation for every new query. The generative sampler has been extensively studied in recent years, including normal-izing flows and the continuous versions [31, 7]; Boltzmann generators [25]; score-based dif-fusion models [35]. The flow matching approach [19, 20] provides a regression framework for training continuous normalizing flows by learning a target velocity field, while avoiding adversarial objectives. FlowKac uses temporal normalizing flows and the Feynman–Kac formula for Fokker–Planck equations [8]; the weak adversarial networks enforce the weak equation through a minimax problem involving trial and test networks [39], whereas the weak generative sampler uses randomized test functions to train a transport map directly and avoids the adversarial minimax optimization [5]. Although these methods can substan-tially reduce the cost of sampling a prescribed target, they are typically trained for a fixed distribution or a single stochastic system. The objective here is instead to combine generative sampling with operator learning. Let us have also brief review of the neural operators. Rep-resentative neural operators include DeepONet [22], which encodes input functions through branch networks and evaluates outputs through a trunk network; the Fourier Neural Opera-tor [18, 15], which parameterizes integral operator layers in the Fourier domain; multi-input operators (MIONet) [14], which accommodates several functional inputs through multiple branch networks; and Variable-Input Deep Operator Networks (VIDON) [29], which allows the number and locations of input sensors to vary between samples. Recently, generative neural operators have also been extended to learning probability laws on function spaces, first through adversarial neural operators [30] and more recently through operator flow matching for stochastic process priors [34, 12]. Huang and Lai use an empirical measure limit for sample-based attention [12]. Continuum attention also interprets discrete attention as an approximation of a population operator [6]. We propose an amortized neural sampler that uses neural operators and the flow matching [19] to construct a reusable map from previously unseen drift and diffusion func-tions of the SDE (1.1) to samples from their corresponding invariant measures. Let A denote the space of admissible coefficient pairs. We assume a is drawn from a distribution π over A,and we have access to existing samples {ai, x i} generated via MCMC or other experimental methods. We want to learn a neural operator vθ that functions as a conditional velocity field: dx dt = vθ [a]( x, t ), (1.2) and apply it to unseen a = ( b, σ ) to generate samples from the steady state distribution of the SDE defined by a. Since the inference procedure requires evaluating vθ multiple times to solve the ODE (1.2), we adopt an encoder-decoder design: for a given pair a = ( b, σ ), the input functions are encoded once into a latent representation, which is then reused across all ODE integration steps , thereby reducing the computational cost at inference time. We use the Perceiver architecture [13] to aggregate the embeddings of random Lagrangian trajectory sensors into a context vector of fixed dimension. 2The main contributions of this work are as follows: 
+
+• We formulate an operator-conditioned amortized sampler for parametric families of SDEs, which combines neural operator encoders with continuous normalizing flows. The high cost of training is incurred once, and the trained model then generates approximate invariant measure samples for unseen coefficient instances at an inference cost decoupled from the mixing time of the system. 
+
+• An architecture with attention uses random Lagrangian trajectory sensors for problems in high dimensions. The architecture accepts variable sensor counts during training and inference. The random trajectory sensors do not require a mesh and support flexible domains. 
+
+• We prove theoretically the expressivity of the operator samplers for compact sets of admissible coefficient functions, and also the resolution invariance properties for the proposed random Lagrangian attention sampler. We first establish that the continuity of the map from the coefficient functions to the flow that transforms a reference mea-sure to the target measure. The resolution invariance of random Lagrangian sensors with attention aggregation is established by uniform law of large numbers for compact attention classes. The remainder of this paper is organized as follows. Section 2 introduces the mathemati-cal setting and section 3 presents the general framework. Section 4 describes the Lagrangian attention sampler in detail. Section 5 provides the theoretical analysis for the expressivity and section 6 establishes the resolution invariance. Lastly, Section 7 reports the experimental evaluation. 
+
+# 2 Problem Setting 
+
+We consider the problem of sampling from the invariant measures of a parametric family of SDEs of the form (1.1), where the parameter is a set of functions (e.g., a coefficient field, a boundary condition, or a potential). In this work, the parameter is taken to be the coefficient functions a = ( b, σ ). The law μt of Xt satisfies the following Fokker–Planck equation 
+
+∂tμt = −∇ · (b(x)μt) + 12 ∇2 : ( σ(x)σ⊤(x)μt). (2.1) An invariant measure of the SDE is a stationary solution of the Fokker–Planck equation (2.1). So the problem can be formulated as learning the map from the parameter a = ( b, σ )to the stationary solution of the Fokker-Planck equation (2.1). Under standard dissipativity and regularity conditions on ( b, σ ) — made precise in Section 5 — the SDE admits a unique invariant probability measure μa ∈ P 2(Rd), and the map a 7 → μa is continuous [3]. Since the object to be approximated is a probability distribution, we need a metric on distributions, and we use the quadratic Wasserstein distance throughout. On the space 
+
+P2(Rd) of probability measures with finite second moment, it is defined by 
+
+W2(μ, ν ) = 
+
+Å
+
+inf 
+
+> π∈Π( μ,ν )
+
+Z
+
+> Rd×Rd
+
+|x − y|2 dπ (x, y )
+
+ã1/2
+
+,
+
+where Π( μ, ν ) is the set of couplings of μ and ν, i.e. joint distributions on Rd × Rd with marginals μ and ν. The pair ( P2(Rd), W 2) is a complete metric space, and convergence in 
+
+W2 is equivalent to weak convergence together with convergence of second moments [36]. The metric plays a double role in what follows: the approximation guarantees of Section 5 and Section 6 are stated in W2, and the experiments of Section 7 use it as the quantitative quality criterion for the trained sampler. It remains to state precisely what “learning a sampler” means for a family of SDEs. Fix a probability distribution π on A representing the family of interest, e.g. a class of drift fields drawn from a prescribed prior. In its classical, one instance form, the sampling problem 3takes one fixed coefficient pair a = ( b, σ ) and asks for i.i.d. samples X(1) , . . . , X (N ) whose empirical law approximates μa. MCMC and sequential Monte Carlo solve the problem in this form, one a at a time, so each new coefficient pair triggers an independent — and, in slow mixing regimes, long — simulation of the dynamics. We consider instead the amortized 
+
+form of the problem: construct a single map 
+
+S : A × Rd → Rd, (a, z ) 7 → S (a, z ),
+
+where z is a latent variable drawn from a fixed reference distribution γ on Rd (typically 
+
+γ = N (0 , I d)), such that the pushforward ˆ μa := S(a, ·)#γ approximates μa for every a in the support of π. The quality of S is measured by the population error 
+
+E(S) = Ea∼π
+
+W2(ˆ μa, μ a). (2.2) The amortized formulation pays an upfront construction cost in exchange for cheap eval-uation: once S is built, sampling from μa for a previously unseen a requires only forward evaluations of S, with no per-instance simulation of the underlying SDE. 
+
+# 3 The general framework for neural operator sampler 
+
+We now explain our parametric sampler framework promised by Section 2. We formalize the neural operator sampler as follows. 
+
+Definition 3.1 (Neural Operator Sampler) . Let Rd be a state space, and A be a Banach space of input functions. A Neural Operator Sampler is a parameterized mapping 
+
+Sθ : A × Rd → Rd, (3.1) 
+
+where θ ∈ Θ denotes the learnable parameters (weights). For a given input a = ( b, σ ) ∈ A ,the map Sθ (a, ·) pushes forward the reference measure γ (e.g., standard Gaussian) to a target distribution ˆμa ∈ P (Rd).
+
+To construct the map Sθ , we adopt the Continuous Normalizing Flow (CNF) paradigm and learn the transport dynamics from reference samples to target samples. We introduce a Neural Operator Nθ that approximates the velocity field governing the transport from the reference measure γ to μa,
+
+Nθ : A → C([0 , 1] × Rd; Rd). (3.2) For a specific input a, the operator predicts a velocity field 
+
+va(x, t ) = Nθ (a)( x, t ). (3.3) The sampler Sθ (a, z ) is then defined as the solution ϕ(1) of the ODE 
+
+dϕ dt = va(ϕ(t), t ), ϕ(0) = z ∼ γ. (3.4) We use the alternative notation v[b, σ ]( ·, ·) to indicate the functional dependence on b and 
+
+σ.A natural question is whether such a CNF exists for each coefficient pair a, and whether some generating velocity field can serve as a regression target during training. We recall two classical existence mechanisms for such flows: the Benamou–Brenier optimal transport flow, which is exact but depends on the optimal coupling, unavailable from data; and the marginal flow matching construction, which builds a valid transport flow from any coupling of source and target samples and underlies our training objective. (1) Benamou–Brenier optimal transport flow. 4The dynamic (Benamou–Brenier) formulation of optimal transport [2] looks for a den-sity–velocity pair ( ρt, v t) that depends on time and solves the constrained optimization problem 
+
+W 22 (γ, μ a) = inf 
+
+> (ρ,v )
+
+Z 10
+
+Z
+
+> Rd
+
+∥v(x, t )∥2 ρ(x, t ) dx dt :
+
+∂tρ + ∇ · (ρ v ) = 0 , ρ 0 = γ, ρ 1 = μa
+
+ . (3.5) The optimal velocity field vBB transports γ to μa along the W2-geodesic with minimal kinetic energy. By Brenier’s theorem [4], when γ is absolutely continuous there exists a unique W2-optimal transport map T = ∇ψ (with ψ convex) satisfying T#γ = μa. The Benamou–Brenier geodesic is then realized by the linear interpolation 
+
+Xt = (1 − t)X0 + t T (X0), X0 ∼ γ, 
+
+with marginal velocity field 
+
+vBB (x, t ) = E[T (X0) − X0 | Xt = x] .
+
+The optimal transport construction thus provides an exact, geometrically natural flow from γ to μa. Its drawback is practical: it requires access to the optimal map or coupling for each target instance, which is generally not available during training — our data consist of unpaired samples from γ and μa.(2) Marginal flow matching construction. A second existence mechanism is the one underlying flow matching, and it removes this requirement: it builds a valid transport flow from any coupling ηa ∈ Π( γ, μ a) of source and target samples — in particular the independent coupling γ ⊗μa, which requires only unpaired samples. The idea is to prescribe simple dynamics conditionally on a pair of endpoints and then average. For each pair ( x0, x 1), choose a conditional interpolation path ρt(· | x0, x 1) and a conditional velocity ut(· | x0, x 1) satisfying the conditional continuity equation 
+
+∂tρt(x | x0, x 1) + ∇ · (ρt(x | x0, x 1)ut(x | x0, x 1)) = 0 ,
+
+with endpoints concentrated at x0 and x1. Averaging over the coupling gives a marginal path and a marginal velocity: 
+
+ρat (x) = 
+
+Z
+
+ρt(x | x0, x 1) dη a(x0, x 1),ρat (x)uat (x) = 
+
+Z
+
+ρt(x | x0, x 1)ut(x | x0, x 1) dη a(x0, x 1),
+
+where uat is defined arbitrarily on the set where ρat = 0. Integrating the conditional continuity equations yields 
+
+∂tρat + ∇ · (ρat uat ) = 0 , ρa 
+
+> 0
+
+= γ, ρa 
+
+> 1
+
+= μa.
+
+Equivalently, for Xt ∼ ρat ,
+
+uat (x) = E[ut(Xt | X0, X 1) | Xt = x] ,
+
+which is the pointwise L2 projection of the conditional velocity onto functions of the current state. This field has a dynamical role: it generates the marginal path and defines a valid transport flow from γ to μa. The conditional expectation form is also what makes the construction trainable: it characterizes uat as the minimizer of a regression problem whose samples require only draws from the coupling and the conditional path, which turns into the training objective (see the details below). 5Flow matching trains the velocity field by pointwise regression and avoids ODE solves inside each gradient step, giving it a lower online training cost than maximum likelihood CNF training. The price is that it requires training samples from the target invariant measures; in this work we focus on this supervised setting. Stochastic interpolants [1] provide a closely related formulation, and the expressivity theory of Section 5 uses a smoothed variant of the flow matching construction. For a fixed coefficient pair a, the ideal marginal flow matching loss is 
+
+La
+
+> FM
+
+(θ) = Et∼U [0 ,1] Ex∼ρat vθ [a]( x, t ) − uat (x) 2. (3.6) The marginal path ρat and velocity uat are generally intractable. Conditional flow match-ing [20] replaces (3.6) with a tractable conditional regression problem. The common x1-conditioned Gaussian path corresponds to the independent source–target coupling: for each target sample x1 ∼ μa, one defines a conditional probability path ρt(· | x1) and a conditional velocity field ut(· | x1) satisfying 
+
+∂tρt(x | x1) + ∇ ·  ρt(x | x1) ut(x | x1) = 0 , ρ0(· | x1) = γ, ρ1(· | x1) ≈ δx1 .
+
+The resulting conditional flow matching objective 
+
+LCFM (θ) = Ea∼π Et∼U [0 ,1] Ex1∼μa Ex∼ρt(·| x1) vθ [a]( x, t ) − ut(x | x1) 2 (3.7) has the same gradients as the corresponding marginal loss for this independent coupling path (3.6) [20] and requires only samples from the simple conditional path. For the independent coupling, this paper uses the standard Gaussian linear conditional path 
+
+ρt(x | x1) = N x t x 1, (1 − t)2I, ut(x | x1) = x1 − x
+
+1 − t . (3.8) Drawing X0 ∼ γ = N (0 , I ) independently of X1 and setting Xt = (1 − t)X0 + tX 1 gives the equivalent velocity target ut(Xt | X1) = X1 − X0.More generally, if a dependent source–target coupling ηa ∈ Π( γ, μ a) is used to form training pairs, the conditional path should be viewed as conditioned on the pair ( X0, X 1): 
+
+Xt = (1 − t)X0 + tX 1, ut(Xt | X0, X 1) = X1 − X0.
+
+The corresponding supervised training loss is 
+
+Llin CFM (θ) = Ea∼π E(X0,X 1)∼ηa Et∼U [0 ,1] 
+
+h
+
+vθ [a]( Xt, t ) − (X1 − X0) 2i
+
+. (3.9) The default independent pairing corresponds to ηa = γ ⊗ μa; one may use an empirical or minibatch optimal transport coupling when one wants a closer approximation to the Benamou–Brenier geometry. With an optimal source–target coupling, the linear construc-tion conditioned on pairs realizes the Benamou–Brenier geodesic (3.5); with independent source and target samples, it is a tractable flow matching interpolant. In either case, differ-ent couplings and interpolation paths lead to different valid training targets. In order to mitigate the cost of inference the trained model multiple times to solve the flow ODE (3.4), we propose an encoder–decoder architecture to construct the neural operator vθ . The encoder maps the input functions ( b, σ ) to a latent representation, and the decoder takes the latent code along with spatiotemporal coordinates ( x, t ) to produce the velocity field. Different encoders and decoders can be used to fit different problems. Specifically, the calculation of vθ [b, σ ]( x, t ) may be decomposed into two steps: 
+
+z = Encoder( b, σ ; θe), (3.10) 
+
+vθ [b, σ ]( x, t ) = Decoder( z, x, t ; θd), (3.11) where θ = ( θe, θ d) are the learnable parameters of encoder and decoder respectively. In the subsequent sections, we will discuss several possible representations of the input functions (b, σ ) and the corresponding encoder and decoders. Training uses the conditional flow matching loss in (3.9). At inference, we evaluate the model multiple times to solve the ODE (1.2). The latent representation (3.10) is computed once per coefficient pair a = ( b, σ ), which reduces time and memory cost. The complete training and inference procedures are summarized in Algorithm 1. 6Algorithm 1 Amortized Neural Sampler using flow matching loss: Training and Inference  
+
+> 1:
+
+Input: Training set D = {(ai, {x(j) 
+
+> i
+
+}Ns
+
+> j=1
+
+)}Nf 
+
+> i=1
+
+with ai = ( bi, σ i); reference measure γ;ODE solver with K steps.  
+
+> 2:
+
+Output: Trained parameters θ = ( θe, θ d).  
+
+> 3:
+
+% Training  
+
+> 4:
+
+for each minibatch do  
+
+> 5:
+
+Sample coefficients a ∼ π, target X1 ∼ μa, noise X0 ∼ γ, time t ∼ U [0 , 1].  
+
+> 6:
+
+Compute interpolant Xt = (1 − t)X0 + tX 1. 
+
+> 7:
+
+Encode: z ← Encoder( a; θe).  
+
+> 8:
+
+Predict velocity: ˆ v ← Decoder( z, X t, t ; θd).  
+
+> 9:
+
+Update θ by ∇θ ∥ˆv − (X1 − X0)∥2. 
+
+> 10:
+
+end for  
+
+> 11:
+
+% Inference (for a new, unseen a∗) 
+
+> 12:
+
+Encode once: z∗ ← Encoder( a∗; θe).  
+
+> 13:
+
+Draw X0 ∼ γ. 
+
+> 14:
+
+for k = 1 , . . . , K do  
+
+> 15:
+
+ODE integration (e.g. Euler, RK45): Xtk ← Xtk−1 +∆ tk Decoder( z∗, X tk−1 , t k−1; θd).  
+
+> 16:
+
+end for  
+
+> 17:
+
+Return X1 as a sample from the learned invariant measure ˆ μa∗ .
+
+# 4 A Lagrangian attention operator sampler 
+
+The classical grid approach implements the encoder–decoder framework with a Multi-input DeepONet [14]. At m grid sensors, we record bj = b(xj ) ∈ Rd and σj = σ(xj ) ∈ Rd×dW .We retain p ≤ d rows of σ, omitting only rows that vanish for every coefficient instance and position. Stacking each retained row across sensors gives the input tensors: ˆb ∈ Rm×d, ˆσk ∈ Rm×dW , k = 1 , . . . , p. 
+
+The velocity field is assembled via the tensor product structure of the Multi-input Deep-ONet [14]: 
+
+vθ [b, σ ]( x, t ) = G(ˆb, ˆσk, x, t ; θ) = 
+
+> q
+
+X
+
+> l=1
+
+f 0 
+
+> l
+
+(ˆb) ⊙ f 1 
+
+> l
+
+(ˆ σ1) ⊙ · · · ⊙ f pl (ˆ σp) ⊙ ul(ˆ x, ˆt), (4.1) where ⊙ denotes the elementwise (Hadamard) product, and ˆ x, ˆt are x, t embedded via a fixed sinusoidal map. In the notation of Section 3, the Branch nets collectively form the encoder 
+
+z = ( f 0(ˆb), f 1(ˆ σ1), . . . , f p(ˆ σp)) ,
+
+and the Trunk net together with the product-sum formula form the decoder. For problems in high dimensions a grid of sensors is infeasible: the number of grid points grows exponentially in the dimension d, so the dense Eulerian sampling of b(x), σ (x) used by classical neural operators [15, 18] exceeds a realistic budget. Motivated by VIDON for random point sensors [29], we aggregate information from random Lagrangian sensors —mobile probe trajectories that follow a cheap proxy of the dynamics—and encode them with attention. See also [9] for related ideas. Because the encoder reads the sensors through their empirical measure , it ingests a variable number of sensors m and runs at a sensor count m′̸ = m without retraining. As m grows, the output law of the model with fixed weights converges—in expectation over the random probes—to its own population-probe limit (Section 6); increasing m reduces the Monte Carlo error from the finite probe set relative to that limit. The full architecture is shown in Figure 4.1. The model embeds m sensor trajectories into the token list E; E then interacts repeatedly with a learnable latent token list Z0 of fixed size to obtain the latent context ZL. ZL, together with ( X, t ) after passing through a Gaussian Fourier Projection, goes through an AdaLN Decoder and produces the final velocity field vθ [a]( X, t ). The following subsections describe the exact operations. 7Sensors     
+
+> {x i, b(x i), σ(x i)}
+> Embedding
+> Block
+> Cross
+> Attn
+> Self
+> Attn MLP Z0
+> Z1
+> Block
+> ...
+> E
+> Perceive
+> Encoder
+> Gaussian Fourier
+> Projection
+> (X, t)
+> AdaLN
+> Decoder
+> ...×L Block
+> Gate Gate ...
+> Block
+> Velocity
+> Field
+> vθ[a](X, t)
+> ZL
+> Skip-connections and LayerNorm are omitted in this graph
+
+Figure 4.1: Architecture of the amortized neural sampler with an attention encoder. 
+
+## 4.1 Lagrangian trajectory sensors and the per-sensor embedding 
+
+We draw m random initial positions {xi}mi=1 i.i.d. from a fixed probability distribution on 
+
+Rd (the probe initial law); the count m may differ across data samples. From each xi we simulate a short probe trajectory xi, 0, . . . , x i,L and record at every step the local feature 
+
+yi,j =  xi,j , b (xi,j ), vec σ(xi,j ) ∈ R 2d+dd W , j = 0 , . . . , L, 
+
+which pairs each visited state with the drift and diffusion sampled there. The i-th probe observation is the ordered collection 
+
+Yi = ( yi, 0, . . . , y i,L ) ∈ R(L+1) ×c0 , c0 = 2 d + dd W .
+
+Known structure in σ reduces the feature width. For dW = d and isotropic diffusion σ =
+
+σ0Id, we use yi,j = ( xi,j , b (xi,j ), σ 0) ∈ R 2d+1 .Sensing with trajectories enriches pointwise evaluation by recording local changes of the drift and diffusion along a short path; even short trajectories provide finite difference information about the local vector field, and their ordered structure can be used by a con-volutional encoder. The probe dynamics need not coincide with the target dynamics: any process that visits the domain and permits pointwise evaluation of b and σ can drive the probes. In practice we drive them either by a cheap exploratory process—Brownian motion with a fixed step size, or a constant diffusion proxy dX = b(X) dt + ¯ σ dW —or by the original SDE (1.1) itself, a natural choice when the drift steers probes toward dynamically relevant regions. In either case the sensing cost is decoupled from the difficulty of the target SDE, and the probes can be extremely short. In several of our experiments (Section 7) trajectories of only L = 20 steps—and in some settings as few as L = 1 (two points)—already suffice for accurate reconstruction of the invariant measure. Because each probe involves only L evaluations of 
+
+b and σ, the total sensing cost is negligible compared to the O(τmix /∆t) steps required by MCMC. After the Lagrangian probes obtained, we further make use of a small 1D convolutional neural network acting along the step axis to map each observation into a vector of fixed width. Writing C(0) = Yi, the network applies N convolutional blocks 
+
+C(ℓ) = GELU 
+
+
+
+LayerNorm  Conv1d (ℓ)
+
+> k=3
+
+(C(ℓ−1) )
+
+∈ R(L+1) ×cℓ , ℓ = 1 , . . . , N, 
+
+followed by global average pooling over the L + 1 steps, 
+
+ei = 1
+
+L + 1 
+
+> L
+
+X
+
+> j=0
+
+C(N ) 
+
+> j, :
+
+∈ Rde , de := cN .
+
+Here GELU donates the Gaussian Error Linear Unit activation GELU( x) = xΦ( x), Φ( x) = 1
+
+√2π
+
+Z x
+
+> −∞
+
+exp 
+
+Å
+
+− |y|2
+
+2
+
+ã
+
+dy. 
+
+8The convolutions with kernel size 3 use “same” padding, which preserves the step length 
+
+L + 1 through all N blocks and keeps the embedding defined down to L = 1; they capture local temporal patterns such as the curvature and magnitude of the drift, and the pooling produces an output ei of fixed size for any trajectory length L, so the embedding dimension 
+
+de is independent of L and m. (A small MLP on a pooled trajectory is an alternative; the 1D CNN consistently outperformed it in our experiments by exploiting the sequential structure.) The encoder downstream sees the sensors only through their empirical measure ˆνm = 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+δei , ei ∈ Rde .
+
+This is the object the resolution invariance theory acts on: increasing m sharpens ˆ νm toward an underlying sensor law ν, and the encoder applies the same map to ˆ νm and to ν.
+
+## 4.2 Attention Perceiver encoder 
+
+The encoder aggregates the sensor embeddings into a context vector of fixed dimension. This aggregation accepts variable sensor counts and is invariant to sensor permutations. To perform this aggregation, the encoder carries a fixed set of k latent tokens (typically 
+
+k ≪ m), stacked as Z ∈ Rk×dz of latent width dz . Attention updates these tokens with sensor information, and the final readout converts them into the context vector. The encoder represents the m sensors by projecting each embedding ei ∈ Rde to width dz with a shared linear map Pe ∈ Rde×dz , stacking the rows Ei = eiPe into E ∈ Rm×dz .Two attention operations act on these arrays: cross attention, in which the latents read the sensors, and self attention, in which the latents exchange information among themselves. Each operation uses H heads of width dh = dz /H .Both operations are built from the same attention primitive. A single head maps a query array Q, key array K, and value array V (rows of width dh) to Atten( Q, K, V ) = softmax 
+
+ QK ⊤
+
+√dh
+
+
+
+V, 
+
+h
+
+softmax 
+
+ QK ⊤
+
+> √dh
+
+i 
+
+> rj
+
+= exp( ⟨qr , k j ⟩/√dh)
+
+P 
+
+> i
+
+exp( ⟨qr , k i⟩/√dh) ,
+
+where qr , k j are the rows of Q, K and the sum runs over the rows of K. The softmax normalizes each row, so row r of Atten( Q, K, V ) is the convex combination of the rows of V
+
+weighted by query r, and the factor √dh holds the scores at a stable scale as dh grows. Each of the H heads carries learnable projections W Qh , W Kh , W Vh ∈ Rdz ×dh , and the H
+
+head outputs are concatenated and mixed by W O ∈ Rdz ×dz . Cross attention draws queries from the latents, the keys and values from the sensors; self attention draws all three from the latents: CA( Z, E ) =  Atten( ZW Qh , EW Kh , EW Vh ) Hh=1 W O ,
+
+SA( Z) =  Atten( ZW Qh , ZW Kh , ZW Vh ) Hh=1 W O ,
+
+both in Rk×dz , where [ · ]Hh=1 concatenates the head outputs along the feature axis and cross-and self attention carry separate projections. Cross attention carries the information of the 
+
+m sensors into the k latents; self attention lets the latents share information. Starting from the learned initial latents Z(0) ∈ Rk×dz , each of the Lenc blocks reads the sensors into the latents through cross attention, lets the latents exchange information through self attention, and refines them tokenwise through an MLP with two layers of width 4dz and GELU activation, each step carried by a residual connection and a post-LayerNorm: 
+
+Z′ = LN  Z(ℓ) + CA( Z(ℓ), E ),Z′′ = LN  Z′ + SA( Z′),Z(ℓ+1) = LN  Z′′ + MLP( Z′′ ),ℓ = 0 , . . . , L enc − 1.
+
+Every block reuses the same sensor array E as keys and values and updates the latent tokens. Each cross attention head returns a ratio of two sums over the sensors—the value average in 9the numerator and the softmax normalization in the denominator—so its value is a function of the empirical measure ˆ νm alone. Section 6 and Appendix A.4 build on this empirical measure structure, replacing ˆ νm by a general sensor law ν to establish resolution invariance as m grows. After the Lenc blocks, the encoder reads out the k latent tokens by flattening them and projecting linearly to the context vector 
+
+z = Encoder(ˆ νm) := W out vec  Z(Lenc ) ∈ Rdz , W out ∈ Rdz ×kd z
+
+(for k = 1 this is just the single token). The whole construction is permutation invariant in the ordering of the sensor embeddings [38]. In our experiments we use k = 4 latent tokens, 
+
+H = 4 heads of width dh = 32 (so dz = 128), and Lenc = 2 blocks, yielding z ∈ R128 .
+
+## 4.3 AdaLN-conditioned flow decoder 
+
+The decoder receives the context z ∈ Rdz , a state x ∈ Rd, and the flow time t ∈ [0 , 1], and outputs the velocity vθ [b, σ ]( x, t ) ∈ Rd.The flow time t enters through a fixed sinusoidal embedding τ = SinEmb( t) ∈ Rdt , whose 
+
+j-th entry is 
+
+τ2j−1 = sin(2 πf j t), τ2j = cos(2 πf j t), fj = fmin 
+
+Ä fmax 
+
+> fmin
+
+ä(j−1) /(dt/2−1) 
+
+,
+
+with geometrically spaced frequencies f1 = fmin to fdt/2 = fmax and j = 1 , . . . , d t/2. The context that modulates every block fuses the operator latent z with this time embedding through a learned linear projection, 
+
+c = Wc [z; τ ] + bc ∈ Rdz ,
+
+and the state and time embedding are concatenated and lifted to the hidden width D,
+
+h(0) = Win [x; τ ] + bin ∈ RD .
+
+We condition the decoder through adaptive layer normalization (AdaLN) [27], letting the context c set the scale and shift of every block’s normalization so that the conditioning signal reaches all depths. Each of the Nd blocks modulates its two normalization layers with scale and shift predicted from c,AdaLN( h; c) =  1 + γ(c) ⊙ LN( h) + β(c),
+
+and applies two such modulations with a residual connection, 
+
+h′ = act  AdaLN( h(ℓ); c),h′′ = act  AdaLN( W1h′; c),h(ℓ+1) = h(ℓ) + α(c) ⊙ W2h′′ ,ℓ = 0 , . . . , N d − 1,
+
+where γ, β, α are linear functions of c and act is Mish. Finally, after Nd blocks the hidden state is normalized and projected to the velocity, 
+
+vθ [b, σ ]( x, t ) = Wv LN( h(Nd)) ∈ Rd.
+
+The output weight Wv is initialized to zero so that the velocity field starts near zero at the beginning of training. For interacting particle systems with state X = ( x1, . . . , x N ) ∈
+
+(Rdp )N , we use the particle variant described in Section 7.3: the decoder reshapes X into 
+
+N particle tokens, embeds each token with shared weights, applies AdaLN-conditioned self attention and feedforward blocks across the particle tokens, and projects each token to its velocity vi. Because the token maps are shared and self attention is permutation equivariant, relabeling the particles relabels the output velocities in the same way. 10 5 Expressivity of the Lagrangian attention sampler 
+
+This section is devoted to the expressivity result. The sampler is intended to learn a map from SDE coefficients to invariant measures. The theoretical question is whether our archi-tecture has sufficient expressive power to approximate this map uniformly over a compact family of coefficient functions. The reduction theorem establishes this result under the stated assumptions via neural operator approximation of a deterministic coefficient-dependent ve-locity field on compact domains. Appendix A contains the proofs and construction details. The main text records the assumptions, the key lemmas and propositions, the theorem statements, and the proof ideas needed to interpret them. For a = ( b, σ ) with σ : Rd → Rd×dW , write 
+
+Aa(x) = σ(x)σ(x)⊤ ∈ Rd×d
+
+for the diffusion matrix. The generator of the SDE acts on smooth test functions by 
+
+Laφ(x) = b(x) · ∇ φ(x) + 12 Tr  Aa(x)D2φ(x). (5.1) The generator depends on σ only through Aa. As a result, the invariant measure μa also depends on σ only through Aa. We keep the pair a = ( b, σ ) as the variable because the sampler receives b and σ as its input. The coefficient space is 
+
+Xa = C(Rd; Rd) × C(Rd; Rd×dW ). (5.2) We equip this space with the compact-open topology, that is, uniform convergence on com-pact subsets. A sequence an = ( bn, σ n) converges to a = ( b, σ ) if, on every compact set 
+
+B ⊂ Rd,sup 
+
+> x∈B
+
+|bn(x) − b(x)| + sup 
+
+> x∈B
+
+∥σn(x) − σ(x)∥ −→ 0.
+
+Choose any compact exhaustion ( Bj )j≥1 of Rd, and define 
+
+pj (a, a ′) = sup 
+
+> x∈Bj
+
+|b(x) − b′(x)| + sup 
+
+> x∈Bj
+
+∥σ(x) − σ′(x)∥.
+
+The metric 
+
+dXa (a, a ′) = 
+
+> ∞
+
+X
+
+> j=1
+
+2−j min {1, p j (a, a ′)}
+
+metrizes the compact-open topology on Xa. If an → a in this topology, then Aan → Aa
+
+uniformly on every compact set, because σn is uniformly bounded on that set. In this topology, compactness of a set E ⊂ X a means that every sequence in E has a subsequence converging uniformly on every compact subset of Rd. The Arzela–Ascoli criterion gives the following standard compactness condition. 
+
+Proposition 5.1 (Compactness criterion) . A closed set E ⊂ X a is compact if, for each ball Bm = {x : |x| ≤ m}, the restrictions of its elements to Bm are uniformly bounded and equicontinuous. 
+
+## 5.1 Invariant measure and the properties 
+
+We will focus on the following set of coefficients with parameters ν, p 0, λ, M . Let A(ν, p 0, λ, M )be the class of coefficients a = ( b, σ ) ∈ X a such that: 1. Uniform ellipticity (which requires dW ≥ d). 
+
+Aa(x) ⪰ νI, x ∈ Rd.
+
+11 2. Khasminskii condition for polynomial Lyapunov functions. There exists p0 >
+
+2 such that 
+
+⟨b(x), x ⟩ + 12 (p0 − 1) Tr Aa(x) ≤ − λ|x|2 + M, x ∈ Rd.
+
+In particular, for V (x) = |x|p, p ≤ p0, this condition yields 
+
+LaV (x) ≤ − λpV (x) + M p 
+
+up to lower order constants absorbed into M .The following is a standard result of the preceding conditions. 
+
+Proposition 5.2 (Stationary measure and moments) . If a ∈ A (ν, p 0, λ, M ), then the sta-tionary Fokker–Planck equation L∗
+
+> a
+
+μ = 0 has a unique probability solution μa. Moreover, for every p ≤ p0, there is a constant Mp < ∞, depending only on (ν, p 0, λ, M, p ), such that 
+
+sup  
+
+> a∈A (ν,p 0,λ,M )
+
+Z
+
+|x|p μa(dx ) ≤ Mp, 2 ≤ p ≤ p0.
+
+Classical sufficient conditions for existence and uniqueness of stationary solutions to the Fokker–Planck equation are given in [3, Theorems 2.4.1 and 4.1.6]. The moment estimate follows from the standard Lyapunov cutoff argument; the details are given in Appendix A. 
+
+Remark 5.1. Local Lipschitz conditions on a = ( b, σ ) are often imposed for strong well-posedness of the SDE. The present theory is stated at the level of laws and stationary Fokker– Planck equations, so one may instead work with weak solutions and the associated martingale problem. In this setting, it does not require the conditions on the derivatives of a. See also the Stroock-Varadhan uniqueness theorem [33, Theorem 24.1, Chapter V]. 
+
+Lemma 5.1 (Closedness and stability of admissible coefficients) . The set A(ν, p 0, λ, M ) is closed under the compact-open topology. That is, if an ∈ A (ν, p 0, λ, M ) and an → a locally uniformly, then a ∈ A (ν, p 0, λ, M ). Moreover, 
+
+W2(μan , μ a) → 0.
+
+The proof of Lemma 5.1 will also be presented in Appendix A. 
+
+## 5.2 An explicit construction of approximating velocity field 
+
+We will basically use the smoothed flow matching velocity field to construct an approximat-ing velocity field. First let PS : Rd → BS be the radial projection and define 
+
+μSa = ( PS )#μa.
+
+The polynomial moment bound gives the projection error sup  
+
+> a∈A (ν,p 0,λ,M )
+
+W2(μSa , μ a) ≤ M 1/2 
+
+> p0
+
+S−(p0−2) /2.
+
+Moreover, a 7 → μSa is continuous. Next, take α ∈ (0 , 1) and the narrower Gaussian 
+
+γα = N (0 , (1 − α)Id).
+
+Fix the target measure μSa with a ∈ A (ν, p 0, λ, M ). Draw 
+
+X ∼ γα, Y ∼ μSa , ξ ∼ N (0 , I d),
+
+independently. Define 
+
+M at = (1 − t)X + tY, Zat = M at + √α ξ. 
+
+12 Clearly, letting ρat = Law( Zat ), then 
+
+ρa 
+
+> 0
+
+= γ, ρa 
+
+> 1
+
+= μSa ∗ N (0 , αI d).
+
+Coupling Y with Y + √α ξ gives 
+
+W 22 (μSa ∗ N (0 , αI d), μ Sa ) ≤ E|√α ξ |2 = αd =⇒ W2(ρa 
+
+> 1
+
+, μ Sa ) ≤ √αd. 
+
+Let 
+
+ϕα(u) = (2 πα )−d/ 2 exp( −| u|2/(2 α)) .
+
+Then, the smoothed density is 
+
+ρat (z) = 
+
+Z
+
+ϕα(z − ((1 − t)x + ty )) γα(dx ) μSa (dy ) > 0, ∀z, t ∈ [0 , 1] .
+
+The current is 
+
+Jat (z) = 
+
+Z
+
+(y − x)ϕα(z − ((1 − t)x + ty )) γα(dx ) μSa (dy ).
+
+The velocity is 
+
+va(z, t ) = Jat (z)
+
+ρat (z) = E[Y − X | Zat = z].
+
+Lemma 5.2 (Smoothed flow matching velocity) . For fixed α ∈ (0 , 1) and S < ∞, the velocity va has uniform path moment bounds: for every p ≥ 2,
+
+sup  
+
+> a∈A (ν,p 0,λ,M )
+
+sup 
+
+> t∈[0 ,1]
+
+Z
+
+|va(z, t )|p dρ at (z) ≤ Cα,S,p .
+
+It also has the uniform linear growth bound 
+
+|va(z, t )| ≤ Cα,S (1 + |z|).
+
+Moreover, ρat satisfies the continuity equation with this velocity field, 
+
+∂tρat + ∇ · (ρat va) = 0 . (5.3) Finally, we take a smooth cutoff χR ∈ C∞ 
+
+> c
+
+(Rd) such that 
+
+χR(x) = 1 for |x| ≤ R, χR(x) = 0 for |x| ≥ 2R, 0 ≤ χR ≤ 1.
+
+For a fixed a ∈ A (ν, p 0, λ, M ), define 
+
+va,R (x, t ) = χR(x)va(x, t ).
+
+Lemma 5.3 (Lipschitz continuity of the target velocity) . For every fixed α ∈ (0 , 1) , S < ∞,and R > 0, a 7 → va,R is continuous as a map from A(ν, p 0, λ, M ) to C(B2R × [0 , 1]; Rd).Moreover, 
+
+Lα,S,R = sup  
+
+> a∈A (ν,p 0,λ,M )
+
+sup 
+
+> t∈[0 ,1]
+
+Lip x va,R (·, t ) < ∞.
+
+Let μS,R a be the terminal law generated by ˙Xt = va,R (Xt, t ), X0 ∼ γ. 
+
+Lemma 5.4 (Truncation consistency) . For every fixed α ∈ (0 , 1) and S < ∞,
+
+εtrun (α, S, R ) := sup  
+
+> a∈A (ν,p 0,λ,M )
+
+W2(ρa 
+
+> 1
+
+, μ S,R a ) ≤ Cα,S,p R−(p−2) /2.
+
+The proofs of Lemmas 5.2–5.4 are given in Appendix A.1. 13 5.3 Expressivity of the neural operator approximation 
+
+Now, we will consider a compact subset K of A(ν, p 0, λ, M ) for some parameters ν, p 0, λ, M .By Proposition 5.1, a closed set K ⊂ A (ν, p 0, λ, M ) is compact if the following hold: (i) for each ball Bm = {x : |x| ≤ m}, the restrictions of a ∈ K on Bm are uniformly bounded; (ii) for each Bm, the restrictions of a ∈ K on Bm are equicontinuous. Lemma 5.1 shows that 
+
+A(ν, p 0, λ, M ) is closed in Xa. Hence the closure in Xa of any family in A(ν, p 0, λ, M ) that satisfies (i) and (ii) is such a set K.Below, we put the following assumption on the neural operator architecture. We will then discuss how the assumption is satisfied for the architecture we use in the next section. 
+
+Assumption 5.1 (Compact domain neural operator approximation) . For every compact set K, every fixed envelope constant Cenv < ∞, every R > 0, every continuous operator 
+
+Ψ : K → C(B2R × [0 , 1]; Rd)
+
+with |Ψ( a)( x, t )| ≤ Cenv (1 + |x|), and every δ > 0, the following hold. (a) The model class contains a parameter θ such that 
+
+sup 
+
+> a∈K
+
+sup 
+
+> (x,t )∈B2R×[0 ,1]
+
+|N θ (a)( x, t ) − Ψ( a)( x, t )| < δ. 
+
+(b) The selected realizations are locally Lipschitz in the spatial variable (i.e., Lipschitz on compact sets) and satisfy the global linear growth envelope for constant C depending on the chosen parameters such that 
+
+|N θ (a)( x, t )| ≤ C(1 + |x|), a ∈ K, x ∈ Rd, t ∈ [0 , 1] .
+
+Assumption 5.1 is the ordinary compact domain universal approximation property (UAP) for the neural operator. The reduction theorem uses the Lipschitz constant of the target velocity va,R , not the Lipschitz constant of the approximating network. The global linear growth clause is only used to make the exact learned ODE globally well posed and to control the probability that the learned trajectory leaves the compact approximation domain. Next, one needs the following auxiliary results, whose proofs are given in Appendix A.3. 
+
+Proposition 5.3 (ODE stability for a Lipschitz target) . Let vt and ˆvt generate flows Φt
+
+and ˆΦt from the same initial law ρ0. Assume vt is globally Lipschitz in x, uniformly in t,with constant L, and 
+
+sup 
+
+> x,t
+
+|vt(x) − ˆvt(x)| ≤ δ. 
+
+Then 
+
+W2((Φ 1)#ρ0, ( ˆΦ1)#ρ0) ≤ eLδ. 
+
+Proposition 5.4 (Reduction from compact operator approximation to sampling error) . Let 
+
+K ⊂ A (ν, p 0, λ, M ) be a compact set of coefficients a = ( b, σ ) for some positive parameters 
+
+ν > 0, p 0 > 2, λ > 0, M > 0. Fix α ∈ (0 , 1) , S < ∞, R > 0, and p > 2. The implemented velocity field is the plain neural operator 
+
+ˆvθ [a]( x, t ) := Nθ (a)( x, t ).
+
+Assume Nθ (a) is locally Lipschitz in x, and satisfies 
+
+|N θ (a)( x, t )| ≤ Cα,S (1 + |x|), a ∈ K, x ∈ Rd, t ∈ [0 , 1] ,
+
+and define 
+
+δθ,α,S,R := sup 
+
+> a∈K
+
+sup 
+
+> (x,t )∈B2R×[0 ,1]
+
+|N θ (a)( x, t ) − va,R (x, t )|.
+
+If δθ,α,S,R < Re −Lα,S,R and ˆμa,θ is the terminal law generated by ˆvθ [a] from X0 ∼ γ, then 
+
+sup 
+
+> a∈K
+
+W2(ˆ μa,θ , μ a) ≤ eLα,S,R δθ,α,S,R +Cα,S,p R−(p−2) /2+εtrun (α, S, R )+ √αd +M 1/2 
+
+> p0
+
+S−(p0−2) /2.
+
+14 The five terms have distinct meanings. The first is the compact domain neural operator approximation error. The second is the escape tail error introduced by using the exact, unprojected learned ODE while only controlling the approximation on B2R. The third is the ODE error caused by truncating the target velocity outside BR. The fourth is the Gaussian mollification bias, and the fifth is the error from projecting the invariant measure to BS .The following then gives the main claim about expressivity of the model, and the proof is provided in Appendix A.3. 
+
+Theorem 5.1 (Ordinary UAP implies sampler expressivity) . Let K ⊂ A (ν, p 0, λ, M ) be a compact set for some positive parameters ν > 0, p 0 > 2, λ > 0, M > 0. Suppose Assumption 
+
+5.1 holds. Then for every η > 0 there exist S < ∞, α ∈ (0 , 1) , R > 0, and a parameter θ
+
+such that 
+
+sup 
+
+> a∈K
+
+W2(ˆ μa,θ , μ a) < η. 
+
+## 5.4 Universal approximation property of the Lagrangian attention neural operator 
+
+In this subsection, we establish sufficient conditions for the Lagrangian attention neural operator to satisfy the approximation assumption used in the preceding expressivity theorem. The key is that the finite probes must resolve the coefficient family. We show that this holds with high probability under the stated assumptions on the probe distribution. For the Lagrangian sensors, we do not need the cutoff J as for the grid samplers. We recall that a Lagrangian input is the finite unordered set of probe observations of Section 4, 
+
+Sm,L (a) = {Y a 
+
+> 1
+
+, . . . , Y am}, Y ai = ( yai,j )Lj=0 ∈ R(L+1) ×(2 d+dd W ),
+
+with the initial probe locations, probe noise, step size, and trajectory length L fixed before evaluation. The realized operator Nθ (a) = vθ [a] is the trajectory CNN encoder, the finite depth Perceiver aggregator Encoder with readout z ∈ Rq , and the AdaLN-conditioned residual decoder Decoder( z, x, t ). 
+
+Proposition 5.5 (Finite sensor Lagrangian Perceiver–AdaLN approximation) . Let Y =
+
+B2R × [0 , 1] , and fix an envelope constant Cenv < ∞. Assume: (a) (Finite Sensor Resolution, FS) Finite probes resolve K: for every ε > 0 there are m, L ,fixed probe seeds, and r > 0 such that 
+
+dsens (Sm,L (a), Sm,L (a′)) < r =⇒ dXa (a, a ′) < ε, a, a ′ ∈ K, 
+
+where dsens is any distance on finite sensor sets. (b) (Encoder-decoder Universality, EU) On the compact image Sm,L (K), the encoder-decoder architecture class uniformly approximates any continuous map invariant under sensor permutations F : Sm,L (K) × Y → Rd whose realizations are locally Lipschitz in x.Then the finite sensor encoder-decoder class satisfies Assumption 5.1 (a). If the activation function is globally Lipschitz, then Assumption 5.1 (b) is also satisfied. 
+
+The proof is given in Appendix A.3. We remark that a natural choice is 
+
+dsens ({yi}, {y′
+
+> i
+
+}) = max  
+
+> ij
+
+∥a(xij ) − a′(xij )∥.
+
+Any distance that makes S(K) compact and metrizes the topology of the sensor set suffices. Next, we discuss the validity of the conditions used. We first verify that the condition (FS) holds with large probability as summarized in Theorem 5.2. The proof is given in Appendix A.3. 15 Theorem 5.2. Suppose that the initial points {xi0}mi=1 are sampled from some distribution 
+
+ν0(dx ) = ρ0(x) dx with a continuous density ρ0(x) > 0 that is positive everywhere. For any 
+
+δ ∈ (0 , 1) , there is m0 = m(δ, r, ε ) > 0 such that when m > m 0, the Lagrangian attention neural operator satisfies the condition (FS) with probability 1 − δ. Consequently, provided the architecture satisfies the ordinary finite dimensional UAP on the compact set with per-mutation invariance (i.e., the (EU) property), the Lagrangian attention neural operator has the expressivity with probability at least 1 − δ.
+
+Remark 5.2. We remark that the estimate of m in the proof of Theorem 5.2 in Appendix 
+
+A.3 has curse of dimensionality. The proof in Appendix A.3 is based on the h-net and does not take advantage of the Monte Carlo feature of the method, so it should have overestimated 
+
+m. The improvement needs a better topology for the coefficient functions that could make use of the Monte Carlo rate. This is left for future study. 
+
+Next, let us discuss about universality condition and provide some evidence. Since m
+
+and L are fixed, the sensor set {e1, . . . , e m} ⊂ Rde lives in the compact finite dimensional space Rm×de , so (EU) is an ordinary UAP for continuous functions on a compact set—the only nonstandard requirement is permutation invariance in the sensor index. Three existing results together make (EU) reasonable for the present architecture: 
+
+• Cross attention is a universal approximator. Liu et al. [21] prove that a single-head cross attention layer, preceded by a linear projection, universally approximates any continuous function on a compact domain in L∞. The cross attention block CA( Z, E )of our encoder fits this setting directly: the learned initial latent Z(0) plays the role of the query and the sensor array E provides the keys and values. 
+
+• Self attention + FFN is a universal approximator of equivariant maps. Yun et al. [37] prove that a transformer (multihead self attention followed by a positionwise FFN) uni-versally approximates any continuous permutation-equivariant sequence-to-sequence function on a compact domain. The latent self attention and FFN blocks in each encoder layer are exactly this subarchitecture, applied to the fixed length latent array of k tokens. 
+
+• Permutation invariance is preserved by construction. Cross attention is invariant to permutation of the keys and values (the sensor embeddings) because each attention weight is computed by an inner product between a fixed query and each key indepen-dently before softmax normalization; permuting the sensors permutes the weights but leaves the weighted sum unchanged. The subsequent self attention operates on the latent array, which has no sensor index, and the linear readout W out vec( Z(Lenc )) is fixed dimension and sensor-order-independent. Our encoder is structurally identical to the Set Transformer of [16], which was introduced precisely for set aggregation that is invariant under permutations. A formal proof combining all three stages in a single theorem statement does not yet exist in the literature; we treat (EU) as an assumption, supported by the above components. The decoder, given a fixed z and compact Y , satisfies the standard MLP UAP. 
+
+# 6 Resolution Invariance 
+
+This section is about the resolution of the input function. It explains when changing the sen-sor resolution leaves the realized sampler stable, in expectation over the probe trajectories, for the fixed trained attention architecture. A finite sensor Lagrangian Perceiver–AdaLN ap-proximation statement records sufficient conditions for the compact domain approximation assumption once the probes resolve the coefficient family. The resolution invariance thus allows the model to be trained on data samples with variable resolution, and be applied for different resolution for new unseen cases. For random probes, the probes are sampled in the whole state space according to a prescribed probe law, so the resolution parameter is the number m of probes. 16 In this subsection, K ⊂ X a denotes a compact coefficient family. Throughout this subsection the weights θ are fixed and suppressed from the notation. For a fixed full space probe recipe, one probe produces a random observation Y as introduced in Section 4—the visited states together with the drift b and diffusion σ recorded along a short probe path—with CNN embedding e = CNN( Y ) ∈ Rde and law of the sensor embedding 
+
+νa = Law( e).
+
+With m independent probes e = ( e1, . . . , e m), ei
+
+> i.i.d.
+
+∼ νa, the empirical law of the sensor embeddings is ˆνa,m = 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+δei .
+
+Because the sensor order is irrelevant, we identify the encoded sensor set with its empirical measure. The encoder reads the sensors only through cross attention, and only through the pro-jected sensor ˜ e = eP e ∈ Rdz , with Pe the shared projection of Section 4.2. Replacing the sensor rows of Atten by a measure ν on the embeddings, a head with query q is 
+
+Ahℓ (q, ν ) = 
+
+R F hℓ (q, e ) dν (e)
+
+R ωhℓ (q, e ) dν (e) , ωhℓ (q, e ) = exp 
+
+ ⟨q, ˜eW Kℓ,h ⟩√dh
+
+
+
+, F hℓ (q, e ) = ωhℓ (q, e ) ˜ eW Vℓ,h ∈ Rdh ,
+
+which at ν = ˆ νa,m = 1
+
+> m
+
+P 
+
+> i
+
+δei reduces to the Atten head over the m sensors. We now use this measure formulation to write the full encoder recursion. We use Hℓ
+
+to denote the cross attention message and Gℓ the self attention–MLP update. With token queries q = zr W Qℓ,h , the per-head outputs assembled by W Oℓ give Hℓ(Z, ν ) ∈ Rk×dz , with rows 
+
+Hℓ(Z, ν ) 
+
+> r
+
+=  Ahℓ (zr W Qℓ,h , ν ) Hh=1 W Oℓ , r = 1 , . . . , k. (6.1) Here, Gℓ represents the transform made by the self attention and the MLP 
+
+Gℓ(Y ) = r[MLP]  r[SA]( Y ),
+
+where r[ f ]( Y ) = LN  Y + f (Y ) is a residual sublayer followed by LayerNorm. The latents are then transformed by the self attention and the MLP through the depth-Lenc recursion: 
+
+Z(ℓ+1) = Gℓ
+
+ LN( Z(ℓ) + Hℓ(Z(ℓ), ν )) , ℓ = 0 , . . . , L enc − 1, (6.2) from the learned Z(0) .Hence, the encoder is then a functional of the measure Encoder( ν) := W out vec  Z(Lenc ).
+
+Denote 
+
+za,m = Encoder(ˆ νa,m ), za = Encoder( νa)the encodings for the empirical embedded sensor law, and the population embedded sensor law respectively. The finite and infinite sensor velocity fields are the decoder pushforwards 
+
+va,m (x, t ) = Decoder( za,m , x, t ), va(x, t ) = Decoder( za, x, t ).
+
+The corresponding terminal laws are the random measure ˆ μa,m (it depends on the specific random realized probes e) and the limit measure ˆ μa corresponding to the continuum probe measure: ˆμa,m = Law( Xa,m  
+
+> 1
+
+), ˙Xa,m t = va,m (Xa,m t , t ), Xa,m  
+
+> 0
+
+∼ γ, 
+
+and ˆμa = Law( Xa 
+
+> 1
+
+), ˙Xat = va(Xat , t ), Xa 
+
+> 0
+
+∼ γ. 
+
+For each probe realization, these definitions give the following finite sensor map. 
+
+a = ( b, σ ) 7 −→ S m,L (a) 7 −→ ˆνa,m 7 −→ za,m 7 −→ va,m 7 −→ ˆμa,m .
+
+17 Definition 6.1 (Random sensor resolution invariance) . The Lagrangian Perceiver sampler is random sensor resolution invariant on K if the population-probe terminal law ˆμa is defined for each a ∈ K and 
+
+lim  
+
+> m→∞
+
+sup 
+
+> a∈K
+
+Ee W2(ˆ μa,m , ˆμa) = 0 ,
+
+where the expectation is over the random probe trajectories. 
+
+Remark 6.1. The law ˆμa is the continuum limit only in the sense that the empirical probe measure has been replaced by the underlying probe law in the same finite depth Perceiver architecture; the probe recipe itself is fixed. 
+
+We now state the two structural assumptions. Both are mild and realized by the ar-chitecture; the quantitative bounds the proof uses—boundedness and Lipschitz continuity of the attention weights, a strictly positive denominator, compact reachable latents, and a Lipschitz decoder—are then consequences (Lemma 6.1), not separate hypotheses. 
+
+Assumption 6.1 (Compact sensor embeddings and a regular decoder) . The following hold uniformly over a ∈ K:(A1) Compact embedding support. There is a fixed compact set Ke ⊂ Rde with supp νa ⊆
+
+Ke for every a ∈ K.(A2) Decoder state regularity. There is Cθ < ∞, and for every R < ∞ an Lxθ,R < ∞,such that for all a ∈ K, every reachable latent z, all t ∈ [0 , 1] and x, y ∈ BR,
+
+| Decoder( z, x, t )| ≤ Cθ (1 + |x|), | Decoder( z, x, t ) − Decoder( z, y, t )| ≤ Lxθ,R |x − y|.
+
+Let us make some discussions on the assumptions above. Regarding (A1), the per-sensor embedding of Section 4 pools the final convolutional block, ei = 1
+
+> L+1
+
+PLj=0 C(N )
+
+> j, :
+
+with C(N ) = GELU(LayerNorm( · · · )). The LayerNorm normalizes each row to Euclidean norm ≤ √de and applies its fixed affine map, so its output rows are bounded by some 
+
+ρe < ∞; since |GELU( t)| ≤ | t|, every ∥C(N ) 
+
+> j, :
+
+∥ ≤ ρe, and averaging gives ∥ei∥ ≤ ρe. Hence supp νa ⊆ Ke := Bρe , a fixed compact set independent of the probe. Regarding (A2), in the decoder of Section 4, x enters only through h(0) = Win [x; τ ] + 
+
+bin ; the AdaLN blocks and the output map v = Wv LN( h(Nd)) compose the affine maps 
+
+Win , W 1, W 2, W v , the activation Mish ( Lact := Lip(Mish)), and ε-LayerNorms ( LLN := Lip(LN)), with the scales 1+ γ(c), α (c) applied multiplicatively. Each block is thus Lipschitz in its input with constant 1 + ∥α(c)∥∞ ∥W1∥ ∥ W2∥ L2act L2LN ∥1 + γ(c)∥2
+
+> ∞
+
+,
+
+so x 7 → Decoder( z, x, t ) has Lipschitz constant at most the product of ∥Win ∥, these Nd
+
+block constants, and ∥Wv ∥LLN . As γ, α are linear and c = Wc[z; τ ] + bc ranges over the compact image of Kz × [0 , 1], the scales ∥1 + γ(c)∥∞, ∥α(c)∥∞ are bounded there, so that product is a finite Λ uniform over Kz × [0 , 1], giving (A2) with Lxθ,R = Λ and 
+
+Cθ = sup z∈Kz , t | Decoder( z, 0, t )| + Λ. 
+
+Lemma 6.1 (Consequences of compactness) . Under (A1) and the fixed smooth encoder of Section 4.2 , whose blocks end in ε-regularized LayerNorm. Then, the following hold. (i) there are constants 0 < ω min ≤ ωmax < ∞ and MF > 0 such that 
+
+ωmin ≤ ωhℓ (q, e ) ≤ ωmax 
+
+and ∥F hℓ (q, e )∥ ≤ MF ; consequently R ωhℓ (q, ·) dν ≥ ωmin for every probability measure 
+
+ν on Ke, in particular for both ˆνa,m and νa;(ii) there is Lω > 0 such that 
+
+|ωhℓ (q, e ) − ωhℓ (q′, e )| + ∥F hℓ (q, e ) − F hℓ (q′, e )∥ ≤ Lω ∥q − q′∥;18 (iii) There are two compact sets Kz , K q such that every reachable latent array lies in Kz
+
+and every query in Kq ; consequently, the self attention–MLP update Gℓ is Lipschitz on the reachable compact set, with constants LGℓ ;(iv) for every R < ∞ the decoder is Lipschitz in z on Kz × BR × [0 , 1] : there is Ldec  
+
+> θ,R
+
+< ∞
+
+with 
+
+| Decoder( z, x, t ) − Decoder( z′, x, t )| ≤ Ldec 
+
+> θ,R
+
+∥z − z′∥.
+
+These bounds yield the following uniform law of large numbers (ULLN). Both proofs are in Appendix A.4. 
+
+Lemma 6.2 (ULLN for the attention class) . Over the finitely many layers, heads, and value coordinates, set 
+
+Fθ = [
+
+> ℓ,h
+
+
+
+{ωhℓ (q, ·) : q ∈ Kq } ∪ { [F hℓ (q, ·)] r : q ∈ Kq , r = 1 , . . . , d h}
+
+
+
+,
+
+a uniformly bounded family of functions on Ke, and 
+
+δatt  
+
+> m
+
+:= sup 
+
+> a∈K
+
+Ee sup  
+
+> f∈Fθ
+
+Z
+
+f d ˆνa,m −
+
+Z
+
+f dν a .
+
+Under Assumption 6.1 , with e = ( e1, . . . , e m) i.i.d. from νa and supp νa ⊆ Ke, δatt  
+
+> m
+
+→ 0.
+
+Remark 6.2. The limit δatt  
+
+> m
+
+→ 0 needs only total boundedness of Fθ . A rate is available but is not used below: by Lemma 6.1 (ii) the map q 7 → fq is Lipschitz from the compact Kq into 
+
+(C(Ke), ∥ · ∥ ∞), so Fθ has finite metric entropy log N (ε, Fθ , ∥ · ∥ ∞) ≲ dim( q) log(1 /ε ), and the standard Dudley/symmetrization bound then gives δatt  
+
+> m
+
+≤ Cθ m−1/2 with Cθ independent of a (the class and its envelope Mθ = sup f ∈Fθ ∥f ∥∞ are distribution independent). 
+
+Finally, we obtain the following resolution invariance result for the random sensor atten-tion sampler. The proof is given in Appendix A.4. 
+
+Theorem 6.1. Under Assumption 6.1 , the population-probe terminal law ˆμa is defined for each a ∈ K, and 
+
+lim  
+
+> m→∞
+
+sup 
+
+> a∈K
+
+Ee W2(ˆ μa,m , ˆμa) = 0 .
+
+so the Lagrangian Perceiver sampler is random sensor resolution invariant on K in expec-tation over the probes .
+
+We would like to point out that the limit ˆ μa is the population-probe law of the same Perceiver with fixed weights, not the target invariant measure μa.
+
+# 7 Numerical Experiments 
+
+We perform numerical tests to validate our framework. The necessary setup and results needed to support our conclusions are given here while leave other details (data generation, architecture, training, software etc) are in Appendix B. To compare generated and reference samples, we use the Sinkhorn divergence, a bias-corrected, entropy-regularized approximation to quadratic optimal transport [10]. For their empirical probability measures μ and ν, define OT ε(μ, ν ) = inf 
+
+> π∈Π( μ,ν )
+
+ß 12
+
+Z
+
+|x − y|2 dπ (x, y ) + ε KL( π ∥ μ ⊗ ν)
+
+™
+
+,Sε(μ, ν ) = OT ε(μ, ν ) − 12 OT ε(μ, μ ) − 12 OT ε(ν, ν ). (7.1) Here KL denotes relative entropy, and ε > 0 controls the amount of smoothing. Sϵ is the Sinkhorn divergence. The self-comparison terms remove the entropic bias and give 
+
+Sε(μ, μ ) = 0. Sε(μ, ν ) converges to 12 W 22 (μ, ν ) as ε ↓ 0. We set ε = 0 .0025 in the experiments, and report Sε without a square root, so the Sinkhorn and W2 columns have different scales. Lower values indicate closer agreement. Sinkhorn divergence is easier to compute and more stable then W2 in high-dimensional spaces. 19 7.1 1D Variable Noise and 1D Rare Event 
+
+We first test the amortized neural sampler in 1D Variable Noise and 1D Rare Event, using the simple grid Multi-input DeepONet described at the beginning of Section 4. These exper-iments show that operator learning of invariant measures is feasible, and locate the regime— slow mixing—where it gains an advantage over MCMC. Both experiments are trained on 65,536 function instances and evaluated on 1,024 test functions, reporting the Sinkhorn divergence and the 2-Wasserstein distance ( W2) against ground truth; the evaluation pro-tocol and the shared architecture and training configuration are given in Appendix B.1 (Table B.1). 
+
+7.1.1 1D Variable Noise 
+
+This 1D Variable Noise example serves as a sanity check in a benign, fast mixing regime. MCMC performs well here. The experiment verifies that the amortized operator sampler produces reasonable samples across a large family of SDEs and establishes a baseline for comparison with the harder rare event setting that follows. We set b = −∇ w + s and 
+
+σ = max {0.25 , 1 + s′}, where w(x) = (max {| x| − 2, 0})2 is a fixed confining well and the lower bound on σ ensures uniform ellipticity. The perturbations s, s ′ (functions of x) are independent draws from a Gaussian random field with squared exponential kernel (length scale 1, variance 1). Table 7.1: 1D Variable Noise. Distribution metrics on 1,024 test functions (mean / median). Sinkhorn W2 Time (s) 
+
+Ours 0.018 / 0.002 0.204 / 0.125 19 .0MCMC 0.001 / 0.0002 0.083 / 0.040 8.6
+
+Table 7.1 reports the results, together with an MCMC baseline run on the same test functions under the same per-function sample budget. In this easy mixing regime, MCMC produces accurate samples efficiently, and our model is less accurate though comparable in speed. The representative samples in Figure 7.1 show that it nevertheless reproduces the target laws across the family, although it systematically underestimates the variance of the invariant measure and the Kolmogorov–Smirnov test rejects for most test functions. This gap is expected: an amortized model that generalizes across the entire function family in a single forward pass trades per-distribution accuracy for breadth. 
+
+7.1.2 1D Rare Event 
+
+1D Rare Event targets the regime where amortized operator sampling provides its primary advantage: SDEs with small diffusion coefficients whose invariant measures are multimodal. MCMC methods must traverse high free energy barriers between modes, leading to mixing times that scale exponentially in 1 /σ 2. Our neural sampler bypasses this bottleneck entirely. Its inference cost is independent of the mixing time. We consider 1D SDEs whose invariant measure is a prescribed mixture of three Gaussians: 
+
+p(x) = 
+
+> 3
+
+X
+
+> i=1
+
+wi N (x | μi, σ 2 
+
+> i
+
+), (7.2) where wi > 0, P 
+
+> i
+
+wi = 1, μi ∼ Unif( −3, 3), and σi ∼ Unif(0 .1, 0.5). The diffusion coefficient is a small random perturbation of the constant 0 .1, and the drift is constructed from the zero flux condition of the stationary Fokker–Planck equation, so that p is by design the invariant density of the resulting SDE; the explicit construction is given in Appendix B.1. Because the target density is known, training samples are drawn directly from the GMM, making the experiment a controlled test of the model’s representational capacity and generalization in a rare event regime. The model reuses the architecture and hyperparameters of 1D Variable Noise. 20 4 2 0 2 40.0 0.5 1.0 1.5 2.0 2.5 3.0 
+
+> Density
+
+Ground truth 
+
+4 2 0 2 40.0 0.5 1.0 1.5 2.0 2.5 
+
+MCMC 
+
+4 2 0 2 40.0 0.5 1.0 1.5 2.0 2.5 Sink = -0.0001 
+
+Model 
+
+4 2 0 2 40.0 0.2 0.4 0.6 0.8 1.0 
+
+CDF 
+
+GT MCMC Model 
+
+4 2 0 2 40.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 
+
+> Density
+
+4 2 0 2 40.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 4 2 0 2 40.0 0.2 0.4 0.6 0.8 Sink = 0.0024 4 2 0 2 40.0 0.2 0.4 0.6 0.8 1.0 4 2 0 2 4
+
+x
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+> Density
+
+4 2 0 2 4
+
+x
+
+0.0 0.2 0.4 0.6 0.8 1.0 4 2 0 2 4
+
+x
+
+0.0 0.2 0.4 0.6 0.8 1.0 Sink = 0.0122 4 2 0 2 4
+
+x
+
+0.0 0.2 0.4 0.6 0.8 1.0 Figure 7.1: 1D Variable Noise. Representative samples on test functions at the 25th, 50th, and 75th percentile Sinkhorn divergence. Each row shows one test function: reference histogram, MCMC histogram, model histogram, and CDF overlay. 21 Table 7.2 compares the model with MCMC baselines at varying time budgets, including a converged baseline and three baselines that limit the per-function MCMC budget. The model attains a lower mean Sinkhorn divergence than even the converged MCMC baseline while using 7 × less elapsed time, and its median is comparable to the converged MCMC median with far fewer large failures: the error distributions are heavily skewed to the right (Figure B.2 in Appendix B.1). The gap in means is driven by MCMC’s tendency to become trapped in a single mode when noise is small, occasionally producing accurate samples (when all modes happen to be found) but often yielding very poor ones; representative failure cases are shown in Figure 7.2. Figure 7.3 shows the Sinkhorn divergence as a function of elapsed time; our method (star) dominates the MCMC Pareto frontier. Table 7.2: 1D Rare Event. Sinkhorn divergence and W2 on 1,024 test functions (mean / median). Method Sinkhorn W2 Time (s) 
+
+Ours 0.131 / 0.011 0.447 / 0.239 20 .6
+
+MCMC (6 s) 0.348 / 0.039 0.708 / 0.474 6.3MCMC (12 s) 0.326 / 0.019 0.659 / 0.381 12 .4MCMC (25 s) 0.299 / 0.009 0.614 / 0.281 24 .6MCMC (conv.) 0.254 / 0.003 0.535 / 0.161 136 .94 2 0 2 40.0 0.2 0.4 0.6 0.8 1.0                                               
+
+> Density
+> Ground truth
+> 420240.0 0.1 0.2 0.3 0.4 0.5 0.6
+> MCMC
+> 420240.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 Sink = 0.0011
+> Model
+> 420240.0 0.2 0.4 0.6 0.8 1.0
+> CDF
+> GT MCMC Model
+> 420240.0 0.2 0.4 0.6 0.8
+> Density
+> 420240.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 420240.0 0.2 0.4 0.6 0.8 1.0 1.2 Sink = 0.0039 420240.0 0.2 0.4 0.6 0.8 1.0 42024
+> x
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> Density
+> 42024
+> x
+> 0.0 0.2 0.4 0.6 0.8 42024
+> x
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2 Sink = 0.0120 42024
+> x
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+Figure 7.2: 1D Rare Event. Representative samples on test functions chosen to illustrate MCMC failures caused by mode trapping. Each row shows one test function: reference histogram, MCMC histogram, model histogram, and CDF overlay. 22 10 0 10 1 10 2          
+
+> Wall-clock Time (seconds)
+> 2 × 10 1
+> 3 × 10 1
+> 4 × 10 1
+> 6 × 10 1
+> Mean Sinkhorn Distance
+> T=50 T=100 T=200 T=500 T=50 T=100 T=200 T=500 T=50 T=100 T=500 T=1000 RK4-2 RK4-4 RK4-8 RK4-16 dopri5 RK4-32 RK4-128
+
+Accuracy vs. Compute 
+
+> MCMC dt=0.01 MCMC dt=0.05 MCMC dt=0.1 Model (ODE)
+
+Figure 7.3: 1D Rare Event. Mean Sinkhorn divergence vs. elapsed time. Star: operator model. Circles: MCMC at increasing time budgets. 
+
+## 7.2 2D Constant Noise 
+
+This experiment compares grid DeepONet and Lagrangian sensor models for sampling in-variant measures in 2D. We consider amortized sampling from the invariant measures of the 2D SDE 
+
+dX = b(X) dt + √2 dW, X ∈ R2, (7.3) with constant isotropic diffusion. The drift is generated as b(x) = bGRF (x) + bwell (x), where 
+
+bGRF is a Gaussian random field sampled on a 32 × 32 grid over [ −5, 5] 2 (RBF kernel with length scale sampled from Unif(0 .3, 2.0)), and bwell is a radial confining well that pushes particles back toward the origin outside radius 2 with strength 10. Table 7.3 compares three parts of the sampler. The representation determines which drift observations the encoder receives. Grid DeepONet [14] reads the full drift grid. Point probes retain the first observation of each trajectory. Endpoint probes retain the first and last observations and their difference. These two encoders use MLPs, while the trajectory encoder applies a CNN to all observations. The aggregator combines sensor embeddings into the context z. MeanPool averages the embeddings before an MLP. DeepSets [38] applies a shared MLP to each embedding, sums the outputs, and applies another MLP. Perceiver [13] uses cross attention between learned latent tokens and sensor embeddings, as described in Section 4.2. 
+
+Conditioning determines how the decoder uses the context. FiLM (feature-wise linear modulation) [28] uses the context to predict a scale and shift for each hidden feature. Our FiLM and AdaLN (adaptive layer normalization) [27] variants both apply these changes after layer normalization. Our AdaLN variant also uses the context to scale each residual update. Additional variants and training details are in Appendix B.2. It turns out that the trajectory + Perceiver + AdaLN architecture is a practical choice with competitive accuracy. In the meanwhile, this architecure supports fixed or mixed counts in training and different counts at inference without retraining. 
+
+## 7.3 64D Interacting Particle 
+
+64D Interacting Particle is a proof of concept for sampling that depends on input in an SDE in high dimensions that does not use a grid. The central question is whether the learned sampler uses observations of an unknown pair interaction law to generate physically structured samples in a 64-dimensional particle system, beyond matching the one body scale imposed by the confining potential. 23 Table 7.3: 2D Constant Noise. Mean Sinkhorn divergence on 100 test drift fields, using 4,096 samples per distribution per field, after training on 65,536 fields. Probe models use 256 sensors, with trajectory + Perceiver + AdaLN as the shared baseline. Time: total training time under shared optimization settings.                     
+
+> Component Variant Mean Sinkhorn Train (s) Representation Grid DeepONet 0.0209 40.3 Point + Perceiver + AdaLN 0.0415 87.8 Endpoint + Perceiver + AdaLN 0.0324 82.8 Trajectory + Perceiver + AdaLN 0.0180 252.0 Aggregator Trajectory + MeanPool + AdaLN 0.0370 226.2 Trajectory + DeepSets + AdaLN 0.0246 238.4 Conditioning Trajectory + Perceiver + FiLM 0.0169 258.9
+
+Table 7.4: 2D Constant Noise. Sensor resolution transfer for the trajectory + Perceiver + AdaLN backbone after training on 65,536 functions. Rows denote the training sensor regime and columns denote the evaluation sensor count. The mixed row alternates homogeneous batches from the 512-, 1024-, and 2048-sensor trajectory views. Each probe executes a 20-step random walk with step size 0 .05. Lower Sinkhorn is better.                
+
+> Train regime Eval 512 Eval 1024 Eval 2048 Fixed 512 0.0284 0.0172 0.0131 Fixed 1024 0.0287 0.0175 0.0125
+> Fixed 2048 0.0312 0.0184 0.0131 Mixed 512/1024/2048 0.0271 0.0177 0.0125
+
+We evaluate the framework on amortized sampling for N = 32 interacting particles in 2D (X ∈ R64 ) under overdamped Langevin dynamics 
+
+dX = −∇ V (X) dt + p2β−1 dW, (7.4) targeting the Boltzmann distribution π(X) ∝ exp( −βV (X)). The potential is 
+
+V (X) = κ
+
+2
+
+> N
+
+X
+
+> i=1
+
+|xi|2 + X
+
+> i<j
+
+Uint (|xi − xj |), (7.5) with a fixed harmonic trap ( κ = 0 .5) and inverse temperature β = 2 .0 ( T = 0 .5). Across problem instances, the interaction kernel Uint varies; the one body term remains fixed. We draw Uint from four qualitatively distinct kernel families—Morse (bondlike attraction with a repulsive core), Gaussian (soft repulsion or attraction), double Gaussian (short range repulsion with long range attraction, creating a preferred interparticle spacing), and WCA (hard sphere exclusion). All kernels are nonsingular; their functional forms and the energy capping convention are given in Table B.3 in Appendix B.3. Because Uint acts on pairwise distances, full system probes mix many interactions at once. The sensor design therefore uses pair probe sensors : isolated trajectories of particle pairs that record the relative displacement and interaction force along short rollouts. The resulting observation tensor is a fingerprint of the interaction kernel that does not require an Eulerian grid in R64 . The model combines a 1D CNN sensor encoder, a Perceiver aggregator with four latent tokens, and an equivariant particle flow network conditioned by AdaLN; it has 1.78M parameters and is trained by conditional flow matching on 2,048 kernels, with metrics reported on 100 test kernels (sensor, data generation, and training details in Appendix B.3). The state X = ( x1, . . . , x 32 ) ∈ R64 is invariant under permutations of the indistinguish-able particles. We therefore evaluate the generated distributions using physical summaries invariant under particle permutations: pair correlation functions, energy distributions, cen-ter of mass and radius of gyration statistics, pair distance summaries, and nearest neighbor 24 summaries. Raw coordinate space Sinkhorn divergence is reported only as a secondary di-agnostic. In 64 dimensions it can be misleading because the fixed harmonic trap makes a pooled Gaussian baseline competitive in coordinate cost even though it contains no interac-tion structure. Table 7.5 presents the quantitative evidence that our model has real prediction power over null. When the input is the correct sensors, the generated samples’ distribution is far more closer to the ground truth then shuffled sensors input. And the generated sample also outperforms the pooled Gaussian (fitted to the target coordinate mean and variance), and standard Gaussian samples. Table 7.5: 64D Interacting Particle. Conditioning diagnostic on 100 test interaction kernels. The score is sliced 2-Wasserstein on standardized physical features invariant under permu-tations. Lower is better. Method Mean Median Comparison Correct sensors 1.7860 1.0159 Model conditioned on the true kernel Shuffled sensors 30.1422 15.9140 Correct wins 99 /100 Pooled Gaussian 23.1144 13.9604 Correct wins 99 /100 Random normal 20.0154 12.3747 Correct wins 98 /100 We can also observe that the generated samples reproduce the pair distance patterns within each family. The energy distribution, pooled across all test kernels, also has a similar shape to the target distribution. More quantitative results are collected in Table B.4 in Appendix B.3. Figure 7.4 plots the empirical pair correlation function g(r) broken down by kernel family, and Figure 7.5 compares energy histograms. 0 1 2 3 4 5 6r0246810 12 14 g(r)                   
+
+> double_gaussian (n=25)
+> Target Generated
+> 0123456r020 40 60 80 100 120 140 160 g(r)
+> gaussian (n=24)
+> Target Generated
+> 0123456r010 20 30 40 50 60 70 g(r)
+> morse (n=31)
+> Target Generated
+> 0123456r012345g(r)
+> wca (n=20)
+> Target Generated
+
+Figure 7.4: 64D Interacting Particle. Pair correlation function g(r) by kernel family: target (blue) vs. generated (dashed orange). Each subplot pools test kernels of one family. The curves are empirical histograms without additional smoothing. 1000 0 1000 2000 3000 4000 5000 Energy V(X) 0.0000 0.0005 0.0010 0.0015 0.0020 Density 
+
+> Energy Distribution
+> Target Generated
+
+Figure 7.5: 64D Interacting Particle. Energy histogram comparison: target (blue) vs. gen-erated (orange). Taken together, the random Lagrangian sensor architecture shows the potential to func-25 tion as an amortized sampler of parametric families of high-dimensional SDEs. 
+
+# 8 Conclusion 
+
+We present an amortized neural sampler that combines operator learning with continuous normalizing flows to sample from the invariant measures of parametric families of SDEs. The framework encodes SDE coefficients into a latent representation, then conditions a con-tinuous normalizing flow that transports a Gaussian distribution to a target distribution. In practice, we adopt flow matching to train the model. Unlike the established DeepONet, our architecture ingests random Lagrangian trajectory sensors and uses an attention mech-anism, which avoids grid discretization in spaces of high dimension. On the theory side, we establish a reduction theorem showing that the UAP of a neural operator implies the ex-pressivity of a neural operator sampler. Thus, given a sufficiently powerful neural operator, our framework can fit the map from SDE coefficients to velocity fields that generate the invariant measures. We also prove that our framework is resolution invariant: the sampler remains consistent as the sensor count tends to infinity. The 1D Variable Noise and 1D Rare Event experiments show the expected regime depen-dence: MCMC remains stronger in settings with easy, fast mixing; the amortized sampler becomes useful once slow mixing dominates the compute budget. In 2D Constant Noise, the model with random Lagrangian sensors materially outperforms DeepONet. In 64D In-teracting Particle, the sampler demonstrates its capability in high dimensions. Several directions remain open. First, the supervised results rely on access to training samples from target invariant measures, which may require substantial offline simulation effort, and the amortized approach is most useful when many related SDE instances must be solved and mixing is slow. Data preparation, unsupervised training, and training without samples need further investigation. Second, the current framework targets the invariant measure, and a natural extension is to learn the full law μt that depends on time, or the 
+
+weak solution of the SDE. Lastly, our experiments in higher dimensions are only a proof of concept. The network structure and training procedure have not been extensively optimized. Scaling to larger particle counts and configuration spaces of higher dimension remains an important challenge. 
+
+# A Proofs of Main Results 
+
+## A.1 Stationary Fokker-Planck measures and stability 
+
+Proof of Proposition 5.2 . Fix a = ( b, σ ) ∈ A (ν, p 0, λ, M ), write A = Aa, and let μa be the corresponding stationary measure. Existence and uniqueness follow by the standard result as commented in the text below the statement. Here, we only show how the moment bound follows by the Lyapunov condition. For the moment bound, let Vp(x) = 1 + |x|p, 2 ≤ p ≤ p0. For x̸ = 0, the standard calculation gives 
+
+La|x|p ≤ p|x|p−2
+
+Å
+
+⟨b(x), x ⟩ + 12 (p − 1) Tr A(x)
+
+ã
+
+≤ p|x|p−2
+
+Å
+
+⟨b(x), x ⟩ + 12 (p0 − 1) Tr A(x)
+
+ã
+
+≤ p|x|p−2 −λ|x|2 + M  ≤ − cp|x|p + Cp,
+
+where cp, C p > 0 are independent of a. The nonsmooth point at x = 0 is handled either by smoothing Vp near the origin or by applying the following cutoff argument to 1+( |x|2 +ε)p/ 2
+
+and then letting ε ↓ 0. Let θn be increasing, concave, and bounded, with 0 ≤ θ′ 
+
+> n
+
+≤ 1, θ′′  
+
+> n
+
+≤ 0,
+
+26 and with θ′
+
+> n
+
+(r) ↑ 1, θn(r) ↑ r on compact intervals. Then 
+
+Laθn(Vp) = θ′
+
+> n
+
+(Vp)LaVp + 12 θ′′ 
+
+> n
+
+(Vp)⟨A∇Vp, ∇Vp⟩Rd
+
+≤ θ′
+
+> n
+
+(Vp)( −cpVp + Cp).
+
+Integrating against μa, using stationarity, and then applying monotone convergence gives 
+
+cp
+
+Z
+
+Vp dμ a ≤ Cp,
+
+uniformly over a ∈ A (ν, p 0, λ, M ), which proves the claim. 
+
+Proof of Lemma 5.1 . Let an ∈ A (ν, p 0, λ, M ) and an → a locally uniformly. Write An =
+
+Aan and A = Aa. On every compact set, bn → b and An → A uniformly, as noted in Section 5. The two conditions that define A(ν, p 0, λ, M ) are closed conditions on the values (b(x), A a(x)) at each fixed x. Hence they pass to the limit, and a ∈ A (ν, p 0, λ, M ). This proves closedness. Write μn = μan and μ = μa. By the Lyapunov condition, R |x|pdμ n is uniformly bounded. This gives tightness. Take an arbitrary subsequence of {μn}. By Prokhorov’s theorem it has a further subsequence, not relabeled, such that μn =⇒ ν weakly for some probability measure ν.Let φ ∈ C∞ 
+
+> c
+
+(Rd). Since μn is invariant, 
+
+Z
+
+Lan φ dμ n = 0 .
+
+On the compact support of φ, bn → b and An → A uniformly. Therefore 
+
+Lan φ = bn · ∇ φ + 12 Tr( AnD2φ) −→ L aφ
+
+uniformly. Taking the limit n → ∞ , one then has 
+
+Z
+
+Laφ dν = 0 ∀φ ∈ C∞ 
+
+> c
+
+(Rd).
+
+By the density argument, this can be extended to C2 
+
+> b
+
+test functions. Hence, ν is a invariant probability measure for the limiting SDE. The invariant measure is unique, so ν = μ. Since every subsequence has a further subsequence converging weakly to μ, the full sequence satisfies μn ⇒ μ.By the uniform p-moments, one has the uniform integrability of second moments, or lim  
+
+> R→∞
+
+sup 
+
+> n
+
+Z
+
+> |x|≥ R
+
+|x|2μn(dx ) ≤ lim  
+
+> R→∞
+
+R−(p0−2) Mp0 = 0 .
+
+Then, this together with the weak convergence implies that R |x|2dμ n → R |x|2dμ . Hence 
+
+W2(μn, μ ) → 0, proving continuity of a 7 → μa.
+
+## A.2 Proofs for the canonical target velocity 
+
+We use the notation μSa , ρ at , J at , v a, χ R, v a,R , and μS,R a introduced in Section 5. 
+
+Proof of Lemma 5.2 . First record the uniform moment input. Since X ∼ γα = N (0 , (1 −
+
+α)Id). Let D = Y − X. One has 
+
+|D|p ≤ 2p−1(|X|p + |Y |p).
+
+Hence, one has sup E|D|p < ∞ by the uniform control of E|Y |p. By the conditional expec-tation formula and Jensen’s inequality: 
+
+Z
+
+|va(z, t )|p dρ at (z) = E |E[D | Zat ]|p ≤ E|D|p ≤ Cα,S,p ,
+
+27 where the last bound follows from the exponential moment bound for D.It remains to justify the pointwise linear growth estimate. Since X | (Zt = z, Y = y) is Gaussian with mean 
+
+mt,y,z = (1 − t)(1 − α)(1 − t)2(1 − α) + α (z − ty ),
+
+one finds by the boundedness |Y | ≤ S that 
+
+|va(z, t )| ≤ E[|Y | + |X| | Zat = z] ≤ EY |Zat =z E[|X| + |Y | | Zat = z, Y ] ≤ Cα,S (1 + |z|).
+
+Lastly, differentiating the Gaussian kernel in t, one has 
+
+∂tϕα(z − ((1 − t)x + ty )) + ∇z · (( y − x)ϕα(z − ((1 − t)x + ty ))) = 0 .
+
+Integrating this identity against γα(dx )μSa (dy ), justified by dominated convergence using the Gaussian kernel and the moment bounds above, gives the continuity equation. 
+
+Proof of Lemma 5.3 . We have shown that if an → a, then μSan → μSa in W2. Write νn = μSan
+
+and ν = μSa . These measures are all supported in BS . Note that ρ, J , ∇z ρ, ∇z J ar obtained by integrating ϕα, (y − x)ϕα and their z-derivatives with respect to γα(dx )μSa (dy ). These kernels are continuous in ( x, y, z, t ), while γα is a Gaussian and μSa is finitely supported. Hence they are dominated by an integrable function of x, uniformly over y ∈ BS and (z, t ) ∈ B2R×[0 , 1]. Weak convergence of νn gives pointwise convergence of the corresponding integrals. Uniform continuity of the kernels on 
+
+{| x| ≤ M, |y| ≤ S, |z| ≤ 2R, t ∈ [0 , 1] }
+
+plus the uniformly small Gaussian x-tail outside {| x| ≤ M } upgrades this to uniform con-vergence on B2R × [0 , 1]. There is also a uniform positive lower bound for ρa. Indeed, for |z| ≤ 2R, y ∈ BS ,
+
+t ∈ [0 , 1], and |x| ≤ 1, 
+
+|z − ((1 − t)x + ty )| ≤ 2R + 1 + S. 
+
+Therefore 
+
+ρat (z) ≥ γα(B1) (2 πα )−d/ 2 exp 
+
+Å
+
+− (2 R + 1 + S)2
+
+2α
+
+ã
+
+> 0,
+
+uniformly in ν, z, and t. The quotient formula 
+
+∇z va = ρa ∇z Ja − Ja ⊗ ∇ z ρa
+
+(ρa)2
+
+therefore gives uniform convergence of the velocities and their first z-derivatives on the compact cylinder. Recall that va,R (x, t ) = χR(x)va(x, t ) for a ∈ A (ν, p 0, λ, M ). Multiplication by the fixed smooth cutoff preserves continuity in a. It also yields a global Lipschitz bound: on B2R
+
+the derivative of χRva is uniformly bounded, while outside B2R the field is identically zero. Hence Lα,S,R < ∞.
+
+Proof of Lemma 5.4 . Let Xat solve the untruncated ODE ˙Xat = va(Xat , t ), Xa 
+
+> 0
+
+∼ γ, 
+
+and let Xa,R t solve the truncated ODE ˙Xa,R t = va,R (Xa,R t , t ), Xa,R  
+
+> 0
+
+= Xa 
+
+> 0
+
+.
+
+The untruncated terminal law is ρa 
+
+> 1
+
+, and the truncated terminal law is μS,R a .Define 
+
+τ aR = inf {t ∈ [0 , 1] : |Xat | > R }.
+
+28 On {τ aR > 1}, Xa,R  
+
+> 1
+
+= Xa 
+
+> 1
+
+. If τ aR ≤ 1, then either |Xa 
+
+> 0
+
+| > R/ 2 or 
+
+Z 10
+
+|va(Xat , t )| dt > R/ 2.
+
+Since Xat has law ρat , the velocity moment bound gives sup  
+
+> a∈A (ν,p 0,λ,M )
+
+E
+
+Z 10
+
+|va(Xat , t )|p dt ≤ Cα,S,p .
+
+Markov’s inequality and the moments of Xa 
+
+> 0
+
+therefore give sup  
+
+> a∈A (ν,p 0,λ,M )
+
+P(τ aR ≤ 1) ≤ Cα,S,p R−p
+
+for every p > 2. Moreover, the linear growth bound and Gronwall’s inequality give uniform p-moment bounds for Xa,R  
+
+> 1
+
+and Xa 
+
+> 1
+
+. Using the coupling with a common initial point, 
+
+W 22 (ρa 
+
+> 1
+
+, μ S,R a ) ≤ E|Xa,R  
+
+> 1
+
+− Xa 
+
+> 1
+
+|2 ≤ CP(τ aR ≤ 1) 1−2/p ≤ CR −(p−2) .
+
+This gives the claim. 
+
+## A.3 Reduction and neural approximation 
+
+Proof of Proposition 5.3 . Couple the two flows by the same initial point X0 ∼ ρ0:
+
+Xt = Φ t(X0), ˆXt = ˆΦt(X0).
+
+Let ∆ t = Xt − ˆXt. Then, one has 
+
+ddt |∆t|2 ≤ 2L|∆t|2 + 2 |∆t|δ, 
+
+implying that |X1 − ˆX1| ≤ eLδ almost surely. The joint law of ( X1, ˆX1) is a coupling of the two terminal distributions, so 
+
+W2((Φ 1)#ρ0, ( ˆΦ1)#ρ0) ≤ ÄE|X1 − ˆX1|2ä1/2
+
+≤ eLδ. 
+
+Proof of Proposition 5.4 . Fix a ∈ K. Let Xt solve the target truncated ODE ˙Xt = va,R (Xt, t ), X0 ∼ γ, 
+
+and let “Xt solve the exact learned ODE ˙cXt = ˆ vθ [a]( “Xt, t ), “X0 = X0.
+
+Put β = eLα,S,R δθ,α,S,R . By assumption, β < R . Define 
+
+τ = inf {t ∈ [0 , 1] : | “Xt| ≥ 2R}.
+
+On [0 , τ ), the learned path remains in B2R, where the compact domain approximation bound applies. The same Gr¨ onwall estimate as in Proposition 5.3, stopped at τ , gives 
+
+|Xt − “Xt| ≤ β, t ≤ τ. 
+
+If τ ≤ 1, then | “Xτ | = 2 R, and hence |Xτ | ≥ 2R − β > R . Therefore 
+
+{τ ≤ 1} ⊂ 
+
+®
+
+sup 
+
+> t≤1
+
+|Xt| ≥ R
+
+´
+
+.
+
+29 The target field satisfies |va,R (x, t )| ≤ Cα,S (1+ |x|), and the learned field satisfies the assumed global envelope. Gr¨ onwall’s inequality and Gaussian moments of X0 give the uniform path moment bounds sup 
+
+> a∈K
+
+E sup 
+
+> t≤1
+
+|Xt|p + sup 
+
+> a∈K
+
+E sup 
+
+> t≤1
+
+| “Xt|p ≤ Cα,S,p .
+
+Hence P(τ ≤ 1) ≤ Cα,S,p R−p, and H¨ older’s inequality gives 
+
+E î|X1 − “X1|21{τ ≤1}
+
+ó ≤ ÄE(|X1| + | “X1|)pä2/p 
+
+P(τ ≤ 1) 1−2/p 
+
+≤ Cα,S,p R−(p−2) .
+
+On {τ > 1}, the stopped estimate gives |X1 − “X1| ≤ β. Thus 
+
+W2(ˆ μa,θ , μ S,R a ) ≤ eLα,S,R δθ,α,S,R + Cα,S,p R−(p−2) /2.
+
+The triangle inequality, the truncation definition, the smoothing coupling, and the projection estimate give 
+
+W2(ˆ μa,θ , μ a) ≤ eLα,S,R δθ,α,S,R + Cα,S,p R−(p−2) /2 + W2(μS,R a , ρ a 
+
+> 1
+
+)+ W2(ρa 
+
+> 1
+
+, μ Sa ) + W2(μSa , μ a)
+
+≤ eLα,S,R δθ,α,S,R + Cα,S,p R−(p−2) /2 + εtrun (α, S, R ) + √αd + M 1/2 
+
+> p0
+
+S−(p0−2) /2.
+
+Taking the supremum over a ∈ K proves the theorem. 
+
+Proof of Theorem 5.1 . Fix η > 0 and p > 2. Choose S < ∞ so large that 
+
+M 1/2 
+
+> p0
+
+S−(p0−2) /2 < η/ 5.
+
+Choose α ∈ (0 , 1) so that √αd < η/ 5. For this ( α, S ), choose R > 0 so large that 
+
+εtrun (α, S, R ) < η/ 5, Cα,S,p R−(p−2) /2 < η/ 5.
+
+For the fixed triple ( α, S, R ), Lemma 5.3 shows that a 7 → va,R is continuous on K. The oper-ator Ψ( a) = va,R is continuous from K to C(B2R × [0 , 1]; Rd). It also satisfies |Ψ( a)( x, t )| ≤ 
+
+Cα,S (1 + |x|). Apply Assumption 5.1 with Cenv = Cα,S , and choose θ such that 
+
+δθ,α,S,R < min 
+
+n
+
+Re −Lα,S,R , η
+
+5eLα,S,R 
+
+o
+
+.
+
+Proposition 5.4 gives sup 
+
+> a∈K
+
+W2(ˆ μa,θ , μ a) < η. 
+
+Proof of Proposition 5.5 . Let Ψ : K → C(Y ; Rd) be a continuous target operator as in Assumption 5.1, with |Ψ( a)( x, t )| ≤ Cenv (1 + |x|). Fix δ > 0. By compactness of K, choose εΨ > 0 such that dXa (a, a ′) < εΨ implies ∥Ψ( a) −
+
+Ψ( a′)∥C(Y ) < δ/ 3. Apply (FS) with this εΨ and write S = Sm,L ; the image S(K) is compact. Cover it by finitely many balls B(S(ai), r/ 2), i = 1 , . . . , N , and take a continuous partition of unity {χi}Ni=1 subordinate to the enlarged balls B(S(ai), r ). Define ¯G(s)( y) = 
+
+> N
+
+X
+
+> i=1
+
+χi(s) Ψ( ai)( y), s ∈ S (K), y = ( x, t ) ∈ Y. 
+
+If χi(S(a)) > 0, then dsens (S(a), S(ai)) < r , so (FS) gives dXa (a, a i) < ε Ψ; hence sup 
+
+> a∈K
+
+∥ ¯G(S(a)) − Ψ( a)∥C(Y ) < δ/ 3.
+
+30 The map ( s, y ) 7 → ¯G(s)( y) is continuous on S(K) × Y and invariant under permutations of the sensor argument. By (EU), the finite sensor Perceiver–AdaLN network approximates it within δ/ 3, uniformly over a ∈ K and y ∈ Y . Combining the two estimates gives sup 
+
+> a∈K
+
+sup 
+
+> (x,t )∈Y
+
+|N θ (a)( x, t ) − Ψ( a)( x, t )| < δ, 
+
+the compact domain approximation part of Assumption 5.1. The final statement follows by adding the global linear growth clause; local Lipschitzness is already part of (EU). 
+
+Proof of Theorem 5.2 . First we note that for general L ≥ 1, one clearly has 
+
+dsens (Sm,L (a), Sm,L (a′)) ≥ dsens (Sm, 1(a), Sm, 1(a′)) .
+
+where Sm, 1(a) means that we only keep the first point in each trajectory and the corre-sponding values of a. Then, 
+
+Sm, 1(a) = {(xi, b (xi), vec σ(x i)) }mi=1 
+
+where ( xi)’s are sampled i.i.d from ρ0(x) dx . Hence, 
+
+dsens (Sm, 1(a), Sm, 1(a′)) = max  
+
+> 1≤i≤m
+
+∥a(xi) − a′(xi)∥.
+
+Hence, it suffices to show with probability 1 − δ such that max  
+
+> 1≤i≤m
+
+∥a(xi) − a′(xi)∥ ≤ r =⇒ dXa < ε. 
+
+We first take a radius J so large that the tail of the metric dXa is smaller than the prescribed tolerance. On the compact ball BJ , the family K is uniformly equicontinuous. Therefore a sufficiently fine spacing h gives that, if every point in BJ has some sample point 
+
+xi with distance at most h, then 
+
+dXa (a, a ′) < ε. 
+
+Hence, it suffices to show with probability 1 − δ that {xi}mi=1 forms a h-net of BJ .We take N balls with radius h/ 2 that cover BJ . The number of such balls can be chosen as N ≤ (CJ/h )d. If each ball contains at least one xi, then {xi}mi=1 forms a h-net of BJ .For each ball Bℓ, the probability that it is empty is bounded by (1 − qℓ)m ≤ exp( −mq ℓ),
+
+where 
+
+qℓ =
+
+Z
+
+> Bℓ
+
+ρ0 dx. 
+
+Taking union bound, the probability that there is one empty ball is controlled by 
+
+p ≤ N sup 
+
+> ℓ
+
+exp( −N q ℓ) ≤ (CJ/h )d exp( −m min  
+
+> ℓ
+
+qℓ).
+
+For p ≤ δ, one needs 
+
+m ≳ d(min  
+
+> ℓ
+
+qℓ)−1.
+
+This shows the first claim. The remaining claims are straightforward. 
+
+## A.4 Resolution invariance proofs 
+
+We use the notation of Section 6 for the attention maps Ahℓ , Hℓ, the self attention–MLP update Gℓ, and the encoder Encoder. The finite and infinite sensor encodings are za,m and 
+
+za.31 Proof of Lemma 6.1 . Write K = Kq × Ke, compact. Each ωhℓ , F hℓ is C∞ on K, so 
+
+ωmin = min   
+
+> ℓ,h, K
+
+ωhℓ , ωmax = max   
+
+> ℓ,h, K
+
+ωhℓ , MF = max   
+
+> ℓ,h, K
+
+∥F hℓ ∥, Lω = max  
+
+> ℓ,h, K
+
+ ∥∇ q ωhℓ ∥ + ∥∇ q F hℓ ∥
+
+are finite, with ωmin > 0 since ωhℓ (q, e ) = exp( ⟨q, ˜eW Kℓ,h ⟩/√dh) > 0; this gives (i) and (ii), and integrating the lower bound gives R ωhℓ (q, ·) dν ≥ ωmin for every probability ν on Ke.For (iii), the ε-regularized LayerNorm normalizes each row to Euclidean norm ≤ √dz
+
+before its fixed affine map, so its output rows are bounded, ∥LN( u)r ∥ ≤ ρLN < ∞, and it is Lipschitz, Lip(LN) ≤ LLN < ∞ (the variance is ≥ ε). Each Gℓ and each message addition step ends in a LayerNorm, so with Z(0) fixed the recursion (6.2) keeps every latent row at norm ≤ ρ := max {ρLN , max r ∥Z(0)  
+
+> r
+
+∥} ; hence 
+
+Kz = {Z ∈ Rk×dz : max  
+
+> r
+
+∥Zr ∥ ≤ ρ}, Kq = {zW Qℓ,h : z ∈ Kz , ℓ, h }
+
+are compact and contain all reachable latents and queries. The query map is linear, LQℓ =max h ∥W Qℓ,h ∥, and Gℓ = r[MLP] ◦ r[SA] composes ε-LayerNorms, self attention, and the MLP, Lipschitz on Kz with LGℓ = Lip( Gℓ|Kz ). For (iv), Decoder is C1, so 
+
+Ldec  
+
+> θ,R
+
+= sup  
+
+> Kz×BR×[0 ,1]
+
+∥∇ z Decoder ∥ < ∞.
+
+Proof of Lemma 6.2 . By Lemma 6.1(ii), q 7 → ωhℓ (q, ·) and q 7 → [F hℓ (q, ·)] r are Lipschitz from 
+
+Kq into ( C(Ke), ∥ · ∥ ∞); as Kq is compact and there are finitely many ( ℓ, h, r ), Fθ is a finite union of Lipschitz images of compact sets, hence totally bounded in ∥ · ∥ ∞, with envelope 
+
+Mθ < ∞.Fix ε > 0 and a finite ε-net {f1, . . . , f N } ⊂ Fθ . For every a ∈ K,sup  
+
+> f∈Fθ
+
+Z
+
+f d ˆνa,m −
+
+Z
+
+f dν a ≤ 2ε + max 
+
+> 1≤j≤N
+
+Z
+
+fj dˆνa,m −
+
+Z
+
+fj dν a .
+
+Since ˆ νa,m is the empirical law of m independent samples from νa and ∥fj ∥∞ ≤ Mθ , each term satisfies sup 
+
+> a
+
+Ee|
+
+Z
+
+fj dˆνa,m −
+
+Z
+
+fj dν a| ≤ Mθ m−1/2,
+
+so the maximum over the finite net is bounded by N M θ m−1/2.Hence lim sup m→∞ δatt  
+
+> m
+
+≤ 2ε, and as ε > 0 is arbitrary, δatt  
+
+> m
+
+→ 0. 
+
+Proof of Theorem 6.1 . Note that for the resolution invariance, the parameters and architec-ture are fixed. We are increasing the number of probes (i.e., m ) so that only the measure 
+
+ν involved are varying. 
+
+Step 1: estimate for the encoder Let ∆ℓ := sup 
+
+> a∈K
+
+Ee∥Za,m ℓ − Zaℓ ∥,
+
+with ∆ 0 = 0. We now derive the induction formula for ∆ ℓ.For any ℓ, h , we recall that 
+
+Ahℓ (q, ν ) = 
+
+R F hℓ (q, ·) dν 
+
+R ωhℓ (q, ·) dν .
+
+By Lemma 6.1, Z
+
+ωhℓ (q, ·) dν ≥ ωmin , ∥
+
+Z
+
+F hℓ (q, ·) dν ∥ ≤ MF ,
+
+32 where the bounds are uniform in ℓ, h . Introducing Fℓ,h = {ωhℓ (q, ·) : q ∈ Kq } ∪ { [F hℓ (q, ·)] r :
+
+q ∈ Kq , r = 1 , . . . , d h}, one then has 
+
+∥N νq − N ˜νq ∥ ≤ pdh sup  
+
+> f∈Fℓ,h
+
+|
+
+Z
+
+f dν −
+
+Z
+
+f d ˜ν|, |Dνq − D˜νq | ≤ sup  
+
+> f∈Fℓ,h
+
+|
+
+Z
+
+f dν −
+
+Z
+
+f d ˜ν|.
+
+Hence, the change of measure ν will bring in error as follows 
+
+∥Ahℓ (q, ν ) − Ahℓ (q, ˜ν)∥ ≤ 
+
+ √dh
+
+ωmin 
+
++ MF
+
+ω2min 
+
+
+
+sup  
+
+> f∈Fℓ,h
+
+|
+
+Z
+
+f dν −
+
+Z
+
+f d ˜ν|.
+
+Together with Lemma 6.1 (ii), one has the total error brought by the change of q and change of measure: 
+
+∥Ahℓ (q, ν ) − Ahℓ (q′, ˜ν)∥ ≤ LA∥q − q′∥ + CA sup  
+
+> f∈Fℓ,h
+
+|
+
+Z
+
+f dν −
+
+Z
+
+f d ˜ν|, (A.1) with CA = √dh/ω min + MF /ω 2min and LA = Lω /ω min + MF Lω /ω 2min .Since 
+
+Hℓ(Z, ν ) =  Ahℓ (zW Qℓ,h , ν ) Hh=1 W Oℓ ,
+
+one has by (A.1) and the mean uniform law of large numbers in Lemma 6.2 that sup 
+
+> a∈K
+
+Ee∥Hℓ(Za,m ℓ , ˆνa,m ) − Hℓ(Zaℓ , ν a)∥ ≤ Cℓ∆ℓ + Cℓδatt  
+
+> m
+
+.
+
+Recall (6.2), using the Lipschitz bounds for Gℓ one has, ∆ℓ+1 ≤ Cℓ∆ℓ + Cℓδatt  
+
+> m
+
+.
+
+The depth Lenc is fixed, so one easily derive by induction that sup 
+
+> a∈K
+
+Ee∥za,m − za∥ ≤ Cθ δatt  
+
+> m
+
+.
+
+Step 2: estimate for the encoder and the terminal law Fix a localization radius 
+
+R to be determined. The decoder Lipschitz condition (Lemma 6.1) on compact x-cylinders gives 
+
+ηm(R) = sup 
+
+> a∈K
+
+Ee sup 
+
+> (x,t )∈BR×[0 ,1]
+
+|va,m (x, t ) − va(x, t )|≤ Ldec  
+
+> θ,R
+
+sup 
+
+> a∈K
+
+Ee∥za,m − za∥ ≤ Cθ,R δatt  
+
+> m
+
+.
+
+Since the finite and infinite sensor flows start from the same X0 ∼ γ, one has for fixed a
+
+and e that 
+
+W 22 (ˆ μa,m , ˆμa) ≤ EX0 |Xa,m  
+
+> 1
+
+− Xa 
+
+> 1
+
+|2.
+
+Let τR be the first time either path exits BR. On {τR ≥ 1} both paths stay in BR, so Gr¨ onwall and the local x-Lipschitz bound in (A2) give the pathwise estimate 
+
+|Xa,m  
+
+> 1
+
+− Xa 
+
+> 1
+
+| 1{τR≥1} ≤ eLxθ,R sup 
+
+> (x,t )∈BR×[0 ,1]
+
+|va,m (x, t ) − va(x, t )|.
+
+The linear growth in (A2) easily gives, for any fixed p > 2, 
+
+E sup 
+
+> t≤1
+
+|Xt|p ≤ Cθ,p 
+
+uniformly in a and e and for both ˆ μa,m and ˆ μa. Hence, for any a and e, P(τR < 1) ≤ Cθ,p R−p,and thus 
+
+E |Xa,m  
+
+> 1
+
+− Xa 
+
+> 1
+
+|2; τR < 1  ≤  E|Xa,m  
+
+> 1
+
+− Xa 
+
+> 1
+
+|p2/p P(τR < 1) 1−2/p ≤ Cθ,p R−(p−2) .
+
+Combining the results above, one has sup 
+
+> a∈K
+
+Ee W2(ˆ μa,m , ˆμa) ≤ eLxθ,R Cθ,R δatt  
+
+> m
+
++ Cθ,p R−(p−2) /2.
+
+Fixing R and letting m → ∞ , Lemma 6.2 gives δatt  
+
+> m
+
+→ 0; letting then R → ∞ proves random sensor resolution invariance in expectation. 33 B Experimental Details 
+
+We compute Sinkhorn divergence with GeomLoss: p = 2 selects quadratic cost, and blur =0.05 sets ε = blur 2.All experiments are run on a single NVIDIA RTX 5090 GPU (32 GB) with an AMD EPYC 9575F CPU (128 cores), using Python 3.14, PyTorch 2.10, and CUDA 12.8. Elapsed times include all overhead (data loading, compilation, I/O). The RTX 5090 and the EPYC 9575F have comparable list prices ( $2,000 and $2,200 respectively). The runtime comparisons be-tween GPU neural sampling and CPU MCMC use hardware of equivalent cost. 
+
+## B.1 1D experiments 
+
+The two 1D experiments share the Multi-input DeepONet architecture of Section 4: la-tent dimension q = 128, base channels 32 in the branch CNN, a trunk MLP of depth 4 and width 256 with GELU activations, and a sinusoidal time embedding of dimension 32. Training uses conditional flow matching with minibatch optimal transport coupling of the source–target pairs [20]. Table B.1 summarizes the data generation and optimization set-tings of the two experiments side by side. Table B.1: Configuration of the two 1D experiments. 1D Variable Noise 1D Rare Event Function instances 65,536 65,536 Train / test split 64,512 / 1,024 64,512 / 1,024 Grid resolution over [ −5, 5] 64 256 Reference samples per function 4,096 4,096 Reference generation Euler–Maruyama direct GMM draws time step ∆ t 0.01 —equilibration time Tburn 50 —collection interval 0.1 —Epochs (gradient steps) 1 (32,256) 1 (32,256) Optimizer (lr, weight decay) AdamW (10 −3, 10 −4), OneCycleLR Batch size / samples per function 256 / 32 Gradient clipping / precision 1.0 / bfloat16 mixed Training time 263.1 s 296.5 s In 1D Variable Noise, the GRF perturbations s, s ′ are sampled on the uniform grid via the FFT, and the reference Euler–Maruyama simulation runs on the linearly interpolated drift and diffusion. The MCMC baseline in Table 7.1 runs Euler–Maruyama with the same 
+
+Tburn = 50 on the 1,024 test functions, collecting 4,096 samples each. Figure B.1 shows the training loss curve. In 1D Rare Event, the diffusion coefficient is a small random perturbation of a constant, 
+
+σ(x) = 0 .1 + 0 .1
+
+> 2
+
+X
+
+> k=1
+
+ak cos( bkx + ck), (B.1) and the drift follows from the zero flux condition of the stationary Fokker–Planck equation 
+
+∂x(b p − 12 ∂x(σ2p)) = 0, which yields 
+
+b(x) = 12 σ(x)2 ∇ log p(x) + σ(x) ∇σ(x). (B.2) Because the target density p(x) is a known Gaussian mixture, training samples are drawn directly from the GMM; this makes the experiment a controlled test of the model’s represen-tational capacity and generalization in a rare event regime, and complete sample generation from the SDE is left for the other experiments. The MCMC baselines in Table 7.2 run Euler–Maruyama with ∆ t = 0 .001 on the linearly interpolated drift and diffusion for each of 34 the 1,024 test functions, collecting 4,096 samples: the converged baseline uses 5 × 10 5 steps per function (elapsed time 136.9 s), and three baselines with controlled runtimes limit the MCMC budget per function. For inference we compared RK4 with 4 and 16 integration steps against the adaptive dopri5 solver. RK4 with only 4 steps yields Sinkhorn = 0 .131 in 1 .4 s (1,024 functions), matching dopri5 (Sinkhorn = 0 .130, 7 .4 s) at 5 × lower cost; RK4-4 is therefore the default solver in all 1D experiments. Figure B.2 shows the distribution of Sinkhorn divergence across test functions for 1D Rare Event: the model’s error distribution is concentrated near zero, while MCMC exhibits a heavy right tail caused by failures from mode collapse. 0 5000 10000 15000 20000 25000 30000 Step 0.0 0.5 1.0 1.5 2.0 2.5 3.0 Loss 
+
+> Training Curve
+> Train Loss
+
+Figure B.1: 1D Variable Noise. Training loss. 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4      
+
+> Sinkhorn divergence
+> 0510 15 20
+> Density
+> >1.50: Model 1.9%, MCMC 5.1%
+> Model (med=0.010) MCMC (med=0.005) Model MCMC 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> Sinkhorn divergence (log)
+> =0.130
+> med=0.010 =0.272
+> med=0.005
+
+Figure B.2: 1D Rare Event. Distribution of Sinkhorn divergence across 1,024 test functions: operator model vs. MCMC (converged). Left: histogram clipped at the 95th percentile; right: box plot on log scale. 
+
+## B.2 2D Constant Noise 
+
+We generate 65,536 drift fields for training and 4,096 additional drift fields for evaluation. For each drift field, reference stationary samples are obtained by Euler–Maruyama with 
+
+dt = 0 .01 and an equilibration period of 20 time units (2,000 steps), after which 4,096 samples are collected per function. All reported metrics are Sinkhorn divergences between 4,096 generated and 4,096 reference samples, computed on 100 test drift fields drawn from the evaluation split. Probe data contain 20 steps with 8 features per step. Point and endpoint models use MLP encoders, and trajectory models use a 1D CNN. All use latent width 128 and a residual flow decoder trained with conditional flow matching and minibatch OT coupling. Each variant is trained for one epoch over the 65,536-function training split (8,192 optimizer steps at batch size 512) using OneCycleLR with peak learning rate 10 −3, weight decay 10 −4, gradient clipping 1.0, torch.compile , and bfloat16 mixed precision. In Table B.2, Concat appends the context to the hidden features at each decoder block. Dot uses context-dependent weights to multiply the hidden features, following the branch– 35 trunk product in DeepONet [22]. The sensor budget variants change the training count and retain 256 evaluation sensors. Table B.2: 2D Constant Noise. Additional variants trained on 65,536 fields and evaluated on 100 test fields with 4,096 generated and reference samples each. All use trajectory probes, Perceiver, and 256 evaluation sensors. 
+
+Conditioning Train sensors Mean Sinkhorn Train (s) Dot 256 0.0203 248.6 Concat 256 0.0189 253.9 AdaLN 64 0.0180 180.1 AdaLN 128 0.0187 303.4 
+
+In the sensor resolution transfer study (Table 7.4), each probe executes a 20-step random walk with step size 0 .05. For the 2048-sensor and mixed count rows we keep the effective optimizer batch fixed at 512 by using microbatch 256 with gradient accumulation over two steps; the rows with high resolution fit on a single GPU without changing the optimization budget. Figure B.3 shows qualitative comparisons of target and generated samples for representative test drift fields. 4 2 0 2 44                                                            
+
+> 2
+> 024
+> Target
+> 420244
+> 2
+> 024
+> SWD=0.0297
+> Generated
+> 420244
+> 2
+> 024
+> Overlay
+> Real Gen
+> 420244
+> 2
+> 024
+> Sensors
+> 420244
+> 2
+> 024
+> 420244
+> 2
+> 024
+> SWD=0.0231
+> 420244
+> 2
+> 024420244
+> 2
+> 024
+> 420244
+> 2
+> 024
+> 420244
+> 2
+> 024
+> SWD=0.0425
+> 420244
+> 2
+> 024420244
+> 2
+> 024
+> 420244
+> 2
+> 024
+> 420244
+> 2
+> 024
+> SWD=0.0386
+> 420244
+> 2
+> 024420244
+> 2
+> 024
+
+Figure B.3: 2D Constant Noise. Qualitative comparison of target (ground truth) and gen-erated samples for representative test drift fields. 
+
+## B.3 64D Interacting Particle 
+
+Table B.3 lists the four interaction kernel families. All kernels are nonsingular. For Morse and WCA, we cap the energy at UMAX = 10 to avoid numerical instabilities during MCMC equilibration; at β = 2, the corresponding Boltzmann weight is already exp( −βU MAX ) ≈
+
+2 × 10 −9.Table B.3: Interaction kernel families for 64D Interacting Particle. Family Form Character Morse U (r) = De(1 − e−a(r−re))2 − De bondlike attraction with repulsive core Gaussian U (r) = α exp( −r2/2σ2) soft repulsion ( α > 0) or attraction ( α < 0) Double Gaussian short range repulsion + long range attraction preferred interparticle spacing WCA truncated and shifted Lennard–Jones with softening hard sphere exclusion 36 The sensor set for pair probes consists of 512 isolated trajectories of particle pairs per kernel. Each probe starts at a random separation r0 ∈ [0 .2, 4.0], is evolved for 20 short steps ( dt = 0 .001), and records the relative displacement and interaction force, giving a sensor tensor of shape (512 , 20 , 4) per kernel. Reference samples are generated by Euler– Maruyama with dt = 0 .001, 16 chains per system, an equilibration period of 10 5 steps, and 4,096 retained samples per kernel. The training set contains 2,048 kernels and the evaluation set contains 512 test kernels; we report metrics on 100 test kernels. The architecture is the ParticleAmortizedSampler of Section 4: a 1D CNN sensor encoder, a Perceiver aggregator with four latent tokens, and an equivariant particle flow network conditioned by AdaLN. The model has 1.78M parameters and is trained for one epoch (2,048 optimizer steps) by conditional flow matching with learning rate 10 −3, so the product of learning rate and step count is order one. On a local RTX 5090 system, the full data generation, training, evaluation, and plotting pipeline completes in roughly 40 minutes; dataset generation dominates the cost. As a scale reference for the conditioning diagnostic in Table 7.5, comparing two indepen-dent halves of the MCMC target sample under the same sliced 2-Wasserstein score gives a noise floor from the target split of 0.2038 (mean) and 0.1071 (median); the correctly con-ditioned sampler (1.7860 / 1.0159) thus remains above the finite sample floor of the metric. We attribute this gap primarily to the behavior of sliced 2-Wasserstein on finite samples in 64 dimensions rather than to a correspondingly large sampling error; the pair distance distributions in Figure 7.4 give the more direct evidence that the sampler conditions on the interaction kernel. Table B.4 reports the observable checks invariant under permutations that are summa-rized in Section 7.3. Table B.4: 64D Interacting Particle. Observable checks invariant under permutations, eval-uated on 100 test kernels with 4,096 samples per kernel. Metric Value Pair correlation g(r) L2 error 0.6865 Mean marginal KL 1.21 × 10 −3
+
+Energy KS statistic 0.1585 Energy mean: model / target (∆, rel.) 614 .40 / 638 .76 ( −24 .36, −3.8%) Energy std: model / target (∆, rel.) 1472 .60 / 1504 .73 ( −32 .13, −2.1%) 
+
+# References 
+
+[1] Michael S. Albergo, Nicholas M. Boffi, and Eric Vanden-Eijnden. Stochastic inter-polants: A unifying framework for flows and diffusions. Journal of Machine Learning Research , 26(209):1–80, 2025. [2] Jean-David Benamou and Yann Brenier. A computational fluid mechanics solution to the monge-kantorovich mass transfer problem. Numerische Mathematik , 84(3):375–393, 2000. [3] Vladimir I Bogachev, Nicolai V Krylov, Michael R¨ ockner, and Stanislav V Shaposh-nikov. Fokker–Planck–Kolmogorov Equations , volume 207. American Mathematical Society, 2022. [4] Yann Brenier. Polar factorization and monotone rearrangement of vector-valued func-tions. Communications on Pure and Applied Mathematics , 44(4):375–417, 1991. [5] Zhiqiang Cai, Yu Cao, Yuanfei Huang, and Xiang Zhou. Weak generative sampler to efficiently sample invariant distribution of stochastic differential equation. SIAM Jour-nal on Scientific Computing , 48(4):C708–C735, 2026. First posted as arXiv:2405.19256 in 2024. 37 [6] Edoardo Calvello, Nikola B. Kovachki, Matthew E. Levine, and Andrew M. Stuart. Continuum attention for neural operators. arXiv preprint arXiv:2406.06486 , 2024. [7] Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David Duvenaud. Neural ordinary differential equations. In Advances in Neural Information Processing Systems ,volume 31, 2018. [8] Naoufal El Bekri, Lucas Drumetz, and Franck Vermet. Flowkac: An efficient neural fokker-planck solver using temporal normalizing flows and the feynman-kac formula. 
+
+Transactions on Machine Learning Research , 2025. [9] Xue Feng, Li Wang, Deanna Needell, and Rongjie Lai. Learn to evolve: Self-supervised neural JKO operator for wasserstein gradient flow. arXiv preprint arXiv:2601.05583 ,2026. [10] Jean Feydy, Thibault S´ ejourn´ e, Fran¸ cois-Xavier Vialard, Shun-ichi Amari, Alain Trouv´ e, and Gabriel Peyr´ e. Interpolating between optimal transport and MMD using Sinkhorn divergences. In Proceedings of the Twenty-Second International Conference on Artificial Intelligence and Statistics , volume 89 of Proceedings of Machine Learning Research , pages 2681–2690. PMLR, 2019. [11] W. Keith Hastings. Monte carlo sampling methods using markov chains and their applications. Biometrika , 57(1):97–109, 1970. [12] Han Huang and Rongjie Lai. Unsupervised solution operator learning for mean-field games. Journal of Computational Physics , 537:114057, 2025. [13] Andrew Jaegle, Felix Gimeno, Andrew Brock, Andrew Zisserman, Oriol Vinyals, and Joao Carreira. Perceiver: General perception with iterative attention. In Proceedings of the 38th International Conference on Machine Learning , volume 139, pages 4651–4664. PMLR, 2021. [14] Pengzhan Jin, Shuai Meng, and Lu Lu. MIONet: Learning multiple-input operators via tensor product. SIAM Journal on Scientific Computing , 44(6):A3490–A3514, 2022. Publisher: Society for Industrial and Applied Mathematics. [15] Nikola Kovachki, Zongyi Li, Burigede Liu, Kamyar Azizzadenesheli, Kaushik Bhat-tacharya, Andrew Stuart, and Anima Anandkumar. Neural operator: Learning maps between function spaces with applications to PDEs. Journal of Machine Learning Re-search , 24(89):1–97, 2023. [16] Juho Lee, Yoonho Lee, Jungtaek Kim, Adam R. Kosiorek, Seungjin Choi, and Yee Whye Teh. Set transformer: A framework for attention-based permutation-invariant neural networks. In Proceedings of the 36th International Conference on Machine Learning ,pages 3744–3753. PMLR, 2019. [17] Ben Leimkuhler and Charles Matthews. Molecular Dynamics: With Deterministic and Stochastic Numerical Methods , volume 39 of Interdisciplinary Applied Mathematics .Springer, Cham, 2015. [18] Zongyi Li, Nikola Borislavov Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Fourier neural operator for parametric partial differential equations. In International Conference on Learning Rep-resentations , 2021. [19] Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matthew Le. Flow matching for generative modeling. In International Conference on Learning Representations , 2023. [20] Yaron Lipman, Marton Havasi, Peter Holderrieth, Neta Shaul, Matt Le, Brian Karrer, Ricky T. Q. Chen, David Lopez-Paz, Heli Ben-Hamu, and Itai Gat. Flow matching guide and code, 2024. 38 [21] Hude Liu, Jerry Yao-Chieh Hu, Zhao Song, and Han Liu. Attention mechanism, max-affine partition, and universal approximation. arXiv preprint arXiv:2504.19901 , 2025. [22] Lu Lu, Pengzhan Jin, and George Em Karniadakis. DeepONet: Learning nonlinear operators for identifying differential equations based on the universal approximation theorem of operators. Nature Machine Intelligence , 3(3):218–229, 2021. [23] Jonathan C. Mattingly, Andrew M. Stuart, and Desmond J. Higham. Ergodicity for SDEs and approximations: Locally lipschitz vector fields and degenerate noise. Stochas-tic Processes and their Applications , 101(2):185–232, 2002. [24] Nicholas Metropolis, Arianna W. Rosenbluth, Marshall N. Rosenbluth, Augusta H. Teller, and Edward Teller. Equation of state calculations by fast computing machines. 
+
+The Journal of Chemical Physics , 21(6):1087–1092, 1953. [25] Frank No´ e, Simon Olsson, Jonas K¨ ohler, and Hao Wu. Boltzmann generators: Sampling equilibrium states of many-body systems with deep learning. Science ,365(6457):eaaw1147, 2019. [26] Grigorios A. Pavliotis. Stochastic Processes and Applications: Diffusion Processes, the Fokker–Planck and Langevin Equations , volume 60 of Texts in Applied Mathematics .Springer, New York, NY, 2014. [27] William Peebles and Saining Xie. Scalable diffusion models with transformers. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) ,pages 4195–4205, 2023. [28] Ethan Perez, Florian Strub, Harm de Vries, Vincent Dumoulin, and Aaron Courville. FiLM: Visual reasoning with a general conditioning layer. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 32, 2018. [29] Michael Prasthofer, Tim De Ryck, and Siddhartha Mishra. Variable-input deep oper-ator networks. arXiv preprint arXiv:2205.11404 , 2022. [30] Md Ashiqur Rahman, Manuel A. Florez, Anima Anandkumar, Zachary E. Ross, and Kamyar Azizzadenesheli. Generative adversarial neural operators. Transactions on Machine Learning Research , 2022. [31] Danilo Jimenez Rezende and Shakir Mohamed. Variational inference with normalizing flows. In International Conference on Machine Learning , pages 1530–1538, 2015. [32] Christian P. Robert and George Casella. Monte Carlo Statistical Methods . Springer, 2 edition, 2004. [33] L Chris G Rogers and David Williams. Diffusions, Markov processes, and martingales ,volume 2. Cambridge university press, 2000. [34] Yaozhong Shi, Zachary E. Ross, Domniki Asimaki, and Kamyar Azizzadenesheli. Stochastic process learning via operator flow matching. In Advances in Neural In-formation Processing Systems , 2025. Spotlight. [35] Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Er-mon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In International Conference on Learning Representations , 2021. [36] C´ edric Villani et al. Optimal transport: old and new , volume 338. Springer, 2008. [37] Chulhee Yun, Srinadh Bhojanapalli, Ankit Singh Rawat, Sashank J. Reddi, and Sanjiv Kumar. Are transformers universal approximators of sequence-to-sequence functions? In International Conference on Learning Representations (ICLR) , 2020. 39 [38] Manzil Zaheer, Satwik Kottur, Siamak Ravanbakhsh, Barnabas Poczos, Ruslan Salakhutdinov, and Alexander Smola. Deep sets. In Advances in Neural Information Processing Systems , volume 30, 2017. [39] Yaohua Zang, Gang Bao, Xiaojing Ye, and Haomin Zhou. Weak adversarial networks for high-dimensional partial differential equations. Journal of Computational Physics ,411:109409, 2020. 40

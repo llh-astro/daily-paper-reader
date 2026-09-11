@@ -1,0 +1,1793 @@
+Title: Tensor-Train Weak SINDy: Identifying High-Dimensional Nonlinear Dynamics
+
+URL Source: https://arxiv.org/pdf/2609.09434v1
+
+Published Time: Thu, 10 Sep 2026 00:25:17 GMT
+
+Number of Pages: 34
+
+Markdown Content:
+Tensor-Train Weak SINDy: Identifying High-Dimensional Nonlinear Dynamics 
+
+Will Houser ∗ , Vanja Dukic ∗ , and David M. Bortz ∗    
+
+> Abstract. In recent years, weak-form methods have made significant advances in data-driven discovery of dy-namical systems. However, in high-dimensional settings, current techniques can prove expensive in both computation and memory. In this work, we introduce TT-WSINDy, which combines tech-niques of the Multidimensional Approximation of Nonlinear Dynamics (MANDy) and Weak Sparse Identification of Nonlinear Dynamics (WSINDy) methods, implementing requisite computations in the tensor-train (TT) format. We demonstrate that this method is able to search an exponentially-growing space of candidate functions – performing weak-form transformation, regression, and spar-sification – without suffering from the curse of dimensionality.
+> Key words. weak form, tensor-train decomposition, sparse regression
+> MSC codes. 65F55, 15A69, 93B30, 65L09
+
+1. Introduction. Recent years have seen an explosion of interest in data-driven model creation. At the interface of applied mathematics, statistics, and computer science, work in this area can be traced back to Akaike’s seminal work in the 1970s [1]. Historically, the accuracy of a model to data has been determined using an output-error (OE) approach: given a candidate parameter vector, numerically solve the corresponding ODE/PDE, and compare output to observed data. This approach, however, suffers from computational inefficiency, potential solver inaccuracy, and sensitivity to hyperparameter tuning [39]. In contrast, equation-error (EE) methods circumvent the forward simulation procedure by substituting data directly into the model and minimizing the resulting residual. One such method is Sparse Identification of Nonlinear Dynamics (SINDy) [5], which learns a sparse set of functions from data by refactoring the nonlinear model selection problem into a linear system. SINDy generated substantial interest in EE-based model discovery, and has been extended in the contexts of PDEs [43], control inputs [6], and implicit or rational dynamics [23]. The framework has seen applications across various scientific domains, including fluid dynamics [27], systems biology [30], and chemical kinetics [20]. Two areas of concern for SINDy-based methods are the computation of derivative data and the effect of noise. Often, only the raw data X is known, but the derivative data ˙X is necessary for computation of the residual. The need to approximate ˙X can render the learning problem sensitive to noisy data. Building off of SINDy, several strategies have been developed to address computation of the derivative and accommodate imprecise data [51, 55, 22, 10]. 
+
+Weak-form methods circumvent the derivative estimation problem by integrating both sides of the equation against a smooth, compactly-supported test function, and applying integration by parts to yield an equation that is independent of the unknown derivative data. The integration also smooths the raw data, making the ensuing regression problem more robust to noise. Such ideas date back to Shinbrot’s 1954 work [46], but had not been investigated in           
+
+> ∗Department of Applied Mathematics, University of Colorado, Boulder, CO 80309-0526 USA (will.houser@colorado.edu, vadu4217@colorado.edu, dmbortz@colorado.edu)
+> 1
+
+This manuscript is for review purposes only. arXiv:2609.09434v1 [cs.LG] 8 Sep 2026 depth until recent decades, when several groups independently rediscovered the applications of the weak form to model discovery [12, 32, 33, 41, 45, 54]. Of these, our work inherits notation and regression techniques from the Weak SINDy (WSINDy) method [32, 33]. This method has led to a host of publications, showing unprecedented success in applications to ODEs [3, 8, 18, 34, 44, 29, 47], PDEs [28, 35, 38, 52], SDEs [4, 37], reduced order modeling [17, 49, 53], and closure discovery [31]. For an overview of weak-form methods, see [36]. 
+
+Tensor decompositions have also seen increased interest in recent decades. The concept of a tensor decomposition dates back to Hitchcock’s 1927 work on the canonical polyadic (CP) decomposition [19], rediscovered in 1970 by Carroll and Chang as CANDECOMP [7] and Harshman as PARAFAC [15]. Subsequent to these works and the 1960s work of Tucker [50], each of which originated in psychometrics literature, tensor research increasingly spread to applied math-related fields such as signal processing, numerical linear algebra, and computer vision before being synthesized in the foundational 2009 work by Kolda and Bader [25]. The classical tensor formats often suffer from the curse of dimensionality, meaning poor scaling in tensor order. Finding the CP rank of a general tensor is NP-hard [21], and the storage cost of the Tucker decomposition grows exponentially with the number of modes. This motivated the development of tensor formats whose storage is linear in order, most notably the tree-structured hierarchical Tucker format [13]. A special case of this is the tensor-train (TT) format, introduced in 2011 by Oseledets [40], and having been known to the computational physics community since the early 1990s as the matrix product state (MPS) [9]. This format will be a focus of this work. Tensor decompositions have shown recent promise in improving existing data-driven meth-ods, providing the ability to work in a high-dimensional space without forming a correspond-ing high-dimensional tensor in memory. [56] decomposes high-dimensional moment tensors to form a polynomial-time variant of the generalized method of moments (GMM) procedure. Klus, Gelß, and others showed that the tensor-train format can be applied to dynamic mode decomposition (DMD) [24] and SINDy [11]. The latter method is abbreviated MANDy, and, along with WSINDy, provides motivation for this paper. Our work proceeds as follows. Section 2 establishes notation, gives exposition on SINDy and WSINDy, and defines the tensor-train format and relevant tensor operations. Section 3 presents the TT-WSINDy problem construction and the TT-MSTLS algorithm to identify a sparse solution. Section 4 proves the connection between the TT-WSINDy problem con-struction and the original WSINDy problem. Section 5 establishes the time and memory complexity of TT-MSTLS and shows that it circumvents the curse of dimensionality, and introduces an algorithm that improves computational efficiency for large datasets. Section 6 provides results demonstrating the effectiveness of TT-WSINDy, both in robustness to noise and computational efficiency. 
+
+2. Notation and preliminaries. In this section, we describe the problem setting and the 
+
+Weak SINDy (WSINDy) algorithm to identify the approximate dynamics. We then introduce the tensor-train (TT) format , which admits a fast pseudoinverse computation. We will see that the tensor-train format is amenable to both the weak form and to existing sparse regression techniques, meaning we can use time-saving TT methods while gaining robustness to noise and a sparse solution. 
+
+> 2
+
+This manuscript is for review purposes only. 2.1. Problem setting. We consider the problem of learning a first-order ordinary differ-ential equation in D dimensions, taking the form (2.1) ˙x(t) = F(x(t)) , x(0) = x0 ∈ RD, 0 ≤ t ≤ T
+
+We have measurement data X ∈ RD×M , sampled at timepoints ( t1, . . . , t M ) and given by (2.2) X[d, m ] = xd(tm) + ϵd,m , d ∈ [D], m ∈ [M ]where {ϵd,m }d∈[D],m ∈[M ] is independent and identically distributed measurement noise from some common distribution. In this work, we assume that F is linear in parameters , i.e. given dimensionwise by (2.3) Fd(x(t)) = 
+
+> J
+
+X
+
+> j=1
+
+W[d, j ] · gj (x(t)) where the family of functions g := {gj }j∈[J], with gj : RD → R, is known. In this context, discovering the dynamics in (2.1) is equivalent to discovering the coefficient matrix W ∈ RD×J .The sparse identification of nonlinear dynamics (SINDy) algorithm, introduced in [5], showed early success in solving problems of this form. The framework constructs a feature matrix Θ( X) ∈ RJ×M whose rows are discretizations of each gj ∈ g:(2.4) Θ( X)[ j, m ] = gj (X[: , m ]) Given pointwise derivative data ˙X, evaluated on the same spatiotemporal grid as X, we have the discrete problem (2.5) ˙X ≈ WΘ( X)Then, SINDy finds cW such that 
+
+cW is sparse, and 
+
+cW ≈ argmin 
+
+> W
+
+∥ ˙X − WΘ( X)∥F
+
+(2.6) For the original work on this problem formulation and computation of cW, see [5]. There are two primary areas of concern in applying SINDy. First, in many physical applications, ˙X is not known and must be computed from X. Second, loss of accuracy can compound in the presence of noise. In the following section, we introduce the WSINDy method, which addresses these issues. 
+
+2.2. WSINDy. Several groups have independently discovered that using the weak form 
+
+of (2.1) bypasses the need to compute ˙X and makes the problem robust to noise [12, 32, 33, 41, 45, 54]. Here, we briefly present one such method, Weak SINDy (WSINDy) .We introduce a smooth test function φ : R → R, compactly supported in some interval [a, b ] ⊂ [0 , T ]. Integrating φ against both sides of (2.1) and applying integration by parts to the LHS results in the weak formulation (2.7) −
+
+Z T
+
+> 0
+
+˙φ(t)x(t) d t =
+
+Z T
+
+> 0
+
+φ(t)F(x(t)) dt 
+
+> 3
+
+This manuscript is for review purposes only. Now, let φ ∈ RB be the discretization of φ on t ∩ (a, b ). Then, approximating the integrals in (2.7) via the trapezoidal rule yields the discrete problem (2.8) −X ˙Φ ≈ WΘ( X)Φ
+
+where Φ is the banded matrix (2.9) Φ =
+
+
+
+φ[1] ... φ[1] 
+
+φ[B] ...
+
+φ[B] . . . φ[1] ...
+
+φ[B]
+
+
+
+∈ RM ×(M −B+1) 
+
+and ˙Φ is the same, but with test function derivative ˙φ. Crucially, (2.8) has no dependence on ˙X, so we avoid the potentially unstable finite difference computation. And, the integration in (2.7) mollifies the noise in X. Similarly to (2.6), the WSINDy optimization problem is then to find a sparse cW such that (2.10) cW ≈ argmin 
+
+> W
+
+∥X ˙Φ + WΘ( X)Φ∥F
+
+For details on choosing φ, see [48]. We will see that this weak-form construction can be recast into a tensor format to yield an efficient, noise-robust algorithm that discovers the unknown dynamics in (2.1). 
+
+2.3. Tensor preliminaries. In this work, a tensor is a multidimensional array, generalizing a matrix. As we specify a matrix X ∈ Rm×n by the dimensions ( m, n ), we specify the shape of an order-N tensor X ∈ RI1×···× IN by the tuple ( I1, . . . , I N ), called the modes of X . The storage cost of such a tensor is O(IN ), where I := max n∈[N ] In is the maximum mode size. For large 
+
+N , storage of such an object may easily be infeasible, and the time cost of performing even basic algebraic operations can explode. This is referred to as the curse of dimensionality .However, it is often the case that immense amounts of memory and time can be saved by recasting low-dimensional problems into a high-dimensional tensor. This is achieved through a tensor decomposition that exploits a low-rank correlation structure. We will see that the WSINDy learning problem can admit such a structure. In order to discuss relevant tensor decompositions in detail, we introduce two binary tensor operations. 
+
+Definition 2.1. Let X ∈ RI1×···× IN , Y ∈ RJ1×···× JM . Their outer product, denoted X ◦ Y ∈ 
+
+RI1×···× IN ×J1×···× JM , is defined element-wise as 
+
+(X ◦ Y )[ i1, . . . , i N , j 1, . . . , j M ] = X [i1, . . . , i N ]Y[j1, . . . , j M ]This definition generalizes the typical vector outer product uv T . Similarly, tensor contraction generalizes matrix multiplication, collapsing adjacent tensor dimensions. 
+
+> 4
+
+This manuscript is for review purposes only. Definition 2.2. Let X ∈ RI1×···× IN ×J1×···× JL , Y ∈ RJ1×···× JL×K1×···× KM . Their tensor contraction, denoted X × Y ∈ RI1×···× IN ×K1×···× KM , is defined element-wise as 
+
+(X × Y )[ i1, . . . , i N , k 1, . . . , k M ] = X
+
+> j1,...,j L
+
+X [i1, . . . , i N , j 1, . . . , j L]Y[j1, . . . , j L, k 1, . . . , k M ]
+
+[2] 
+
+Note that there is ambiguity in the notation × , as it does not specify which indices are to be contracted. In this work, this will be clear from context. We will also require representations of tensors as matrices and vectors, called matriciza-tions and vectorizations . In order for this operation to be invertible, we let bN denote a bijection that maps a multi-index to a single index 
+
+bN : [ I1] × [I2] × · · · × [IN ] → [I1I2 · · · IN ](i1, i 2, . . . , i N ) 7 → i1, i 2, . . . , i N
+
+e.g., lexicographical order. In implementation, different programming languages may use different orderings (column-major in Matlab vs row-major in NumPy, for example). The specific ordering does not matter in our context; it is only important that all operations that invoke an order are defined with respect to the same underlying bijection. 
+
+Definition 2.3. Let X ∈ RI1×···× IN , and n ∈ [N ]. We denote the mode-n unfolding, or the mode-n matricization of X as 
+
+X(n) = X In+1 ,...,I N 
+
+> I1,...,I n
+
+∈ RI1··· In×In+1 ··· IN
+
+defined element-wise as 
+
+ X(n)
+
+ 
+
+i1, . . . , i n, i n+1 , . . . , i N
+
+
+
+= X [i1, . . . , i N ]In this work, we will use the following special cases of unfoldings. 
+
+Definition 2.4. Let X ∈ RI1×···× IN . We define the left unfolding and right unfolding of X ,respectively, as 
+
+R(X ) = X(1) , L(X ) = X(N −1) 
+
+2.4. The tensor-train format. Central to this work is the tensor-train (TT) format. A special case of the hierarchical Tucker format [13], the TT format decomposes an arbitrary tensor into a sequence of order-3 TT cores . Each core shares its first mode length with the previous core, and the last with the next, hence, the “train” of tensors. We will see that this structure allows for an efficiently-computable singular value decomposition. 
+
+Definition 2.5. Let T ∈ RI1×···× IN . We say T is in the tensor-train (TT) format if it admits the expression 
+
+(2.11) T =
+
+> R0
+
+X
+
+> r0=1
+> R1
+
+X
+
+> r1=1
+
+· · · 
+
+> RN
+
+X 
+
+> rN=1
+
+T (1) [r0, :, r 1] ◦ T (2) [r1, :, r 2] ◦ · · · ◦ T (N )[rN −1, :, r N ]
+
+> 5
+
+This manuscript is for review purposes only. T (1) T (2) T (N −1) T (N )· · · 
+
+1 R1 R2 RN −2 RN −1 1
+
+I1 I2 IN −1 INFigure 2.1. Diagram of tensor train T = qT (1) , . . . , T (N )y ∈ RI1×···× IN with ranks (R1, . . . , R N −1).Adjacent cores share a mode. The boundary ranks R0, R N are fixed to 1, so the outer cores can be considered matrices. 
+
+over core tensors 
+
+T (n) ∈ RRn−1×In×Rn , n ∈ [N ]
+
+We let R0 = RN = 1 , and we say that the tuple (R1, . . . , R N −1) gives the TT ranks 1 of T .[40] 
+
+We write TT cores compactly as two-dimensional arrays with vector elements (2.12) T (n) =
+
+uwv
+
+T (n)[1 , :, 1] · · · T (n)[1 , :, R n]... . . . ...
+
+T (n)[Rn−1, :, 1] · · · T (n)[Rn−1, :, R n]
+
+}~
+
+and use the following shorthand to define a TT in terms of its cores (2.13) T = TT qT (1) , . . . , T (N )y
+
+An essential property of the TT format is that it admits an efficiently-computable, analytic pseudoinverse. Given T as in (2.11), its pseudoinverse 2 is given by (2.14) T † := 
+
+> R1
+
+X
+
+> r1=1
+
+· · ·  
+
+> RN−1
+
+X 
+
+> rN−1=1
+
+σ−1 
+
+> rN−1
+
+eT (N )[rN −1, :, 1] ◦ eT (1) [1 , :, r 1] ◦ · · · ◦ eT (N −1) [rN −2, :, r N −1]with T † ∈ RIN ×I1×···× IN −1 . eT (1) , . . . , eT (N −1) are left-orthonormalized counterparts of the cores T (1) , . . . , T (N −1) , and eT (N ) is T (N ), right-orthonormalized. Algorithms to compute these can be found in [40, 24], and additional discussion of orthonormalization of TT cores can be found in [11]. The coefficients {σrN −1 }rN −1∈[RN −1] are obtained through a sequence of SVDs of the original cores {T (n)}n∈[N ], thus computation of the SVD only requires working with the TT cores. We never form the full tensor and thus never leave the low-rank latent space we have constructed. This results in the following lemma. 
+
+> 1
+
+Note that there are multiple definitions of tensor rank – TT rank is distinct from the commonly-used CP rank [25]. 
+
+> 2
+
+Since this object does not have boundary ranks of 1, it is not in TT format, strictly speaking. We can consider T † a cyclic tensor train , or a sum of RN −1 tensor trains, scaled by σ−1  
+
+> rN−1
+
+[11]. 
+
+6
+
+This manuscript is for review purposes only. Lemma 2.6. Given tensor train T ∈ RI1×···× IN ×K , there exists an algorithm that computes 
+
+T † with time complexity O(N IR 3 + KR 2), where I is the maximum of the first N modes, and 
+
+R is the maximum TT rank. [11] 
+
+For full exposition, detailed description, and proof of the above, see [24]. Or, see subsection A.2 for a brief overview of the algorithm. The obtained pseudoinverse is compatible with the equivalent matrix problem: 3 it holds that (2.15) R(T †) = L(T )†
+
+In contrast, direct computation of L(T )† using a matrix pseudoinverse can be estimated as 
+
+O(IN K2). So, given that the ranks of T are not excessively large, we expect significant computational savings to result from Lemma 2.6. In the next section, we will recast the WSINDy learning problem into a TT pseudoinverse computation for which this is indeed the case. 
+
+Table 2.1 
+
+General tensor notation and relevant unary operations 
+
+Symbol Domain Meaning 
+
+x, c, C (plain font) R scalar 
+
+x (bold lowercase) RN vector 
+
+X (bold uppercase) RM ×N matrix 
+
+X , Ψ (calligraphy, bold greek) RI1×···× IN tensor (i1, . . . , i N ) NI1×···× IN multi-index 
+
+bN C([ I1] × · · · × [IN ], [I1 · · · IN ]) bijective ordering of multi-indices 
+
+X(n), X In+1 ,...,I N 
+
+> I1,...,I n
+
+RI1··· In×In+1 ··· IN mode-n unfolding of X
+
+R(X ) RI1×I2··· IN right unfolding of X
+
+L(X ) RI1··· IN −1×IN left unfolding of X
+
+TT JT (1) , . . . , T (N )K RI1×···× IN Tensor-train decomposition 
+
+3. TT-WSINDy. We state here the TT-WSINDy construction and algorithm. We recast the “flat” WSINDy learning problem in a tensor format, the solution to which encodes a large number of candidate functions for a relatively small cost in time and memory complexity. This follows from the Multidimensional Approximation of Nonlinear Dynamics (MANDy) method proposed in [11]. We then propose an enhanced regression procedure that combines modified sequential thresholding least squares (MSTLS) with TT regression. The method effectively works entirely in a low-rank latent space consisting of “atomic” candidate terms. Using the weak form, we are able to stay within this space while gaining robustness to noise. To the 
+
+> 3
+
+In fact, the pseudoinverse is defined such that it is compatible with our choice of matricization. In this work, we matricize based on the left-unfolding, but we can just as easily define a different matricization that will induce a different pseudoinverse. Recent work has shown that the choice of matricization can affect the conditioning of the underlying problem [42]. 
+
+7
+
+This manuscript is for review purposes only. authors’ knowledge, methods exhibiting this advantage have not previously appeared in the literature. In this work, we consider f := {fj }j∈[J] to be a family of basis functions , from which we derive the full candidate function library (3.1) g = {g : RD → R | g(x) = fj1 (x1)fj2 (x2) · · · fjD (xD), (j1, . . . , j D) ∈ [J]D}
+
+where each fj : R → R. Because |g| = JD, the matrix formulation of Θ( X) in (2.8) suffers from the curse of dimensionality. For large D, operations involving Θ( X) may be computationally infeasible. This necessitates an alternate formulation of the WSINDy optimization problem. 
+
+3.1. Problem construction. Given basis functions f = {fj }j∈[J] and data points X =
+
+{xd,m }d∈[D],m ∈[M ] sampled over time points t = {tm}m∈[M ], define a feature vector as a vector containing evaluations of each fj at a given (equation, time) pair: (3.2) θ(d)(tm) = 
+
+
+
+f1(xd,m )...
+
+fJ (xd,m )
+
+ ∈ RJ
+
+Then, define the set of feature cores , written as matrices with vector elements, as 
+
+Θ(1) =
+
+r
+
+θ(1) (t1) · · · θ(1) (tM )
+
+z
+
+∈ RJ×M
+
+Θ(d) =
+
+uwwwv
+
+θ(d)(t1) 0. . .0 θ(d)(tM )
+
+}~ ∈ RM ×J×M ; d = 2 , . . . , D 
+
+(3.3) and weak core 4 as (3.4) Φ =
+
+uwwwv
+
+e1 ⋆ φ
+
+...
+
+eM ⋆ φ
+
+}~ ∈ RM ×M ′
+
+where {em}m∈[M ] is the Euclidean basis of RM , φ is the discretization of a test function φ on 
+
+t ∩ (a, b ), M ′ = M − B + 1, and ⋆ denotes discrete cross-correlation (see Definition 4.1). Over these, we define the weak feature tensor as the rank-( M, . . . , M ) tensor train (3.5) Θ(X, φ) := TT 
+
+r
+
+Θ(1) , . . . , Θ(D), Φ
+
+z
+
+∈ R
+
+> D
+
+z }| {
+
+J × · · · × J ×M ′
+
+> 4Note that we use the same notation as (2.9), as both definitions give the same matrix.
+> 8
+
+This manuscript is for review purposes only. Under this construction, the optimization problem becomes finding a coefficient tensor cW ∈ 
+
+RD×J×···× J such that 
+
+cW is sparse, and 
+
+cW ≈ argmin 
+
+> W
+
+∥X ⋆ ˙φ + W × Θ(X, φ)∥F
+
+(3.6) Note that we have used the same construction of the feature cores as in [11]. The differences are the cross-correlation X ⋆ ˙φ of the data X and the folding of the test function φ into the ( D + 1) th core. We show in section 4 that this allows us to solve the same weak-form problem as in subsection 2.2 while preserving the desirable tensor train structure of the original formulation.  
+
+> Figure 3.1. Schematic of the weak feature tensor.
+
+Also note that we may alternatively define a feature vector as evaluating a single fj over every dimension d ∈ [D]. Depending on J and D, this may be preferable to the construction we have shown here. We detail this construction in subsection A.3. 
+
+3.2. Tensor-train regression. To solve (3.6), we introduce the tensor-train modified se-quential thresholding least squares (TT-MSTLS) algorithm, which adapts the known STLS sparse solve to the tensor train regression problem. First, suppose that we have support (3.7) S = {S(1) , . . . , S (D)} ⊂ [J]D
+
+Then, we construct the mask tensor M(S) ∈ RJ×···× J×M ′
+
+, a Kruskal tensor [2] defined over 
+
+mask vectors m(d) ∈ RJ , as 
+
+M(S) := 
+
+h
+
+⃝Dd=1 m(d)i
+
+◦ 1M ′
+
+s.t. m(d)[j] = 
+
+(
+
+1 j ∈ S(d)
+
+0 otherwise (3.8) where 1M ′ denotes the length-M ′ vector of ones. To obtain Sℓ from a coefficient tensor 
+
+W ∈ RJ×···× J , we define the coarse support of W as coarse-supp( W, λ ) = S(1) , . . . , S (D) ⊂ [J]D
+
+s.t. j ∈ S(d) ⇐⇒ W
+
+ d−1
+
+z }| { 
+
+: · · · :, j, 
+
+> D−d
+
+z }| { 
+
+: · · · :
+
+ 2
+
+> F
+
+≥ λ
+
+(3.9) 
+
+> 9
+
+This manuscript is for review purposes only. In other words, we define support of W slicewise. With these constructions, we define the 
+
+tensor-train sequential thresholding least squares (TT-STLS) in Algorithm 3.1. 
+
+Algorithm 3.1 TT-STLS 
+
+Input: Weak feature tensor Θ(X, φ) ∈ RJ×···× J×M ′
+
+LHS vector y ∈ RM ′
+
+Thresholding parameter λ ∈ R
+
+Output: Coefficient estimate Wλ ∈ RJ×···× J
+
+coarse support Sλ ⊂ [J]D 
+
+> 1:
+
+Set initial values Ψ0 := Θ(X, φ), S0 := [ J]D 
+
+> 2:
+
+for ℓ = 1 , . . . , JD do  
+
+> 3:
+
+Compute pseudoinverse ( Ψℓ−1)† 
+
+> 4:
+
+Compute weights Wℓ ← y × (Ψℓ−1)† 
+
+> 5:
+
+Compute support Sℓ ← coarse-supp( Wℓ, λ ) 
+
+> 6:
+
+if Sℓ = Sℓ−1 then  
+
+> 7:
+
+break  
+
+> 8:
+
+end if  
+
+> 9:
+
+Iterate Ψℓ ← Ψℓ−1 ⊙ M (Sℓ) 
+
+> 10:
+
+end for  
+
+> 11:
+
+return Wλ := Wℓ, S λ := Sℓ
+
+We now construct the tensor-train modified sequential thresholding least squares (TT-MSTLS) algorithm. This tracks closely with the matrix-based MSTLS algorithm, introduced in [32], with adaptations to accommodate the TT structure. As with MSTLS, we perform a line search over a set of thresholding parameters λ with respect to an auxiliary loss function 
+
+L, to find the parameter bλ which induces the lowest loss. We take the loss function to be (3.10) L(λ) = ∥(Wλ − W 0) × Θ(X, φ)∥2
+
+∥W 0 × Θ(X, φ)∥2
+
++ ∥W λ∥0
+
+JD
+
+where Wλ := TT-STLS( Θ, y, λ ) is the coefficient estimate induced by λ, and W0 := y × Θ†
+
+is the initial unsparsified TT pseudoinverse solution. The first added term penalizes distance from W0 × Θ(X, φ), and the second encourages sparsity of the discovered coefficient tensor. This is parallel to the matrix MSTLS( A, b, λ ) loss function, introduced in [32], to solve the linear problem Aw = b.(3.11) Lflat (λ) = ∥A(wλ − w0)∥2
+
+∥Aw 0∥2
+
++ ∥wλ∥0
+
+#( A)where, similarly, wλ := STLS( A, b, λ ) and w0 := A†b. We define TT-MSTLS in Algo-rithm 3.2. 
+
+3.3. TT-WSINDy algorithm. We define TT-WSINDy in Algorithm 3.3 as the two-stage application of TT-MSTLS and MSTLS. TT-WSINDy calls the coarse sparsification procedure TT-STLS to reduce the search space of candidate functions in the TT-induced latent space, 
+
+> 10
+
+This manuscript is for review purposes only. Algorithm 3.2 TT-MSTLS 
+
+Input: Weak feature tensor Θ(X, φ) ∈ RJ×···× J×M ′
+
+LHS vector y ∈ RM ′
+
+Set of thresholding parameters λ ⊂ R
+
+Auxiliary loss function L : R+ → R+
+
+Output: Coarse support bS ⊂ [J]D 
+
+> 1:
+
+for λ ∈ λ do  
+
+> 2:
+
+Compute Wλ, S λ ← TT-STLS( Θ(X, φ), y; λ) 
+
+> 3:
+
+Compute L(λ) 
+
+> 4:
+
+end for  
+
+> 5:
+
+Set bλ = argmin λ∈λ L(λ) 
+
+> 6:
+
+return bS := Sbλ
+
+then calls the standard matrix MSTLS algorithm. We give a visualization of this procedure in Figure 3.2. If we omit TT-MSTLS and set bS ← [J]D, TT-WSINDy collapses to WSINDy. We will see 
+
+Algorithm 3.3 TT-WSINDy 
+
+Input: Data matrix X ∈ RD×M , sampled on time points t ⊂ R
+
+Family of basis functions f = {fj }j∈[J]
+
+Test function and derivative φ, ˙φ ∈ C0(( a, b ), R)TT-MSTLS loss function L : R+ → R+
+
+MSTLS loss function Lflat : R+ → R+
+
+Sets of thresholding parameters λ, λflat ⊂ R
+
+Output: Coefficient estimate cW ∈ RD×J×···× J 
+
+> 1:
+
+Compute φ, ˙φ, by discretizing φ, ˙φ on ( a, b ) ∩ t 
+
+> 2:
+
+Construct Θ(X, φ) ∈ RJ×···× J×M ′
+
+from X, f , φ 
+
+> 3:
+
+Compute X ⋆ ˙φ ∈ RD×M ′ 
+
+> 4:
+
+for d = 1 , . . . , D do  
+
+> 5:
+
+Set yd ← (−X ⋆ ˙φ)[ d, :]  
+
+> 6:
+
+Compute coarse support bS ← TT-MSTLS( Θ(X, φ), yd; L, λ) 
+
+> 7:
+
+Compute coefficients bwd ← MSTLS  L Θ(X, φ) ⊙ M ( bS), yd; Lflat , λflat 
+
+ 
+
+> 8:
+
+end for  
+
+> 9:
+
+return cW
+
+that the inclusion of TT-MSTLS can yield substantial memory and time complexity improve-ments. 
+
+4. TT-WSINDy agrees with WSINDy. In this section, we prove Proposition 4.6, which gives that TT-WSINDy solves the same sparse regression problem as WSINDy, and that the construction is the weak form of the strong form tensor problem. Define the strong feature tensor as Θ(X) := Θ(X, [1]), i.e. replacing the final core with 
+
+> 11
+
+This manuscript is for review purposes only. Figure 3.2. Schematic of the full TT-WSINDy algorithm. 
+
+the identity matrix I ∈ RM ×M . And define (4.1) L(Θ(X)) = Θ(X) MJ,...,J =: Θflat (X) ∈ RJD ×M
+
+which is the SINDy feature matrix for the function library g, defined in (3.1). Now, we estab-lish some technical lemmata. We first give the general definition of discrete cross-correlation. 
+
+Definition 4.1. Let A ∈ RI1×···× IN , B ∈ RJ1×···× JN . Their discrete cross-correlation is denoted A ⋆ B ∈ RH1×···× HN , where Hn = In − Jn + 1 for n ∈ [N ], and is defined element-wise as 
+
+(A ⋆ B)[ h1, . . . , h N ] = 
+
+> J1
+
+X
+
+> j1=1
+
+· · · 
+
+> JN
+
+X 
+
+> jN=1
+
+A[j1 + h1 − 1, . . . , j N + hN − 1] B[j1, . . . , j N ]We see that the weak-form matrix multiplication is equivalent to taking a discrete cross-correlation of the data with the test function discretization. 
+
+Lemma 4.2. Take φ, ˙φ and Φ, ˙Φ ∈ RM ×M ′
+
+as above, and let A ∈ RH×M . Then A ˙Φ =
+
+A ⋆ ˙φ and AΦ = A ⋆ φ.Proof. We may express Φ entrywise as (4.2) Φ[m, m ′] = 
+
+(
+
+φ[k] m = ( m′ − 1) + k; k ∈ [B]0 otherwise 
+
+> 12
+
+This manuscript is for review purposes only. So we have, using the definitions of matrix multiplication and discrete cross-correlation 5,(AΦ )[ h, m ′] = 
+
+> M
+
+X
+
+> m=1
+
+A[h, m ]Φ[m, m ′] = 
+
+> B
+
+X
+
+> k=1
+
+A[h, m ′ + k − 1] φ[k] = ( A ⋆ φ)[ h, m ′]and identically for ˙φ, ˙Φ.We now relate the flat weak-form feature matrix to the weak feature tensor. 
+
+Lemma 4.3. Let φ and Θ(X, φ) be defined as in subsection 3.1 . Then, Θflat (X) ⋆ φ =
+
+L(Θ(X, φ)) .Proof. Using the element-wise formula for Θ(X, φ), we have 
+
+L(Θ(X, φ)) j1,...,j D ,m ′ =
+
+> M
+
+X
+
+> m=1
+
+" DY
+
+> d=1
+
+θ(d)(tm)[ jd]
+
+#
+
+(em⋆φ)[ m′] = 
+
+> M
+
+X
+
+> m=1
+
+" DY
+
+> d=1
+
+fjd (xd,m )
+
+#
+
+φ[m−m′+1] as ( em ⋆ φ)[ m′] = PMh=1 φ[h + m′ − 1] em[h] = φ[m − m′ + 1]. And we have 
+
+> D
+
+Y
+
+> d=1
+
+fjd (xd,m ) = Θflat (X)
+
+
+
+j1, . . . , j D, m 
+
+
+
+Therefore we have the desired equality by the definition of discrete cross-correlation. (L(Θ(X, φ))) j1,...,j D ,m ′ =
+
+> M
+
+X
+
+> m=1
+
+Θflat (X)
+
+
+
+j1, . . . , j D, m 
+
+
+
+φ[m − m′ + 1] = ( Θflat (X) ⋆ φ)j1,...,j D ,m ′
+
+Lemma 4.4. Let A ∈ RA×B1×···× BN and C ∈ RB1×···× BN ×C . Then, R(A)L(C) = A × C .Proof. We write A × C elementwise and reindex the sum using the bijection bN :(A × C )[ a, c ] = 
+
+> B1
+
+X
+
+> b1=1
+
+· · · 
+
+> BN
+
+X 
+
+> bN=1
+
+A[a, b 1, . . . , b N ]C[b1, . . . , b N , c ] = 
+
+> B1··· BN
+
+X
+
+> b=1
+
+R(A)[ a, b ]L(C)[ b, c ]which is equal to  R(A)L(C)[a, c ]. 
+
+Corollary 4.5. Define Wflat to be the solution to the SINDy matrix problem, as 
+
+R(W) = W J,...,J D =: Wflat ∈ RD×JD
+
+Then, W × Θ(X) = Wflat Θflat (X).Proof. By definition, Wflat = R(W) and Θflat (X) = L(Θ(X)). Thus the result follows immediately from Lemma 4.4.         
+
+> 5Note that, for compatibility with Definition 4.1, we consider φ,˙φ∈R1×Bin this computation. This specifies that φis in the time axis only; we do not correlate across the first dimension.
+> 13
+
+This manuscript is for review purposes only. In other words, W solves the strong-form tensor problem ˙X = W × Θ(X) if and only if Wflat 
+
+solves the SINDy problem ˙X = Wflat Θflat (X). We may now show the main technical result of this section, described below. 
+
+Proposition 4.6. Let X, φ, and ˙φ be defined as in subsection 2.2 , Θflat (X) as in (4.1) ,and Θ(X, φ) as in subsection 3.1 . We have that if W solves the TT-WSINDy optimization problem, then R(W) solves the equivalent WSINDy optimization problem. I.e., 
+
+(4.3) R
+
+
+
+argmin 
+
+> W
+
+∥X ˙Φ + W × Θ(X, φ)∥F
+
+
+
+= argmin 
+
+> W
+
+∥X ˙Φ + WΘ flat (X)Φ∥F
+
+From which it follows that the construction in subsection 3.1 does indeed describe the weak form of the MANDy construction given in [11]. Proof. Using Lemmas 4.2 to 4.4, we have (Wflat Θflat (X)) Φ = R(W)( Θflat (X)Φ)= R(W) [ Θflat (X) ⋆ φ]= R(W)L(Θ(X, φ)) = W × Θ(X, φ)Which gives (4.3). The conclusion follows from Corollary 4.5; the weak form of ˙X = W × Θ(X)is obtained by multiplying Φ on both sides: 
+
+−X ˙Φ = ( W × Θ(X)) Φ = Wflat Θflat (X)Φ = W × Θ(X, φ)We have shown that TT-WSINDy solves the same weak regression problem as WSINDy. In the next section, we show that TT-WSINDy yields significant computation and memory savings when discovering high-dimensional ODEs. 
+
+5. TT-WSINDy outperforms WSINDy in many dimensions. In this section, we will demonstrate that TT-WSINDy can circumvent the curse of dimensionality. We will show that TT-STLS has both a time and memory complexity that is polynomial in J, D , and M ,in contrast to the matrix ordinary least squares solve. We then show that under reasonable assumptions on sparsity of true support in the total search space, we may expect that the size of the problem is significantly reduced by TT-STLS. We also give an alternative algorithm for construction of the weak feature tensor when M is large. 
+
+5.1. TT-STLS time and memory complexity. The efficiency of the TT-STLS algorithm relies on the ability to perform all requisite operations in the TT format, never forming the full, size O(JDM ) tensor. This is reliant on the following fact. 
+
+Lemma 5.1. Let A, B ∈ RI1×···× IN +1 be rank (A1, . . . , A N ) and (B1, . . . , B N ) tensor trains, respectively. Then, the Hadamard product C = A ⊙ B is a rank-(A1B1, . . . , A N BN ) tensor train. Namely, we define C in terms of slices of the cores of A, B as 
+
+C(n)[: , i n, :] = A(n)[: , i n, :] ⊗ B (n)[: , i n, :] , n ∈ [N + 1] , i n ∈ [In]
+
+where ⊗ denotes the Kronecker product. [40] 
+
+> 14
+
+This manuscript is for review purposes only. Using this, we have that TT structure is preserved under masking. 
+
+Corollary 5.2. Every feature tensor iterate Ψℓ is a rank-(M, . . . , M ) tensor train, with cores given by 
+
+Ψ(d) 
+
+> ℓ
+
+=
+
+uwwwv
+
+eθ(d) 
+
+> ℓ
+
+(t1) 0
+
+. . .
+
+0 eθ(d) 
+
+> ℓ
+
+(tM )
+
+}~ ∈ RM ×J×M
+
+for d ∈ [D], where 
+
+eθ(d) 
+
+> ℓ
+
+(tm) ∈ RJ
+
+s.t. eθ(d) 
+
+> ℓ
+
+(tm)[ j] = 
+
+(
+
+fj (xd,m ) j ∈ S(d)
+
+> ℓ
+
+0 otherwise Proof. Let Mℓ = M(Sℓ). Note that Ψℓ := Ψℓ−1 ⊙ M ℓ = Θ(X, φ) ⊙ M ℓ, following from the fact that the masks Mℓ ⊂ · · · ⊂ M 2 ⊂ M 1 are nested. And, the mask tensor can be written as a rank-(1 , . . . , 1) tensor train: 
+
+Mℓ = TT qm(1)  
+
+> ℓ
+
+, . . . , m(D) 
+
+> ℓ
+
+, 1M ′
+
+y
+
+Then, the result follows immediately from Lemma 5.1. Therefore each ( Ψℓ)† may be computed via a TT pseudoinverse. Lemma 2.6 then gives that each pseudoinverse in TT-STLS can be computed in O(JDM 3) time. And the computational effort of obtaining the Hadamard product Θ(X, φ) ⊙ M ℓ amounts to selectively zeroing out elements of Θ(X, φ), which can be no worse than the O(JDM 2) storage size of the weak feature tensor. It remains to discuss the time complexity of computing the coarse support of a coefficient estimate Wℓ. This computation being polynomial in the dimension parameters of W is non-trivial, as the coarse support is taken with respect to the fully-formed tensor representation of 
+
+W. If the support were taken only from the entries of the tensor train, we would not observe the effects of regressing against the LHS vector y, as y ×  Ψℓ−1
+
+† = Wℓ only contracts y into one core of  Ψℓ
+
+†.We will now give an algorithm that computes coarse-supp( Wℓ, λ ) with no worse time or memory complexity than the TT pseudoinversion algorithm. To describe this algorithm, we will describe a TT in terms of slices of its cores, rather than vector fibers of its cores, as we have been doing until now. Let (5.1) W = TT qW(1) , . . . , W(D)y ∈ RJ1×···× JD
+
+where W(d) ∈ RMd−1×Jd×Md . Then, denote the matrix core slices (5.2) W(d)[j] = W(d)[: , j, :] , d ∈ [D], j ∈ [Jd]
+
+> 15
+
+This manuscript is for review purposes only. Now, we may index W by the matrix product. The matrix product below evaluates to a scalar, since W(1) [j1] ∈ R1×M1 and W(D)[jD] ∈ RMD−1×1.(5.3) W[j1, j 2, . . . , j D] = W(1) [j1]W(2) [j2] · · · W(D)[jD]Using this, we will formulate an alternate characterization of the coarse support of W that relies only on matrix products. First, define the left/right accumulation matrices as 
+
+Γ(d) 
+
+> L
+
+∈ R[Qdi=1 Ji]×Md ,  Γ(d)
+
+> L
+
+  j1, . . . , j d, α  =
+
+
+
+W(1) [j1] · · · W(d)[jd]
+
+
+
+[α]
+
+Γ(d) 
+
+> R
+
+∈ RMd−1×[QDi=d Ji],  Γ(d)
+
+> R
+
+  β, j d, . . . , j D
+
+ =
+
+
+
+W(d)[jd] · · · W(D)[jD]
+
+
+
+[β](5.4) and the left/right density matrices as (5.5) D(d) 
+
+> L
+
+= ( Γ(d) 
+
+> L
+
+)T Γ(d) 
+
+> L
+
+, D(d) 
+
+> R
+
+= Γ(d) 
+
+> R
+
+(Γ(d) 
+
+> R
+
+)T
+
+Then, our characterization of the coarse support is as follows. 
+
+Lemma 5.3. Let W ∈ RJ1×···× JD be a rank-(M1, . . . , M D−1) tensor train, λ ∈ R, and 
+
+S = {S(1) , . . . , S (D)} = coarse-supp (W, λ ). Then, we have that, for d ∈ [D], j ∈ [Jd],
+
+(5.6) 
+
+
+
+j ∈ S(d)
+
+⇐⇒ 
+
+
+
+tr (W(d)[j]) T D(d−1)  
+
+> L
+
+W(d)[j]D(d+1) 
+
+> R
+
+ ≥ λ
+
+
+
+Proof. The result follows from manipulating the trace using standard identities 
+
+W[: · · · :, j, : · · · :] 2 
+
+> F
+
+= Γ(d−1)  
+
+> L
+
+W(d)[j]Γ(d+1) 
+
+> R
+> 2
+> F
+
+= tr (Γ(d+1)  
+
+> R
+
+)T (W(d)[j]) T (Γ(d−1)  
+
+> L
+
+)T Γ(d−1)  
+
+> L
+
+W(d)[j]Γ(d+1) 
+
+> R
+
+
+
+= tr (W(d)[j]) T D(d−1)  
+
+> L
+
+W(d)[j]Γ(d+1)  
+
+> R
+
+(Γ(d+1)  
+
+> R
+
+)T 
+
+= tr (W(d)[j]) T D(d−1)  
+
+> L
+
+W(d)[j]D(d+1) 
+
+> R
+
+
+
+So computing the coarse support of W amounts to checking the condition (5.6) for each 
+
+d ∈ [D], j ∈ [Jd]. And the left/right density matrices can be precomputed using the following recursions. 
+
+D(d) 
+
+> L
+
+=
+
+> Jd
+
+X
+
+> jd=1
+
+ W(d)[jd]T D(d−1)  
+
+> L
+
+W(d)[jd], D(0)  
+
+> L
+
+= 1 
+
+D(d) 
+
+> R
+
+=
+
+> Jd
+
+X
+
+> jd=1
+
+W(d)[jd]D(d+1) 
+
+> R
+
+ W(d)[jd]T , D(D+1)  
+
+> R
+
+= 1 (5.7) Algorithm 5.1 details the full routine, and we give the full time/memory complexities of TT-STLS in Proposition 5.4. Crucially, both are polynomial in the shape parameters of the weak feature tensor, thus subverting the curse of dimensionality. 
+
+> 16
+
+This manuscript is for review purposes only. Algorithm 5.1 coarse-supp 
+
+Input: Tensor train W ∈ RJ1×···× JD
+
+Thresholding parameter λ ∈ R
+
+Output: Coarse support S ⊂ [J]D 
+
+> 1:
+
+Set initial values D(0)  
+
+> L
+
+, D(D+1)  
+
+> R
+
+← 1 
+
+> 2:
+
+Accumulate D(D) 
+
+> R
+
+, D(D−1)  
+
+> R
+
+, . . . , D(2)  
+
+> R
+> 3:
+
+for d = 1 , . . . , D do  
+
+> 4:
+
+for jd = 1 , . . . , J d do  
+
+> 5:
+
+Compute A(d) 
+
+> jd
+
+← (W(d)[jd]) T D(d−1)  
+
+> L
+
+W(d)[jd] 
+
+> 6:
+
+if tr A(d) 
+
+> jd
+
+D(d+1) 
+
+> R
+
+ ≥ λ then  
+
+> 7:
+
+Append jd to S(d) 
+
+> 8:
+
+end if  
+
+> 9:
+
+end for  
+
+> 10:
+
+Compute D(d) 
+
+> L
+
+← PJd 
+
+> jd=1
+
+A(d) 
+
+> jd
+> 11:
+
+end for  
+
+> 12:
+
+return S := {S(1) , . . . , S (D)}
+
+Proposition 5.4. The computational complexity of Algorithm 3.1 can be estimated as 
+
+O(( JD )2M 3), and the memory complexity can be estimated as O(JDM 2).Proof. The cost of computing all necessary density matrices for the coarse support is 
+
+O(JDM 3). Given these, we compute O(JD ) traces that each cost O(M 3), for a total of 
+
+O(JDM 3). Therefore the O(JDM 3) time complexity of computing the coarse support is no worse than the time complexity of computing the TT pseudoinverse, and the full cost of one TT-STLS loop is O(JDM 3). The worst case number of iterations is JD , for a total time complexity of O(( JD )2M 3). The memory complexity of coarse-supp is dominated by the cost of storing D(D) 
+
+> R
+
+, . . . , D(2)  
+
+> R
+
+.To accumulate these, we need never store more than a single W(d)[jd] and intermediate O(M 2)matrix. And each D(d) 
+
+> L/R
+
+consumes O(M 2) storage, so the memory cost of all right den-sity matrices is O(DM 2). In computing the traces, we need never store more than a single 
+
+A(d) 
+
+> jd
+
+, W(d)[jd], D(d−1)  
+
+> L
+
+, and an intermediate O(M 2) matrix at a time. Therefore, coarse-supp has a memory complexity of O(DM 2). In the TT-STLS loop, we only need store a single 
+
+Ψℓ,  Ψℓ
+
+†, Wℓ, S ℓ in addition to the cost of coarse-supp, which all have cost not greater than 
+
+O(DJM 2). 
+
+Remark 5.5. The O(JD ) bound on iterations is loose. In practice, the time complexity of TT-STLS is O(JDM 3).
+
+Remark 5.6. Assuming a constant number of iterations, the computational complexity of matrix STLS is O(JDM 2). This implies that for large M , say M ≳ JD, matrix STLS will be preferable in runtime to TT-STLS. 
+
+5.2. Low-rank feature tensor. We can often do much better than the complexities given by Proposition 5.4, which scale well with respect to the search space shape parameters J, D ,
+
+> 17
+
+This manuscript is for review purposes only. but poorly with respect to the number of time snapshots M . Recall that the weak feature tensor is constructed as a rank-( M, . . . , M ) tensor train. However, in certain cases, particularly for large M , the true ranks of the feature tensor are much lower. Consider the following lemma. 
+
+Lemma 5.7. Let X ∈ RI1×···× IN . If, for each mode-n unfolding X(n) of X , we have rank  X(n)
+
+ ≤ Rn
+
+Then there exists a TT decomposition T of X with ranks not higher than (R1, . . . , R N −1). [40] 
+
+Now, let Θ(d) denote the mode-d unfolding of the weak feature tensor. We have 
+
+Θ(d) ∈ RJd×JD−dM ′
+
+, d ∈ [D]Based on the shape of the unfolding, we immediately have rank  Θ(d)
+
+ ≤ min {Jd, M ′JD−d}.Depending on the size of the search space and number of snapshots, this can show that the true ranks of Θ(X, φ) are significantly smaller than the original construction suggests. For example, when J = 3 , D = 10, and M ′ ≈ M = 6000, we see in Table 5.1 that the first 7 ranks are massively reduced, cutting the total storage from ≈ 1.0 · 10 9 to ≈ 7.6 · 10 8.We now give a memory-efficient algorithm that constructs the low-rank tensor train with-out forming the original weak feature tensor in memory. 
+
+Lemma 5.8. Algorithm 5.2 computes a representation of Θ(X, φ), with ranks 
+
+Rd ≤ min {Jd, M ′JD−d}, d ∈ [D]
+
+Proof. We will prove by comparing Algorithm 5.2 with the TT pseudoinverse algorithm, given in full detail in subsection A.2. We first show that the first D − 1 recomputed cores 
+
+eΘ(1) , . . . , eΘ(D−1) are identical in both algorithms. This amounts to showing that at each of the first D − 1 iterations, both algorithms compute an SVD of the same matrix. The first iteration computes an SVD of the unmodified first core Θ(1) . And since C(1) = 11×M , we have 
+
+E(1) = C(1) ⊚ B1 = B1 ∈ RJ×M
+
+where ⊚ is the Khatri-Rao 6 product [25]. By construction, B1 = Θ(1) . Now, note that at the 
+
+dth iteration, the TT pseudoinverse algorithm computes an SVD of the matrix 
+
+L Σ(d−1) (V(d−1) )T × Θ(d)
+
+Suppose for induction that the matrices eΘ(1) , . . . , eΘ(d−1) agree, which gives that C(d) =  
+
+> 6Note that the use of the Khatri-Rao product is dependent on b2being row-major indexing, used by default in NumPy.
+> 18
+
+This manuscript is for review purposes only. Algorithm 5.2 Rank-reduced feature tensor construction 
+
+Input: Data matrix X ∈ RD×M
+
+Family of basis functions f = {fj }j∈[J]
+
+Test function discretization φ
+
+Truncation parameter ϵ > 0
+
+Output: Rank-reduced feature tensor Θ(X, φ) ∈ RJ×···× J×M ′
+
+, with ranks ( R1, . . . , R D) 
+
+> 1:
+
+{Store basis feature data } 
+
+> 2:
+
+for j ∈ [J], d ∈ [D], m ∈ [M ] do  
+
+> 3:
+
+Evaluate Bd[j, m ] ← fj (xd,m ) 
+
+> 4:
+
+end for  
+
+> 5:
+
+{Compute first D-1 cores } 
+
+> 6:
+
+Set C(1) ← 11×M 
+
+> 7:
+
+for d = 1 , . . . , D − 1 do  
+
+> 8:
+
+Compute E(d) ← C(d) ⊚ Bd 
+
+> 9:
+
+Compute U(d)Σ(d)(V(d))T ← SVD( E(d)) 
+
+> 10:
+
+Truncate U(d), Σ(d), V (d), using ϵ 
+
+> 11:
+
+Set eΘ(d) := L−1(U(d)) ∈ RRd−1×J×Rd 
+
+> 12:
+
+Iterate C(d+1) ← Σ(d)(V(d))T ∈ RRd×M 
+
+> 13:
+
+end for  
+
+> 14:
+
+{Compute final two cores } 
+
+> 15:
+
+Compute E(D) ← C(D) ⊚ BD 
+
+> 16:
+
+Compute U(D)Σ(D)(V(D))T ← truncated-SVD( E(D)Φ, ϵ ) 
+
+> 17:
+
+Set eΘ(D) := L−1(U(D)) ∈ RRD−1×J×RD 
+
+> 18:
+
+Set eΦ := R−1(Σ(D)(V(D))T ) ∈ RRD ×M ′×1 
+
+> 19:
+
+return TT q eΘ(1) , . . . , eΘ(D), eΦy
+
+Σ(d−1) (V(d−1) )T . Then, we have 
+
+L Σ(d−1) (V(d−1) )T × Θ(d)[rd−1, j, m ] = 
+
+> M
+
+X
+
+> em=1
+
+ Σ(d−1) (V(d−1) )T [rd−1, em]Θ(d)[ em, j, m ]=  Σ(d−1) (V(d−1) )T [rd−1, m ]fj (xd,m )= C(d)[rd−1, m ]Bd[j, m ]= ( C(d) ⊚ Bd)[ rd−1, j, m ]Therefore the first D − 1 cores computed by both algorithms are the same. For the final two cores eΘ, eΦ, we deviate from the original pseudoinverse procedure by applying the weak-form matrix Φ to E(D), and forming both orthonormalized cores from a single SVD. Using Lemma 4.4 and our inductively shown formula for E(D)Φ, we have that this is equivalent to contracting the final two cores, and taking an SVD. 
+
+L−1(E(D)Φ) = L−1 L(Σ(D−1) (V(D−1) )T × Θ(D))Φ
+
+=  Σ(D−1) (V(D−1) )T × Θ(D) × Φ
+
+> 19
+
+This manuscript is for review purposes only. So by computing an SVD of E(D)Φ and separating its left- and right-orthonormal components, we do indeed compute an orthonormal representation of the weak feature tensor with total storage cost (5.8) O JR 1 + J
+
+> D−1
+
+X
+
+> d=1
+
+RdRd+1 + RDM ′
+
+!
+
+over the original O(JDM 2) cost. The final step above can save significant time and memory: since RD = O(min {JD, M ′}), the naive approach risks taking an SVD of two size O(JDM ) matrices, which automatically puts the time complexity of the pseudoinverse computation above the cost of a matrix pseu-doinverse (which requires only one O(JDM ) SVD). Additionally, the cross-correlation 
+
+E(D) ⋆ φ = E(D)Φ ∈ RRD−1J×M ′
+
+acts as a low-pass filter and can significantly reduce the true rank of E(D) prior to comput-ing the SVD. To exploit this, we compute truncated-SVD( E(D)Φ) using the adaptive-rank randomized range finder proposed by Halko, Martinsson, and Tropp [14]. In the example in Table 5.1, this further reduces the total storage to ≈ 1.1 · 10 8, a full order of magnitude from the original cost.                                                   
+
+> Table 5.1
+> The ranks of the weak feature tensor with shape parameters J= 3 , D = 10 , M ′≈M= 6000 and data from the Lorenz 96 model, via both the original construction and the upper bound obtained using Lemma 5.7 .
+> d12345678910 original ranks 6000 6000 6000 6000 6000 6000 6000 6000 6000 6000 min {Jd, M ′JD−d}3927 81 243 729 2187 6561 18000 6000 Algorithm 5.2 3927 81 243 729 2187 3276 3544 3068
+
+Algorithm 5.2 also can yield substantial walltime improvements. Figure 5.1 shows the scaling of the original and low-rank constructions in M and D. We observe the tradeoff in opting for the low-rank construction: we exchange some time scaling in D for improved time scaling in M and smaller storage cost. We emphasize that the choice of method is dependent on the shape parameters J, D, M , and that neither is optimal in all settings. 
+
+5.3. TT-STLS sparsification. After execution of TT-MSTLS, TT-WSINDy calls the ma-trix MSTLS algorithm. Therefore it is crucial to the efficiency of TT-WSINDy that the size of the problem has been substantially reduced by the time it is handed off to the flat solver. There exist pathological cases for which this is not true. For example, if every atomic term 
+
+fj (xd) appears in the true ODE, the MSTLS time complexity reverts to O(JDM ) and we lose the benefits of TT-WSINDy. To guard against this, we assume that the true terms of (2.3) are sparse in the space of basis functions. 
+
+> 20
+
+This manuscript is for review purposes only. Figure 5.1. Walltimes of TT-WSINDy using the original construction and the low-rank construction, applied to the Lorenz 96 model over basis features f = {1, x }. The left plot fixes D = 8 and times over varying          
+
+> M, while the right plot fixes M= 5000 and plots over varying D. At D= 8 , M = 20000 ,40000 , the original weak feature tensor was too large to be stored in memory, and the walltime is extrapolated from previous data points.
+
+Remark 5.9. Say the dth equation of a D-dimensional system of ODEs has true basis terms 
+
+f ⋆d ⊂ f , which includes pd ≤ J basis functions applied to qd ≤ D dimensions. We assume that, for all d ∈ [D](5.9) |g⋆d| = ( pd)qd ≪ JD = |g|
+
+where g⋆d ⊂ g is the library induced by the basis terms f ⋆d .
+
+In other words, the minimal coarse support is substantially smaller than the initial, full support. This assumption is mild due to the exponential size of the total search space of functions. However, if the above remark does not hold, we do not expect TT-WSINDy to be preferred to matrix WSINDy, as the TT-MSTLS stage becomes superfluous. We have not yet demonstrated explicitly that the masking procedure in TT-STLS reduces the size of the linear problem. We will do so now. First, we show the following lemma. 
+
+Lemma 5.10. Let T ∈ RI1×···× ID ×K be a tensor train with ranks (R1, . . . , R D). If the slice T (d)[: , i ∗, :] = 0, then the same slice of the corresponding core of the pseudoinverse 
+
+T † ∈ RK×I1×···× ID is zero. Proof. Let eT (D), eT (1) , . . . , eT (D−1) denote the cores of the pseudoinverse T †, as in (2.14). We say that each T (d), eT (d) correspond. We may derive an explicit formula for eT (d):
+
+eT (d) = ( R(d−1) × T (d)) × (R(d))† ∈ RSd−1×Id×Sd
+
+where R(d−1) := Σ(d−1) (V(d−1) )T ∈ RSd−1×Rd−1 is the upper-triangular component of the QR decomposition of the (left-unfolded) previous core, and R(d) ∈ RSd×Rd is the same, but of 
+
+> 21
+
+This manuscript is for review purposes only. R(d−1) × T (d). Suppose that T (d)[: , i ∗, :] = 0. We may write the slice T (d)[: , i ∗, :] as tensor contraction with a Euclidean basis vector ei∗ in the mode dimension. Letting ×2 denote the 2-mode tensor-vector product [25], 
+
+T (d)[: , i ∗, :] = T (d) ×2 ei∗ = 0 ∈ RRd−1×Rd
+
+Now we check whether this holds for eT (d). Expanding all contractions, we have ( eT (d) ×2 ei∗ )[ sd−1, s d] = 
+
+> Id
+
+X
+
+> i=1
+
+
+
+> Rd−1
+
+X
+
+> rd−1=1
+> Rd
+
+X
+
+> rd=1
+
+R(d−1) [sd−1, r d−1]T (d)[rd−1, i, r d]( R(d))†[rd, s d]
+
+ ei∗ [i]=
+
+> Rd−1
+
+X
+
+> rd−1=1
+> Rd
+
+X
+
+> rd=1
+
+R(d−1) [sd−1, r d−1]T (d)[rd−1, i ∗, r d]( R(d))†[rd, s d]Which equals zero for all sd−1, s d, since T (d)[rd−1, i ∗, r d] = 0 for all rd−1, r d.
+
+Corollary 5.11. Let Θ(X, φ) be the weak feature tensor, and let M = M(S) ∈ RJ×···× J×M ′
+
+be a mask obtained from some coarse support S ⊂ [J]D. Let Θ|S := Θ(X, φ) ⊙ M , and 
+
+W := y × (Θ|S )†. It then follows that 
+
+ j / ∈ S(d) ⇒
+
+W
+
+ d−1
+
+z }| { 
+
+: · · · :, j, 
+
+> D−d
+
+z }| { 
+
+: · · · :
+
+
+
+= 0
+
+
+
+Proof. By construction of the mask, j / ∈ S(d) implies ( Θ|S )(d)[: , j, :] = 0. Then, observing that 
+
+W = y × (Θ|S )† = 
+
+> M′
+
+X
+
+> m′=1
+
+ym′ (Θ|S )†[m′, : · · · :] we have that the result follows immediately from Lemma 5.10, as ( Θ|S )†[m′, : · · · :, j, : · · · :] = 0
+
+for all m′ ∈ [M ′]. It follows that, given support S ⊂ [J]D with Jd := |S(d)| basis features in each dimension, we may reduce the feature tensor to some eΘ ∈ RJ1×···× JD ×M ′
+
+that implicitly enforces W
+
+has at most the same size support as the previous iteration. We conclude with the following corollary, which follows immediately from Corollary 5.11. 
+
+Corollary 5.12. The modes of Ψℓ are monotonically decreasing in ℓ.
+
+In the next section, we will observe empirically that TT-MSTLS outputs a much smaller linear problem than it is given. We reserve a more detailed investigation of the reduction in size of the problem for future work. 
+
+6. Examples and results. 
+
+> 22
+
+This manuscript is for review purposes only. 6.1. Weak vs. Strong Form TT Regression. Despite being a lightweight modification to the strong feature tensor, the weak core grants significant robustness to noise in the ensuing regression computation. In this subsection, we compare weak- and strong-form pseudoinverse computations. We omit sparsification to isolate the effect of the weak form. For four systems of ODEs, we are given data X ∈ RD×M , where X[d, m ] = X⋆[d, m ]+ ϵd,m ,
+
+X⋆[d, m ] = xd(tm) is the true data and the noise {ϵd,m }d∈[D],m ∈[M ] is drawn i.i.d. from 
+
+N (0 , σ 2). The variance σ2 is induced by the noise ratio σN R as (6.1) σ2 = σ2
+
+> N R
+
+∥X⋆∥2
+
+> F
+
+M D 
+
+We then perform TT regression to obtain a coefficient estimate cW, and plot the relative coefficient error with respect to the true coefficient tensor W⋆
+
+(6.2) err ( cW) = ∥W ⋆ − cW∥ F
+
+∥W ⋆∥F
+
+against σN R .A key difference from [11] is that we do not assume the ability to directly sample derivative data – to compute the strong form coefficient estimate, we calculate ˙X using finite differences. In the weak form, we take φ, ˙φ to be obtained from the piecewise polynomial test function φ,given by (6.3) φ(t) = 
+
+(
+
+C(r − t)p(r + t)p t ∈ [−r, r ]0 otherwise where p is the degree of the polynomial, r is the radius of support, and C is a normalization constant enforcing ∥φ∥L2 = 1. For details on choosing p and r, see [48]. For the second-order FPUT problem, we compute ¨X using second-order finite differences to obtain the strong form, and convolve X against the second derivative ¨ φ to obtain the weak form. For the two chaotic systems, we sampled one trajectory, with 10 4 snapshots for Lorenz 96 and 2 · 10 5 for Chua’s circuit. For the non-ergodic systems, we sampled multiple trajectories: 6 with 10 4 snapshots each for FPUT, and 5 with 10 4 snapshots each for the Kuramoto model. For all experiments, we fixed ∆ t = 0 .1. For robustness, we regressed against 40 different realizations at each noise level. The ODEs used are the Fermi-Pasta-Ulam-Tsingou (FPUT) problem , a quasi-periodic system of oscillators; the Lorenz 96 model , a high-dimensional chaotic system; the Kuramoto model , a high-dimensional system of coupled oscillators; and Chua’s circuit , a chaotic system with a nonlinear cross term. The exact dynamics and parameters used are given in Table 6.1, and the choice of basis functions and induced library size are given in Table 6.2. Note that the identity sin( x±y) = sin( x) cos( y)±cos( x) sin( y) allows the Kuramoto model to be discoverable via the given three-term basis. Also note that for Chua’s circuit to be discoverable without explicitly adding f (xd) = xd|xd| to the basis function library f , it is necessary to use a 
+
+function-major feature tensor, which we discuss in subsection A.3. Figure 6.1 demonstrates that the weak form provides increased accuracy at both low and high noise levels. In the Lorenz 96, Kuramoto model, and Chua’s circuit examples, there is a 
+
+> 23
+
+This manuscript is for review purposes only. Table 6.1 
+
+The dynamics, parameters, and constraints for each of the four ODEs used. 
+
+Name Dynamics Parameters/constraints 
+
+D = 4 FPUT ¨xd = ( xd+1 − 2xd + xd−1) + β(xd+1 − xd)3 − (xd − xd−1)3 β = 0 .7
+
+x0 = xD+1 = 0 
+
+D = 5 , F = 8 Lorenz 96 ˙xd = ( xd+1 − xd−2)xd−1 − xd + F x−1 = xD−1
+
+x0 = xD , xD+1 = x1
+
+D = 4 Kuramoto model ˙xd = ωd + KD
+
+PDd′=1 sin( xd′ − xd) + h sin( xd) K = 2 , h = 12 ,ωd = −5 + d 10 
+
+> D
+
+˙x1 = α(x2 − (1 + δ1)x1 − δ2x1|x1|) α = 10 ,
+
+Chua’s circuit ˙x2 = x1 − x2 + x3 β = 14 .87 ,
+
+˙x3 = −βx2 δ = ( − 87 , 463 )
+
+Table 6.2 
+
+The set of basis functions used for each ODE, the (per-equation) search space size induced by that set, and average number of true terms in each dimension. 
+
+Name Basis functions Induced search space size Mean library size FPUT {1, x, x 2, x 3} 4D 10 − 8/D 
+
+Lorenz 96 {1, x } 2D 4Kuramoto model {1, sin( x), cos( x)} 3D 2D + 1 Chua’s circuit {1, x, |x|} 27 2.3
+
+noise level for which the strong form estimates the dynamics comparably to the weak form. However, we see that the weak form provides robustness over the [0 , 1] continuum of noise levels. Due to the large datasets, we used the low-rank feature tensor construction given in Algorithm 5.2. Even for the data-heavy Chua’s circuit computation, regression terminated in an average of 1.33 seconds. 
+
+6.2. TT-WSINDy Walltime. To illustrate how TT-WSINDy scales in increasing D, we examine the Lorenz 96 model. To correctly identify the dynamics given in Table 6.1, we must include cross terms xixj between dimensions. If we want to check only the true basis terms 
+
+f = {1, x }, then the induced search space is |g| = 2 D per equation. In contrast, finding the 
+
+24 
+
+This manuscript is for review purposes only. Figure 6.1. Weak form vs. strong form regression accuracy. Relative coefficient error is plotted against noise ratio for each of the four ODEs given in Table 6.1 . The translucent bands give the upper and lower quartiles of error over 40 realizations. For a more detailed description of the variance across trials, see Figure B.1 .
+
+true coarse support yields the following feature vectors for the dth dimension (6.4) θ(1) , . . . , θ(D) =
+
+> d−3
+
+z }| {
+
+[1] , . . . , [1] ,
+
+ 1
+
+xd−2
+
+ ,
+
+ 1
+
+xd−1
+
+ ,
+
+ 1
+
+xd
+
+ ,
+
+ 1
+
+xd+1 
+
+ ,
+
+> D−d−1
+
+z }| {
+
+[1] , . . . , [1] which induces a size 2 4 = 16 search space per equation. Given this support, the computational cost of matrix WSINDy is trivial. For D = 5 , . . . , 12, we fix M = 20000, sufficiently many snapshots to identify the true support for all values of D. We corrupt with a modest noise ratio of σN R = 10 −3, and use the same test function as given in (6.3). Given that M ≫ JD, we again use the low-rank feature tensor construction. In Figure 6.2, we observe that TT-WSINDy does indeed limit the burden to the flat solver 
+
+> 25
+
+This manuscript is for review purposes only. by handing off a significantly reduced support: for D ≤ 11, the coarse pass identified the true coarse support described by equation (6.4), after which the flat solve identified the true dynamics. For D = 12, a support containing around 2000 spurious terms was identified, but the ensuing flat solve recovered the true dynamics. In all experiments, TT-WSINDy and flat WSINDy identified the true support. Both methods discovered identical coefficients to one another, with relative coefficient errors on the order of 10 −4 at all values of D.     
+
+> Figure 6.2. Visualization of the support reduction from the coarse to fine pass on Lorenz 96 for D=5, . . . , 12 . The total support is the sum of the support of each equation in the system.
+> Figure 6.3. Walltime of flat WSINDy, and low-rank TT-WSINDy, averaged over 5 trials and plotted against the dimension of the Lorenz 96 system. For visibility, we plot the low-dimensional and high-dimensional experiments separately.
+
+We observe the empirical computational gains in Figure 6.3. For D = 6 , . . . , 12, TT-WSINDy outperformed flat WSINDy by a speedup factor of 2 to 7. D = 5 was the changepoint at which the flat solver was faster; a coarse TT-MSTLS screening of the size 2 5 search space did not yield computational benefits. 
+
+> 26
+
+This manuscript is for review purposes only. 7. Conclusion. We have extended the WSINDy algorithm using techniques from the MANDy method, achieving significant time and memory savings over a rich search space of candidate functions. We have shown that the strong-form problem can be translated into the weak form at little cost, and that the problem can be solved with existing WSINDy sparsi-fication techniques without losing the time and memory complexity benefits of the tensor-train format. In particular, we showed that the techniques presented subvert the curse of dimen-sionality, having time and memory complexities that are polynomial in the dimension of the ODE rather than exponential. We have also made the algorithm tractable for datasets that are dense in the temporal axis, using the low-rank weak feature tensor construction. We will close with future directions for this work. The first is to investigate more closely the statistical properties of the TT-MSTLS coarse screening stage. We would like the algorithm to avoid false negatives, so that the fine WSINDy pass reliably has the full library of true terms. Secondly, we would like to examine the settings in which one feature tensor construction is applicable over the other (i.e., the original construction vs. that given in Algorithm 5.2). While the original construction demonstrably overcomes the curse of dimensionality, it requires that the number of time snapshots is at most on same order of magnitude as the search space size 
+
+JD. The low-rank construction makes the MANDy regression applicable to high-data settings, but its time and memory complexities become dependent on the correlation structure of the data. A deeper understanding of this tradeoff can increase robustness of the tensor-based approach. We also aim to extend this work to PDEs, in which dimensionality comes from the scale of the incoming data, in addition to the potentially large search space. Recent work has explored a similar candidate library in the setting of strong-form PDEs, taking the dictionary to be products of partial derivatives of basis functions [16]. Additionally, a first pass at adapting MANDy to PDEs has been presented in [26]. We would like to take a more detailed look at the time and memory complexities of this approach, and see whether it can be improved while adapting it to our own algorithmic techniques. In particular, we believe that the low-rank feature tensor approach can be effective in lessening the computational load that a large spatiotemporal dataset entails. 
+
+Appendix A. MANDy. TT-WSINDy is built on top of the Multidimensional Approxima-tion of Nonlinear Dynamics (MANDy) method. In this paper, we also refer to this as the 
+
+strong form of TT-WSINDy. We describe it here. 
+
+A.1. MANDy problem construction. Given feature vectors and feature cores as in sub-section 3.1, we define the strong feature tensor as (A.1) Θ(X) := TT qΘ(1) , . . . , Θ(D), Iy ∈ RJ×···× J×M
+
+where I is the M × M identity matrix. Including I as its own core is necessary for the MANDy construction to be equivalent to the matrix SINDy problem. The MANDy method then calculates the coefficient tensor as (A.2) cW = ˙X × Θ(X)†
+
+where Θ(X)† is computed via a TT pseudoinverse. 
+
+> 27
+
+This manuscript is for review purposes only. A.2. TT Pseudoinverse algorithm. We give an overview of the procedure for computing the TT pseudoinverse (2.14), proposed in [24]. For more complete detail, see the original paper. The algorithm requires that the final TT core is right-orthonormal , and the others are 
+
+left-orthonormal . We say a TT core T (n) is left-orthonormal if 
+
+L T (n)T L(T (n)) = I ∈ RRn×Rn
+
+and right-orthonormal if 
+
+R(T (n))R T (n)T = I ∈ RRn−1×Rn−1
+
+Algorithms to compute right- and left-orthonormal counterparts of a general TT core are given in [24]. In both, the computational effort is dominated by a singular value decomposition of the matricization of the core. Given these, the TT pseudoinverse algorithm is detailed in Algorithm A.1 7. Note that this algorithm “splits” T at the index N . This choice is specific to the learning problem of this paper; any index in [ N + 1] can be chosen. The more general version of this algorithm can be found in [24]. 
+
+Algorithm A.1 Pseudoinversion of tensor trains 
+
+Input: Tensor cores T (1) ∈ R1×I1×R1 , T (n) ∈ RRn−1×In×Rn for n = 2 , . . . , N , T (N +1) ∈
+
+RRN ×K×1
+
+Output: Pseudoinverse T † ∈ RK×I1×···× IN 
+
+> 1:
+
+for n = 1 , . . . , N − 1 do  
+
+> 2:
+
+Compute U(n)Σ(n)(V(n))T ← SVD( L(T (n)))  
+
+> 3:
+
+Define eT (n) := L−1(U(n)) 
+
+> 4:
+
+Recompute T (n+1) ← Σ(n)(V (n))T × T (n+1)  
+
+> 5:
+
+end for  
+
+> 6:
+
+Compute U(N +1) Σ(N +1) (V(N +1) )T ← SVD( T (N +1) ) 
+
+> 7:
+
+Recompute T (N ) ← L(T (N ))U(N +1) Σ(N +1)  
+
+> 8:
+
+Compute U(N )Σ(V(N ))T ← SVD( T (N )) 
+
+> 9:
+
+Define eT (N ) := L−1(U(N )) 
+
+> 10:
+
+Compute eT (N +1) ← (V(N ))T × R−1(( V(N +1) )T ) 
+
+> 11:
+
+return T † ← TT qΣ−1 × eT (N +1) , eT (1) , . . . , eT (N )y
+
+The complexity of the algorithm is dominated by the cost of the constituent matrix SVDs. This gives the time complexity O(N IR 3 + KR 2), presented in Lemma 2.6. 
+
+A.3. Function-major feature tensor. There is an alternate way to construct the feature tensor. In subsection 3.1, we define the feature tensor over feature vectors that contain      
+
+> 7In this algorithm, all left- and right-unfoldings are taken of order-3 tensors, so we define the inverse unfoldings L−1,R−1in the natural way, inverting the bijection b2to map a matrix to an order-3 tensor.
+> 28
+
+This manuscript is for review purposes only. evaluations of each fj on a given equation. We may instead write (A.3) θ(j)(tm) = 
+
+
+
+fj (x1,m )...
+
+fj (xD,m )
+
+ ∈ RD
+
+We refer to this as a function-major feature vector, and (3.2) as dimension-major . The function-major feature tensor is then 
+
+Θ(X, φ) ∈ R
+
+> J
+
+z }| {
+
+D × · · · × D ×M ′
+
+While these representations correspond to different sizes of flat problems ( O(JDM ) versus 
+
+O(DJ M )), both feature tensors have memory consumption in O(JDM 2) and take O(JDM 3)time to compute the pseudoinverse. 
+
+Appendix B. Optimizations for TT-WSINDy. For completeness, we describe two ad-ditional optimizations in our TT-WSINDy implementation that were used to generate the walltime results in subsection 6.2. First, we cache superfluous TT pseudoinverse solves across iterations. The pseudoinverse 
+
+Θ† has no dependence on the LHS data. Moreover, in each dimension d, we need only store the size O(JD ) set (B.1) tr (W(d)[j]) T D(d−1)  
+
+> L
+
+W(d)[j]D(d+1) 
+
+> R
+
+, d ∈ [D], j ∈ [Jd]for each support, rather than the entire pseudoinverse. So for a given support S, upon finding the associated set of traces, we can cache the low-memory set and reuse it when we need to threshold a different parameter λ on S. This avoids unnecessary repeated calculations. Second, we implemented a boolean one pass parameter that forces only a single coarse pass of TT-STLS. This is intended for “medium-size” search spaces – those that are large enough that TT-WSINDy is computationally preferable, but small enough that a single it-eration of coarsening is typically enough to hand off the problem to matrix MSTLS. For example, if we have J = 5 , D = 5, the total search space for a single equation is 5 5 = 3125. If, say, we find only 2 basis terms to be supported, the search space drops to 2 5 = 32, at which point naively calling the TT pseudoinverse algorithm is unnecessary and can negate the computational savings of the algorithm. For the Lorenz 96 system, the one-pass approach was sufficient. In more generality, this would take the form of a heuristic that reads the current shape parameters of the feature tensor and decides whether to perform TT sparsification or hand off the problem to the flat solver. We leave an investigation of such a heuristic to future work. 
+
+Acknowledgments. This work was supported in part by the following grants: NIGMS R35GM149335, DOE DE-SC0023346, NSF DEB-2109774, and NIFA 2019-67014-29919. All authors stand by the results of this paper. Code used in this manuscript is publicly available at https://github.com/whouser2001/TT-WSINDy.git. 
+
+> 29
+
+This manuscript is for review purposes only. Figure B.1. Box plot corresponding to the results in Figure 6.1 .
+
+REFERENCES 
+
+[1] H. Akaike , A new look at the statistical model identification , IEEE Transactions on Automatic Control, 19 (1974), pp. 716–723, https://doi.org/10.1109/TAC.1974.1100705, http://ieeexplore.ieee.org/lpdocs/ epic03/wrapper.htm?arnumber=1100705 (accessed 2014-11-12). [2] G. Ballard and T. G. Kolda , Tensor Decompositions for Data Science , Cambridge University Press, 2025. [3] D. M. Bortz, D. A. Messenger, and V. Dukic , Direct Estimation of Parameters in ODE Models Using WENDy: Weak-form Estimation of Nonlinear Dynamics , Bulletin of Mathematical Biology, 85 (2023), https://doi.org/10.1007/S11538-023-01208-6. [4] D. M. Bortz, D. A. Messenger, and A. Tran , Chapter 2 - Weak form-based data-driven mod-eling: Computationally efficient and noise robust equation learning and parameter inference , in Numerical Analysis Meets Machine Learning, S. Mishra and A. Townsend, eds., vol. 25 of Hand-book of Numerical Analysis, Elsevier, 2024, pp. 53–82, https://doi.org/10.1016/bs.hna.2024.05.002, https://www.sciencedirect.com/science/article/pii/S1570865924000024. [5] S. L. Brunton, J. L. Proctor, and J. N. Kutz , Discovering governing equations from data by sparse identification of nonlinear dynamical systems , Proceedings of the National Academy of Sciences, 113 
+
+30 
+
+This manuscript is for review purposes only. (2016), pp. 3932–3937, https://doi.org/10.1073/pnas.1517384113, http://www.pnas.org/lookup/doi/ 10.1073/pnas.1517384113 (accessed 2019-12-31). [6] S. L. Brunton, J. L. Proctor, and J. N. Kutz , Sparse Identification of Nonlinear Dynamics with Control (SINDYc) , IFAC-PapersOnLine, 49 (2016), pp. 710–715, https://doi.org/10.1016/j.ifacol. 2016.10.249, https://linkinghub.elsevier.com/retrieve/pii/S2405896316318298 (accessed 2021-04-16). [7] J. D. Carroll and J.-J. Chang , Analysis of Individual Differences in Multidimensional Scaling Via an N-way Generalization of “Eckart-Young” Decomposition , Psychometrika, 35 (1970), pp. 283–319, https://doi.org/10.1007/BF02310791, https://www.cambridge.org/core/ product/identifier/S003331230003951X/type/journal article (accessed 2026-08-10). [8] A. Chawla, D. M. Bortz, and V. Dukic , Bias and Coverage Properties of the WENDy-IRLS Al-gorithm , in Handbook of Visual, Experimental and Computational Mathematics: Bridges through Data, B. Sriraman, ed., Springer Nature Switzerland, Cham, Oct. 2025, pp. 1–108, https://doi.org/ 10.1007/978-3-032-16368-4 86. [9] M. Fannes, B. Nachtergaele, and R. F. Werner , Finitely correlated states on quantum spin chains , Communications in Mathematical Physics, 144 (1992), pp. 443–490, https://doi.org/10.1007/ BF02099178, https://doi.org/10.1007/BF02099178. [10] U. Fasel, J. N. Kutz, B. W. Brunton, and S. L. Brunton , Ensemble-SINDy: Robust sparse model discovery in the low-data, high-noise limit, with active learning and control , Proceedings of the Royal Society A: Mathematical, Physical and Engineering Sciences, 478 (2022), p. 20210904, https:// doi.org/10.1098/rspa.2021.0904, https://royalsocietypublishing.org/doi/10.1098/rspa.2021.0904 (ac-cessed 2022-04-20). [11] P. Gelß, S. Klus, J. Eisert, and C. Sch¨ utte , Multidimensional Approximation of Nonlinear Dynam-ical Systems , Journal of Computational and Nonlinear Dynamics, 14 (2019), p. 061006, https://doi. org/10.1115/1.4043148, https://asmedigitalcollection.asme.org/computationalnonlinear/article/doi/ 10.1115/1.4043148/726935/Multidimensional-Approximation-of-Nonlinear (accessed 2026-02-08). [12] D. R. Gurevich, M. R. Golden, P. A. K. Reinbold, and R. O. Grigoriev , Learning fluid physics from highly turbulent data using sparse physics-informed discovery of empirical relations (SPIDER) , Journal of Fluid Mechanics, 996 (2024), p. A25, https://doi.org/10.1017/jfm.2024.813. arXiv:2105.00048 [nlin, physics:physics]. [13] W. Hackbusch , Numerical tensor calculus , Acta Numerica, 23 (2014), pp. 651–742, https://doi.org/10. 1017/S0962492914000087, https://www.cambridge.org/core/product/identifier/S0962492914000087/ type/journal article (accessed 2025-11-19). [14] N. Halko, P. G. Martinsson, and J. A. Tropp , Finding Structure with Randomness: Probabilis-tic Algorithms for Constructing Approximate Matrix Decompositions , SIAM Review, 53 (2011), pp. 217–288, https://doi.org/10.1137/090771806, http://epubs.siam.org/doi/abs/10.1137/090771806 (accessed 2014-11-12). [15] R. A. Harshman , Foundations of the PARAFAC procedure: Models and conditions for an ”explanatory” multi-modal factor analysis , UCLA Working Papers in Phonetics, (1970). [16] R. Y. He and S. H. Kang , PDE Identification Using Noise Adaptive Differentiation in Strong Form (S-IDENT) , June 2026, https://doi.org/10.48550/arXiv.2606.31776, http://arxiv.org/abs/2606.31776 (accessed 2026-07-04). arXiv:2606.31776 [math.NA]. [17] X. He, A. Tran, D. M. Bortz, and Y. Choi , Physics-informed active learning with simultaneous weak-form latent space dynamics identification , International Journal for Numerical Methods in En-gineering, 126 (2025), p. e7634, https://doi.org/10.1002/nme.7634, http://arxiv.org/abs/2407.00337 (accessed 2024-07-04). arXiv:2407.00337 [cs, math]. [18] N. Heitzman-Breen, V. Dukic, and D. M. Bortz , A practical identifiability criterion leveraging weak-form parameter estimation , Bulletin of Mathematical Biology, 88 (2026), p. 70. [19] F. L. Hitchcock , The Expression of a Tensor or a Polyadic as a Sum of Products , Journal of Mathematics and Physics, 6 (1927), pp. 164–189, https://doi.org/10.1002/sapm192761164, https: //onlinelibrary.wiley.com/doi/10.1002/sapm192761164 (accessed 2026-07-21). [20] M. Hoffmann, C. Fr¨ ohner, and F. No´ e, Reactive SINDy: Discovering governing reactions from concentration data , The Journal of Chemical Physics, 150 (2019), p. 025101, https://doi.org/10. 1063/1.5066099, http://aip.scitation.org/doi/10.1063/1.5066099 (accessed 2020-07-13). [21] J. H˚ astad , Tensor rank is NP-complete , Journal of Algorithms, 11 (1990), pp. 644–654, 
+
+31 
+
+This manuscript is for review purposes only. https://doi.org/10.1016/0196-6774(90)90014-6, https://www.sciencedirect.com/science/article/pii/ 0196677490900146. [22] K. Kaheman, S. L. Brunton, and J. N. Kutz , Automatic differentiation to simultaneously identify nonlinear dynamics and extract noise probability distributions from data , Machine Learning: Science and Technology, 3 (2022), p. 015031, https://doi.org/10.1088/2632-2153/ac567a, https://iopscience. iop.org/article/10.1088/2632-2153/ac567a (accessed 2022-05-02). [23] K. Kaheman, J. N. Kutz, and S. L. Brunton , SINDy-PI: a robust algorithm for parallel implicit sparse identification of nonlinear dynamics , Proceedings of the Royal Society A: Mathematical, Physical and Engineering Sciences, 476 (2020), p. 20200279, https://doi.org/10.1098/rspa.2020.0279, https: //royalsocietypublishing.org/doi/10.1098/rspa.2020.0279 (accessed 2021-05-18). [24] S. Klus, P. Gelß, S. Peitz, and C. Sch¨ utte , Tensor-based dynamic mode decomposition , Nonlinearity, 31 (2018), p. 3359, https://doi.org/10.1088/1361-6544/aabc8f, https://doi.org/10.1088/1361-6544/ aabc8f. [25] T. G. Kolda and B. W. Bader , Tensor Decompositions and Applications , SIAM Review, 51 (2009), pp. 455–500, https://doi.org/10.1137/07070111X, https://epubs.siam.org/doi/10.1137/07070111X (accessed 2025-11-18). [26] W. Lin, X. Lu, and L. Zhang , Tensor-Based Data-Driven Identification of Par-tial Differential Equations , Journal of Computational and Nonlinear Dynamics, 19 (2024), p. 081005, https://doi.org/10.1115/1.4065691, https://doi.org/10.1115/1. 4065691. eprint: https://asmedigitalcollection.asme.org/computationalnonlinear/article-pdf/19/8/081005/7350096/cnd 019 08 081005.pdf. [27] J.-C. Loiseau and S. L. Brunton , Constrained sparse Galerkin regression , Journal of Fluid Mechan-ics, 838 (2018), pp. 42–67, https://doi.org/10.1017/jfm.2017.823, https://www.cambridge.org/core/ product/identifier/S0022112017008230/type/journal article (accessed 2021-11-10). [28] R. Lyons, V. Dukic, and D. M. Bortz , Learning structured population models from data with WSINDy ,PLOS Computational Biology, 21 (2025), p. e1013742, https://doi.org/10.1371/journal.pcbi.1013742, https://dx.plos.org/10.1371/journal.pcbi.1013742 (accessed 2026-03-30). [29] C. L´ opez, M. Partridge, S. D. Pascuale, J. Lore, A. Christlieb, S. Becker, and D. M. Bortz , WSINDy for Model Predictive Control with Applications to Fusion, Drones, and Chaos ,arXiv:2604.23269, (2026), https://doi.org/10.48550/arXiv.2604.23269, http://arxiv.org/abs/2604. 23269 (accessed 2026-04-28). arXiv:2604.23269 [math]. [30] N. M. Mangan, S. L. Brunton, J. L. Proctor, and J. N. Kutz , Inferring Biological Networks by Sparse Identification of Nonlinear Dynamics , IEEE Transactions on Molecular, Biological and Multi-Scale Communications, 2 (2016), pp. 52–63, https://doi.org/10.1109/TMBMC.2016.2633265, http://ieeexplore.ieee.org/document/7809160/ (accessed 2019-10-27). [31] D. Messenger, B. Southworth, H. Hammer, and L. Chacon , Learning interpretable closures for thermal radiation transport in optically-thin media using WSINDy , Oct. 2025, https://doi.org/10. 48550/arXiv.2510.11840, http://arxiv.org/abs/2510.11840 (accessed 2025-10-16). arXiv:2510.11840 [math]. [32] D. A. Messenger and D. M. Bortz , Weak SINDy for partial differential equations , Journal of Computational Physics, 443 (2021), p. 110525, https://doi.org/10.1016/j.jcp.2021.110525, https: //linkinghub.elsevier.com/retrieve/pii/S0021999121004204 (accessed 2026-05-18). [33] D. A. Messenger and D. M. Bortz , Weak SINDy: Galerkin-Based Data-Driven Model Selection ,Multiscale Modeling & Simulation, 19 (2021), pp. 1474–1497, https://doi.org/10.1137/20M1343166, https://epubs.siam.org/doi/10.1137/20M1343166 (accessed 2026-05-18). [34] D. A. Messenger, J. W. Burby, and D. M. Bortz , Coarse-graining Hamiltonian systems using WSINDy , Scientific Reports, 14 (2024), p. 14457, https://doi.org/10.1038/s41598-024-64730-0, https: //doi.org/10.1038/s41598-024-64730-0. [35] D. A. Messenger, E. Dall’Anese, and D. M. Bortz , Online Weak-form Sparse Identification of Partial Differential Equations , in Proceedings of The Third Mathematical and Scientific Machine Learning Conference, vol. 190 of Proceedings of Machine Learning Research, PMLR, 2022, pp. 241– 256. [36] D. A. Messenger, A. Tran, V. Dukic, and D. M. Bortz , The Weak Form Is Stronger Than You Think , SIAM News, 57 (2024), https://www.siam.org/publications/siam-news/articles/ 
+
+32 
+
+This manuscript is for review purposes only. the-weak-form-is-stronger-than-you-think/. [37] S. Minor, B. D. Elderd, D. M. Bortz, and V. Dukic , Weak Form Learning for Mean-Field Partial Differential Equations: an Application to Insect Movement , SIAM Journal on Life Sciences, 1 (2026), pp. 444–484, https://doi.org/10.1137/25M1812038. [38] S. Minor, D. A. Messenger, V. Dukic, and D. M. Bortz , Learning Physically Interpretable At-mospheric Models From Data With WSINDy , Journal of Geophysical Research: Machine Learn-ing and Computation, 2 (2025), p. e2025JH000602, https://doi.org/10.1029/2025JH000602, https: //agupubs.onlinelibrary.wiley.com/doi/10.1029/2025JH000602 (accessed 2026-02-11). [39] J. T. Nardini and D. M. Bortz , The influence of numerical error on parameter estimation and un-certainty quantification for advective PDE models , Inverse Problems, 35 (2019), p. 065003, https: //doi.org/10.1088/1361-6420/ab10bb, https://iopscience.iop.org/article/10.1088/1361-6420/ab10bb (accessed 2026-08-10). [40] I. V. Oseledets , Tensor-Train Decomposition , SIAM Journal on Scientific Computing, 33 (2011), pp. 2295–2317, https://doi.org/10.1137/090752286, https://doi.org/10.1137/090752286. eprint: https://doi.org/10.1137/090752286. [41] Y. Pantazis and I. Tsamardinos , A unified approach for sparse dynamical system inference from tempo-ral measurements , Bioinformatics, 35 (2019), pp. 3387–3396, https://doi.org/10.1093/bioinformatics/ btz065, https://academic.oup.com/bioinformatics/article/35/18/3387/5305020 (accessed 2021-04-13). [42] J. Popa, S. E. Minkoff, and Y. Lou , An improved seismic data completion algorithm using low-rank tensor optimization: Cost reduction and optimal data orientation , Geophysics, 86 (2021), pp. V219– V232, https://doi.org/10.1190/geo2020-0539.1, https://pubs.geoscienceworld.org/geophysics/ article/86/3/V219/596365/An-improved-seismic-data-completion-algorithm (accessed 2026-08-10). [43] S. H. Rudy, S. L. Brunton, J. L. Proctor, and J. N. Kutz , Data-driven discovery of partial differ-ential equations , Science Advances, 3 (2017), p. e1602614, https://doi.org/10.1126/sciadv.1602614, http://advances.sciencemag.org/lookup/doi/10.1126/sciadv.1602614 (accessed 2019-06-08). [44] N. Rummel, D. A. Messenger, S. Becker, V. Dukic, and D. M. Bortz , Weak form Estimation of Nonlinear Dynamics (WENDy) for Nonlinear-in-Parameters ODEs , SIAM Journal on Scientific Computing, (2026). [45] H. Schaeffer and S. G. McCalla , Sparse model selection via integral terms , Physical Review E, 96 (2017), p. 023302, https://doi.org/10.1103/PhysRevE.96.023302, http://link.aps.org/doi/10.1103/ PhysRevE.96.023302 (accessed 2026-08-10). [46] M. Shinbrot , On the analysis of linear and nonlinear dynamical systems for transient-response data ,Tech. Report NACA TN 3288, Ames Aeronautical Laboratory, Moffett Field, CA, Dec. 1954. [47] M. Tian, D. A. Messenger, V. Dukic, N. Rodr´ ıguez, and D. M. Bortz , Learning effec-tive models from network dynamics data with multiple initial conditions using weak form SINDy ,arXiv:2605.30432, (2026), https://doi.org/10.48550/ARXIV.2605.30432, https://arxiv.org/abs/2605. 30432 (accessed 2026-06-01). Version Number: 1. [48] A. Tran and D. M. Bortz , Weak Form Scientific Machine Learning: Test Function Construction for System Identification , SIAM Journal on Scientific Computing, 48 (2026), pp. C890–C915. [49] A. Tran, X. He, D. A. Messenger, Y. Choi, and D. M. Bortz , Weak-Form Latent Space Dynamics Identification , Computer Methods in Applied Mechanics and Engineering, 427 (2024), p. 116998, https://doi.org/10.1016/j.cma.2024.116998. [50] L. R. Tucker , Implications of factor analysis of three-way matrices for measurement of change , in Problems in measuring change., C. W. Harris, ed., University of Wisconsin Press, Madison WI, 1963, pp. 122–137. [51] F. Van Breugel, J. N. Kutz, and B. W. Brunton , Numerical Differentiation of Noisy Data: AUnifying Multi-Objective Optimization Framework , IEEE Access, 8 (2020), pp. 196865–196877, https: //doi.org/10.1109/ACCESS.2020.3034077, https://ieeexplore.ieee.org/document/9241009/ (accessed 2024-06-20). [52] G. Vasey, D. Messenger, D. Bortz, A. Christlieb, and B. O’Shea , Influence of initial condi-tions on data-driven model identification and information entropy for ideal mhd problems , Jour-nal of Computational Physics, 524 (2025), p. 113719, https://doi.org/10.1016/j.jcp.2025.113719, https://linkinghub.elsevier.com/retrieve/pii/S0021999125000026 (accessed 2026-06-04). 
+
+33 
+
+This manuscript is for review purposes only. [53] R. R. W. Wang and D. A. Messenger , Physics-guided weak-form discovery of reduced-order models for trapped ultracold hydrodynamics , Physical Review A, 111 (2025), p. 033311, https://doi.org/10. 1103/PhysRevA.111.033311, https://link.aps.org/doi/10.1103/PhysRevA.111.033311 (accessed 2025-03-19). [54] Z. Wang, X. Huan, and K. Garikipati , Variational system identification of the partial differential equations governing microstructure evolution in materials: Inference over sparse and spatially unre-lated data , arXiv:2001.04816, (2020), http://arxiv.org/abs/2001.04816 (accessed 2020-08-02). arXiv: 2001.04816. [55] J. Wentz and A. Doostan , Derivative-based SINDy (DSINDy): Addressing the challenge of discovering governing equations from noisy data , Computer Methods in Applied Mechanics and Engineering, 413 (2023), p. 116096, https://doi.org/10.1016/j.cma.2023.116096, https://linkinghub.elsevier.com/ retrieve/pii/S0045782523002207 (accessed 2023-11-19). [56] L. Zhang and A. Singer , Robust moment-based estimation via spectral gradient reweighting , 2026, https://arxiv.org/abs/2605.27718, https://arxiv.org/abs/2605.27718. 
+
+34 
+
+This manuscript is for review purposes only.
