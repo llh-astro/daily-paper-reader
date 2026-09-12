@@ -1,0 +1,884 @@
+Title: Fast and Furious: Long-term orbit integrations with collocation integrator Lobbie
+
+URL Source: https://arxiv.org/pdf/2609.10809v1
+
+Published Time: Fri, 11 Sep 2026 00:14:29 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+MNRAS 000 , 1–11 (2026) Preprint 11 September 2026 Compiled using MNRAS L ATEX style file v3.3 
+
+# Fast and Furious: Long-term orbit integrations with collocation integrator Lobbie 
+
+## Dmitrii Vavilov, 1,2★ Siegfried Eggl, 3† and Sarah Greenstreet 4,1‡
+
+> 1
+
+DiRAC Institute and the Department of Astronomy, University of Washington, 3910 15th Avenue NE, Seattle, WA 98195, USA 
+
+> 2
+
+Institute of Applied Astronomy of the Russian Academy of Sciences, St. Petersburg, Russia 
+
+> 3
+
+The Grainger College of Engineering Department of Aerospace Engineering, University of Illinois Urbana-Champaign, Urbana, IL 61801, USA 
+
+> 4
+
+NSF-DOE Vera C. Rubin Observatory/NSF NOIRLab, 950 N. Cherry Avenue, Tucson, AZ 85719, USA 
+
+Accepted 2026 September 02. Received 2026 July 20; in original form 2026 June 12 
+
+ABSTRACT 
+
+Efficient and accurate numerical integration methods are fundamental to studying long-term solar system dynamics, where numerical errors can accumulate over billions of orbital periods. In this work, we investigate the performance of our modification of Lobbie, a Lobatto collocation integrator for long-term simulations of the Solar System. We compare Lobbie against the widely used WHFast symplectic integrator and the high-order adaptive collocation integrator IAS15 implementations in the Rebound package. The performance of the integrator is evaluated using five benchmark problems: a circular two-body orbit integrated over 100 Myrs, two-body orbits with eccentricities up to 1 − 10 −6 to test the adaptive step size control during repeated close encounters, the full eight-planet Solar System integrated over 100 Myrs, the four giant planets integrated over 10 Gyrs, and the eight-planet Solar System together with 50 asteroids on Aten-like orbits integrated over 1 Myr to test the integrator’s consistency in a chaotic, close-encounter-rich environment. Across all tests, Lobbie demonstrates excellent long-term stability and competitive computational performance. For full Solar System integrations, Lobbie achieves relative energy conservation at the level of ∼ 10 −14 while outperforming IAS15 in computational efficiency and approaching the speed of WHFast at comparable accuracy. In the Solar System plus asteroids test, Lobbie also keeps different realizations of Jupiter’s orbit consistent with each other to within about 1.5 km after 1 Myr of integration, two orders of magnitude better than IAS15, being twice faster. Our results demonstrate that Lobbie provides a powerful universal alternative to traditional symplectic mappings or Gauss-Radau collocation methods for long-term dynamical simulations in celestial mechanics. 
+
+Key words: methods: numerical – celestial mechanics – planets and satellites: dynamical evolution and stability 
+
+1 INTRODUCTION 
+
+Understanding the long-term evolution of gravitational systems is one of the central problems in celestial mechanics. Planetary sys-tems, asteroid families, and stellar binaries evolve over timescales that are far longer than direct observations. For this reason, numeri-cal integration of the equations of motion has become a fundamental tool in dynamical astronomy. The reliability of such studies depends strongly on the numerical properties of the chosen integrator, espe-cially when simulations extend over millions or billions of orbital periods. When integrating 𝑁 -body systems over very long times, two main sources of numerical error must be controlled: truncation error and round-off error. Even very small systematic drifts in conserved quan-tities, such as the total energy or angular momentum, can accumulate and lead to incorrect physical conclusions. Considerable effort has  
+
+> ★
+
+E-mail: vavilov@uw.edu; vavilov@iaaras.ru 
+
+† E-mail: eggl@illinois.edu 
+
+‡ E-mail: sarah.greenstreet@noirlab.edu 
+
+therefore been devoted to developing numerical schemes that main-tain stable behavior over long integrations. Symplectic integrators have played a central role in this context (Vogelaere 1900; Ruth 1983; Feng & Qin 2010; Wisdom & Holman 1991). These methods preserve the geometric structure of Hamilto-nian systems and conserve the phase-space properties of the flow. In practice, this often leads to bounded oscillations of the total en-ergy instead of secular drift. Mixed-variable symplectic integrators, in particular, are highly efficient for nearly Keplerian systems, where the motion can be separated into dominant two-body dynamics and smaller perturbations (Wisdom & Holman 1991). For many applica-tions in planetary dynamics, relatively low-order symplectic schemes are sufficient to achieve reliable long-term behavior. At the same time, symplecticity alone does not guarantee optimal accuracy in all situations. Many modern problems require adaptive timesteps, very high local precision, or the inclusion of additional forces such as relativistic corrections or radiation effects. Moreover, over extremely long integrations, practical implementations may still be affected by round-off accumulation. Rein & Spiegel (2015) demonstrated that very high accuracy and 
+
+© 2026 The Authors arXiv:2609.10809v1 [astro-ph.EP] 9 Sep 2026 2 D. Vavilov et al. 
+
+excellent long-term performance can also be achieved with non-symplectic integrators. Their implementation of the Everhart (1974) collocation method, IAS15, combines high order, adaptive timestep control, and careful treatment of round-off errors. Although IAS15 does not preserve the symplectic structure of the equations, it was shown to maintain machine-precision accuracy over extremely long integrations. This result indicates that high-order collocation integra-tors can provide an alternative path toward reliable long-term simu-lations in gravitational dynamics. Hernandez & Bertschinger (2018) explored this direction further, examining a broader family of collo-cation methods, based on Gauss-Legendre and Lobatto quadrature, for gravitational 𝑁 -body problems, and showed that such high-order schemes can achieve excellent energy conservation over long integra-tions, in some cases outperforming standard symplectic integrators. In this work, we test the accuracy and efficiency of a relatively new Lobatto type collocation integrator, Lobbie (Avdyushev 2021), for long-term dynamical simulations of the Solar System. Lobbie is a collocation integrator, but it uses Gauss–Lobatto nodes instead of the Gauss–Radau nodes adopted in the Everhart/IAS15 method. The choice of Gauss-Lobatto quadrature imbues the integrator with geometric properties such as time symmetry which can improve integrator performance (Hairer et al. 2006) , though time-symmetry alone does not guarantee long-term energy conservation (Hernandez & Bertschinger 2018). The aim of this work is to compare Lobbie with the current state of the art algorithms, IAS15 and WHFast, as implemented in the RE-BOUND package (Rein et al. 2019a). We show that Lobbie can pro-duce comparable performance with symplectic algorithms in terms of speed and energy conservation while beating IAS15 in those same metrics. In contrast to symplectic integrators, Lobbie supports ar-bitrary right hand side function, similar to IAS15. In Section 2 we provide the fundamental ideas behind each of the integrators, in Sec-tion 3 we present the results of our tests, and we summarize our findings in the Conclusions. 
+
+2 NUMERICAL INTEGRATION OF THE EQUATIONS OF MOTION 
+
+Numerical integrators are essential tools in celestial mechanics, en-abling the solution of the 𝑁 -body equations of motion, which in general terms read 
+
+¥𝒙 = 𝒇 (𝑡, 𝒙 ) (1) where 𝒙 is the vector of the positions of particles, and hence ¤𝒙 and 
+
+¥𝒙 are vectors of their velocities and accelerations. We will call the function 𝒇 the ”force” function. The dynamical state at time 𝑡 0 provides initial conditions for posi-tions and velocities 
+
+𝒙 0 = 𝒙 (𝑡 0); ¤𝒙 0 = ¤𝒙 (𝑡 0), (2) we are looking for the solution at time 𝑡 by successively advancing integration time by a step size Δ𝑡 = ℎ. Analytical solutions, for instance for the gravitational N-body problem, can be restricted to few body systems, slow to converge or difficult to find in practice. It is, therefore, often preferable to approximate solutions to equations of motion numerically. A wealth of numerical integration schemes are available and commonly used in dynamical astronomy (Eggl & Dvorak 2009; Rein et al. 2019a). In the following sections, we pitch three of the currently best performing integrators against each other. 
+
+2.1 WHFast 
+
+Consider a Hamiltonian system with state z = (q, p) ∈ M , where 
+
+q(𝑡 ) and p(𝑡 ) are the generalized coordinates and momenta, i.e. the coordinates in phase space ( M). The equations of motion in such systems are typically found via Hamilton’s equations 
+
+¤q = ∇p 𝐻, ¤p = −∇ q 𝐻, (3) where 𝐻 (z) is the Hamiltonian. An equivalent formulation can be found using the Lie derivative (or Liouville operator) 𝐷 ≡ {· , 𝐻 },where {· , ·} denotes the Poisson bracket. For any function 𝑓 : M → 
+
+R is that sufficiently smooth on M, its time evolution is governed by 
+
+𝑑 𝑑𝑡 𝑓 (z(𝑡 )) = 𝐷 𝑓 (z(𝑡 )) = { 𝑓 , 𝐻 }. (4) Formally, this defines a linear differential equation in function space, whose solution can be written in terms of the exponential map of the operator 𝐷 as 
+
+𝑓 (z(𝑡 )) = 𝑒 𝑡 𝐷 𝑓 (z(0)) . (5) The operator exponential is understood via its series expansion, 
+
+𝑒 𝑡 𝐷 =
+
+> ∞
+
+∑︁ 
+
+> 𝑛 =0
+
+𝑡 𝑛 
+
+𝑛 ! 𝐷 𝑛 , (6) where repeated application of 𝐷 corresponds to nested Poisson brack-ets. The time evolution of the state vector itself is a special case generated by the flow map 
+
+z(𝑡 ) = 𝑒 𝑡 𝐷 z(0), (7) which is a canonical transformation preserving the symplectic struc-ture of the underlying dynamics. This formalism provides the foun-dation for operator-splitting methods such as symplectic integrators, where the exponential of a complicated operator 𝐷 = 𝐷 𝐴 + 𝐷 𝐵 
+
+is approximated by compositions of exponentials 𝑒 𝑡 𝐷 𝐴 and 𝑒 𝑡 𝐷 𝐵 ,exploiting the fact that sub-flows along 𝐴 or 𝐵 can often be solved exactly. Wisdom & Holman (1991) and later Rein & Tamayo (2015) realized that the gravitational N-body problem with the Hamiltonian 
+
+𝐻 = 
+
+> 𝑁 −1
+
+∑︁ 
+
+> 𝑖 =0
+
+𝑝 2
+
+> 𝑖
+
+2𝑚 𝑖 
+
+− 
+
+> 𝑁 −1
+
+∑︁  
+
+> 𝑖 =0
+> 𝑁 −1
+
+∑︁ 
+
+> 𝑗 =𝑖 +1
+
+𝐺𝑚 𝑖 𝑚 𝑗 
+
+|r𝑖 − r 𝑗 | , (8) permits such a splitting, namely 
+
+𝐻 = 𝐻 0 + 𝐻 Kepler + 𝐻 Interaction , (9) where 𝐻 0 encodes the uniform motion of the center of mass, 𝐻 Kepler is integrable as a sum of independent two-body problems and 𝐻 Interaction 
+
+represents the interaction between bodies and is independent of the momenta. The Hamiltonian from equation (8) can, for example, be split as follows, 
+
+𝐻 = 𝑝 20
+
+2𝑚 0
+
+|{z} 
+
+> 𝐻 0
+
++ 
+
+> 𝑁 −1
+
+∑︁ 
+
+> 𝑖 =1
+
+𝑝 2
+
+> 𝑖
+
+2𝑚 𝑖 
+
+− 𝐺𝑚 𝑖 𝑀 𝑖 
+
+|r𝑖 |
+
+!| {z }
+
+> 𝐻 Kepler
+
++ 
+
+> 𝑁 −1
+
+∑︁ 
+
+> 𝑖 =1
+
+𝐺𝑚 𝑖 𝑀 𝑖 
+
+|r𝑖 | − 
+
+> 𝑁 −1
+
+∑︁  
+
+> 𝑖 =0
+> 𝑁 −1
+
+∑︁ 
+
+> 𝑗 =𝑖 +1
+
+𝐺𝑚 𝑖 𝑚 𝑗 
+
+|r𝑖 − r 𝑗 |
+
+| {z }
+
+> 𝐻 Interaction
+
+. (10) Note that equations for each part of the split Hamiltonian can be solved analytically if they are considered individually. The standard  
+
+> MNRAS 000 , 1–11 (2026)
+
+## Long-term orbit integrations with Lobbie 3
+
+drift–kick–drift scheme then corresponds to the symmetric compo-sition of individual solutions in the form 
+
+𝑒 ℎ𝐷 ≈ 𝑒 ℎ  
+
+> 2𝐷 0
+
+𝑒 ℎ  
+
+> 2𝐷 Kepler
+
+𝑒 ℎ𝐷 Interaction 𝑒 ℎ  
+
+> 2𝐷 Kepler
+
+𝑒 ℎ  
+
+> 2𝐷 Kepler
+
+𝑒 ℎ  
+
+> 2𝐷 0
+
+, (11) where each exponential map advances the equations of motion by a time step of ℎ/2 and ℎ under the corresponding Hamiltonian, respectively. Unfortunately, none-commuting operators cannot be split without consequence. In fact, if the commutator of operators [ 𝐴, 𝐵 ] = 𝐴𝐵 −
+
+𝐵𝐴 ≠ 0 then 
+
+𝑒 𝐴 𝑒 𝐵 = exp 
+
+
+
+𝐴 + 𝐵 + 12 [ 𝐴, 𝐵 ] + 112 [ 𝐴, [ 𝐴, 𝐵 ]] − 112 [𝐵, [ 𝐴, 𝐵 ]] + · · · 
+
+
+
+,
+
+(12) by the Baker–Campbell–Hausdorff (BCH) expansion, where  
+
+> 12
+
+[ 𝐴, 𝐵 ] + 112 [ 𝐴, [ 𝐴, 𝐵 ]] − 112 [𝐵, [ 𝐴, 𝐵 ]] + · · · could be considered the “error terms" of the splitting scheme. It is straight forward to show via a BCH expansion that the Wisdom-Holman scheme exactly integrates a modified Hamiltonian ˜𝐻 = 𝐻 + ℎ2
+
+12 
+
+
+
+{𝐻 Interaction , {𝐻 Interaction , 𝐻 0 + 𝐻 Kepler }} − 12 {𝐻 Kepler , {𝐻 0 + 𝐻 Kepler , 𝐻 Interaction }} 
+
+
+
++ O( ℎ4),
+
+(13) which is identical to the actual Hamiltonian up to O( ℎ2). Since 
+
+𝐻 Interaction is typically of order 𝜖 (the planet-to-star mass ratio), the leading error scales as O( 𝜖 ℎ 2), which explains the high accuracy of the method for weakly interacting systems. The error Hamiltonian is time-independent, implying that the integrator conserves energy up to bounded oscillations rather than secular drift. To preserve those favorable properties, however, the step size ℎ must remain fixed during the integration, as changing ℎ alters the modified Hamiltonian in equation (13). WHFast (Rein & Tamayo 2015) and WHFast512 (Javaheri et al. 2023) improve performance by using Jacobian and Democratic He-liocentric Coordinates (Duncan et al. 1998), faster evaluation of Stumpff functions, as well as advanced vectorization. Symplectic correctors (Wisdom et al. 1996; Laskar & Robutel 2001), additional operator compositions designed to cancel low-order BCH terms, can further reduce errors (Rein et al. 2019b). One downside of Wisdom-Holman based maps is that they only resolve deep close approaches between bodies when the integration step size is chosen accordingly. 
+
+2.2 Everhart / IAS15 
+
+The idea of the Everhart (1974) integrator, as for other collocation integrators, is to approximate the solution on a step by a polynomial 
+
+𝒖 (𝑡, 𝒙 ) that satisfies the differential equation at 𝑠 points {𝑡 𝑖 }𝑠 𝑖 =1:
+
+¥𝒖 (𝑡 𝑖 ) = 𝒇 (𝑡 𝑖 , 𝒖 (𝑡 𝑖 )) , 𝑖 = 1, ...𝑠 (14) In addition, this polynomial must satisfy the initial conditions (2). From these constraints, the collocation polynomial is determined, and the solution is then obtained as the value of this polynomial at a given time 𝑡 (for the end of the step we use 𝑡 = 𝑡 0 + ℎ). To construct the polynomial 𝒖 , we first approximate the force function 𝒇 by a polynomial 𝒑 and then integrate it: 
+
+𝒑 (𝜏 ) ≡ ¥𝒖 (𝑡 0 + ℎ𝜏 ). (15) where 𝜏 is a uniform parameter 𝑡 −𝑡 0 
+
+> ℎ
+
+and is in interval [0, 1] for points inside one step. The polynomial 𝒑 is constrained by the conditions 
+
+𝒑 (𝑐 𝑖 ) = 𝒇 (𝑡 0 + 𝑐 𝑖 ℎ, 𝒖 (𝑡 0 + 𝑐 𝑖 ℎ)) . Edgar Everhart (1974) proposed to represent 𝒑 not in the Lagrange form (as in classical collocation Runge–Kutta integrators; (Hairer et al. 2006)), but in the canonical polynomial form: 
+
+𝒑 (𝜏 ) =
+
+> 𝑠 −1
+
+∑︁ 
+
+> 𝑖 =0
+
+𝜶 𝑖 𝜏 𝑖 . (16) Using approximate values 𝒖 𝑖 , one computes 𝒇 𝑖 = 𝒇 (𝑡 0 + 𝑐 𝑖 ℎ, 𝒖 𝑖 )
+
+for 𝑖 = 1, ..., 𝑠 , and then determines the coefficients 𝜶 𝑖 of the poly-nomial 𝒑 . From 𝒑 (𝜏 ) one reconstructs the polynomial 𝒖 (𝑡 ), which gives corrected values 𝒖 𝑖 . This process is repeated until convergence is reached. For the exact equations we refer the reader to Everhart (1974) and Rein & Spiegel (2015). To obtain the solution on one integration step ℎ, the force function must be evaluated 𝑠 · 𝑛 𝑖 times, where 𝑛 𝑖 is the number of iterations required for convergence. In practice, 𝑛 𝑖 is small, and two iterations are usually sufficient unless there are strong perturbations, such as close encounters for asteroid dynamics. The polynomial coefficients from the current step are then used as a predictor for the next step: 
+
+𝒇 𝑖 = 𝒑 (1 + 𝑐 𝑖 ).An important aspect is the choice of collocation points {𝑐 𝑖 }𝑠 𝑖 =1.It is known that the maximal order of a collocation integrator is 2 𝑠 ,but this is achieved only when the points follow the Gauss–Legendre distribution, where no points coincide with the endpoints ( 𝑐 1 ≠ 0, 
+
+𝑐 𝑠 ≠ 1; (Hairer et al. 2006)). Gauss–Radau quadrature provides the highest possible order, 2 𝑠 − 1, among schemes where one endpoint is included ( 𝑐 1 = 0 or 𝑐 𝑠 = 1), and this was the choice made by Everhart. Rein & Spiegel (2015) introduced an important improvement in their implementation of the Everhart integrator (IAS15): a new adap-tive timestep selection algorithm. This algorithm is dimensionless, which makes it independent of the choice of units. They also showed that for a 15th-order integrator ( 𝑠 = 8), an optimal accuracy param-eter per step is of order 10 −7 in double precision, although a more conservative default value of 10 −9 is typically used. 
+
+2.3 Lobbie 
+
+Avdyushev (2020) developed a new collocation integrator, Lobbie (Lobatto Best Integrator of Equations). Although the general idea is similar to the Everhart integrator, there are several important differ-ences. Avdyushev (2020) preferred polynomials 𝒑 in Newton form 
+
+𝒑 (𝜏 ) =
+
+> 𝑠
+
+∑︁ 
+
+> 𝑖 =1
+
+𝜶 𝑖 𝑖 −1Ö
+
+> 𝑘 =1
+
+(𝜏 − 𝑐 𝑘 ) (17) which lead to simpler equations for the coefficients {𝜶 𝑖 }𝑠 𝑖 =1. We refer the reader to Avdyushev (2021) for details (also in Appendix A we present the algorithm for a second order differential equation for Lobbie integrator). Another difference is the use of Gauss–Lobatto spacing for the nodes {𝑐 𝑖 }𝑠 𝑖 =1.Collocation methods based on Legendre and Lobatto nodes have important geometric properties: they are symmetric, and the Leg-endre scheme is also symplectic. In general, Legendre nodes are preferred because they provide a higher order (by two) for the same number of points. However, Lobatto methods are slightly faster in practice. For each integration step with 𝑛 𝑖 iterations, the number of force evaluations is 𝑛 𝑖 (𝑠 − 1) for Lobatto nodes, compared to 𝑛 𝑖 𝑠 
+
+for Legendre (and Radau) nodes. In addition, Lobatto nodes include  
+
+> MNRAS 000 , 1–11 (2026)
+
+## 4 D. Vavilov et al. 
+
+the endpoints of the interval, which simplifies the implementation, improves the predictor, and can reduce the number of iterations 𝑛 𝑖 .In this work, we use the Fortran implementation of the Lobbie integrator provided by Avdyushev (2022), but with two important modifications. First, following Rein & Spiegel (2015), we apply a dimensionless timestep selection. In Avdyushev (2021), the next step 
+
+ℎ𝑛 +1 is computed from the previous step ℎ𝑛 as: 
+
+ℎ𝑛 +1 = 𝑟 ℎ 𝑛 ; 𝑟 =
+
+ 𝑠 || 𝒆 𝑡𝑜𝑙 || 
+
+ℎ𝑛 || 𝜶 𝑠 || 
+
+1/𝑠 
+
+, (18) where 𝒆 𝑡𝑜𝑙 is the tolerable velocity error vector and || · || denotes the 
+
+𝐿 2 norm. To make this expression dimensionless, we multiply the numerator by a quantity with units of velocity. In this work, we use the following step-size determination: 
+
+ℎ𝑛 +1 = 𝑟 ℎ 𝑛 ; 𝑟 = max 
+
+( 𝑠𝑒 𝑡𝑜𝑙, 𝑗 || 𝒗 𝑘 || 
+
+ℎ𝑛 𝑎 𝑠, 𝑗 
+
+1/𝑠 )
+
+, (19) where 𝑒 𝑡𝑜𝑙, 𝑗 and 𝑎 𝑠, 𝑗 are the 𝑗 -th components of 𝒆 𝑡𝑜𝑙 and 𝜶 𝑠 , and 
+
+|| 𝒗 𝑘 || is the magnitude of the velocity vector for the corresponding particle. The parameter 𝒆 𝑡𝑜𝑙 is now dimensionless and represents the relative accuracy of the velocity components per step. As noted by Avdyushev (2021), the timestep is effectively determined assuming order 𝑠 − 1 of the integrator, although the true order is 2 𝑠 − 2. Since it is not possible to construct an error estimate of the same high order, in practice we determine suitable values of 𝒆 𝑡𝑜𝑙 empirically in the next section for the 14-th order integrator ( 𝑠 = 8). The second modification is minor but important: we use quadruple precision for the state vectors. All computations are still performed in double precision, but positions and velocities are stored in quadruple precision (Fortran type real(16) ). At each step of integration we find the correction and then add it to the state vector. The correction can be several orders of magnitude smaller than the state vector itself. Therefore keeping the state vector in quadruple precision allows us to save several significant digits that otherwise would have been lost. This mechanism helps to reduce round-off errors. On the other hand since only a few operations are done in quadruple precision (updating the state vector only), this does not significantly affect performance. We have tested Kahan summation (Kahan 1965) for a further in-crease in integration accuracy, similar to (Rein & Spiegel 2015), but saw a significant hit in performance and no notable improvement in precision. 
+
+2.3.1 Close encounters in Lobbie 
+
+One of the applications of the Lobbie integrator is the long-term inte-gration of the Solar System together with large numbers of massless particles, such as asteroids, comets, meteoroids, or dust particles. In such problems, close encounters with planets play an important role and require careful numerical treatment. Lobbie uses an adaptive timestep and in general handles close en-counters naturally, since the timestep automatically decreases when a particle approaches a massive body. However, for additional ro-bustness, we implemented a dedicated close-encounter and collision handling algorithm in our 𝑁 -body code. At every integration step, the distances between all massless par-ticles and massive bodies are checked. If a particle approaches a planet closer than 0.03 au, the integration is returned to the previous step and restarted with stricter numerical parameters. In particular, the timestep is decreased 3 times and the accuracy parameter is re-duced to a much smaller value (in our practical applications we use 
+
+𝑒 𝑡𝑜𝑙 = 10 −14 ). This allows the code to resolve the encounter region with much higher precision. We emphasize that this 0.03 au thresh-old is not a definition of a close encounter, and it is not used to identify or classify one; it is simply a fixed distance, chosen to lie outside the sphere of influence of every planet in the Solar System, that triggers this precautionary switch to higher precision before the particle actually enters the encounter region. As the particle continues to approach the planet, now integrated with these stricter settings, the code monitors whether it enters the planetary sphere of influence. Only entering the sphere of influence itself is classified as a close encounter, and the event is recorded as such. If the particle intersects the physical radius of the planet or the Sun, it is treated as a collision and removed from the integration. We also monitor particles leaving the Solar System. If a particle reaches a heliocentric distance of 100 au and simultaneously has an unbound orbit, it is removed from the simulation and classified as an ejected object. The Fortran implementation of Lobbie for integrations of massive bodies together with massless particles is publicly available at git repository 1.
+
+3 TESTS 
+
+To test the efficiency and robustness of the new integrator for long-term dynamics, we performed several numerical experiments and compared the results with WHFast and IAS15. We considered three test scenarios: (a) a two-body problem, (b) integration of all eight major planets of the Solar system, and (c) integration of the four gas giants (Jupiter, Saturn, Uranus, and Neptune). All integrations were performed in a system of units where the gravitational constant 𝐺 = 1 and the mass of the central body is also equal to 1. Distances are measured in astronomical units, therefore a particle with a semi-major axis equal to 1 has an orbital period of 2𝜋 . Throughout this work, one year corresponds to 2 𝜋 in these units, and we use years when presenting the results. Each integrator was tested under different accu-racy regimes. For Lobbie and IAS15, we varied the dimensionless accuracy parameter 𝑒 𝑡𝑜𝑙 in the range 
+
+{10 −6, 10 −7, 10 −8, 10 −9, 10 −10 , 10 −11 , 10 −12 , 10 −13 }. The WH-Fast integrator uses a fixed timestep, and we tested it with timesteps 
+
+{0.25 , 0.5, 1, 1.5, 2, 3} days. A timestep of the order of 12 hours is commonly used for Solar System integrations with massless particles such as asteroids (Granvik et al. 2018; Nesvorný et al. 2023). Greenstreet et al. (2012) used even a 4 h timestep to properly resolve high-speed encounters with the Earth, Venus and Mercury. Too large timesteps may miss close encounters or even collisions, which leads to a significant loss of accuracy. All tests were performed on AMD EPYC 9654 (96-core, 2400 MHz) processors. 
+
+3.1 Two-body problem 
+
+For the two-body test, we considered a central body of mass 1 and a massless particle on a circular orbit with radius 1. The initial conditions were chosen as 𝑥 = 
+
+> √22
+
+and 𝑦 = 
+
+> √22
+
+. The orbit was integrated for 100 Myr. Every 10,000 years, we recorded the (𝑥, 𝑦 )
+
+position of the particle and compared it with the initial position. Since the orbital period is exactly 1 year, the particle should return to the same position at these times. Any deviation reflects the numerical    
+
+> 1https : // github .com /DJVil /Lobbie_planet_integration .git MNRAS 000 , 1–11 (2026)
+
+## Long-term orbit integrations with Lobbie 52 10 3 5 10 3 10 4 2 10 4             
+
+> Computation time [s] 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> Max |  r| [au]
+> IAS15 [1e-7] WHFast [3.00 d] lobbie [1e-10] lobbie [1e-11] lobbie [1e-12] lobbie [1e-13] lobbie [1e-6] lobbie [1e-7] lobbie [1e-8] lobbie [1e-9] 210 3510 310 4210 4
+> Computation time [s] 10 6
+> 510 6
+> 10 7
+> 510 7
+> Time when  r > 0.1 au [years]
+> WHFast [3.00 d] WHFast [2.00 d] WHFast [1.50 d] WHFast [1.00 d] WHFast [0.50 d] WHFast [0.25 d] IAS15 [1e-6] lobbie [1e-6] IAS15 [1e-7] IAS15 [1e-8] IAS15 [1e-9] lobbie [1e-9] IAS15 [1e-10] IAS15 [1e-11]
+
+Figure 1. The comparison of Lobbie, IAS15 and WHFast integrators for the two-body problem. In brackets [ ] we present the accuracy parameter for Lobbie and IAS15 or the integration timestep in days of WHFast. Top: maximum positional error for a massless particle in the two-body problem versus wall clock time it took to run the computations (computation time). All IAS15 and WHFast runs reached 2 au positional differences, hence we show only 1 of the runs for each. Bottom: time at which the positional error reaches 0.1 au versus total computation time (longer is better). Only lobbie[1e-6] and lobbie[1e-9] reached that discrepancy among Lobbie runs. 
+
+error of the integrator. We note that, in this unperturbed setting, WHFast reduces to a Kepler solver applied repeatedly with a fixed step, since there are no perturbing forces for its symplectic map to integrate. Figure 1 (top panel) shows the maximum positional error with respect to the analytical solution as a function of how long it took in seconds to finish the integrations (computation time). After 100 Myr of integration, all WHFast and IAS15 reach errors of ∼ 2, meaning that the orbital phase is completely lost. For this reason, we show only the results for IAS15[1e-7] and WHFast[3.00 d]. Instead, the bottom panel shows the time at which the positional error reaches 0.1 au as a function of computation time to reach 100 Myr. The labels indicate the corresponding 𝑒 𝑡𝑜𝑙 values (for Lobbie and IAS15) or timesteps (for WHFast). Only lobbie[1e-6] and lobbie[1e-9] among lobbie runs reached the positional error of 0.1 au, that is why the rest are not presented on the bottom panel. However, they kept the precision below 0.1 au for almost 50 Myrs, while all IAS15 and WHFast runs didn’t hold it for more than 10 Myrs. Lobbie demonstrates high robustness. The best result is obtained for 𝑒 𝑡𝑜𝑙 = 10 −11 , where the positional error remains below ∼ 7·10 −5,which is smaller than the diameter of the Earth. At the same time, it is faster than all IAS15 runs and also faster than WHFast with timesteps smaller than 0.5 days. IAS15 performs better than WHFast, keeping the error below 0.1 au for almost ∼ 10 Myr for 𝑒 𝑡𝑜𝑙 = 10 −8.To test Lobbie’s adaptive step size change, we performed a similar two-body test, but now with the object on an eccentric orbit, with 
+
+𝑒 = 0.999. We placed the particle at aphelion, at a distance from the Sun of 𝑄 = 1.999 au, while keeping the semi-major axis at 
+
+𝑎 = 1 au. The particle’s velocity was computed from the integral of energy: 𝑣 2 =
+
+ 2 
+
+> 𝑄
+
+− 1
+
+> 𝑎
+
+
+
+. With these initial conditions, the particle has a close encounter with the Sun at every orbit, coming as close as 0.001 au. Because of this, the step size is reduced by several orders of magnitude (for 𝑒 𝑡𝑜𝑙 = 10 −11 , it drops by about 5 orders of magnitude, from 8.7 days down to 7.5 seconds). The results are shown in Figure 2. The first thing to notice is that the computation time increased by about an order of magnitude, as a consequence of the much smaller step size required. As in the circular case, all WHFast runs reached a positional error of 2 au after 100 Myr. IAS15 showed better robustness here than in the circular case: runs with accuracy parameter smaller than 10 −8 did not reach 2 au positional error. The best performance occurred at 𝑒 𝑡𝑜𝑙 = 10 −8
+
+and increases again for smaller values of 𝑒 𝑡𝑜𝑙 , which is likely caused by round-off error. Lobbie again performed best, compared to both IAS15 and WH-Fast. Starting from 𝑒 𝑡𝑜𝑙 = 10 −10 , Lobbie does not reach 2 au po-sitional error, and it achieves its best accuracy of 2 .67 · 10 −3 au at 
+
+𝑒 𝑡𝑜𝑙 = 10 −13 . There is a clear trend: accuracy keeps improving as 𝑒 𝑡𝑜𝑙 
+
+decreases, without the round-off-driven turnaround seen for IAS15. We believe this is because of our strategy for handling round-off error, namely storing the state vectors in quadruple precision. This test is a good demonstration that our implementation of Lob-bie can handle close encounters. It is also a particularly useful test case, for two reasons. First, because the two-body problem has an exact analytical solution, we can measure the true error of the in-tegration directly, without relying on energy or angular momentum conservation as a proxy for accuracy. Second, because the orbit is periodic, the particle passes through the same close encounter with the Sun many times during the 100 Myr integration, not just once. This means that the test does not simply check whether an integrator can survive a single close encounter, but whether it can handle a large number of them in a row, while still returning to the correct position each time. In this way, a single test combines a strong check of adap-tive step size control with a reliable, analytically known measure of accuracy. We ran a third test, very similar to the previous one but with 
+
+𝑒 = 1 − 10 −6. In this extreme case, the minimum distance between the particle and the Sun is about one millionth of an au, well inside the Sun. During the close encounter, Lobbie with 𝑒 𝑡𝑜𝑙 = 10 −11 
+
+reduced the step size down to 2 .5 · 10 −4 seconds. All runs, for all integrators, reached a positional error of 2 au well before the end of the integration. For this reason, in Figure 3 we only show the time 
+
+MNRAS 000 , 1–11 (2026) 6 D. Vavilov et al. 2 10 4 5 10 4 10 5 2 10 5             
+
+> Computation time [s] 10 3
+> 10 2
+> 10 1
+> 10 0
+> Max |  r| [au]
+> IAS15 [1e-10] IAS15 [1e-11] IAS15 [1e-7] IAS15 [1e-8] IAS15 [1e-9] WHFast [0.50 d] lobbie [1e-10] lobbie [1e-11] lobbie [1e-12] lobbie [1e-13] lobbie [1e-6] 510 310 4510 410 5210 5
+> Computation time [s] 10 6
+> 510 6
+> 10 7
+> 510 7
+> Time when  r > 0.1 au [years]
+> WHFast [3.00 d] WHFast [2.00 d] WHFast [1.50 d] WHFast [1.00 d] WHFast [0.50 d] WHFast [0.25 d] IAS15 [1e-6] lobbie [1e-6] IAS15 [1e-7] lobbie [1e-7] IAS15 [1e-8] lobbie [1e-8] IAS15 [1e-9] lobbie [1e-9] IAS15 [1e-10] lobbie [1e-10] IAS15 [1e-11]
+
+Figure 2. Same as Figure 1 but for the two-body problem with eccentricity 
+
+𝑒 = 0.999. Top: maximum positional error for a massless particle in the two-body problem versus wall clock time needed to run the computation (computation time). As all WHFast runs reached a positional error of 2 au, only one of them is shown. Only Lobbie runs with accuracy parameter smaller than 10 −10 did not reach 2 au maximum positional error. Only IAS15 runs with accuracy parameter smaller than 10 −8 did not reach 2 au positional error. Bottom: time at which the positional error reaches 0.1 au versus total computation time (longer is better). Lobbie runs with accuracy parameter less than 10 −11 did not reach a positional error of 0.1 au, so they are not shown in this panel. 
+
+at which each run reached a positional error of 0.1 au. Once again, Lobbie with 𝑒 𝑡𝑜𝑙 = 10 −13 gives the best result. 
+
+3.2 Integrating the Solar system 
+
+For the Solar System integrations, we used initial positions and veloc-ities from the DE440 planetary ephemeris (Park et al. 2021) at epoch Jan 1, 2000 (the exact state vectors are presented in Appendix B). 10 4 10 5
+
+> Computation time [s] 10 5
+> 10 6
+> Time when  r > 0.1 au [years]
+> WHFast [3.00 d] WHFast [2.00 d] WHFast [1.50 d] WHFast [1.00 d] WHFast [0.50 d] WHFast [0.25 d] IAS15 [1e-6] lobbie [1e-6] IAS15 [1e-7] lobbie [1e-7] IAS15 [1e-8] lobbie [1e-8] IAS15 [1e-9] lobbie [1e-9] IAS15 [1e-10] lobbie [1e-10] IAS15 [1e-11] lobbie [1e-11] lobbie [1e-12] lobbie [1e-13]
+
+Figure 3. Same as Figure 1 (bottom) but the comparison for the two-body problem with an eccentricity 𝑒 = 0.999999. Time at which the positional error reaches 0.1 au versus total computation time (longer is better). 
+
+The adopted planetary masses (in units of the solar mass) are listed in Table B1. We first integrated all eight planets for 100 Myr. Since no analytical solution exists, we evaluated the performance by monitoring the conservation of total energy. The relative energy error was recorded every 250 years. The maximum relative energy error as a function of computation time is shown in Fig. 4. For adaptive integrators (IAS15 and Lobbie), the timestep is mainly controlled by Mercury, which has the shortest orbital period. Lobbie achieves very high accuracy. For 𝑒 𝑡𝑜𝑙 = 10 −13 , the max-imum relative energy error is 2 .31 · 10 −14 with a computation time of 445,549 seconds (5.16 days). However, a good balance between accuracy and performance is already reached at 𝑒 𝑡𝑜𝑙 = 10 −10 , which requires 187,980 seconds (2.16 days) and maintains the error below 3 · 10 −14 , while being faster than all IAS15 runs. The best result for IAS15 is 5 .5 · 10 −14 at 𝑒 𝑡𝑜𝑙 = 10 −8 requiring 307,862 seconds (3.56 days). WHFast is faster, but its accuracy is significantly lower: for a timestep of 2 days, the error is 9 .3 · 10 −12 , more than two orders of magnitude worse. As an additional test, we integrated only the four gas giants for 10 Gyr. In this case, larger timesteps are possible because these planets are further from the Sun. The relative energy error was recorded every 10,000 years. For WHFast the stepsizes were also increased to 
+
+{5, 10 , 15 , 20 , 30 } days. The results are shown in Fig. 5. Again, Lobbie provides the best accuracy. For 𝑒 𝑡𝑜𝑙 = 10 −13 , the relative energy error is 1 .48 ·10 −12 , which is about an order of magni-tude better than IAS15 with 𝑒 𝑡𝑜𝑙 = 10 −10 , while also being faster. For 
+
+𝑒 𝑡𝑜𝑙 = 10 −11 and 10 −12 , Lobbie still achieves errors below 3 · 10 −11 
+
+with significantly shorter computation times. WHFast remains the fastest method, but with somewhat lower accuracy (error ≳ 10 −10 ), which is not easily remedied. Overall, our results show that there is no universal choice of the 
+
+MNRAS 000 , 1–11 (2026) Long-term orbit integrations with Lobbie 70 100000 200000 300000 400000 500000 Computation time [s] 10 13 
+
+10 12 
+
+10 11 
+
+10 10 
+
+10 9
+
+> Max |  E/E|
+> IAS15 [1e-10] IAS15 [1e-5] IAS15 [1e-6] IAS15 [1e-7] IAS15 [1e-8] IAS15 [1e-9] WHFast [0.25 d] WHFast [0.50 d] WHFast [1.00 d] WHFast [1.50 d] WHFast [2.00 d] WHFast [3.00 d] lobbie [1e-10] lobbie [1e-11] lobbie [1e-12] lobbie [1e-13] lobbie [1e-6] lobbie [1e-7] lobbie [1e-8] lobbie [1e-9] IAS15 [1e-10] (CPU=454030s) IAS15 [1e-5] (CPU=187801s) IAS15 [1e-6] (CPU=210365s) IAS15 [1e-7] (CPU=264488s) IAS15 [1e-8] (CPU=307862s) IAS15 [1e-9] (CPU=367614s) WHFast [0.25 d] (CPU=146641s) WHFast [0.50 d] (CPU=75333s) WHFast [1.00 d] (CPU=38243s) WHFast [1.50 d] (CPU=25626s) WHFast [2.00 d] (CPU=19742s) WHFast [3.00 d] (CPU=13442s) lobbie [1e-10] (CPU=187980s) lobbie [1e-11] (CPU=250710s) lobbie [1e-12] (CPU=334297s) lobbie [1e-13] (CPU=445549s) lobbie [1e-6] (CPU=85897s) lobbie [1e-7] (CPU=106907s) lobbie [1e-8] (CPU=142145s) lobbie [1e-9] (CPU=143266s)
+
+Figure 4. The maximal relative error in total energy for different integrators vs computation time for the test of integrating 8 planets of the Solar system for 100 Myr. At comparable accuracy, Lobbie is about as fast as WHFast, but can be more accurate than IAS15 if required showing a significant performance boost compared to the latter. 
+
+accuracy parameter that provides the best performance for all prob-lems. For Lobbie, the value 𝑒 𝑡𝑜𝑙 = 10 −11 appears to give a good balance between accuracy and speed across all tests. However, the optimal choice depends on the specific system. This behavior can be understood physically. For Lobbie the pa-rameter 𝑒 𝑡𝑜𝑙 controls the relative error in velocity per step. In the eight-planet case, the timestep is determined by Mercury, while the total energy is dominated by Jupiter. In contrast, in the four-planet case, Jupiter dominates both the timestep and the total energy. This explains why decreasing 𝑒 𝑡𝑜𝑙 improves the results for the four-planet system, but has no effect for the full Solar System, because it already reached the highest precision. A similar trend is observed for IAS15. WHFast does not show this behavior. 
+
+3.3 Solar System with a population of asteroids 
+
+One of the challenges of numerical experiments including small body populations is consistency, i.e. how reproducible outcomes are. Close approaches between small bodies and the planets can lead to changes in the step-size of variable time-stepping integrators making integration outcomes dependent on the exact population and integra-tion parameters used. To study the effects of variable timestepping on the consistency of planetary positions, we combined the eight major planets with 50 massless Aten asteroids, whose orbits were taken at random from the NEOMOD3 model (Nesvorný et al. 2024). Aten asteroids cross the orbit of the Earth, so they regularly expe-rience close encounters with the terrestrial planets. This makes the test considerably more chaotic than the previous ones, and, unlike 50000 100000150000200000250000300000350000400000450000 Computation time [s] 10 12 
+
+10 11 
+
+10 10 
+
+10 9
+
+10 8
+
+> Max |  E/E|
+> IAS15 [1e-10] IAS15 [1e-5] IAS15 [1e-6] IAS15 [1e-7] IAS15 [1e-8] IAS15 [1e-9] WHFast [5.00 d] WHFast [10.00 d] WHFast [15.00 d] WHFast [20.00 d] WHFast [30.00 d] lobbie [1e-10] lobbie [1e-11]lobbie [1e-12] lobbie [1e-13] lobbie [1e-6] lobbie [1e-7] lobbie [1e-8] lobbie [1e-9] IAS15 [1e-10] (CPU=465709s) IAS15 [1e-5] (CPU=176205s) IAS15 [1e-6] (CPU=203324s) IAS15 [1e-7] (CPU=239080s) IAS15 [1e-8] (CPU=308592s) IAS15 [1e-9] (CPU=345149s) WHFast [5.00 d] (CPU=367711s) WHFast [10.00 d] (CPU=184933s) WHFast [15.00 d] (CPU=125637s) WHFast [20.00 d] (CPU=93380s) WHFast [30.00 d] (CPU=64366s) lobbie [1e-10] (CPU=162391s) lobbie [1e-11] (CPU=213042s) lobbie [1e-12] (CPU=283842s) lobbie [1e-13] (CPU=375386s) lobbie [1e-6] (CPU=80325s) lobbie [1e-7] (CPU=88875s) lobbie [1e-8] (CPU=117834s) lobbie [1e-9] (CPU=122368s)
+
+Figure 5. Maximum relative energy error versus computation time for the integration of the four gas giants over 10 Gyr. At integration times comparable to the lifetime of the sun, symplectic integrators start to become competitive in terms of energy error, but again Lobbie can match its performance and can be tuned to either similar speed or higher accuracy. 
+
+the two-body case, no analytical solution is available to measure the true error directly. To evaluate reliability in this chaotic regime, we instead used an ensemble approach: for each integrator we performed 25 independent realizations of the system and measured how much the individual runs spread apart from each other. For each of the 25 realizations, we drew a new random set of 50 Aten asteroids from the NEOMOD3 model, so that the runs differ from each other in their asteroid population rather than in the planets’ initial conditions. For Lobbie we used 
+
+𝑒 𝑡𝑜𝑙 = 10 −11 and for IAS15 𝑒 𝑡𝑜𝑙 = 10 −8, the values that performed best in the eight-planet test. Each realization is integrated with the same adaptive step size control, so any spread we measure in the planets’ positions reflects only how sensitive the planetary orbits are to the presence of a different set of massless asteroids. WHFast, however, uses a fixed step and does not detect or respond to close encounters at all, so simply changing the asteroid population between runs would not change its behaviour in any meaningful way. To still be able to measure a spread for WHFast, we therefore also varied its timestep slightly between runs: the first realization used a step of 6 h, and each following realization increased the step by 1%, so that the 25th run used a step about 24% larger than the first. Each system was integrated for 1 Myr. We recorded the positions of all bodies every 250 years and compared them across the 25 runs 
+
+MNRAS 000 , 1–11 (2026) 8 D. Vavilov et al. 20000 30000 40000 50000 60000 70000 80000 computation time [s] 10 14 
+
+10 13 
+
+10 12 
+
+10 11 
+
+> max |  E/E0|
+
+Energy conservation vs computation time 
+
+lobbie IAS15 WHFast 
+
+Figure 6. Maximum relative energy error versus average computation time, for 25 realizations each of Lobbie ( 𝑒 𝑡𝑜𝑙 = 10 −11 ), IAS15 ( 𝑒 𝑡𝑜𝑙 = 10 −8), and WHFast (timestep varied from 6 h in 1% increments between runs), for the combined integration of eight planets and 50 Aten asteroids over 1 Myr. Lobbie and IAS15 exhibit smaller relative deviations from initial energy by about three orders of magnitude than WHFast, with Lobbie being roughly twice as fast as IAS15. Mercury Venus Earth Mars Jupiter Saturn Uranus Neptune 10 10          
+
+> 10 9
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> per-run max spread from 25-run mean [au]
+> lobbie (CPU=37114s) IAS15 (CPU=73339s) WHFast (CPU=19890s)
+
+Figure 7. Positional spread across 25 runs of the same integrator, over the 1 Myr integration of eight planets and 50 Aten asteroids, shown separately for each planet. For each run, we compute the maximum deviation of that run’s position from the mean position over all 25 runs; the markers show the average of this maximum deviation across the 25 runs, with whiskers spanning its minimum to maximum. Lobbie shows the smallest spread for every planet (by orders of magnitude), followed by IAS15, while WHFast is several orders of magnitude worse throughout, reflecting its much lower intrinsic accuracy. 
+
+of each integrator, as well as monitoring the conservation of total energy. The maximum relative energy error across all 25 runs is 6 .40 ·10 −15 
+
+for Lobbie, 1 .42 · 10 −14 for IAS15, and 9 .75 · 10 −12 for WHFast, i.e. Lobbie conserves the total energy about 2 times better, while being twice faster, and they both conserve energy roughly three orders of magnitude better than WHFast (Fig. 6). In terms of computation time, 0.0 0.2 0.4 0.6 0.8 1.0 time, yr 1e6 10 10          
+
+> 10 9
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> max position spread from 25-run mean [au]
+
+Mercury: positional spread vs time                  
+
+> lobbie (CPU=37114s) IAS15 (CPU=73339s) WHFast (CPU=19890s) 0.0 0.2 0.4 0.6 0.8 1.0 time, yr 1e6 10 11
+> 10 10
+> 10 9
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> max position spread from 25-run mean [au]
+
+Earth: positional spread vs time                  
+
+> lobbie (CPU=37114s) IAS15 (CPU=73339s) WHFast (CPU=19890s) 0.0 0.2 0.4 0.6 0.8 1.0 time, yr 1e6 10 11
+> 10 10
+> 10 9
+> 10 8
+> 10 7
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> max position spread from 25-run mean [au]
+
+Jupiter: positional spread vs time 
+
+> lobbie (CPU=37114s) IAS15 (CPU=73339s) WHFast (CPU=19890s)
+
+Figure 8. Maximum positional spread among 25 runs as a function of time, for Mercury, Earth and Jupiter (top to bottom), in the same eight-planet-plus-asteroids test as Figs. 6 and 7. Lobbie and IAS15 grow gradually and stay close to round-off level, while WHFast diverges rapidly to 0 .1 − 1 au. 
+
+WHFast is fastest at 19,890 s on average, Lobbie takes 37,114 s, and IAS15 is the slowest at 73,339 s. Figure 7 shows the maximum positional spread among the 25 runs at the end of the integration, for each planet and each integrator. Lobbie shows the smallest spread for every planet, typically one to two orders of magnitude smaller than IAS15, while WHFast is many orders of magnitude worse for all planets, including those far from the asteroid belt. For Jupiter, in particular, Lobbie’s spread after 1 Myr remains below 10 −8 au, i.e. about 1.5 km, despite the presence of 50 asteroids repeatedly perturbing the system. This level of consistency 
+
+MNRAS 000 , 1–11 (2026) Long-term orbit integrations with Lobbie 9
+
+suggests that our realization of Lobbie is well suited to accurate long-term integrations where close encounters must be resolved reliably, such as the dynamical evolution of long-period comets during their encounters with Jupiter. Lobbie also shows a clear downward trend, becoming more precise for planets further from the Sun, and this trend is much stronger than for IAS15. This is likely because the integration step is set mainly by the innermost planets and by close encounters with asteroids, making it far smaller than what the outer planets themselves would require; since Lobbie stores its state vectors in quadruple precision, it does not lose this extra accuracy to round-off, and the outer planets’ positions come out correspondingly more precise. Figure 8 (Mercury, Earth and Jupiter, respectively) show how this spread builds up over time: for Lobbie and IAS15 the spread grows gradually and stays close to the round-off level for most of the integration, whereas for WHFast it grows very rapidly at the start and quickly reaches 0 .1 − 1 au. This last result must be interpreted with some care. Because WH-Fast does not detect close encounters, it integrates every asteroid with the same fixed step regardless of how close it comes to a planet, and it does so identically in every run except for the small artificial change in step size that we introduced by hand. The large spread we measure for WHFast is therefore driven mainly by this imposed step variation, not by an actual sensitivity of the code to the physical close encounters. In other words, this test somewhat favours WHFast: since it never adapts to the encounters in the first place, its apparent short computation time and its energy conservation do not reflect whether the close encounters were resolved correctly, only that the fixed step was small enough not to blow up the energy. For this reason, we do not consider the WHFast results in this asteroid test to be a reliable measure of its accuracy for systems with frequent close encounters, and the comparison here should be read mainly as a demonstration that Lobbie and IAS15, which do adapt their step size, remain self-consistent across many close encounters, while WHFast simply does not experience them in a numerically meaningful way. 
+
+4 CONCLUSIONS 
+
+In this work, we evaluated the performance of the Lobatto colloca-tion integrator Lobbie (Avdyushev 2022) for long-term gravitational 
+
+𝑁 -body simulations of the Solar System and compared it against two widely used state-of-the-art integrators: the symplectic mapping WHFast and the adaptive high-order collocation integrator IAS15. Our tests show that Lobbie combines several desirable properties for long-term celestial mechanics simulations. In the circular two-body problem integrated over 100 Myr, Lobbie showed exceptional long-term phase stability, maintaining positional errors far below those reached by either IAS15 or WHFast. In particular, for suitable choices of the adaptive accuracy parameter, the orbital phase error remained bounded at levels corresponding to spatial deviations sub-stantially smaller than planetary scales over the entire integration interval. In systems with orbital eccentricity up to 𝑒 = 0.999 IAS15 and WHFast perform better than for a circular orbit, however, Lobbie still obtains more accurate results. For integrations of the full eight-planet Solar System over 100 Myrs, Lobbie achieved relative energy conservation at the level of a few parts in 10 −14 while being substantially faster than IAS15 at com-parable accuracy. WHFast remained the fastest method overall, but at significantly lower energy accuracy (2 orders of magnitude worse). We furthermore demonstrate that Lobbie can approached WHFast-level performance while retaining the flexibility of a general-purpose adaptive collocation scheme capable of handling arbitrary force mod-els and non-Hamiltonian perturbations. The integrations of the four giant planets over 10 Gyrs further demonstrated the long-term robust-ness of the method. On timescales comparable to the main-sequence lifetime of the Sun, Lobbie consistently produced smaller energy errors than IAS15 while maintaining competitive runtimes. The re-sults indicate that symmetric Lobatto collocation schemes can exhibit long-term numerical behavior comparable to that traditionally associ-ated with symplectic methods, despite not being explicitly symplectic themselves. As for consistency in systems that exhibit chaotic behav-ior, Lobbie again takes the lead over its competitors, especially in positional consistency of planets in the outer solar system achieving the order of 1 km agreement. In summary, our results show that Lobbie represents a highly competitive alternative for long-term gravitational dynamics, espe-cially if high precision is required. The method combines the geo-metric advantages of symmetric collocation schemes with adaptive timestepping, high-order accuracy, and broad applicability to general force models. These properties make Lobbie particularly attractive for applications involving close encounters, non-conservative pertur-bations, relativistic corrections, or long-term integrations of large populations of small bodies in the Solar System. 
+
+DATA AVAILABILITY 
+
+The code used in this work is publicly available. The Fortran im-plementation of the Lobbie integrator, including the version de-signed for integrations of massive bodies together with mass-less particles, can be accessed through the GitHub repository: https : // github .com /DJVil /Lobbie_planet_integration .git The data generated in this study are available from the correspond-ing author upon reasonable request. 
+
+ACKNOWLEDGEMENTS 
+
+This research is supported by the National Science Foundation under grant Nos. 2307569 and 2307570 and is partially funded by a gen-erous gift of Charles Simonyi to the NSF Division of Astronomical Sciences. The award is made in recognition of significant contribu-tions to Rubin Observatory’s Legacy Survey of Space and Time. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation. The work of S.G. is supported by NOIRLab, which is managed by the Association of Universities for Research in Astronomy (AURA) under a cooperative agreement with the US National Science Foun-dation. 
+
+REFERENCES         
+
+> Avdyushev V. A., 2020, Izvestiya Vysshikh Uchebnykh Zavedenii. Fizika, 63, 131 Avdyushev V. A., 2021, Russian Physics Journal, 63, 1977 Avdyushev V. A., 2022, Solar System Research, 56, 32 Duncan M. J., Levison H. F., Lee M. H., 1998, The Astronomical Journal, 116, 2067 Eggl S., Dvorak R., 2009, in , Dynamics of small solar system bodies and exoplanets. Springer, pp 431–480 Everhart E., 1974, Celestial Mechanics, 10, 35 Feng K., Qin M., 2010, Symplectic Difference Schemes for Hamilto-nian Systems. Springer Berlin Heidelberg, Berlin, Heidelberg, pp MNRAS 000 , 1–11 (2026)
+
+## 10 D. Vavilov et al. 
+
+187–211, doi:10.1007/978-3-642-01777-3_5, https://doi.org/10. 1007/978-3-642-01777-3_5 
+
+Granvik M., et al., 2018, Icarus, 312, 181 Greenstreet S., Ngo H., Gladman B., 2012, Icarus, 217, 355 Hairer E., Lubich C., Wanner G., 2006, Geometric Numerical Integration: Structure-Preserving Algorithms for Ordinary Differential Equations, 2 edn. Springer Series in Computational Mathematics Vol. 31, Springer-Verlag, Berlin, Heidelberg Hernandez D. M., Bertschinger E., 2018, MNRAS, 475, 5570 Javaheri P., Rein H., Tamayo D., 2023, The Open Journal of Astrophysics, 6 Kahan W., 1965, Commun. ACM, 8, 40 Laskar J., Robutel P., 2001, Celestial Mechanics and Dynamical Astronomy, 80, 39 Nesvorný D., et al., 2023, AJ, 166, 55 Nesvorný D., et al., 2024, Icarus, 417, 116110 Park R. S., Folkner W. M., Williams J. G., Boggs D. H., 2021, AJ, 161, 105 Rein H., Spiegel D. S., 2015, MNRAS, 446, 1424 Rein H., Tamayo D., 2015, Monthly Notices of the Royal Astronomical Soci-ety, 452, 376 Rein H., Tamayo D., Brown G., 2019a, Monthly Notices of the Royal Astro-nomical Society, 489, 4632 Rein H., Brown G., Tamayo D., 2019b, Monthly Notices of the Royal Astro-nomical Society, 490, 5122 Ruth R. D., 1983, IEEE Transactions on Nuclear Science, p. 2669 Vogelaere R. D., 1900, University of Notre Dame Wisdom J., Holman M., 1991, AJ, 102, 1528 Wisdom J., Holman M., Touma J., 1996, Integration Algorithms and Classical Mechanics, 10, 180 
+
+APPENDIX A: FULL LOBBIE ALGORITHM 
+
+In this appendix we provide the complete formulation of the colloca-tion integrator Lobbie, following the original derivation of Avdyu-shev (2021). The method is formulated here only for second-order differential equations, consistent with the implementation used in this work. 
+
+A1 Collocation formulation 
+
+Consider the second-order system 
+
+¥𝒙 = 𝒇 (𝑡, 𝒙 , ¤𝒙 ), (A1) with initial conditions 
+
+𝒙 (𝑡 0) = 𝒙 0, (A2) 
+
+¤𝒙 (𝑡 0) = 𝒗 0. (A3) The integration interval is [𝑡 0, 𝑡 0 + ℎ], where ℎ is the integration step. Introducing the dimensionless variable 
+
+𝜏 = 𝑡 − 𝑡 0
+
+ℎ , 𝜏 ∈ [ 0, 1], (A4) we define the Lobatto collocation nodes 0 = 𝑐 1 < 𝑐 2 < · · · < 𝑐 𝑠 = 1. (A5) The acceleration is approximated by the Newton interpolation polynomial 
+
+𝒑 (𝜏 ) =
+
+> 𝑠
+
+∑︁ 
+
+> 𝑗 =1
+
+𝜶 𝑗 𝑗 −1Ö
+
+> 𝑘 =1
+
+(𝜏 − 𝑐 𝑘 ), (A6) where 𝜶 𝑗 are the divided differences corresponding to the accelera-tion function. The divided differences are computed recursively: 
+
+𝜶 1 = 𝒇 1, (A7) 
+
+𝜶 𝑗 = 𝜶 𝑗 −1: 𝑗 − 𝜶 𝑗 −1
+
+𝑐 𝑗 − 𝑐 𝑗 −𝑘 
+
+, (A8) where 
+
+𝒇 𝑖 = 𝒇 (𝑡 𝑖 , 𝒖 𝑖 , 𝒗 𝑖 ), (A9) 
+
+𝑡 𝑖 = 𝑡 0 + ℎ𝑐 𝑖 . (A10) For the 14th-order Lobatto collocation scheme with 𝑠 = 8 collo-cation points, the shifted Gauss–Lobatto nodes on the interval [0, 1]
+
+are 
+
+𝑐 1 = 0,𝑐 2 = 0.0641299257451967 ,𝑐 3 = 0.204149909283429 ,𝑐 4 = 0.395350391048761 ,𝑐 5 = 0.604649608951239 ,𝑐 6 = 0.795850090716571 ,𝑐 7 = 0.935870074254803 ,𝑐 8 = 1.
+
+(A11) These nodes are obtained from the roots of 𝑑 𝑑 𝑥 𝑃 7 (𝑥 ) = 0, mapped from the interval [− 1, 1] to [0, 1].
+
+A2 Collocation equations 
+
+The approximate solutions at the collocation nodes are obtained by integrating the interpolation polynomial. For each collocation point 
+
+𝑖 = 2, . . . , 𝑠 ,
+
+𝒖 𝑖 = 𝒙 0 + ℎ𝑐 𝑖 𝒗 0 + ℎ2
+
+> 𝑠
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑎 𝑖 𝑗 𝜶 𝑗 , (A12) 
+
+𝒗 𝑖 = 𝒗 0 + ℎ
+
+> 𝑠
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑏 𝑖 𝑗 𝜶 𝑗 , (A13) where 𝒖 𝑖 and 𝒗 𝑖 are approximations of the coordinates and velocities at the collocation point 𝑐 𝑖 .The coefficients are defined as integrals of the Newton basis func-tions, 
+
+𝑎 𝑖 𝑗 =
+
+∫ 𝑐 𝑖 
+
+> 0
+
+∫ 𝜏  
+
+> 0
+> 𝑗 −1
+
+Ö
+
+> 𝑘 =1
+
+(𝜉 − 𝑐 𝑘 ) 𝑑𝜉 𝑑𝜏, (A14) 
+
+𝑏 𝑖 𝑗 =
+
+∫ 𝑐 𝑖  
+
+> 0
+> 𝑗 −1
+
+Ö
+
+> 𝑘 =1
+
+(𝜏 − 𝑐 𝑘 ) 𝑑𝜏. (A15) After convergence of the iterative process, the solution at the end of the step is obtained from 
+
+𝒙 1 = 𝒙 0 + ℎ𝒗 0 + ℎ2
+
+> 𝑠
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑎 𝑠 𝑗 𝜶 𝑗 , (A16) 
+
+¤𝒙 1 = 𝒗 0 + ℎ
+
+> 𝑠
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑏 𝑠 𝑗 𝜶 𝑗 . (A17) 
+
+A3 Recursive construction of the coefficients 
+
+The coefficients of the method are efficiently computed through re-cursive relations. Defining the 𝑘 -fold integral of the Newton basis 
+
+MNRAS 000 , 1–11 (2026) Long-term orbit integrations with Lobbie 11 
+
+functions, 
+
+𝛾 (𝑘 ) 
+
+> 𝑗
+
+(𝜏 ) =
+
+∫ 𝜏 
+
+> 0
+
+∫ 𝜏 1
+
+> 0
+
+· · · 
+
+∫ 𝜏 𝑘 −1
+
+> 0
+
+| {z }  
+
+> 𝑘 times
+> 𝑗 −1
+
+Ö
+
+> 𝑚 =1
+
+(𝜏 𝑘 − 𝑐 𝑚 ) 𝑑𝜏 𝑘 . . . 𝑑𝜏 1, (A18) we have 
+
+𝑎 𝑖 𝑗 = 𝛾 (2) 
+
+> 𝑗
+
+(𝑐 𝑖 ), (A19) 
+
+𝑏 𝑖 𝑗 = 𝛾 (1) 
+
+> 𝑗
+
+(𝑐 𝑖 ). (A20) The recurrence relations are 
+
+𝛾 (𝑘 ) 
+
+> 1
+
+(𝜏 ) = 𝜏 𝑘 
+
+𝑘 ! , (A21) 
+
+𝛾 (𝑘 ) 
+
+> 𝑗
+
+(𝜏 ) = (𝜏 − 𝑐 𝑗 −1)𝛾 (𝑘 )  
+
+> 𝑗 −1
+
+(𝜏 ) − 𝑘𝛾 (𝑘 +1)  
+
+> 𝑗 −1
+
+(𝜏 ), (A22) with 𝑗 = 2, . . . , 𝑠 .
+
+A4 Predictor–corrector iterations 
+
+The nonlinear collocation equations are solved iteratively using a fixed-point iteration in Seidel form. Initial estimates of the divided differences are obtained by extrapolation from the previous step, 
+
+𝒇 (0) 
+
+> 𝑖
+
+= 𝒑 (1 + 𝑐 𝑖 ). (A23) At each iteration the collocation values are updated sequentially: (i) Compute 𝒖 𝑖 and 𝒗 𝑖 from Eq. (A13). (ii) Evaluate the accelerations 
+
+𝒇 𝑖 = 𝒇 (𝑡 𝑖 , 𝒖 𝑖 , 𝒗 𝑖 ). (A24) (iii) Recompute the divided differences 𝜶 𝑖 .The iterative process stops when 
+
+∥𝒖 (𝑛 ) 
+
+> 𝑠
+
+− 𝒖 (𝑛 −1) 
+
+> 𝑠
+
+∥ < 𝜀, (A25) where 𝜀 is the convergence tolerance and (𝑛 ) indicates the 𝑛 -th iter-ation. 
+
+A5 Dense output 
+
+One advantage of collocation methods is the possibility to construct a continuous approximation inside the integration step. For arbitrary 
+
+𝜏 ∈ [ 0, 1],
+
+𝒖 (𝜏 ) = 𝒙 0 + ℎ𝜏 𝒗 0 + ℎ2
+
+> 𝑠
+
+∑︁ 
+
+> 𝑗 =1
+
+𝛾 (2) 
+
+> 𝑗
+
+(𝜏 )𝜶 𝑗 , (A26) 
+
+𝒗 (𝜏 ) = 𝒗 0 + ℎ
+
+> 𝑠
+
+∑︁ 
+
+> 𝑗 =1
+
+𝛾 (1) 
+
+> 𝑗
+
+(𝜏 )𝜶 𝑗 . (A27) This representation allows efficient generation of dense output without reintegration. 
+
+A6 Order and geometric properties 
+
+For Lobatto collocation nodes, the integrator has formal order 
+
+𝑝 = 2𝑠 − 2, (A28) where 𝑠 is the number of collocation points. In addition, the method is symmetric, which makes it particularly suitable for long-term in-tegrations in celestial mechanics. The practical implementation of Lobbie follows the standard predictor–corrector structure: 
+
+Planet Mass ( 𝑀 ⊙ )Mercury 1.660120825478540E-007 Venus 2.447838287781388E-006 Earth 3.003489615446052E-006 Mars 3.227156082893391E-007 Jupiter 9.547919099353572E-004 Saturn 2.858856700227778E-004 Uranus 4.366249613194372E-005 Neptune 5.151383772621838E-005 
+
+Table B1. Mass of the planets used in our simulations in Solar Masses. 
+
+(i) initialization of collocation coefficients, (ii) prediction of divided differences, (iii) iterative correction of collocation values, (iv) convergence check, (v) dense output construction. 
+
+APPENDIX B: STATE VECTORS OF THE MAJOR PLANETS 
+
+Here in Table B we present the state vectors of 8 major planets we used in this computations and in Table B1 we present the masses of the planets. 
+
+This paper has been typeset from a TEX/L ATEX file prepared by the author. MNRAS 000 , 1–11 (2026) 12 D. Vavilov et al. 
+
+Table B2. The initial heliocentric state vectors for all 8 major planets used in our tests. The distances are in au and the velocities are in au/days. Planet State Vector ( 𝑥, 𝑦, 𝑧, 𝑣 𝑥 , 𝑣 𝑦 , 𝑣 𝑧 )
+
+1 -0.140728079719301 -0.443900958053739 -2.334555920112938E-002 2.116887136020025E-002 -7.097975420984262E-003 -2.522831030870965E-003 2 -0.718630216963728 -2.250380069564102E-002 4.117184128884459E-002 5.135327471763992E-004 -2.030614162369829E-002 -3.071745200872245E-004 3 -0.168524648395985 0.968783304965269 -4.120490250836273E-006 -1.723394583350394E-002 -3.007660250034951E-003 3.562572767584586E-008 4 1.39036106612293 -2.100972225930386E-002 -3.461801441143633E-002 7.479271206652266E-004 1.518629868832040E-002 2.997532185989235E-004 5 4.00346010820115 2.93535361601416 -0.101823035649513 -4.563473318088745E-003 6.446757879841354E-003 7.545651030030440E-005 6 6.40855472782918 6.56804414319537 -0.369127882426688 -4.291119708408092E-003 3.891580683171841E-003 1.028767887671777E-004 7 14.4305174938589 -13.7356577542398 -0.238129300641418 2.678379969541383E-003 2.672442671258471E-003 -2.477662656650322E-005 8 16.8107573081082 -24.9926513083273 0.127270834587742 2.579369564538994E-003 1.776769336668958E-003 -9.590902716799120E-005 MNRAS 000 , 1–11 (2026)
