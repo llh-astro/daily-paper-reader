@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-12</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-13</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 11 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 10 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>5</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>6</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>3</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-12 21:55:05 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-13 21:32:31 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,8 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今天完成11篇论文筛选与阅读，精读5篇、速读6篇，重点聚焦系外行星观测与AI/行星科学交叉方法。</p>
-<p>最值得看的是9.0分的《Hybrid Spin-Orbit Tomography for Earth-like Planets》——用多色光变曲线同时测绘类地行星静态表面与动态云层，以及8.0分的JWST NIRISS孔径掩模干涉在HR</p>
+<p>今日10篇论文中筛出3篇精读、7篇速读，重点落在原行星盘尘埃动力学与混沌过程建模两条线。</p>
+<p>最值得看的是9.0分的《From spirals to rings》，讲晚期坠落如何让引力湍流盘中的尘埃从螺旋演化为环；其次是8.0分的混沌无方程数据驱动建模。</p>
+<p>普通读者可从&quot;螺旋变环&quot;的图景入手，再顺着SOLANUM数值模拟中恒星早期与晚期坠落的线索延伸阅读。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -72,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">5 篇</strong>
+    <strong class="dpr-home-dashboard-count">3 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Hybrid Spin-Orbit Tomography for Earth-like Planets: Simultaneous Mapping of Static Surfaces and Dynamic Clouds from Multicolor Light Curves">Hybrid Spin-Orbit Tomography for Earth-like Planets: Simultaneous Mapping of Static Surfaces and Dynamic Clouds from Multicolor Light Curves</span></li><li><span class="dpr-home-dashboard-paper-title" title="A Candidate Innermost Fifth Planet In the HR 8799 System Revealed By JWST NIRISS Aperture Masking Interferometry">A Candidate Innermost Fifth Planet In the HR 8799 System Revealed By JWST NIRISS Aperture Masking Interferometry</span></li><li><span class="dpr-home-dashboard-paper-title" title="Fast and Furious: Long-term orbit integrations with collocation integrator Lobbie">Fast and Furious: Long-term orbit integrations with collocation integrator Lobbie</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="From spirals to rings: dust dynamics in gravitoturbulent protoplanetary discs after late infall">From spirals to rings: dust dynamics in gravitoturbulent protoplanetary discs after late infall</span></li><li><span class="dpr-home-dashboard-paper-title" title="Equation free data-driven modelling of chaotic processes">Equation free data-driven modelling of chaotic processes</span></li><li><span class="dpr-home-dashboard-paper-title" title="The Dyn-Atmo Survey: JWST/NIRSpec spectroscopy of dynamical benchmark GJ 758 B">The Dyn-Atmo Survey: JWST/NIRSpec spectroscopy of dynamical benchmark GJ 758 B</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>4</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -85,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">6 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Fractal basins trap latent reasoning">Fractal basins trap latent reasoning</span></li><li><span class="dpr-home-dashboard-paper-title" title="Physics-Informed Multi-Task Surrogate Model for the Martian Nightside Thermosphere">Physics-Informed Multi-Task Surrogate Model for the Martian Nightside Thermosphere</span></li><li><span class="dpr-home-dashboard-paper-title" title="LLMs as Post-hoc Auditors of Physiological Plausibility in Symbolic Regression: A Clinician-Evaluated Case Study">LLMs as Post-hoc Auditors of Physiological Plausibility in Symbolic Regression: A Clinician-Evaluated Case Study</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="New Symbolic Procedures in the Study of Dynamical Systems">New Symbolic Procedures in the Study of Dynamical Systems</span></li><li><span class="dpr-home-dashboard-paper-title" title="Series of core collapse numerical simulations (SOLANUM) I: Modelling the early and late infall in a sun-like protostar">Series of core collapse numerical simulations (SOLANUM) I: Modelling the early and late infall in a sun-like protostar</span></li><li><span class="dpr-home-dashboard-paper-title" title="Detecting White Dwarf Exoplanets in the Roman Era">Detecting White Dwarf Exoplanets in the Roman Era</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>3</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>3</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>3</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 </div>
 
