@@ -1,0 +1,429 @@
+Title: DiffSWE2d: a differentiable Shallow Water Equations solver for end-to-end flood and tsunami modelling
+
+URL Source: https://arxiv.org/pdf/2609.11426v1
+
+Published Time: Fri, 11 Sep 2026 01:18:24 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# DIFF SWE2 D: A DIFFERENTIABLE SHALLOW WATER EQUATIONS SOLVER FOR END -TO -END FLOOD AND TSUNAMI MODELLING 
+
+Zhonghou Xu 
+
+Earth Sciences New Zealand Hamilton, 3216 
+
+zhonghou.xu@earthsciences.nz 
+
+# ABSTRACT 
+
+Solving inverse and optimisation problems with traditional shallow water equations (SWE) solvers can be computationally expensive, particularly when gradients with respect to model inputs or parameters must be estimated through repeated forward simulations. In this paper, we introduce 
+
+DiffSWE2d , an open-source differentiable shallow water equations solver for end-to-end flood and tsunami modelling implemented in PyTorch. By leveraging automatic differentiation, DiffSWE2d represents the time-marching physics as a differentiable computational graph, enabling gradients to be propagated directly through the numerical solver. We validate the solver against two established benchmark cases and demonstrate its application to tsunami waveform inversion, showing its ability to infer model inputs through gradient-based optimisation. DiffSWE2d provides a flexible framework for integrating physics-based hydrodynamic modelling with modern optimisation and machine learning methods. The source code and reproducible examples are publicly available at: https: //github.com/ZhonghouXu/DiffSWE2d 
+
+Keywords differentiable solver · shallow water equations · automatic differentiation · PyTorch 
+
+# 1 Introduction 
+
+Shallow water equations (SWE) are widely used for flood and tsunami modelling because they provide an effective balance between physical fidelity and computational efficiency. With the rapid development of high-performance computing, particularly graphics processing units (GPUs), the computational efficiency of SWE solvers has improved substantially, enabling large-scale and high-resolution flood and tsunami simulations [3, 14, 27, 28]. However, most traditional SWE solvers are primarily designed for forward modelling, in which model outputs are computed from prescribed input parameters through a time-marching numerical scheme. Many practical applications instead require inverse or optimisation problems, where model parameters or inputs must be inferred or optimised based on observations or desired model outputs. Examples include inferring tsunami waveforms, estimating bathymetry and bottom roughness, optimising topography for flood mitigation, and designing sensor networks. Such problems typically require repeated forward simulations and gradient estimation, making them computationally expensive even when the underlying forward solver is highly accelerated [5]. Recent advances in differentiable programming have introduced a new paradigm for addressing these inverse and opti-misation problems by enabling gradients to be propagated through numerical simulations using automatic differentiation (AD) [1]. AD systematically evaluates derivatives of computational operations with respect to model inputs, allowing inverse problems to be formulated as gradient-based optimisation rather than relying solely on black-box search or finite-difference approximations [12, 21]. This approach has recently been extended to hydrodynamic modelling, with differentiable solvers emerging for flood and tsunami applications [5, 12, 11, 13, 19]. These developments demonstrate the potential of differentiable physics to provide end-to-end frameworks for solving inverse problems while retaining the physical constraints of numerical hydrodynamic models. arXiv:2609.11426v1 [physics.flu-dyn] 10 Sep 2026 A PREPRINT 
+
+In this paper, we present DiffSWE2d , an open-source differentiable SWE solver designed to facilitate inverse and optimisation problems in flood and tsunami modelling. DiffSWE2d solves the shallow water equations using a finite-volume method implemented in PyTorch [15], allowing automatic differentiation to be applied throughout the time-marching simulation. The solver therefore supports both conventional forward modelling and gradient-based optimisation within a unified computational framework. We validate the forward solver using two established benchmark cases and demonstrate its differentiable capability through an application to tsunami waveform inversion. The organisation of this paper is as follows. Section 2 describes the governing equations, numerical schemes, PyTorch implementation and differentiable framework. Section 3 presents two benchmark cases for validating the forward solver. Section 4 demonstrates tsunami waveform inversion using DiffSWE2d. Section 5 discusses potential applications and limitations and provides conclusions. 
+
+# 2 Methods 
+
+The core hydrodynamics engine of DiffSWE2d adopts the same governing equations and numerical schemes used in Basilisk B-Flood [10, 18] and BG-Flood [3, 29]. It solves nonlinear shallow water equations using a second-order Godunov-type finite volume scheme on a uniform Cartesian grid. 
+
+2.1 Governing equations 
+
+With the hydrostatic pressure assumption, the governing equations are: 
+
+∂h ∂t + ∂q x
+
+∂x + ∂q y
+
+∂y = Sh (1) 
+
+∂q x
+
+∂t + ∂∂x 
+
+ q2
+
+> x
+
+h + g
+
+2 h2
+
+
+
++ ∂∂y 
+
+ qxqy
+
+h
+
+
+
+= Sg,x + Sf,x (2) 
+
+∂q y
+
+∂t + ∂∂x 
+
+ qxqy
+
+h
+
+
+
++ ∂∂y 
+
+q2
+
+> y
+
+h + g
+
+2 h2
+
+!
+
+= Sg,y + Sf,y (3) where h is the water depth, qx and qy are the unit discharges in the x and y directions and qx = hu and qy = hv , in which u and v are the depth-averaged velocities in the x an y directions. Sh is the mass source and sink term including rainfall and infiltration. Sg,x and Sg,y denote the gravitational source terms associated with bed-slope gradients. Sf,x 
+
+and Sf,y are friction source terms. The shallow-water equations can be expressed in conservative form as: 
+
+∂∂t U + ∂∂x Fx + ∂∂y Fy = S (4) where U is a vector of conserved variables, Fx and Fy are the fluxes in the x and y directions defined as 
+
+U =
+
+" hqx
+
+qy
+
+#
+
+, Fx =
+
+
+
+qxq2 
+
+> x
+> h
+
++ g 
+
+> 2
+
+h2
+
+> qxqy
+> h
+
+ , Fy =
+
+
+
+qyqxqy 
+
+> hq2
+> y
+> h
+
++ g 
+
+> 2
+
+h2
+
+
+
+The source term S includes mass source term Sh, gravity source term Sg and friction source term Sf .
+
+S = Sh + Sg + Sf =
+
+"R
+
+00
+
+#
+
++
+
+
+
+0
+
+−gh ∂z b
+
+> ∂x
+
+−gh ∂z b
+
+> ∂y
+
+ +
+
+" 0
+
+Sf,x 
+
+Sf,y 
+
+#
+
+where R is mass source and sink terms including rainfall and infiltration, and zb is the bed elevation. 
+
+2.2 Time integration 
+
+An explicit second-order predictor-corrector scheme is used for time-integration [10, 18]. The stable time step ( ∆t) is based on the Courant-Friedrichs-Levy (CFL) condition: 
+
+∆t = CF L  
+
+> ax
+> ∆x
+
++ ay
+
+> ∆y
+
+2A PREPRINT 
+
+where ax and ay are the maximum wave speeds in the x and y directions. ∆x and ∆y are grid sizes. 
+
+2.3 Flux calculation 
+
+Numerical fluxes at cell interfaces are computed using the HLLC (Harten-Lax-van Leer contact) approximate Riemann solver [25, 24]. Spatial reconstruction uses a MUSCL ( Monotonic Upstream-centered Scheme for Conservation Laws) formulation with a minmod slope limiter to achieve second-order spatial accuracy while controlling spurious oscillations near discontinuities. To improve the treatment of complex and steep topography, hydrostatic reconstruction is applied following Audusse et al. [2], with second-order spatial reconstruction subsequently performed following Buttinger-Kreuzhuber et al. [4], Chen and Noelle [7]. This treatment addresses limitations associated with hydrostatic reconstruction over steep topographic gradients [8]. 
+
+2.4 Friction 
+
+Two formulations of bottom friction are available, based either on Manning’s roughness coefficient n or the roughness length z0.If using the Manning’s roughness coefficient n,
+
+Sf,x = −gn 2 qxqh 73
+
+, Sf,y = −gn 2 qy qh 73
+
+where q =
+
+q
+
+q2 
+
+> x
+
++ q2 
+
+> y
+
+.If using the roughness length z0,
+
+Sf,x = −Cf
+
+qxqh2 , Sf,y = −Cf
+
+qy qh2
+
+where Cf is the drag coefficient derived from the logarithmic velocity profile [22]. The drag coefficient is defined as 
+
+Cf =
+
+   
+
+> 10.46( h/z 0)1h
+> 2.5
+> 
+> ln
+> hz0
+> 
+> −1.0+ 1.359
+> h/z 0
+> i 2
+
+, 
+
+> hz0
+
+< e (shallow water ) 
+
+> hz0
+
+≥ e (deep water )
+
+where e ≈ 2.718. For the New Zealand context, the national coverage of LiDAR derived roughness length at 8 m resolution is publicly available [16] and has been used for national-scale flood mapping [9]. The friction is applied semi-implicitly as an independent update at the end of each time step after the full hydrodynamic state has been updated [10]. 
+
+2.5 PyTorch implementation 2.5.1 Model architecture 
+
+The solver ( SWE2D class) is structured as a standard PyTorch nn.Module . The variables are stored in a state tensor U
+
+of shape [batch, 3, ny, nx] . The three channels represent water depth ( h), x-directional momentum ( hu ), and y-directional momentum ( hv ). Static fields (e.g., grid size) are registered as non-trainable PyTorch buffers. 
+
+2.5.2 Time stepping 
+
+The forward function is the standard entry point for a PyTorch nn.Module , responsible for advancing the simulation over a simulation duration ( t_end ). The forward function orchestrates multiple calls to the step function. The 
+
+step function executes a single adaptive timestep using a two-stage midpoint predictor-corrector scheme. It calls the 
+
+spatial_operator function to calculate the spatial derivatives and updates the state tensor U.
+
+2.5.3 Spatial operator 
+
+The spatial_operator function computes the spatial gradients and source terms using vectorized tensor operations. 3A PREPRINT 
+
+Boundary Ghost Cells The state tensor is padded using add_ghost_cells to handle reflective, transmissive, or other boundaries seamlessly within the tensor convolution limits. 
+
+Spatial Reconstruction Interface states (Left/Right) are interpolated using bflood_cn_reconstruction . This step includes the slope limiters to maintain high-order accuracy while preventing spurious oscillations near shocks. 
+
+HLLC Riemann Solver The intercell numerical fluxes ( Fx, Fy ) and local maximum wave speeds are computed in 
+
+bflood_hllc_flux . Because PyTorch supports vectorized conditional logic ( torch.where ), the solver evaluates all possible Riemann wave regions simultaneously across the entire grid without iterative loops. 
+
+2.5.4 Differentiability 
+
+The differentiable solver leverages the automatic differentiation (AD) framework in PyTorch to enable gradient propagation through the time-marching simulation. The solver supports both a forward pass, in which the SWE are integrated in time, and a backward pass, in which gradients of an objective function are propagated through the numerical solver. During the forward pass, the sequence of differentiable mathematical operations is recorded as a computational graph. During the backward pass, PyTorch applies reverse-mode automatic differentiation to this computational graph to evaluate the gradient of the loss function with respect to the model inputs and parameters, including initial conditions, boundary conditions, and other physical parameters [5]. The trainable parameters are enabled using torch.nn.Parameter .Several modifications to the numerical solver are required to improve differentiability in the presence of discontinuities inherent in shallow water flow. In particular, a continuous water film is introduced at wet–dry interfaces to avoid abrupt changes in the computational state that can lead to undefined or unstable gradients. For limiter choices and branch selection, PyTorch’s native automatic differentiation automatically records the active branch during the forward pass. During the backward pass, gradients are routed only through the active branch. In addition, the adaptive CFL time step is detached from the computational graph during backpropagation. The adaptive time step is therefore retained during the forward simulation to satisfy the CFL stability condition, while its dependence on the model state is ignored when computing gradients. This treatment prevents gradients from propagating through the discrete time-step selection and improves the robustness of gradient backpropagation. Figure 1 illustrates the workflow for solving an inverse problem using the differentiable solver. Given a set of initial model parameters, the solver first performs a forward simulation and computes the model outputs. These outputs are then compared with observations or target values through a loss function. The backward pass propagates the resulting gradients through the computational graph to the model inputs, which can subsequently be updated using a gradient-based optimisation algorithm. 
+
+Figure 1: Flowchart of solving an inverse problem using the differentiable solver. Blue boxes represent processes in the numerical solver. Yellow boxes represent processes using automatic differentiation. 
+
+2.5.5 Computational acceleration 
+
+The solver supports the torch.compile() functionality introduced in PyTorch 2.0. This just-in-time (JIT) compilation mechanism transforms PyTorch operations into optimised kernels at runtime, which can reduce computational overhead and accelerate model execution, particularly for large-scale simulations. 4A PREPRINT 
+
+2.5.6 File format 
+
+The solver supports digital elevation models (DEMs) provided in either ASCII or NetCDF format. Bottom roughness can be specified as either a spatially uniform constant or a spatially varying field. Rainfall forcing can similarly be prescribed as a constant rate or as spatially and temporally varying rainfall fields. 
+
+# 3 Validation of the forward modelling 
+
+In this section we validate the solver with two benchmark tests with forward modelling. 
+
+3.1 Pluvial flooding 
+
+The rainfall-runoff experiments in Cea et al. [6] were simulated to evaluate the capability of DiffSWE2d to model runoff generation and discharge response to precipitation forcing. The experimental setup consists of a rectangular basin bounded by two walls, which extends the flow path and consequently increases the duration of the outlet hydrograph (Figure 2). The model setup includes a uniform grid size of 0.01 m and a Manning’s roughness coefficient n = 0.012. The flow undergoes a free fall before exiting the outlet boundary. The simulated outlet discharge agrees well with the recorded hydrograph, reproducing the overall timing and magnitude of the observed discharge response (Figure 3). 
+
+Figure 2: Topography of the experimental basin. 
+
+Figure 3: Modelled outlet discharges compared with measured discharges for rainfall runoff experiments (a) C1 and (b) C3. 5A PREPRINT 
+
+3.2 Monai Valley tsunami benchmark 
+
+The Monai Valley tsunami benchmark is an experimental set up of the Monai Valley in Okushiri Island, Japan, where the 1993 Hokkaido-Nansei-Oki tsunami resulted in extreme wave runup in the narrow and steep coastal inlet (Figure 4). A uniform spatial resolution of 0.01 m was used in the model setup. The Manning’s n = 0.01 was used as the friction coefficient. Three gauges (gauges 0-2) recorded water levels at the measurement locations in the experiment [23]. DiffSWE2d reproduces the wave accurately at the three gauges and the results are similar to those using BG-Flood [3] and Basilisk [18] as shown in Figure 5. 
+
+Figure 4: Bathymetry of the Monai Valley test with gauge locations. Gauges 0-2 are experimental gauges where water levels were recorded. Gauges 3-5 are hypothetical gauges referenced in Section 4. Incident waves are from the left boundary. 
+
+Figure 5: Performance of DiffSWE2d on the Monai Valley benchmark. The dashed red lines show the measured water levels and the black lines show the simulated results. 
+
+# 4 Tsunami waveform inversion from observations: an example 
+
+Existing approaches for tsunami source inversion use Green’s function or adjoint methods [20, 26, 17]. In this section, we demonstrate an alternative approach based on automatic differentiation, in which DiffSWE2d directly propagates gradients from observed tsunami waveforms to the prescribed boundary waveform. The objective is to recover the incident tsunami waveform from water-level observations at a limited number of gauge locations. The Monai Valley tsunami benchmark in Section 3.2 was used as an example. 6A PREPRINT 
+
+4.1 Model 
+
+The incident tsunami waveform at the model boundary was parameterised using a clamped cubic B-spline with 20 control points. The control points were treated as trainable parameters and optimised using gradient-based optimisation. The inversion was initialised with a zero water-level perturbation at the boundary. DiffSWE2d was then used to perform a forward simulation, and the simulated water levels at the observation gauges were compared with the target gauge records. The resulting objective function was differentiated through the complete time-marching simulation, and the gradients with respect to the B-spline control points were used to update the boundary waveform using the Adam optimiser. 
+
+4.1.1 Workflow for optimising the boundary waveform 
+
+The detailed workflow for optimising the boundary waveform is shown in the five steps below. 1. Initialise or optimize a vector of 20 control values raw j .2. Convert each raw control to a bounded physical value constrained by the allowed range using a sigmoid function. For each control cj ,
+
+cj = cmin + ( cmax − cmin ) σ (raw j )
+
+where cmin and cmax are the predefined value range. 3. Build a B-spline basis matrix and reconstruct the full boundary series b(ti).
+
+b(ti) = 
+
+> m
+
+X
+
+> j=1
+
+Bj (ti)cj
+
+where Bj (ti) are the spline basis values at time ti used as weights and m = 20. The B-spline basis function was built using the Cox-de Boor recursion with a degree of 3. The spline basis values sum up to 1 at every time point, which keeps the spline bounded and smooth. 4. Feed boundary series into the forward pass. The computation graph is, raw controls → c → b → simulation → L
+
+5. Backpropagate the loss L through the computation graph back to the control parameters using backward() . The gradient flows as: 
+
+∂L ∂raw j
+
+= ∂L ∂b · ∂b ∂c j
+
+· ∂c j
+
+∂raw j
+
+where ∂c j
+
+∂raw j
+
+= ( cmax − cmin )σ(raw j )(1 − σ(raw j )) 
+
+and ∂b ∂c = B
+
+In this way, the gradient with respect to the raw controls is effectively the spline-basis-weighted sensitivity of the loss. 
+
+4.1.2 Model set-up 
+
+The initial learning rate was set to 0.02 and subsequently reduced using a learning-rate scheduler, with a minimum learning rate of 1.0 × 10 −5. Optimisation was terminated when the objective function failed to improve by more than 
+
+1.0 × 10 −8 for 10 consecutive epochs. The total loss function consists of the mean squared error (MSE) between the simulated and target water levels at the training gauges (training loss), together with three regularisation terms applied to the reconstructed boundary waveform: 
+
+L = Ltrain + λ1Ld1 + λ2Ld2 + λ3Lamp 
+
+7A PREPRINT 
+
+where Ltrain is the average MSE across the training gauges; The first- and second-order smoothness terms are defined as 
+
+Ld1 = mean 
+
+
+
+(bt+1 − bt)2
+
+Ld2 = mean 
+
+
+
+(bt+2 − 2bt+1 + bt)2
+
+respectively. The amplitude regularisation term is defined as 
+
+Lamp = mean  bt2
+
+where bt, bt+1 and bt+2 denote consecutive values of the reconstructed boundary waveform. The corresponding regularisation weights are λ1 = 1 .0 × 10 −3, λ2 = 1 .0 × 10 −2, and λ3 = 1 .0 × 10 −6.Two inversion scenarios were considered. In Scenario (a), observations from gauges 0 and 1 were used as training data, while observations from gauge 2 were withheld for independent evaluation. In Scenario (b), water-level data from gauges 0, 1, 3, 4, and 5 were used for training, with gauge 2 again reserved for testing. Scenario (b) was designed to investigate the effect of increasing the number of observation gauges on the accuracy of waveform reconstruction. For this scenario, the measured incident waveform was first used as the boundary forcing in a forward simulation to generate water-level data at gauges 0-5 (Figure 4). The resulting synthetic observations had a spatial resolution of 0.08 m. Figure 6 shows the input waves and the simulated waves at gauges 0-5. 
+
+Figure 6: Input waves and simulated waves at gauges 0-5. 
+
+4.2 Results 
+
+Scenario (a) stopped training after 219 epochs and Scenario (b) stopped after 166 epochs. Figure 7 shows the evolution of the total loss, training loss, and testing loss during the inversion. In both scenarios, the total loss closely follows the training loss, indicating that the contribution of the boundary regularisation terms is small relative to the data-misfit term. Both scenarios reproduce the water-level evolution at the withheld testing gauge (gauge 2) reasonably well, as shown in Figure 8. The reconstructed waveforms at the model boundary provide further insight into the effect of the number of observation gauges (Figure 9). In Scenario (a), using observations from only two gauges allows the general characteristics of the incident waveform to be recovered, but the reconstructed waveform underestimates both the positive peak and negative trough and exhibits a distorted wave shape. In contrast, Scenario (b), which uses observations from five training gauges, produces a substantially closer match to the reference boundary waveform. These results demonstrate that additional spatially distributed observations can provide stronger constraints on the inverse problem and improve the reconstruction of the incident tsunami waveform. 
+
+# 5 Conclusion 
+
+In this paper, we introduced DiffSWE2d, an open-source differentiable shallow water equations solver for end-to-end flood and tsunami modelling implemented in PyTorch. By leveraging automatic differentiation, DiffSWE2d can not only 8A PREPRINT 
+
+Figure 7: Evolution of total loss, training loss and testing loss. 
+
+Figure 8: Comparison of original test gauge water levels (observed or modelled) with prediction from inferred input waves. 
+
+Figure 9: Comparison of raw input waves with inferred input waves. perform forward modelling, as in traditional solvers, but also backpropagate gradients with respect to input parameters, enabling gradient-based optimisation and inverse modelling. This capability provides an efficient framework for solving inverse and optimisation problems, including tsunami waveform inference, bathymetry and roughness estimation, topographic optimisation for flood mitigation, and sensor deployment optimisation. Although the solver is differentiable with respect to key input parameters, including DEM, roughness and boundary conditions, the computational graph is not fully differentiable through all components of the numerical scheme. In particular, adaptive time-step selection, wet/dry transitions, limiter choices, flux-region selection, and gradient clipping introduce non-differentiable or detached operations. Furthermore, backpropagation through the computational graph can be computationally expensive, particularly for long simulation sequences, and shares some of the challenges associated with training Recurrent Neural Networks (RNNs), such as increasing memory requirements with sequence 9A PREPRINT 
+
+length. Future development will focus on coupling the differentiable solver with neural networks to accelerate the inversion process and enable more efficient end-to-end learning and optimisation for flood and tsunami modelling. 
+
+# Code and data availability statement 
+
+The code and examples are publicly available at: https://github.com/ZhonghouXu/DiffSWE2d 
+
+# Acknowledgements 
+
+This research was supported by the MBIE Smart Ideas project: AI-enhanced compound flood model for real-time extreme hazard forecasts (NIW2473) and Strategic Science Investment Fund (SSIFTC2701). The author thanks Cyprien Bosserelle for providing the data for the benchmarking case in Section 3.1 and reviewing the initial manuscript. 
+
+# References 
+
+[1] M. G. Alhashim, K. Hausknecht, and M. P. Brenner. Control of flow behavior in complex fluids using automatic differentiation. 122(8):e2403644122, 2025-02-25. ISSN 0027-8424, 1091-6490. doi: 10.1073/pnas.2403644122. URL https://pnas.org/doi/10.1073/pnas.2403644122 .[2] E. Audusse, F. Bouchut, M.-O. Bristeau, R. Klein, and B. Perthame. A fast and stable well-balanced scheme with hydrostatic reconstruction for shallow water flows. 25(6):2050–2065, 2004. [3] C. Bosserelle, E. M. Lane, and A. Harang. BG-Flood: A GPU adaptive, open-source, general inundation hazard model. In Australasian Coasts & Ports , 2021. [4] A. Buttinger-Kreuzhuber, Z. Horváth, S. Noelle, G. Blöschl, and J. Waser. A new second-order shallow water scheme on two-dimensional structured grids over abrupt topography. 127:89–108, 2019-05-01. ISSN 03091708. doi: 10.1016/j.advwatres.2019.03.010. [5] E. Cardoso-Bihlo and A. Bihlo. A solver-in-the-loop framework for end-to-end differentiable coastal hydrody-namics, 2026-04-08. URL http://arxiv.org/abs/2604.07129 .[6] L. Cea, J. Puertas, L. Pena, and M. Garrido. Hydrologic forecasting of fast flood events in small catchments with a 2D-SWE model. Numerical model and experimental validation. 2008. [7] G. Chen and S. Noelle. A new hydrostatic reconstruction scheme based on subcell reconstructions. 55(2):758–784, 2017. [8] O. Delestre, S. Cordier, F. Darboux, and F. James. A limitation of the hydrostatic reconstruction technique for Shallow Water equations. 350(13–14):677–681, 2012-07-01. ISSN 1631-073X, 1778-3569. doi: 10.1016/j. crma.2012.08.004. URL https://comptes-rendus.academie-sciences.fr/mathematique/articles/ 10.1016/j.crma.2012.08.004/ .[9] A. Harang, E. M. Lane, C. Bosserelle, S. Dean, C. Cattoën, R. Pearson, T. Carey-Smith, R. Srinivasan, H. Shiona, M. Wilkins, and G. Smart. Flood Hazard in Aotearoa New Zealand Under Current and Fu-ture Climates. 13(3):e70083, 2026-07. ISSN 2049-6060, 2049-6060. doi: 10.1002/gdj3.70083. URL 
+
+https://rmets.onlinelibrary.wiley.com/doi/10.1002/gdj3.70083 .[10] G. Kirstetter, O. Delestre, P.-y. Lagrée, S. Popinet, C. Josserand, D. M. J. A. D. P. Nice-sophia, and U. Côte. B-flood 1.0: An open-source Saint-Venant model for flash flood simulation using adaptive refinement. pages 7117–7132, 2021. [11] H. Li, J. Hathaway, and A. Canestrelli. Watershed-scale hydrodynamic modeling of Hurricane Helene flooding in Southern Appalachians. 64:103167, 2026-04. ISSN 22145818. doi: 10.1016/j.ejrh.2026.103167. URL 
+
+https://linkinghub.elsevier.com/retrieve/pii/S2214581826000650 .[12] Z. Li. Inunda: A GPU-Native, Agent-enabled, Differentiable Solver for High-Resolution Flood Inundation Modeling, 2026-07-10. URL http://arxiv.org/abs/2607.09614 .[13] X. Liu and Y. Song. Scientific Machine Learning of Flow Resistance Using Universal Shallow Water Equations With Differentiable Programming. 61(9):e2025WR040265, 2025-09. ISSN 0043-1397, 1944-7973. doi: 10.1029/ 2025WR040265. URL https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2025WR040265 .[14] J. Macías, M. J. Castro, S. Ortega, C. Escalante, and J. M. González-Vida. Performance Benchmarking of Tsunami-HySEA Model for NTHMP’s Inundation Mapping Activities. 174(8):3147–3183, 2017-08. ISSN 0033-4553, 1420-9136. doi: 10.1007/s00024-017-1583-1. URL http://link.springer.com/10.1007/ s00024-017-1583-1 .10 A PREPRINT 
+
+[15] A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan, T. Killeen, Z. Lin, N. Gimelshein, L. Antiga, A. Desmaison, A. Kopf, E. Yang, Z. DeVito, M. Raison, A. Tejani, S. Chilamkurthy, B. Steiner, L. Fang, J. Bai, and S. Chintala. PyTorch: An Imperative Style, High-Performance Deep Learning Library. In 33rd Conference on Neural Information Processing Systems , 2019. [16] R. Pearson, A. Harang, C. Bosserelle, S. Dean, C. Cattoën, T. Carey-Smith, R. Srinivasan, H. Shiona, M. Wilkins, G. Smart, S. Wadhwa, G. Reeves, and E. M. Lane. Nationwide 8m Hydrologically Conditioned Digital Elevation and Hydraulic Roughness Maps for Aotearoa New Zealand. 13(2):e70061, 2026-04. ISSN 2049-6060, 2049-6060. doi: 10.1002/gdj3.70061. URL https://rmets.onlinelibrary.wiley.com/doi/10.1002/gdj3.70061 .[17] C. Pires and P. M. Miranda. Tsunami waveform inversion by adjoint methods. Journal of Geophysical Research: Oceans , 106(C9):19773–19796, 2001. [18] S. Popinet. Quadtree-adaptive tsunami modelling. 61(9):1261–1285, 2011. ISSN 16167341. doi: 10.1007/ s10236-011-0438-z. [19] W. Renteria, M. McCann, J. Bonus, B. Ebrahimi, and P. Lynett. A differentiable solver for phase-resolved nearshore wave modelling. 326:110231, 2026-09. ISSN 00104655. doi: 10.1016/j.cpc.2026.110231. URL 
+
+https://linkinghub.elsevier.com/retrieve/pii/S0010465526002134 .[20] K. Satake. Inversion of tsunami waveforms for the estimation of a fault heterogeneity: Method and numerical experiments. Journal of Physics of the Earth , 35(3):241–254, 1987. [21] C. Shen, A. P. Appling, P. Gentine, T. Bandai, H. Gupta, A. Tartakovsky, M. Baity-Jesi, F. Fenicia, D. Kifer, L. Li, X. Liu, W. Ren, Y. Zheng, C. J. Harman, M. Clark, M. Farthing, D. Feng, P. Kumar, D. Aboelyazeed, F. Rahmani, Y. Song, H. E. Beck, T. Bindas, D. Dwivedi, K. Fang, M. Höge, C. Rackauckas, B. Mohanty, T. Roy, C. Xu, and K. Lawson. Differentiable modelling to unify machine learning and physical models for geosciences. 4(8): 552–567, 2023-08-01. ISSN 2662138X. doi: 10.1038/s43017-023-00450-9. [22] G. M. Smart. Improving flood hazard prediction models. 16(4):449–456, 2018. ISSN 18142060. doi: 10.1080/ 15715124.2017.1411923. URL https://doi.org/10.1080/15715124.2017.1411923 .[23] C. E. Synolakis, E. N. Bernard, V. V. Titov, U. Kânoˇ glu, and F. I. González. Validation and verification of tsunami numerical models. 165(11–12):2197–2228, 2008. ISSN 00334553. doi: 10.1007/s00024-004-0427-y. [24] E. F. Toro. The HLLC Riemann solver. 29(8):1065–1082, 2019-11. ISSN 0938-1287, 1432-2153. doi: 10.1007/s00193-019-00912-4. URL http://link.springer.com/10.1007/s00193-019-00912-4 .[25] E. F. Toro, M. Spruce, and W. Speares. Restoration of the contact surface in the HLL-Riemann solver. 4(1):25–34, 1994. ISSN 09381287. doi: 10.1007/BF01414629. [26] H. Tsushima, R. Hino, Y. Tanioka, F. Imamura, and H. Fujimoto. Tsunami waveform inversion incorporating permanent seafloor deformation and its application to tsunami forecasting. Journal of Geophysical Research: Solid Earth , 117(B3), 2012. [27] R. Vacondio, A. Dal Palù, A. Ferrari, P. Mignosa, F. Aureli, and S. Dazzi. A non-uniform efficient grid type for GPU-parallel Shallow Water Equations models. 88:119–137, 2017. ISSN 13648152. doi: 10.1016/j.envsoft.2016. 11.012. URL http://dx.doi.org/10.1016/j.envsoft.2016.11.012 .[28] X. Xia, Q. Liang, and X. Ming. A full-scale fluvial flood modelling framework based on a high-performance integrated hydrodynamic modelling system (HiPIMS). 132, 2019. ISSN 03091708. doi: 10.1016/j.advwatres. 2019.103392. [29] Z. Xu, C. Bosserelle, and E. Lane. Nearfield effects of the 2022 Hunga-Tonga volcanic tsunami and implications for a volcanic eruption near the coast. 321, 2025. 11

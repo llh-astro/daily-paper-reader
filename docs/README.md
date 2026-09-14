@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-13</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-14</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 10 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 7 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>3</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>5</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>2</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-13 21:32:31 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-14 22:28:45 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日10篇论文中筛出3篇精读、7篇速读，重点落在原行星盘尘埃动力学与混沌过程建模两条线。</p>
-<p>最值得看的是9.0分的《From spirals to rings》，讲晚期坠落如何让引力湍流盘中的尘埃从螺旋演化为环；其次是8.0分的混沌无方程数据驱动建模。</p>
-<p>普通读者可从&quot;螺旋变环&quot;的图景入手，再顺着SOLANUM数值模拟中恒星早期与晚期坠落的线索延伸阅读。</p>
+<p>今日精读5篇、速读2篇，重点锁定系外行星大气：KELT-9b的原子碳氧比拿下满分10.0，带电雾霾如何让透射光谱光学斜率变陡也获9.0高分。</p>
+<p>最值得看的是行星大气成分与雾霾效应的两条线索——前者直接关系到行星形成环境，后者提醒我们观测信号可能被雾霾“扭曲”。</p>
+<p>普通读者可先读这两篇精读的摘要，留意系外行星大气探测中“成分测量”与“雾霾干扰”这对老对手的新进展。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">3 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="From spirals to rings: dust dynamics in gravitoturbulent protoplanetary discs after late infall">From spirals to rings: dust dynamics in gravitoturbulent protoplanetary discs after late infall</span></li><li><span class="dpr-home-dashboard-paper-title" title="Equation free data-driven modelling of chaotic processes">Equation free data-driven modelling of chaotic processes</span></li><li><span class="dpr-home-dashboard-paper-title" title="The Dyn-Atmo Survey: JWST/NIRSpec spectroscopy of dynamical benchmark GJ 758 B">The Dyn-Atmo Survey: JWST/NIRSpec spectroscopy of dynamical benchmark GJ 758 B</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="The atomic C/O ratio of KELT-9b">The atomic C/O ratio of KELT-9b</span></li><li><span class="dpr-home-dashboard-paper-title" title="Steepening Optical Slopes in Exoplanet Transmission Spectra with Charged Hazes">Steepening Optical Slopes in Exoplanet Transmission Spectra with Charged Hazes</span></li><li><span class="dpr-home-dashboard-paper-title" title="JWST/MIRI Imaging Search for Kinematically Detected Protoplanetary Candidates">JWST/MIRI Imaging Search for Kinematically Detected Protoplanetary Candidates</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>4</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="New Symbolic Procedures in the Study of Dynamical Systems">New Symbolic Procedures in the Study of Dynamical Systems</span></li><li><span class="dpr-home-dashboard-paper-title" title="Series of core collapse numerical simulations (SOLANUM) I: Modelling the early and late infall in a sun-like protostar">Series of core collapse numerical simulations (SOLANUM) I: Modelling the early and late infall in a sun-like protostar</span></li><li><span class="dpr-home-dashboard-paper-title" title="Detecting White Dwarf Exoplanets in the Roman Era">Detecting White Dwarf Exoplanets in the Roman Era</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Joinings in Markov categories">Joinings in Markov categories</span></li><li><span class="dpr-home-dashboard-paper-title" title="DiffSWE2d: a differentiable Shallow Water Equations solver for end-to-end flood and tsunami modelling">DiffSWE2d: a differentiable Shallow Water Equations solver for end-to-end flood and tsunami modelling</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>3</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>3</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>2</strong></span></div>
 </section>
 </div>
 
