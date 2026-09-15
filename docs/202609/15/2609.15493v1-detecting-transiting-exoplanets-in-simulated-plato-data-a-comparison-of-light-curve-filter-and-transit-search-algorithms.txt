@@ -1,0 +1,3671 @@
+Astronomy & Astrophysics manuscript no. aa60423-26
+©ESO 2026
+September 15, 2026
+Detecting transiting exoplanets in simulated PLATO data
+A comparison of light curve filter and transit search algorithms
+Geert Jan Talens1 ⋆, Leigh C. Smith2, Luca Malavolta3, 4, Lionel Garcia5, Simon Hodgkin2, and Suzanne Aigrain1
+1 Denys Wilkinson Building, Department of Physics, University of Oxford, OX1 3RH, United Kingdom
+2 Institute of Astronomy, University of Cambridge, Madingley Rd, Cambridge CB3 0HA, United Kingdom
+3 Dipartimento di Fisica e Astronomia “Galileo Galilei”, Università di Padova, Vicolo dell’Osservatorio 3, 35122 Padova, Italy
+4 INAF - Osservatorio Astronomico di Padova, Vicolo dell’Osservatorio 5, 35122 Padova, Italy
+5 Center for Computational Astrophysics, Flatiron Institute, New York, NY, USA
+Received 14 April 2026 / Accepted 11 September 2026
+ABSTRACT
+Aims. Our goal is to test and compare transit search methodologies, and provide recommendations as to the best practices to be
+implemented by the upcoming ESA PLATO mission, in order to achieve its goal of detecting Earth-like planets in the habitable zones
+of Sun-like stars.
+Methods. We generate simulated two-year PLATO light curves with injected planets with sizes 0.5–2.0 R⊕, and compare the per-
+formance of the CETRA, umbra, and nuance transit search methods. CETRA and umbra require pre-filtered light curves and we test
+the biweight, Huber spline, Lowess, and YSD-Lowess filters. nuance uses a Gaussian process to model the stellar variability at all
+proposed transit parameters.
+Results. nuance achieves the best performance, recovering 61.2% signals using a simple harmonic oscillator Gaussian process
+kernel, and it performs especially well for both hot and fast-rotating stars. However, when multiple Huber spline filter windows are
+considered, both CETRA and umbra can match nuance’s performance. CETRA matches nuance with four windows, recovering 61.3%
+of signals. umbra matches nuance with two windows, recovering 61.7% of signals. Recovery rates exceeding nuance are possible
+by using more windows. The computational cost of running nuance is so high that running CETRA or umbra on multiple windows is
+preferred.
+Conclusions. The PLATO pipeline should use the Huber spline with a range of window sizes as its primary light curve filter. CETRA
+should be updated to use the warped least-squares templates implemented in umbra. The use of nuance should be considered for hot,
+rapidly rotating stars.
+Key words. planets and satellites: detection – methods: numerical – methods: data analysis – techniques: photometric
+1. Introduction
+The detection of transit events in photometric time-series is to-
+day the most successful method for discovering and character-
+izing planets outside our own solar system. Photometric time-
+series are comparatively easy to obtain in bulk observationally,
+and transiting exoplanets give access not only to the planetary
+mass and radius, but also to atmospheric properties through
+transmission and emission spectroscopy and phase curve ob-
+servations. However, though thousands of transiting exoplan-
+ets have been detected and validated by ground- and space-
+based surveys (NASA Exoplanet Science Institute 2023), and
+hundreds of planets have been characterized in various levels of
+detail, no true Earth analog planet has of yet been found.
+The upcoming PLAnetary Transits and Oscillations of stars
+(PLATO) mission (Rauer et al. 2025) aims to find Earth-like
+planets in the habitable zone (HZ) of their host stars, by moni-
+toring the brightness of main sequence and subgiant stars with
+spectral types F5–K7. The nominal mission duration is four
+years, with at least the first two years dedicated to observ-
+ing the long-duration observation phase south 2 (LOPS2) field
+(Nascimbeni et al. 2025). The resulting time-series photometry
+will have the stellar variability removed before being searched
+⋆Corresponding author: e-mail: phys2523@ox.ac.uk
+for transiting signals using the Cambridge Exoplanet Transit Re-
+covery Algorithm (CETRA, Smith et al. 2025).
+The removal of stellar variability signals prior to transit
+searches has been performed with many different types of filters,
+in both the time and frequency domain. A summary of available
+time domain filters was presented by Hippke et al. (2019), and
+these filters are implemented in the Wõtan package. Wavelets
+(Jenkins et al. 2002) are the most common frequency domain
+filter and were adopted by the Kepler, K2, and TESS missions
+(Jenkins et al. 2020). Though some filters are preferred for tran-
+sit detection, the optimal filter for a specific dataset depends on
+the instrument, the stellar sample observed, and on the transit
+durations of interest. Many approaches exist for detecting exo-
+planet signals in time-series photometry. The most successfully
+of which is box least-squares (BLS; Kovács et al. 2002), and
+its more recent successor transit least-squares (TLS) published
+by Hippke & Heller (2019) and implemented in several python
+packages, including TLS and CETRA. Throughout this paper we
+use TLS (normal font) to refer to the algorithm, and TLS (type-
+writer font) to refer to the software package.
+In this paper we test the performance of different filter and
+search algorithms on simulated two-year PLATO light curves,
+building on work done by Canocchi et al. (2023). We benchmark
+CETRA’s performance on light curves filtered with the biweight,
+Article number, page 1
+arXiv:2609.15493v1  [astro-ph.EP]  14 Sep 2026
+
+
+A&A proofs: manuscript no. aa60423-26
+1.0
+1.5
+2.0
+Mass M⋆[M⊙]
+0
+1000
+2000
+2
+4
+Radius R⋆[R⊙]
+0
+1000
+2000
+4000
+5000
+6000
+Effective Temperature Teﬀ[Kelvin]
+0
+500
+1000
+1500
+4
+6
+8
+10
+V Magnitude [mag]
+0
+1000
+2000
+Fig. 1. Distribution of the stellar parameters. Light blue: the PLATO P1
++ P2 sample. Dark blue: the 2000 stars randomly selected after cuts on
+log g, Teff, and V were applied.
+Huber spline, Lowess and Lowess based young star detrend-
+ing (YSD-Lowess) filters against the umbra and nuance transit
+search codes. The umbra code (Talens et al., in prep) uses tran-
+sit templates that account for the effect of traditional variability
+filters on the transit shape. nuance (Garcia et al. 2024) uses a
+Gaussian process (GP) to simultaneously model the transit and
+stellar variability.
+Our analysis is described in Sect. 2, with Sect. 2.1 describing
+the simulated PLATO light curves, Sect. 2.2 defining the vari-
+ability filters tested, and Sect. 2.3 presenting the transit search
+methodologies explored. Section 3 presents the results of the
+comparison, and we summarize our finding and make recom-
+mendations in Sect. 4.
+2. Analysis
+Our analysis starts with the generation of a set of simulated
+PLATO light curves. Next, one of four variability filters is
+used to remove nuisance signals and systematics from the light
+curves. Finally, three different transit search methods are used to
+try and recover the injected signals.
+2.1. Simulated light curves
+In order to test the different light curve filter and transit search
+algorithms, we need a suitable simulated dataset. A number of
+simulated datasets have been produced within the PLATO Mis-
+sion Consortium, but none are suitable for our purposes. The
+simulations presented in Jannsen et al. (2024) were generated
+with somewhat pessimistic assumptions regarding instrumental
+systematics; the simulations of Breton et al. (2024) have a ca-
+dence of two hours which is not suitable for transit detection;
+and the simulations of Jannsen et al. (2025) focused on stellar
+oscillations. Furthermore, we now have a better understanding of
+some important parameters such as the duration and frequency
+of data gaps both within and between the quarters. We therefore
+decided to simulate a new, dedicated dataset for this study.
+The main steps in the process were as follows. First, we
+used the latest version of the PLATO input catalogue (PIC) for
+the LOPS2 field (Nascimbeni et al. 2025) to select stars with
+representative parameters. We then simulated light curves in-
+cluding photon noise, systematic trends, granulation and os-
+4750
+5000
+5250
+5500
+5750
+6000
+6250
+Effective Temperature Teﬀ[K]
+100
+Luminosity [L⊙]
+Fig. 2. The PIC stellar luminosities (blue), and the main sequence equiv-
+alent luminosities (orange) for the 2000 simulated stars.
+cillations using the PLATO Solar-like Light curve Simulator1
+(PSLS, Samadi et al. 2019). Starspot signals were generated
+separately using an updated version of the pyspot package
+(Talens & Aigrain 2025). Finally, planetary transits were simu-
+lated using PyTransit (Parviainen 2015).
+2.1.1. Stellar parameters
+The LOPS2 field, located in the southern hemisphere, will be
+the first long-duration pointing field observed by PLATO after
+it launches in early 2027, and will be observed almost contin-
+uously for a total of two years. We took the stellar parameters
+for our simulations from the PIC for this field (Nascimbeni et al.
+2025). We focussed on the bright stellar samples, known as P1
+and P2, which have V < 11 mag. We selected these stars from
+the PIC (version 2.1.0.1), resulting in a total of 13,330 stars. We
+further selected stars with log g > 4 to exclude giant stars, and
+restricted ourselves to stars fainter than V = 8 mag, as stars
+brighter than this limit may be saturated and cannot be sim-
+ulated with PSLS, and with effective temperature in the range
+4594 ≤Teff ≤6334 K, as this is the range for which the scaling
+laws used to simulate star-spot signals with the pyspot code are
+applicable. These cuts reduced the sample to 6552 stars, from
+which we randomly selected 2000 to be simulated. The stellar
+parameters of the selected stars are compared to the full P1 + P2
+sample in Fig. 1.
+We randomly assigned a stellar inclination (i⋆) between 0
+and 90 degrees. The stellar inclination affects the star-spot sig-
+nal and also the non-radial modes of the oscillation signal gener-
+ated by PSLS. The orbital inclination of the planets we injected
+later is drawn independently of the stellar inclination. We further
+assumed a solar metallicity ([M/H] = 0 dex) for all stars. Metal-
+licity only enters the simulations via the limb-darkening param-
+eters used to simulate the transits, which we computed from the
+4-parameter limb-darkening coefficients for the PLATO band-
+pass presented in Kostogryz et al. (2022).
+2.1.2. Transit parameters
+For each of the 2000 stars, we generated two sets of transit pa-
+rameters: one set with shorter orbital periods, dominated by sys-
+tems which transit at least three times during a two year pointing;
+and one set with longer orbital periods, dominated by systems
+1 https://sites.lesia.obspm.fr/psls/
+Article number, page 2
+
+
+Geert Jan Talens et al.: Filter and search comparison
+0
+200
+400
+600
+Period P [days]
+0
+100
+200
+300
+0
+6
+12
+18
+24
+30
+Duration T14 [h]
+0
+100
+200
+0
+200
+400
+600
+Depth k2 [ppm]
+0
+200
+400
+inner
+outer
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Impact Parameter b
+0
+50
+100
+100
+200
+300
+400
+500
+600
+700
+Period P [days]
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Phase φ0
+inner
+outer
+Fig. 3. Transit parameters for the inner (grey) and outer (cyan) transit samples. Left: Distribution of the transit parameters in the inner and outer
+samples. Right: Orbital phase as a function of orbital period for the transit samples. Grey bands indicate the primary locations of the two day gaps
+caused by PLATO’s quarterly rolls. Solid black lines indicate from right to left the thresholds for two, three and four observed transits in the two
+year baseline. Thresholds for higher numbers of transits are omitted for clarity.
+generating two transits during a two year pointing. We refer to
+these as the “inner” and “outer” transit samples.
+For each star the allowed orbital periods in the outer samples
+were computed from modified versions of the recent Venus and
+early Mars HZ boundaries presented by Kopparapu et al. (2013).
+Without modification the recent Venus and early Mars bound-
+aries would result in outer planets with orbital periods signifi-
+cantly longer than the two year duration of the LOPS2 point-
+ing (up to six years in some cases). This is because a significant
+fraction of the stars in the P1 sample are subgiants, and using
+such periods would have resulted in an outer sample dominated
+by mono-transits. Since the purpose of this work is primarily
+to test transit searches that rely on the repeating nature of such
+signals in photometric time-series, we deemed this undesirable.
+Instead we replaced the PIC luminosity with the “main sequence
+equivalent” luminosity when computing HZ boundaries for each
+star. The main sequence equivalent luminosity is the luminosity
+a star of a given effective temperature would have it it was on the
+main sequence, as illustrated in Fig. 2. Using the main sequence
+equivalent luminosity ensures that the modified HZ boundaries
+depends only on the stellar effective temperature when expressed
+in terms of the semi-major axis. The inner simulations used or-
+bital periods interior to the modified HZ, while the outer simu-
+lations used orbital periods that placed them in the modified HZ
+for each star. We want to emphasize that the outer sample is a HZ
+inspired stress-test sample and our results for this sample have
+no bearing on PLATO yields for the actual habitable zone.
+The maximum orbital period was further constrained to P <
+700 d. When P > 368 d mono-transits can occur, to prevent this
+we constrained the orbital phases so the first transit is fully ob-
+served in the 1st quarter of observations. This choice biases this
+part of parameter space toward duo- rather than mono-transits,
+ensuring that periodic search algorithms can be tested on the
+simulated light curves. Overall, these choices mean that the outer
+sample is biased in favour of systems that are easier to detect
+(shorter periods and more favourable epochs) than a sample with
+completely uniform epochs and periods across the modified HZ
+range.
+For the remaining transit parameters we selected impact pa-
+rameters uniform between 0 and 1; planet radii uniform between
+0.5 R⊕and 2.0 R⊕, and assumed all orbits are circular. Figure 3
+shows the final transit parameters for the inner and outer sam-
+ples, and further illustrates the constraint on orbital period and
+phase. A figure showing the correlations between the transit and
+stellar parameters in the inner and outer samples is available in
+Appendix C.
+2.1.3. Model evaluation
+We used version 1.8 of PSLS (Samadi et al. 2019) to generate
+the observation times and simulate the effects of photon noise,
+long-term systematic trends, granulation and oscillations. Un-
+like PlatoSim (Jannsen et al. 2024), which injects astrophysical
+signals at the pixel level, then simulates photon noise and instru-
+mental systematic effects, PSLS uses precomputed scaling laws
+to simulate the noise and stellar component separately, based on
+a star’s intrinsic parameters (such as Teff, log g) as well as its
+magnitude and accounting for representative drift in the position
+on the detector. Using precomputed scaling laws makes PSLS
+much cheaper in terms of computing time and memory, albeit
+potentially less accurate.
+For the observation times, we configured PSLS to simulate
+individual quarters lasting 90, 95, 89, 97, 84, 95, 89, and 97 days
+respectively, resulting in a total pointing of 736 days. These quar-
+ter durations reflect the expectation that the exact duration of
+the PLATO quarters will vary by a few days from one quar-
+ter to the next. We also included the effects of data gaps from
+quarterly rolls and subsequent calibration observations, exclud-
+ing two days at the start of each quarter, and 20 minute gaps due
+to spacecraft momentum dumps occurring every 72 ± 2 hours.
+These numbers are all based on current best engineering esti-
+mates that might be reviewed during commissioning.
+For some stars the long-term systematic trend produced by
+PSLS may have a peak-to-peak amplitude exceeding 5000 ppm
+in one or more quarters, which we consider unrealistically large.
+If the peak-to-peak amplitude exceeded this threshold, we ap-
+plied a re-scaling to the relevant quarter to achieve a lower peak-
+to-peak amplitude drawn from a truncated normal distribution
+with parameters µ = 1250 ppm, σ = 400 ppm and truncated
+to the range 350–2500 ppm. This distribution was empirically
+determined from the long-term systematics with peak-to-peak
+amplitudes below 5000 ppm. The multi-day time-scale of the
+systematics component is sufficiently long that this re-scaling is
+unlikely to impact the work presented here.
+Article number, page 3
+
+
+A&A proofs: manuscript no. aa60423-26
+An updated version of pyspot2 (Talens & Aigrain 2025)
+was used to generate the signal produced by star-spot emerging
+and decaying on the rotating stellar disk. The spot signal is pri-
+marily characterized by the rotation period of the star (Prot) and
+the cycle amplitude (Acyc). Both Prot and Acyc are set by pyspot
+based on the prescriptions of Meunier et al. (2019). Our new ver-
+sion of pyspot uses the Kipping (2012) spot model to include
+arbitrary limb-darkening laws; implements squared-exponential
+evolution for the spot size to avoid discontinuities in the deriva-
+tive; and fixes several bugs in the way the level of stellar activity
+was calculated from the provided stellar parameters. The spots
+themselves were assumed to be fully dark. The spot model was
+evaluated at 5-min cadence and interpolated to the time-stamps
+provided by PSLS using a cubic spline. We only considered the
+effect of spots on the overall brightness of the star, and did not
+explicitly model spot-crossings. Instead, the variability due to
+spots and the transit signal were multiplied when obtaining the
+final light curve.
+Finally,
+transit
+models
+were
+evaluated
+using
+the
+RoadRunnerModel
+from
+PyTransit
+(Parviainen
+2015).
+To ensure sufficient precision in the case of shallow transits, we
+used parameters nzin=40, nzlimb=60, and ng=250.
+2.1.4. Combining signals
+We stored all components of our simulations separately, allowing
+us to create variations on the light curves that exclude certain sig-
+nals. These master files are available from the Oxford research
+archive3 (Talens et al. 2026). For the analysis presented in this
+paper, we generated several variations of the 2000 light curves.
+First we generated light curves which contain all stellar and in-
+strumental components, i.e. the effects of photon noise, system-
+atics, granulation, oscillations, and spots, but with variants for
+the inner and outer transit samples as well as a planet-free sam-
+ple. We refer to the combined inner and outer samples as the
+“joint” sample.
+We also generated versions of the light curves, which do not
+contain the effects of systematics and spots, and which therefore
+do not require filtering to detect the transits. We refer to these as
+the “simple” light curves, and used them to benchmark the al-
+gorithms’ performance in the absence of variability. For the pur-
+poses of this study we did not consider multi-planet systems or
+astrophysical false positives such as eclipsing binaries. Figure 4
+shows one of the inner light curves with the effects of systemat-
+ics, spots, and transits clearly visible.
+2.2. Light curve filters
+The majority of transit search codes tested in this work (see
+Sec. 2.3) require pre-filtering of the light curves to remove stel-
+lar variability in order to be able to detect transit signals. The
+advantage of pre-filtering light curves in this way (compared to
+modelling the variability simultaneously with the putative tran-
+sit signal) is that it is typically fast, as the filter is not recom-
+puted for each trial transit model. However, filtering necessar-
+ily alters the transit signal, and the filter window must be tuned
+carefully to remove as much of the stellar variability and pre-
+serve as much of the transit signal as possible. If the window is
+too wide, stellar variability will not be sufficiently filtered, re-
+ducing the detectability of the transits. However, if the window
+2 https://github.com/talensgj/pyspot
+3 https://ora.ox.ac.uk/objects/uuid:
+682bcbb6-ed68-42ca-8c00-277a3aea64bd
+is too short, the transits themselves will be distorted or removed
+entirely. As transits of planets on wider orbits have longer dura-
+tions, the timescales of stellar variability and long-period transits
+tend to overlap, making it more challenging to find a balance be-
+tween these requirements.
+Canocchi et al. (2023) previously tested a number of filter-
+ing algorithms on simulated PLATO data, using the TLS pack-
+age (Hippke & Heller 2019) for transit detection. They tested a
+number of general-purpose filters for time-series data, as well as
+more specialized filters designed specifically for transit searches.
+They concluded that the best general filters were the biweight
+and Huber spline (Hippke et al. 2019) and the best special-
+ized filters were Notch and LOCoR (locally optimized com-
+bination of rotations) (Rizzuto et al. 2017) and YSD-Lowess
+(Battley et al. 2020). Overall Canocchi et al. (2023) prefer the
+Notch and LOCoR filter, depending on the length of the time-
+series and the size of the injected planets. However, their work
+focused primarily on detections of short orbital periods (P <
+40 d) in single quarters of data taken from a set of 100 two
+year simulated PLATO stellar light curves injected with differ-
+ent transit signals. This study expands on their work in a number
+of ways. We use 2000 stellar light curves injected with typically
+much longer orbits and focusing on transits of Earth-size plan-
+ets. We always use the full two year light curves, and we consider
+not just different light curve filters across a wider range of filter
+windows, but also different transit search algorithms.
+In this work, we consider four filters, for use with the CETRA
+and umbra transit search algorithms: the biweight, Huber spline,
+and Lowess methods from the Wõtan package and a custom
+YSD-Lowess implementation. We do not consider the Notch and
+LOCoR filter considered best by Canocchi et al. (2023) as the
+computational expense of this filter was deemed too great for
+inclusion in the PLATO pipeline. Each of the tested filters is de-
+scribed in more detail below. In some figures we will also show
+light curves filtered with a moving mean (boxcar filter), but since
+the mean is not robust against outliers we do not perform transit
+searches on the mean-filtered data. Unless otherwise noted, we
+applied the filters to individual quarters of the simulated PLATO
+light curves, as both the two day quarter gap and changing sys-
+tematics prevent continuity between the quarters.
+Biweight. Tukey’s biweight (Mosteller & Tukey 1977) is a ro-
+bust estimator, which iteratively computes a robust estimate of
+the mean of the data within a window of width w around each
+data point, by weighing points according to their distance from
+the trend. In the context of transit detection, if the window w is
+much longer than the transit duration T14, and individual transits
+have high enough signal-to-noise ratio (S/N), the biweight filter
+largely avoids modifying the transit shape, but these conditions
+are not always met in practice. Many stars show variability on
+time-scales such that w ∼T14 would be needed to remove it. Fur-
+thermore, the individual transits of Earth-sized planets around
+Sun-like stars are unlikely to have high S/N. Nevertheless, a ro-
+bust estimator like the biweight is desirable, as the PLATO pho-
+tometry is expected to contain outliers of both astrophysical and
+instrumental origins, which should be excluded when filtering
+the light curve.
+Huber spline. The Huber spline filter as implemented in Wõtan
+is based on its implementation in the scikit package. It per-
+forms a spline-fit with knots spaced a distance w apart, and uses
+the robust HuberRegressor class to optimize the spline param-
+eters. We found that Wõtan implementation did not always con-
+Article number, page 4
+
+
+Geert Jan Talens et al.: Filter and search comparison
+0
+100
+200
+300
+400
+500
+600
+700
+Time [days]
+−1000
+0
+1000
+∆F [ppm]
+LC ID: 0690 – inner
+Fig. 4. Simulated 25 s cadence PLATO light curve. This light curve shows moderate rotational modulations due to spots and contains a ∼530 ppm
+transit signal with P ∼52 d. For clarity, only every 10th observation is shown.
+−2000
+−1000
+0
+1000
+∆F [ppm]
+LC ID: 0780 – inner
+1.4 d Mean
+1.4 d Biweight
+1.4 d Huber spline
+2.0 d Lowess
+2.0 d YSD-Lowess
+560
+570
+580
+590
+600
+610
+620
+630
+Time [days]
+−2500
+−2000
+−1500
+−1000
+−500
+0
+∆F [ppm]
+Fig. 5. Effect of light curve filters on a single quarter segment of a moderately active star. Top: single quarter segment of a simulated PLATO light
+curve at 25 s cadence (black dots), and trends obtained by running the mean, biweight, Huber spline, Lowess, and YSD-Lowess light curve filters.
+Bottom: the light curve after dividing by each filter’s trend and binning to 5 min cadence. The light curves obtained with different filters are offset,
+with the baseline for each indicated by the dashed lines.
+verge, and made improvements by adding the StandardScaler
+step to the scikit pipeline and increasing the maximum number
+of iterations performed by the regressor (max_iter=1000). We
+also found that the default outlier threshold used by the regressor
+(epsilon=1.35) is rather aggressive, down-weighing 35.8% of
+the data points on average. We therefore opted to use a value of
+epsilon=3 instead, which down-weighs 0.3% of the data points
+on average. We note that any such thresholds will likely need to
+be revisited once the real data is available, as the frequency of
+outliers may differ from the simulations analysed here.
+Lowess. The Lowess filter as implemented in Wõtan de-trends
+the light curve by fitting a linear model to the data in a window
+of width w. Robustness is ensured by iteratively weighing the
+data, using a bisquare weight function for points whose residual
+are less than six times the median absolute deviation of the resid-
+uals and zero otherwise. In addition, points are weighted by the
+distance to the window centre using a tricube weight function.
+The use of the tricube weight function across the filter window
+means the optimal window size for the Lowess filters is larger
+than for the other tested filters. We fixed minor bugs related to
+the window edges and tricube weighting.
+YSD-Lowess.
+The YSD-Lowess filter was introduced by
+Battley et al. (2020) as a variant on the Lowess filter for the pur-
+pose of filtering the light curves of young, highly variable stars
+observed by TESS. Battley et al. (2020) started by detecting the
+locations of peaks and troughs in the light curve, then they re-
+move data within an 0.2 d window centred on each peak and
+trough from the light curve, before finally running a Lowess fil-
+ter on the resulting light curve segments. In our implementation,
+the detection of the peaks and troughs is performed not on the
+raw light curve, but on the trend obtained by running a Lowess
+filter with a 6 h window. This step is necessary to suppress spuri-
+ous detections of peaks and troughs in the high cadence PLATO
+data. We only consider peaks and troughs with a detected width
+Article number, page 5
+
+
+A&A proofs: manuscript no. aa60423-26
+−1000
+0
+∆F [ppm]
+LC ID: 0690 – inner
+53.5
+54.0
+54.5
+55.0
+55.5
+56.0
+Time [days]
+−5000
+−4000
+−3000
+−2000
+−1000
+0
+∆F [ppm]
+1.4 d Mean
+1.4 d Biweight
+1.4 d Huber spline
+2.0 d Lowess
+2.0 d YSD-Lowess
+Fig. 6. Same as Fig. 5, but focusing on the effect the filters have on an
+individual transit.
+between 7.5 h and twice the window-size (w) as wider features
+should be removed by normal Lowess de-trending. We mask
+data within an 0.4 d segment centred on the detected peaks and
+troughs and run Lowess de-trending on the resulting segments
+individually. Finally we fill the gaps in the resulting trend us-
+ing cubic interpolation, avoiding the need to discard transit sized
+segments from the light curve.
+Figure 5 shows the effect of the different filters on the 7th quarter
+of one of our simulated PLATO light curves, with a single transit
+occurring around t ∼602 d. Even though this star is only moder-
+ately active, there is significant residual variability in the filtered
+light curves. The mean, biweight, and Lowess filters result in the
+highest residual amplitudes. The Huber spline and YSD-Lowess
+seem to perform better, but both still show significant residuals,
+and the YSD-filtered transit appears asymmetric (we discuss this
+in more depth in Sect. 3). Additional examples for a quieter and
+a more active star are shown in Appendix C.
+Figure 6 shows the effect of the different filters on the shape
+of a single transit across a quiet star. The mean and Huber spline
+filter modify the signal shape, because the filter model absorbs
+some of the transit, which is then divided out. The other filters
+avoid this problem by using iterative outlier rejection to mask the
+transits. However, outlier rejection only prevents modification of
+the transit shape when the window is sufficiently wide (w ≫T14)
+and when the individual transits have sufficient S/N.
+2.3. Transit search methods
+We ran transit searches using three different algorithms: the pub-
+lished codes CETRA and nuance, and a new code we have dubbed
+umbra. Table 1 provides an overview of the epoch, period and
+duration sampling employed by the different algorithms when
+producing the periodograms, and we discuss each in more detail
+in the following subsections. Independently of the results pre-
+sented here an analysis of the same simulated light curves was
+performed using the AutoRegressive Planet Search methodol-
+ogy (ARPS, Caceres et al. 2019; Melton et al. 2024) which will
+be presented in Feigelson et al. (in prep.).
+2.3.1. CETRA
+Hippke & Heller (2019) introduced the TLS algorithm and im-
+plemented it in the TLS package, which performs a least-squares
+search in pre-filtered light curve data using an approximate tran-
+sit model. They demonstrated that this results in a significant
+improvement in sensitivity compared to the simple box shape
+employed by the BLS algorithm (Kovács et al. 2002), which was
+widely used previously. CETRA4 (Smith et al. 2025) is the default
+transit search algorithm within the Exoplanet Analysis System
+of the PLATO mission. It adopts many TLS features, but reduces
+the computational expense of the approach by separating it into
+a search for singular transit-like signals in linear time space, fol-
+lowed by a phase folding of the linear results to search for peri-
+odic signals. Furthermore, CETRA is written for NVIDIA GPUs
+using the CUDA framework, and benefits from their improved
+throughput for parallel operations compared to CPUs. Like TLS,
+CETRA requires input light curves to have been previously fil-
+tered. Residual stellar variability can lead to spurious detections,
+and this can hinder the detection of less significant real signals.
+The linear search computes the likelihood ratio between a
+static flux model and a model containing a transit, with transit
+depth as an unrestrained free parameter, at every t0 and dura-
+tion grid-point. The periodic search then computes from these
+the joint-likelihood ratio of every T0 (the t0 of the reference tran-
+sit), period and duration grid-point, assuming that all singular
+transit signals that comprise a periodic signal have a common
+transit depth. To reduce the number of relatively low-bandwidth
+data transfers between the GPU and the host machine, only the
+results of the highest likelihood ratio T0, period and duration
+grid-point are returned for each period searched, which is suf-
+ficient to generate a periodogram. Periodic (or indeed singular)
+transit signals can be selected as either the maximum likelihood
+or maximum S/N. In this work we used the maximum S/N sig-
+nal, which has the benefit that it naturally avoids selection of
+transits with a negative depth. Here we consider only the most
+significant signal in the light curve. During PLATO operations
+all signals greater than a pre-defined detection threshold will be
+reported, and this will tend to reduce the incidence of spurious
+signals masking real ones.
+For the linear transit signal search, CETRA was provided with
+a transit model with impact parameter b = 0.32, Rp = 0.03R∗,
+and the input limb darkening parameters for each star. The tran-
+sit duration grid is the CETRA default, 44 log-spaced durations
+from 0.02 to 1.0 d, with t0 grid spacing of one per cent of the
+minimum duration (i.e. 17.3 seconds). CETRA permits extraction
+of mono-transits directly from the results of the linear search,
+but we did not do this to keep the approaches consistent between
+search methods. The periodic signal search used the TLS de-
+fault period grid, which itself is based on the prescription of Ofir
+(2014), given the input stellar mass and radius. When searching
+for a given period, only a subset of the duration grid is used, as
+per the TLS prescription, and for this we adopt ±20 % of the in-
+put stellar mass and radius as a range. Unless otherwise noted,
+we use CETRA v1.01.
+2.3.2. umbra
+umbra5 is a newly developed periodogram-based transit search
+code, somewhat like BLS and TLS, but with two key differences:
+a filter-modified transit profile; and an updated ∆χ2 detection
+statistic. umbra will be described in detail in a future paper (Tal-
+ens et al., in prep), but here we summarize these two important
+features.
+Light curve pre-filtering rarely leaves underlying transits
+untouched. Typically, some level of the transit signal is ab-
+4 https://github.com/leigh2/cetra
+5 https://github.com/talensgj/umbra
+Article number, page 6
+
+
+Geert Jan Talens et al.: Filter and search comparison
+Table 1. Default configurations for the transit search algorithms.
+Method
+Filter
+Cadence [s]
+Epoch step [s]
+Period grid
+Period min
+Duration grid
+Duration limits
+CETRA
+various
+300
+17.3
+Optimala
+Roche limita
+0.02 −1 d
+Yesb
+umbra
+various
+300
+60–300
+Optimala
+2w
+umbra (OS = 3)b,c
+Yesb
+nuance
+SHO GP
+600
+600
+Optimala
+5 d
+umbra (OS = 1)b
+No
+Notes. While we attempted to keep the parameter grids as similar as possible, allowances had to be made due to implementation differences and
+computational cost. (a) The period grids and the CETRA minimum period are all based on Ofir (2014). (b) The minimum and maximum overall
+durations in the grid and the period dependent duration limits were computed using the TLS package while assuming a ±20% interval on the PIC
+stellar mass and radius. This choice presented issues as discussed in Sec. 3.4.2. (c) umbra computes multiple duration grids for subsets of the period
+range, allowing for a denser grid of durations while avoiding high computational cost.
+sorbed into the filter model and then divided out. Usually,
+this does not completely remove the signal, but it does mod-
+ify, or “warp” it. This warping effect is visible in the mean
+and Huber spline filtered transits shown in Fig.6, but applies
+to other filters as well depending on the filter window size
+and transit S/N. umbra can be run with transit templates that
+account for the warping effect that windowed filters have on
+the transit shape. These warped templates represents the next
+step in transit-template morphology beyond the box profile of
+BLS (Kovács et al. 2002), and the limb-darkened transit pro-
+file of TLS (Hippke & Heller 2019); we have dubbed this mode
+“warped least-squares” (WLS). umbra implements versions of
+all three of these transit shape templates, as illustrated in Fig. 7.
+First, a transit with uniform limb-darkening is shown as a BLS
+template, but note that this differs from the standard box template
+in that we included ingress and egress time. Next, we show the
+TLS template, which includes realistic limb-darkening. Finally,
+the TLS template is passed through a 1.4 d mean filter and a 1.4 d
+tricube weighted mean filter to give two examples of WLS transit
+templates. All of the transits shapes have had the out-of-transit
+flux level removed and have been divided by k2 = (Rp/Rs)2.
+The warping effect of the filtering on the transit models is evi-
+dent – the peak depth of the transit is reduced, and flux in the
+wings and outside the transit is increased. The exact shape of the
+warping is filter-method dependant. Currently umbra only im-
+plements a mean filter with different weighting schemes to com-
+pute the WLS transit templates, as robust estimators cannot be
+trivially applied to a noise-free model. Even with that limitation
+umbra with WLS templates outperforms CETRA on all tested fil-
+ters, as we will see in Sect. 3.1. Generating the warped transit
+shapes is expensive at short periods, where the filter window w
+may contain parts of more than one transit event. Only periods
+P > 2w were searched to avoid this regime. We do not expect
+this to have a major impact on the results as these signals can
+still be detected at multiples of the true period, and indeed eight
+of 12 inner signals with P ≤2.8 d are recovered in the 1.4 d Hu-
+ber spline filtered light curves. Unless otherwise noted, we use
+WLS transit templates generated with uniform weights for the
+biweight and Huber spline filters, and WLS templates generated
+with tricube weights for the Lowess and YSD-Lowess filters.
+When BLS was first introduced (Kovács et al. 2002), it used
+∆χ2, the difference between the χ2 for the transit model under
+consideration, and that for flat line χ2
+0, as the main detection
+statistic. The well established Lomb-Scargle periodogram for si-
+nusoidal oscillations uses a similar statistic. In its simplest form,
+the BLS periodogram power is defined as
+P(P) = max
+T0,T14
+
+χ2
+0 −χ2(P, T0, T14)
+χ2
+0
+,
+(1)
+−20
+−10
+0
+10
+20
+Time [hours]
+−1.0
+−0.5
+0.0
+0.5
+∆F/k2
+umbra BLS
+umbra TLS
+umbra WLS (uniform)
+umbra WLS (tricube)
+Fig. 7. Different transit shapes that can be searched for with umbra.
+BLS templates (blue) use a transit model with uniform limb-darkening,
+which mimics the template used by the BLS algorithm. TLS (orange) is
+a transit model with arbitrary limb-darkening, such as those used in TLS
+and CETRA. WLS (green and red) is a transit model with limb-darkening
+modified by a windowed mean filter with uniform (green) or tricube
+(red) weighting. All models had the out-of-transit flux level subtracted
+and were divided by k2 = (Rp/R⋆)2.
+where the constant denominator is usually omitted. Often the
+max operation is limited to the T0, T14 producing best-fit transits
+with physical depths (δ < 0). The resulting power is usually em-
+pirically post-processed into the signal residue, which has many
+variants (Kovács et al. 2002; Ofir 2014; Hippke & Heller 2019).
+The umbra algorithm instead uses
+P(P) = max
+T0,T14
+ minT0,δ>0[χ2(P, T0, T14)] −minδ<0[χ2(P, T0, T14)]
+minT0,δ>0[χ2(P, T0, T14)]
+!
+(2)
+= max
+T0,T14
+ χ2
++(P, T14) −χ2
+−(P, T0, T14)
+χ2
++(P, T14)
+!
+(3)
+where χ2
+−is the best-fit physical transit model (δ < 0), and χ2
++ the
+best-fit unphysical model (δ ≥0) at the same P, T14 as χ2
+−. The
+idea being that the δ < 0 solutions contain both noise and gen-
+uine transit signals, while the δ ≥0 solutions contain only noise
+at the same period and duration, providing a data-driven noise
+reference. Unlike χ2 and χ2
+0 in Equation 1, the models used to
+compute χ2
++ and χ2
+−have the same number of free parameters.
+Comparing the best-fit physical model to this noise reference
+at the same period and duration results in a conservative, self-
+normalising statistic that suppresses spurious detections caused
+by noise and systematics, and removes the need for any empiri-
+cal post-processing. An example periodogram is included in Ap-
+pendix C.
+When running umbra we use an epoch grid with steps tuned
+to align the shortest transit shapes to within a fraction of the
+ingress time, but limiting the epoch step to a range of 1–5 mins
+depending on the orbital period to avoid over/undersampling of
+the transit shape. To build the duration grid, umbra uses func-
+tions from the TLS package to compute the longest and shortest
+Article number, page 7
+
+
+A&A proofs: manuscript no. aa60423-26
+durations as a function of period assuming a ±20% range centred
+on the PIC stellar mass and radius. These values are then used
+to group periods so that within the group T14,max/Pmin < 0.15
+and duration limits are recomputed for the period group. A dura-
+tion grid is then built for each period group by iteratively adding
+(T14 −T23)/OS to the current duration to get the next dura-
+tion, starting from the shortest duration. The umbra searches
+presented here use OS = 3. Finally WLS transit templates are
+built for the duration grid of each period group while accounting
+for both the exposure time and exposure cadence of the obser-
+vations. The transit shapes are nominally evaluated with b = 0
+and k2 = 5000 ppm. In this work versions 0.2.0 through 0.5.0 of
+umbra were used.
+2.3.3. nuance
+nuance6 (Garcia et al. 2024) is a new transit search algorithm
+that uses GPs combined with a low-order polynomial to account
+for stellar variability. Unlike CETRA and umbra this GP model
+is evaluated simultaneously with the analytic transit model of
+Protopapas et al. (2005). The simultaneous evaluation of the
+transit model and the GP should make nuance superior at both
+accounting for stellar variability and disentangling it from tran-
+sit signals, at the cost of being significantly more computation-
+ally expensive. For this work we made several implementation
+choices to minimize the computational cost, as outlined below.
+A typical nuance implementation starts by optimizing the
+GP hyperparameters, followed by a linear search across a grid of
+epochs and durations, before finally performing a periodic search
+using the linear search results. In our implementation we start by
+optimizing a simple harmonic oscillator (SHO) GP kernel on the
+full two year PLATO light curve binned to 10-minute cadence.
+The GP has the following hyperparameters: σ2
+SHO the variance
+of the GP kernel, ω = 2π/PSHO the angular frequency of the
+oscillator, Q the quality factor of the oscillator, and σjit a jit-
+ter term added to the photometric uncertainties on the diagonal.
+For the GP mean model we use a 4th order polynomial on each
+quarter of observations, expressed as a block diagonal matrix.
+When optimizing the hyperparameters on versions of the light
+curves with and without transit signals, we find that the pres-
+ence of transits pushes the ratio of the hyper parameters ω/Q to
+larger values so we impose a constraint ln ω/Q < 0.5. We also
+constrain 0.1 d < PSHO < 2S, where S is the two year base-
+line of the observations. Once the hyper parameters have been
+optimized, they are fixed for the remainder of the analysis.
+We perform the linear search on each quarter of observations
+individually to save computational time. The epoch grid is set
+to have a 10 min resolution, and the shortest and longest dura-
+tion are computed using functions from the TLS package, using
+a ±20% range on the PIC stellar parameters. The duration grid
+is filled using the umbra method of using (T14 −T23)/OS in-
+crements, using OS = 1 to limit the number of durations and
+save computational time. Finally, the linear searches are com-
+bined and the periodic transit search is performed; no period-
+dependent duration limits were imposed at this stage. Even with
+the higher binned cadence and reduced duration grid, the period
+search still proved prohibitively expensive on the long, densely
+sampled PLATO light curves, so we restricted the search to pe-
+riods P > 5 d to save further computation time. As with umbra’s
+WLS we do not expect this to have a major impact on the re-
+sults, and indeed 19 of 34 simulated inner signals with P ≤5 d
+are detected at twice the injected period.
+6 https://github.com/lgrcia/nuance
+3. Results
+The full parameter space of transit samples, filters, filter win-
+dows, and transit search codes is too large to be fully ex-
+plored without incurring excessive computational cost. Instead
+we adopted a hierarchical approach to exploring the parameters
+space. For CETRA and umbra an initial search was performed
+on the more challenging outer simulations only, and using only
+four window sizes for each of the four filters. In this initial
+search the most signals were recovered with umbra on the 2.0 d
+Lowess filter. However, the Huber spline filter more consistently
+outperformed other filters across a range of window sizes with
+both CETRA and umbra. Based on this we ran new Huber spline
+searches on the inner and outer simulations using eight window
+sizes. nuance was run on both the inner and outer simulations.
+To establish how many signals can be detected in the absence
+of long-term variability and systematics we also ran each code
+on the unfiltered simple light curves of both the inner and outer
+simulations. CETRA was run using the same parameters as the
+filtered lightcurves; umbra used the TLS templates as no filter
+had warped the transit shapes; and nuance used a diagonal term
+for the kernel and a 0th order polynomial for the mean model in
+each quarter to avoid over-fitting by the full GP model.
+Signals are considered correctly retrieved if the recovered
+period satisfies:
+(Pinj −nPrec)Ntr <T14,inj
+2
+(4)
+for n = 1/2, 1, 2, 3, i.e. if the error on the transit time accumu-
+lated over the full light curve due to the error on the period is
+less than half of the transit duration.
+While none of the transit search algorithms considered here
+were run in a dedicated mono-transit mode, alignment of indi-
+vidual transit events with the larger quarter gaps in the obser-
+vations can still produce peaks in the periodogram. These peaks
+are especially relevant for light curves with few transit events. As
+such for light curves with Ntr = 1, 2, we also consider a transit
+recovered if:
+|T0,inj + mPinj −T0,rec| <T14,inj
+2
+(5)
+with m = 0 for mono-transits and m = 0, 1 for duo-transits.
+This second criterion only applies to the outer sample, since the
+inner sample contains no mono- or duo-transits. The number of
+signals recovered in all the searches described above are listed
+in Table A.1.
+We do not apply any thresholds to the strength of the peri-
+odogram peaks, since all three transit search algorithms provide
+different statistics, and the analysis needed to obtain fair thresh-
+olds for each is beyond the scope of this work, but see App. B.
+3.1. Filter comparison
+The percentage of signals recovered in the different transit
+searches performed are shown in Fig. 8. The three transit search
+codes recover a similar percentage of transits in the simple joint
+simulations, 78.3% with nuance, 76.2% with CETRA and, 75.3%
+with umbra TLS.
+On the full simulated lightcurves nuance performs best, re-
+covering 53.8% of signals in the outer transit sample, and 61.2%
+in the joint sample. It is followed by umbra which recovers
+51.7% of signals in the outer sample with the 2.0 d Lowess filter,
+and 57.7% of signals in the joint sample with the 1.4 d Huber
+spline. Finally, CETRA recovers 46.1% of outer signals with the
+Article number, page 8
+
+
+Geert Jan Talens et al.: Filter and search comparison
+0.6
+0.8
+1.0
+1.2
+1.4
+1.6
+1.8
+2.0
+2.2
+2.4
+Window Size [days]
+0
+20
+40
+60
+80
+100
+Recoveries [%]
+CETRA – outer (dashed) & joint (solid)
+Biweight
+Huber spline
+Lowess
+YSD-Lowess
+nuance
+nuance (simple)
+CETRA (simple)
+0.6
+0.8
+1.0
+1.2
+1.4
+1.6
+1.8
+2.0
+2.2
+2.4
+Window Size [days]
+0
+20
+40
+60
+80
+100
+Recoveries [%]
+umbra – outer (dashed) & joint (solid)
+Biweight
+Huber spline
+Lowess
+YSD-Lowess
+nuance
+nuance (simple)
+umbra TLS (simple)
+Fig. 8. Percentage of transits recovered by the different algorithms and filters as a function of filter window size. Results are shown for the outer
+sample (dashed) and the joint sample (solid). Left: signals recovered by CETRA in the different filters (line scatter). Right: same as left but for
+umbra. In both panels the horizontal lines show the nuance (cyan) recovery percentage which is independent of window size. Coloured bands
+indicate the range of recovery percentages obtained on the simple lightcurves by CETRA (brown), umbra (yellow), and nuance (cyan).
+1.4 d Huber spline, and 55.0% of joint signals with the 1.0 d
+Huber spline.
+While nuance performs best, the improvement in the num-
+ber of recoveries is small when weighed against the significant
+computational cost of evaluating the GP kernel. With the ex-
+tra freedom afforded by the GP kernel we might have expected
+nuance to close more of the gap between the results obtained
+on the full light curves, and what is theoretically possible in the
+absence of long-term variability as shown by the simple light
+curves. It is possible that nuance can be improved by using a
+different GP, or by performing the linear search on the full two
+year light curve, but this is beyond the scope of this work.
+The improvement of umbra over CETRA is small, and umbra
+also comes at additional computational cost. However, if the
+WLS templates were to be implemented in CETRA this cost
+would be minimised.
+With umbra there is a more consistent difference between the
+Lowess and YSD-Lowess filters than with CETRA, especially at
+longer windows where these filters perform best. This improved
+performance of the Lowess filter compared to the YSD-Lowess
+filter is likely because the interpolation across the peaks and
+troughs used in the YSD-Lowess filter does not always have the
+same effect on transit features.
+Fig. 9 shows the effect of the Lowess and YSD-Lowess fil-
+ters on three transits in the same lightcurve. Both filters distort
+the shape of the transit, but for Lowess this distortion is consis-
+tent across the three transits and umbra’s WLS can account for
+it. YSD-Lowess also distorts the transit shapes, but the distortion
+differs in each transit. The 2nd transit in particular is especially
+affected. This inconsistent behaviour is caused by the interpo-
+lation across cut segments, which umbra’s WLS cannot account
+for. As a result, the Lowess filter performed better than the YSD-
+Lowess filter in this case.
+Canocchi et al. (2023) found somewhat better performance
+with the YSD-Lowess filter than we have done here relative to
+the other filters they tested. This difference is likely because they
+focused on larger planets on shorter orbits around active stars.
+Implementation differences in the YSD-Lowess filter between
+their work and ours may also be contributing.
+3.2. Combining filter algorithms
+In principle, the PLATO pipeline could run multiple combina-
+tions of light curve filters and transit search algorithms, sub-
+ject to computational constraints. In this section we explore how
+many unique signals CETRA and umbra could recover in the
+union of multiple filters and windows. We test all permutations
+of one to six filters and record the optimal combination of filters
+and number of recovered signals. We perform this test using all
+filter-window combinations in the outer sample, and only Huber
+spline filters in the inner, outer and joint samples. The results are
+shown in Fig. 10 and listed in Table A.2.
+With six filter-window combinations we gain approximately
+4-5 percentage points (%pt.) in the inner sample, 9-11 %pt. in the
+outer sample, and 7.6 %pt. in the joint sample. CETRA recovers
+more signals than nuance with four filter-window combinations,
+and umbra exceeds nuance with two filter-window combina-
+tions. In both cases this represents less computational cost than
+running nuance. When comparing the performance on the outer
+sample, there is only a minimal difference between using any of
+the tested filters and windows or just the Huber spline with dif-
+ferent windows. At most a single non-Huber spline filter is ever
+included when allowing all tested filters. When considering 1–
+2 filter-window combinations umbra includes the 2.0 d Lowess
+filter, for 3–6 filter-window combinations umbra and CETRA in-
+clude the 2.0 d YSD-Lowess filter. The advantage gained by in-
+cluding filters other than the Huber spline is less than 1 %pt., and
+because of the inconsistent effect of the YSD-Lowess filter we
+do not recommend including a filter other than the Huber spline.
+3.3. Search comparison
+With a single filter nuance performs best, recovering 61.2% of
+signals in the joint sample. It is followed by umbra with 57.7%
+in the 1.4 d Huber spline and CETRA with 55% of signals on
+the 1.0 d Huber spline. The union of al three transit search al-
+gorithms allows the recovery of approximately 65% of transit
+signals. A significant increase compared to using any of the in-
+dividual algorithms.
+To determine in which part of parameter space each search
+algorithm perform best, and which algorithms would comple-
+ment each other, we compare the signals recovered in the joint
+sample as a function of transit and stellar parameters, respec-
+tively. CETRA is used as the point of reference, and we use the
+Article number, page 9
+
+
+A&A proofs: manuscript no. aa60423-26
+−1.0
+−0.5
+0.0
+0.5
+1.0
+Time [days]
+−1000
+−500
+0
+∆F [ppm]
+2.0 d Lowess
+−1.0
+−0.5
+0.0
+0.5
+1.0
+Time [days]
+2.0 d YSD-Lowess
+LC ID: 0830 – outer
+Fig. 9. Transits in a Lowess filtered light curve (left) compared to the same light curve filtered with YSD-Lowess (right). Lowess has modified
+the transit shapes and surrounding baseline, but all three transits have similar filtered shapes. By contrast YSD-Lowess has less of an effect on the
+baseline, but has severely distorted the middle transit.
+1
+2
+3
+4
+5
+6
+No. Filters/Windows
+40
+45
+50
+55
+60
+65
+70
+75
+80
+85
+Recoveries [%]
+CETRA – outer (dashed) & joint (solid)
+Any ﬁlter
+Huber spline
+nuance
+nuance (simple)
+CETRA (simple)
+1
+2
+3
+4
+5
+6
+No. Filters/Windows
+40
+45
+50
+55
+60
+65
+70
+75
+80
+85
+Recoveries [%]
+umbra – outer (dashed) & joint (solid)
+Any ﬁlter
+Huber spline
+nuance
+nuance (simple)
+umbra TLS (simple)
+Fig. 10. Percentage of transits recovered by combining different light curve filters and different window sizes. Results are shown for the outer
+sample (dashed) and the joint sample (solid). Left: signals recovered by CETRA in the optimal union of N different filter-window combinations.
+Right: same as left but for umbra. In both panels the horizontal lines show the nuance (cyan) recovery percentage, and coloured bands indicate
+the range of recoveries obtained on the simple lightcurves by CETRA (brown), umbra (yellow), and nuance (cyan).
+1.4 d Huber spline filter for CETRA and umbra so we can focus
+on differences between the search algorithms.
+Fig. 11 shows that umbra and nuance perform better than
+CETRA across transit parameter space. Both algorithms show im-
+proved recoveries of shallow transits, and nuance also performs
+better at high impact parameters. Improvements as a function of
+period and duration are likely driven by the other parameters.
+The number of signals detected by CETRA but missed by umbra
+and nuance are smaller than the error bars, only the shallow
+transits missed by nuance are marginally significant. Fig. 12
+reveals that improved recoveries in nuance are driven by hot,
+rapidly rotating stars. The same effect is present to a lesser de-
+gree for the umbra results. There is significant correlation be-
+tween Teff and Prot (as show in Fig. C.1).
+3.4. Further tests
+3.4.1. The effects of binned cadence
+So far, all filters were run on the 25 s cadence light curves, before
+binning to 300 s cadence for the transit search. We now explore
+binning the 1.4 d Huber spline filtered light curves to 150 and
+600 s. Furthermore, we explore binning the light curves to 150,
+300, and 600 s cadence before running the 1.4 d Huber spline
+filter. The resulting light curves were searched using CETRA and
+umbra, and the results are shown in Table 2.
+Table 2. Filtering and binning order and binned cadence test results.
+Scheme
+Bin Size
+Filter Time
+Search
+outer
+[s]
+[s]
+2000
+Filter →Bin
+150
+103.6
+umbra
+1008
+Filter →Bin
+300
+142.9
+umbra
+1009a
+Filter →Bin
+600
+103.1
+umbra
+1009
+Bin →Filter
+150
+21.7
+umbra
+1006
+Bin →Filter
+300
+7.6
+umbra
+1008
+Bin →Filter
+600
+4.1
+umbra
+1011
+Filter →Bin
+150
+...
+CETRA
+922
+Filter →Bin
+300
+...
+CETRA
+922a
+Filter →Bin
+600
+...
+CETRA
+921
+Bin →Filter
+150
+...
+CETRA
+921
+Bin →Filter
+300
+...
+CETRA
+920
+Bin →Filter
+600
+...
+CETRA
+920
+Notes. All tests were performed using the 1.4 d Huber spline filter on
+the outer sample. (a) The default of filtering the 25 s cadence light curve
+before binning to 300 s used throughout this work.
+We find that CETRA and umbra recover approximately the
+same number of signals, regardless of the binned cadence and
+whether the light curves were filtered before or after binning.
+There is also high overlap between the recovered signals, CETRA
+recovers the same 913 signals in all cases and umbra the same
+998 signals.
+Article number, page 10
+
+
+Geert Jan Talens et al.: Filter and search comparison
+0
+200
+400
+600
+0
+200
+400
+600
+Total
+a) CETRA – 1.4 d Huber spline
+0
+200
+400
+600
+−40
+−20
+0
+20
+40
+Difference [%pt.]
+b) umbra – 1.4 d Huber spline
+0
+200
+400
+600
+Period P [days]
+−40
+−20
+0
+20
+40
+Difference [%pt.]
+c) nuance – SHO kernel
+0
+200
+400
+600
+0
+500
+1000
+1500
+2000
+0
+200
+400
+600
+−40
+−20
+0
+20
+40
+0
+200
+400
+600
+Depth k2 [ppm]
+−40
+−20
+0
+20
+40
+0
+6
+12
+18
+24
+0
+200
+400
+600
+0
+6
+12
+18
+24
+−40
+−20
+0
+20
+40
+0
+6
+12
+18
+24
+Duration T14 [hours]
+−40
+−20
+0
+20
+40
+0.00
+0.25
+0.50
+0.75
+1.00
+0
+100
+200
+300
+400
+0.00
+0.25
+0.50
+0.75
+1.00
+−40
+−20
+0
+20
+40
+0.00
+0.25
+0.50
+0.75
+1.00
+Impact Parameter b
+−40
+−20
+0
+20
+40
+Fig. 11. Transit recovery rates as a function of the transit parameters in the joint sample for the CETRA, umbra, and nuance algorithms. CETRA and
+umbra are shown for the 1.4 d Huber spline filter, to allow a like-for-like comparison. Row a) shows the total number of simulated signals (grey),
+the signals recovered by CETRA (brown), and the union of signals recovered from all three algorithms (black). Rows b) and c) show the difference
+between umbra and CETRA (yellow) and between nuance and CETRA (cyan), respectively. The differences are shown in percentage points (%pt.),
+with counting errors indicated by the black vertical lines. Signals recovered by umbra/nuance but missed by CETRA are indicated by positive
+values (solid), and the reverse by negative values (faded).
+5000
+5500
+6000
+0
+200
+400
+600
+800
+1000
+Total
+a) CETRA – 1.4 d Huber spline
+5000
+5500
+6000
+−30
+−20
+−10
+0
+10
+20
+30
+Difference [%pt.]
+b) umbra – 1.4 d Huber spline
+5000
+5500
+6000
+Effective Temperature Teﬀ[K]
+−30
+−20
+−10
+0
+10
+20
+30
+Difference [%pt.]
+c) nuance – SHO kernel
+4.0
+4.2
+4.4
+4.6
+0
+200
+400
+600
+4.0
+4.2
+4.4
+4.6
+−30
+−20
+−10
+0
+10
+20
+30
+4.0
+4.2
+4.4
+4.6
+Surface Gravity log g [cgs]
+−30
+−20
+−10
+0
+10
+20
+30
+0.0
+0.1
+0.2
+0.3
+0
+200
+400
+600
+800
+1000
+0.0
+0.1
+0.2
+0.3
+−30
+−20
+−10
+0
+10
+20
+30
+0.0
+0.1
+0.2
+0.3
+Cycle Amplitude Acyc
+−30
+−20
+−10
+0
+10
+20
+30
+20
+40
+60
+0
+200
+400
+600
+800
+1000
+20
+40
+60
+−30
+−20
+−10
+0
+10
+20
+30
+20
+40
+60
+Rotation Period Prot [days]
+−30
+−20
+−10
+0
+10
+20
+30
+Fig. 12. Same as Figure 11, but as a function of stellar parameters.
+Article number, page 11
+
+
+A&A proofs: manuscript no. aa60423-26
+The differences are too marginal to choose a preferred bin-
+size among the ones tested here, but do suggest that we can re-
+duce the cadence before filtering. Doing so would also signifi-
+cantly reduce the computational cost of running the light curve
+filters (Sec. 3.5) from 142.9 s on the 25 s cadence light curve,
+to 7.6 s on the 300 s cadence light curves. No bin-size or GP
+choice tests were performed with nuance due to the computa-
+tional cost of the algorithm. PLATO light curves should not be
+binned to higher cadences than the ones tested here without care-
+ful treatment of the ∼20 min data gaps resulting from spacecraft
+operations.
+3.4.2. Transit duration limits
+The extremes of the duration grid searched varied between the
+different transit search algorithms (see Table 1). CETRA used
+fixed extremes for the duration grid while umbra and nuance
+used the functions provided in the TLS package to compute ex-
+tremes based on the host star parameters. CETRA and umbra then
+apply period dependent limits based on the TLS package, while
+nuance does not use period dependent limits. Duration limits
+were computed for each star with the TLS package using a ±20%
+interval around the PIC stellar mass and radius.
+During the preparation of this manuscript we discovered that
+while the default stellar parameter intervals used by TLS account
+for a wide range of possible transit durations, small parameter
+intervals cannot be used as physical priors for a specific star for
+two reasons. First, when TLS converts the mass and radius inter-
+vals to duration limits the mass limits are swapped. Second, TLS
+does not account for the effects of the impact parameter or the
+eccentricity on the transit duration.
+It is possible to analytically derive the extreme values that
+the transit duration can take for a specific host star, as demon-
+strated in Talens et al. (2025). Implementing these equations for
+the extremes of the duration grid, as well as the period dependent
+limits, and re-running all affected CETRA, umbra, and nuance
+runs would have been too computationally expensive. Instead we
+present here a simple test performed with CETRA v1.03, which
+implements the Talens et al. (2025) duration limits.
+In this test we ran CETRA on the 1.0 and 1.4 d Huber spline
+filtered light curves. CETRA used the same duration grid as be-
+fore, running from 0.02 −1 d, but computed duration limits for
+each host star based on Talens et al. (2025) while assuming cir-
+cular orbits and using a ±20% interval on the mass and radius
+from the PIC. In these runs we recovered 47.4(68.5)% signals
+in the outer(inner) sample with the 1.0 d Huber spline filter, and
+48.5(63.8)% of signals with the 1.4 d Huber spline filter. For
+comparison, we recovered 44.5(65.5)% and 46.1(61.0)% of sig-
+nals with the TLS limits in the 1.0 and 1.4 d filter respectively. In
+other words, the extended duration grid yields an improvement
+of several percentage points in both filters.
+Further
+tests
+using
+the
+duration
+limits
+presented
+in
+Talens et al. (2025) will be needed, especially to investigate the
+impact of including short duration at long periods on the peri-
+odogram, but are beyond the scope of this work.
+3.4.3. Recovered parameter biases
+While the transit parameters recovered by the different transit
+search algorithms do not need to be particularly precise, those
+with lower bias are doing a better job of fitting the transits and
+should therefore be capable of detecting lower S/N signals suc-
+cessfully. Figure 13 shows the biases in the depths and durations
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+0.5
+1.0
+k2
+rec/k2
+inj
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Impact Parameter b
+1
+2
+3
+T14,rec/T14,inj
+CETRA
+CETRA – T25
+umbra WLS
+umbra TLS
+nuance
+Fig. 13. Biases in the recovered transit depth and transit durations for
+different runs of the transit search algorithms. Shown are the differences
+between CETRA with the default configuration (yellow); CETRA with the
+Talens et al. (2025) duration limits (dashed yellow); umbra with TLS
+templates, umbra with WLS templates; and nuance. Top: ratio of the
+recovered and injected transit depths. Bottom: ratio of the recovered
+and injected transit durations. Unbiased recoveries are indicated by the
+dashed black line.
+of the successfully recovered transits for the tested algorithms.
+We show umbra using both WLS and TLS templates, and CETRA
+using the TLS duration limits and the Talens et al. (2025) dura-
+tion limits.
+We find that both the umbra runs and the original CETRA
+run are biased towards long duration when recovering high im-
+pact parameter transits. This bias is the direct result of the du-
+ration limits employed, which do not include sufficiently short
+durations to represent these high impact transits. The CETRA -
+T25 results do not have this bias as more appropriate limits were
+used. nuance did not use any limits, thereby avoiding duration
+biases at the potential cost of excess noise in the periodogram.
+Both CETRA runs and the umbra run using TLS templates un-
+derestimate the planet radius, due to the filters reducing the tran-
+sit depth compared to the baseline. umbra using WLS templates
+avoids this bias, correctly recovering the planet radii. nuance
+overestimates the planet radius, possibly as a result of using the
+Protopapas et al. (2005) transit model. All algorithms underes-
+timate the planet radius at high impact parameters, which is ex-
+pected as the templates do not account for the effect of the impact
+parameter on the transit shape. Overall it looks like a combina-
+tion of WLS templates and Talens et al. (2025) transit duration
+limits would produce the least bias, and thus the highest sensi-
+tivity.
+3.5. Computational performance
+Light curve filters
+By default the light curve filters (biweight,
+Huber spline, Lowess, and YSD-Lowess) were run on the na-
+tive 25 s cadence PLATO data. The majority were run on com-
+pute nodes with Intel Xeon 6242R @ 3.10 GHz CPUs, but some
+filter-window combinations were run on nodes with either Intel
+Xeon 8352Y @ 2.20 GHz or Intel Xeon 6226R @ 2.90 GHz
+CPUs. In all instances one CPU core was used per light curve.
+The time it took to run each filter is shown in the left panel
+of Fig. 14. Most methods increase their runtime with window-
+size as the window contains more points. The biweight and
+Lowess methods show similar performance, and YSD-Lowess
+takes slightly longer. Conversely the Huber spline gets faster
+with larger window-sizes as fewer knots are needed in the spline
+Article number, page 12
+
+
+Geert Jan Talens et al.: Filter and search comparison
+0.6
+0.8
+1.0
+1.2
+1.4
+1.6
+1.8
+2.0
+2.2
+2.4
+Window Size [days]
+0
+2
+4
+6
+8
+10
+12
+14
+Filter Time [min]
+Biweight
+Huber spline
+Lowess
+YSD-Lowess
+10−2
+10−1
+100
+CPU/GPU Time [hours]
+100
+101
+102
+CPU/GPU Time [min]
+0
+100
+200
+300
+400
+500
+600
+Count
+CETRA – GPU
+umbra – CPU
+TLS – CPU
+nuance – CPU
+Fig. 14. Computational performance of the different light curve filter and search algorithms. Left: runtime of the different filters on the 25 s cadence
+PLATO data as a function of the window size used. Points indicate the mean computation time per light curve and the errors the 16th and 84th
+percentiles of the distribution. Right: histograms of the per light curve CPU/GPU time of the different search algorithms for representative runs of
+each algorithm. CPU times from a search performed with TLS (Hippke & Heller 2019) are included for comparison. nuance used 10 min cadence
+data compared to 5 min for CETRA, umbra, and TLS.
+function. The Huber spline is also by far the fastest filter method,
+which is fortunate as it is the preferred one based on the tests pre-
+sented in this work. Tests with the order of operations of binning
+and filtering (Sec. 3.4.1) suggest that binning the light curves
+before running the filters would not reduce the transit search
+performance, in which case all these runtimes are significantly
+reduced (see Table 2).
+Search algorithms
+CETRA was run on Nvidia H100 GPUs,
+while umbra and nuance were run on the same CPUs as the
+light curve filters. CETRA searches were performed using one
+GPU per light curve, umbra searches used one CPU core per
+light curve, and nuance used four CPU cores per light curve.
+The right panel of Fig. 14 shows histograms of the CPU/GPU
+time it took to search each light curve for representative runs of
+the different search algorithms presented in this paper. For refer-
+ence we also include the time it took to run TLS with comparable
+period and duration grids using a single core per light curve. As
+expected CETRA is by far the fastest code tested, taking ∼60 s
+per light curve. Next is umbra which takes ∼30 mins on average,
+followed by TLS which takes ∼100 mins. nuance was run on
+lower cadence data and with a reduced duration grid compared
+to umbra, yet it still takes by far the longest at ∼280 mins. The
+issue with the duration limits employed throughout this paper
+(Sec. 3.4.2) means that all searches were run using too narrow a
+grid in durations. In tests with wider duration limits the CETRA
+runtime increased by 10-15%, and similar or greater increases
+should be expected for the other codes. However, changes in the
+search grid are unlikely to change the order of the transit search
+algorithms from fastest to slowest.
+4. Summary and key recommendations
+In this work we have performed a detailed performance com-
+parison between different light curve filter and transit detection
+codes. The default PLATO transit search algorithm is CETRA,
+which requires a pre-filtered light curve for which we tested
+biweight, Huber spline, Lowess, and YSD-Lowess filters. We
+compare the CETRA performance to the WLS method of umbra
+using the same filtered light curves; and the simultaneous filter-
+ing and detection of nuance, which uses a GP to model the stel-
+lar variability at all proposed transit parameters. The simulated
+dataset used to perform these comparisons consists of 2000 stel-
+lar light curves simulated with with PSLS and pyspot for the
+nominal two year pointing of PLATO. Stellar parameters were
+taken from a subset of the PIC P1 + P2 sample, and the simu-
+lations include the effects of data-gaps, granulation, oscillations,
+star-spots and long-term systematics. Each light curve was used
+with two different transit signals: the inner orbits where Ntr ≳3
+and the outer orbits where Ntr ≲3, both with planet radii in the
+range 0.5 −2.0 R⊕. We do not consider multi-planet systems, or
+astrophysical false positives such as eclipsing binaries.
+Figure 15 shows the recovery fractions as a function of or-
+bital period and planet radius for each of the three transit search
+codes used in this study. CETRA, umbra, and nuance all shows
+comparable performance: at periods P > 150 d they recover
+70–90% of planets with 1.5 ≲Rp/R⊕< 2.0, 40–60% of plan-
+ets with 1.0 ≲Rp/R⊕< 1.5, and 10–15% of planets with
+0.5 ≲Rp/R⊕< 1.0. These numbers are the benchmark against
+which to evaluate the performance of new light curve filters or
+detection algorithms when tested on this simulated dataset. How-
+ever, they should not be used to estimate PLATO planet yields in
+these regimes due to the limitations of the simulations.
+While the differences between CETRA, umbra, and nuance
+are small, they are nonetheless significant, as discussed in Sec. 3.
+This leads to our first set of recommendations. First, the warped
+transit shapes (Fig. 7) used by umbra are shown to be beneficial
+in detecting transits in pre-filtered light curves and should be im-
+plemented in CETRA, which is computationally much faster. Sec-
+ond, nuance outperforms both CETRA and umbra on hot, rapidly
+rotating, active stars (Fig. 12) and it is worth considering using
+nuance in parallel to CETRA for this subset of stars, provided
+computational resources are available. Further testing would be
+needed, however, to optimize nuance’s performance for these
+stars.
+Regarding the choice of filter used with CETRA and umbra,
+the results shown in Fig. 15 are for the Huber spline filter, which
+performed better than the biweight filter, and better than or sim-
+ilar to the Lowess and YSD-Lowess filters. We recommend the
+Huber spline for its speed, robustness against outliers and small
+data gaps, and overall performance in recovering signals (Fig. 8).
+We also recommend against using our implementation of the
+YSD-Lowess filter. While the YSD-Lowess filter performance
+can be comparable to the Huber spline, our method of interpo-
+Article number, page 13
+
+
+A&A proofs: manuscript no. aa60423-26
+0
+100
+200
+300
+400
+500
+600
+700
+Period [days]
+0
+20
+40
+60
+80
+100
+Recoveries [%]
+CETRA – 1.0 d Huber spline
+0
+100
+200
+300
+400
+500
+600
+700
+Period [days]
+0
+20
+40
+60
+80
+100
+umbra – 1.4 d Huber spline
+0
+100
+200
+300
+400
+500
+600
+700
+Period [days]
+0
+20
+40
+60
+80
+100
+nuance – SHO kernel
+Fig. 15. Percentage of transits as a function of orbital period across the joint simulations in three planet radius bins. CETRA and umbra are shown for
+their respective optimal Huber spline filter windows. The black point shows the typical counting error in each bin. Though below the uncertainty
+in individual bins, overall improved recovery rates are visible when going from CETRA to umbra to nuance.
+lating over the peaks and troughs in the light curve results in
+inconsistent behaviour on the same feature in different parts of
+the light curve (see Fig. 9). Finally, while we ran our filters on
+the native 25 s PLATO cadence, we showed in Sec. 3.4.1 that
+binning to 300 or even 600 s cadence before filtering does not
+significantly impact our ability to detect transits, but does reduce
+the computational cost of the Huber spline filter.
+The best window size to use with the Huber spline proved
+harder to pin down. The best performing window depends on
+the algorithm and the transit sample (inner/outer) considered,
+likely due to differing transit durations. Across the joint sam-
+ple CETRA performs best with a 1.0 d window size and umbra
+with a 1.4 d window size (Fig. 8). If WLS templates are imple-
+mented in CETRA the optimal window size may shift to match
+umbra. Furthermore, we showed that (if resources are available)
+running multiple Huber spline windows results in an additional
+4% pt. signals recovered for two filters, and 6% pt. for four
+filters in the joint sample (Fig.10), with window sizes ranging
+from 0.8 −1.8 d. Optimal filters can be selected from Table A.2
+based on how many filters can be run and which transit sample
+is deemed most important.
+The range of trial transit durations used with CETRA, umbra,
+and nuance was narrower than it should have been due to a mis-
+understanding with the use of the TLS package. We explored the
+impact of this issue in Sec. 3.4.2, but a full re-analysis of the
+light curves was beyond the scope of this work. Nevertheless,
+this problem has been addressed in the latest versions of CETRA
+and umbra so that future work will not be affected.
+Finally, the new simulated dataset used in this work was gen-
+erated with our best understanding of stellar variability signals
+present in PLATO, and PLATO’s observational characteristics.
+However, the volume of simulated sources required necessitated
+the use of a simplified PLATO systematics model with PSLS.
+More detailed modelling of systematics is possible through pixel
+level simulations, but real PLATO data is likely to contain effects
+our simulators do not currently account for. We recommend that
+the performance of the filters, filter windows, and transit search
+methods presented here should be re-evaluated on real PLATO
+data using injection-recovery tests once data from a few obser-
+vational quarters are available.
+Future work should focus on implementing WLS in CETRA
+and benchmarking its performance to umbra using the updated
+duration limits. There is also scope for improvements to the tran-
+sit templates used: adding to the range of transit shapes, e.g.
+adding templates with high impact parameters; and implement-
+ing a wider range of smoothing options for generating WLS tem-
+plates. Finally, more work is also needed to determine if nuance
+is worth the additional computational cost for a subset of the
+stellar sample.
+Acknowledgements. This work presents results from the European Space
+Agency (ESA) space mission PLATO. The PLATO payload, the PLATO Ground
+Segment and PLATO data processing are joint developments of ESA and the
+PLATO Mission Consortium (PMC). Funding for the PMC is provided at na-
+tional levels, in particular by countries participating in the PLATO Multilat-
+eral Agreement (Austria, Belgium, Czech Republic, Denmark, France, Germany,
+Italy, Netherlands, Portugal, Spain, Sweden, Switzerland, Norway, and United
+Kingdom) and institutions from Brazil. Members of the PLATO Consortium can
+be found at https://platomission.com/. The ESA PLATO mission website
+is https://www.cosmos.esa.int/plato. We thank the teams working for
+PLATO for all their work. This work was supported by the UK Space Agency
+as part of its support for the UK component of the PLATO Mission. SA also ac-
+knowledges support from the ERC via CoG 865624. LCS is supported by UKRI-
+STFC grants ST/X001628/1 and ST/X001571/1. LM acknowledge support from
+PLATO ASI-INAF agreements n. 2022-28-HH.0. The authors would like to ac-
+knowledge contributions made by Eric Feigelson and Marco Montalto during the
+preparation of this manuscript. We also thank the referee Michael Hippke and the
+editor José A. Caballero for their feedback.
+References
+Battley, M. P., Pollacco, D., & Armstrong, D. J. 2020, MNRAS, 496, 1197
+Breton, S. N., Lanza, A. F., Messina, S., et al. 2024, A&A, 689, A229
+Caceres, G. A., Feigelson, E. D., Babu, G. J., et al. 2019, AJ, 158, 57
+Canocchi, G., Malavolta, L., Pagano, I., et al. 2023, A&A, 672, A144
+Garcia, L. J., Foreman-Mackey, D., Murray, C. A., et al. 2024, AJ, 167, 284
+Hippke, M., David, T. J., Mulders, G. D., & Heller, R. 2019, AJ, 158, 143
+Hippke, M. & Heller, R. 2019, A&A, 623, A39
+Jannsen, N., De Ridder, J., Seynaeve, D., et al. 2024, A&A, 681, A18
+Jannsen, N., Tkachenko, A., Royer, P., et al. 2025, A&A, 694, A185
+Jenkins, J. M., Caldwell, D. A., & Borucki, W. J. 2002, ApJ, 564, 495
+Jenkins, J. M., Tenenbaum, P., Seader, S., et al. 2020, Kepler Data Processing
+Handbook: Transiting Planet Search, Kepler Science Document KSCI-19081-
+003, id. 9. Edited by Jon M. Jenkins.
+Kipping, D. M. 2012, MNRAS, 427, 2487
+Kopparapu, R. K., Ramirez, R., Kasting, J. F., et al. 2013, ApJ, 765, 131
+Kostogryz, N. M., Witzke, V., Shapiro, A. I., et al. 2022, A&A, 666, A60
+Kovács, G., Zucker, S., & Mazeh, T. 2002, A&A, 391, 369
+Melton, E. J., Feigelson, E. D., Montalto, M., et al. 2024, AJ, 167, 202
+Meunier, N., Lagrange, A.-M., Boulet, T., & Borgniet, S. 2019, A&A, 627, A56
+Mosteller, F. & Tukey, J. W. 1977, Data analysis and regression. A second course
+in statistics (Pearson)
+NASA Exoplanet Science Institute. 2023, Transiting Planets Table
+Nascimbeni, V., Piotto, G., Cabrera, J., et al. 2025, A&A, 694, A313
+Ofir, A. 2014, A&A, 561, A138
+Parviainen, H. 2015, MNRAS, 450, 3233
+Protopapas, P., Jimenez, R., & Alcock, C. 2005, MNRAS, 362, 460
+Rauer, H., Aerts, C., Cabrera, J., et al. 2025, Experimental Astronomy, 59, 26
+Rizzuto, A. C., Mann, A. W., Vanderburg, A., Kraus, A. L., & Covey, K. R. 2017,
+AJ, 154, 224
+Samadi, R., Deru, A., Reese, D., et al. 2019, A&A, 624, A117
+Smith, L. C., Ahmed, S., De Angeli, F., et al. 2025, MNRAS, 539, 297
+Talens, G. J. & Aigrain, S. 2025, PySpot (2025): Simulating lightcurves for stars
+with an evolving star-spot population.
+Talens, G. J., Aigrain, S., Malavolta, L., et al. 2026, Simulated PLATO light
+curves Oxford 2025
+Talens, G. J., Aigrain, S., Malavolta, L., & Smith, L. C. 2025, Research Notes of
+the American Astronomical Society, 9, 319
+Article number, page 14
+
+
+Geert Jan Talens et al.: Filter and search comparison
+Appendix A: Tables of results
+Table A.1 lists the results of transit searches performed with CETRA, umbra, and nuance. The results of combining CETRA and
+umbra search results obtained with different filters and window sizes are listed in Tab. A.2.
+Table A.1. Number of correctly recovered signals for all tested light curve filters and transit search codes.
+Light curve
+Filter
+Window
+Bin Size
+Search
+inner
+outer
+joint
+[d]
+[s]
+2000
+2000
+4000
+Simple
+...
+...
+300
+CETRA
+1570
+1476
+3046
+Simple
+...
+...
+300
+umbraa
+1553
+1457
+3010
+Simple
+...
+...
+600
+nuance
+1604
+1527
+3131
+Full
+SHO Kernel
+...
+600
+nuance
+1373
+1076
+2449
+Full
+Biweight
+0.7
+300
+CETRA
+...
+625
+...
+Full
+Biweight
+1.0
+300
+CETRA
+...
+809
+...
+Full
+Biweight
+1.4
+300
+CETRA
+...
+845
+...
+Full
+Biweight
+2.0
+300
+CETRA
+...
+797
+...
+Full
+Biweight
+0.7
+300
+umbra
+...
+775
+...
+Full
+Biweight
+1.0
+300
+umbra
+...
+916
+...
+Full
+Biweight
+1.4
+300
+umbra
+...
+975
+...
+Full
+Biweight
+2.0
+300
+umbra
+...
+915
+...
+Full
+Huber spline
+0.6
+300
+CETRA
+1164
+531
+1695
+Full
+Huber spline
+0.8
+300
+CETRA
+1282
+766
+2048
+Full
+Huber spline
+1.0
+300
+CETRA
+1309
+889
+2198
+Full
+Huber spline
+1.2
+300
+CETRA
+1276
+902
+2178
+Full
+Huber spline
+1.4
+300
+CETRA
+1219
+922
+2141
+Full
+Huber spline
+1.6
+300
+CETRA
+1177
+897
+2074
+Full
+Huber spline
+1.8
+300
+CETRA
+1112
+857
+1969
+Full
+Huber spline
+2.0
+300
+CETRA
+1060
+814
+1874
+Full
+Huber spline
+0.6
+300
+umbra
+1187
+704
+1891
+Full
+Huber spline
+0.8
+300
+umbra
+1288
+879
+2167
+Full
+Huber spline
+1.0
+300
+umbra
+1324
+945
+2269
+Full
+Huber spline
+1.2
+300
+umbra
+1325
+979
+2304
+Full
+Huber spline
+1.4
+300
+umbra
+1299
+1009
+2308
+Full
+Huber spline
+1.6
+300
+umbra
+1278
+986
+2264
+Full
+Huber spline
+1.8
+300
+umbra
+1241
+978
+2219
+Full
+Huber spline
+2.0
+300
+umbra
+1199
+944
+2143
+Full
+Lowess
+1.0
+300
+CETRA
+...
+631
+...
+Full
+Lowess
+1.4
+300
+CETRA
+...
+796
+...
+Full
+Lowess
+2.0
+300
+CETRA
+...
+847
+...
+Full
+Lowess
+2.4
+300
+CETRA
+...
+824
+...
+Full
+Lowess
+1.0
+300
+umbrab
+...
+783
+...
+Full
+Lowess
+1.4
+300
+umbrab
+...
+926
+...
+Full
+Lowess
+2.0
+300
+umbrab
+...
+1033
+...
+Full
+Lowess
+2.4
+300
+umbrab
+...
+1025
+...
+Full
+YSD-Lowess
+1.0
+300
+CETRA
+...
+531
+...
+Full
+YSD-Lowess
+1.4
+300
+CETRA
+...
+735
+...
+Full
+YSD-Lowess
+2.0
+300
+CETRA
+...
+854
+...
+Full
+YSD-Lowess
+2.4
+300
+CETRA
+...
+852
+...
+Full
+YSD-Lowess
+1.0
+300
+umbrab
+...
+704
+...
+Full
+YSD-Lowess
+1.4
+300
+umbrab
+...
+836
+...
+Full
+YSD-Lowess
+2.0
+300
+umbrab
+...
+932
+...
+Full
+YSD-Lowess
+2.4
+300
+umbrab
+...
+931
+...
+Notes. These results are visualized in Fig. 8. Not all filters and codes were tested on the inner sample. (a) Since the simple light curves were
+variability free and did not need filtering umbra was run with TLS templates. (b) Because the Lowess and YSD-Lowess methods use a tricube
+weighting function across the filter window, umbra’s WLS templates were computed with the same tricube weighting for these filters.
+Article number, page 15
+
+
+A&A proofs: manuscript no. aa60423-26
+Table A.2. Correctly recovered signals and preferred light curve filters and window sizes when combining the results from different filter-window
+combinations.
+Search
+Sample
+Filters
+No. Filters
+Recoveries
+Huber spline
+Lowess
+YSD-Lowess
+0.6 d
+0.8 d
+1.0 d
+1.2 d
+1.4 d
+1.6 d
+1.8 d
+2.0 d
+2.0 d
+2.0 d
+CETRA
+outer
+Any
+1
+922
+...
+...
+...
+...
+✓
+...
+...
+...
+...
+...
+CETRA
+outer
+Any
+2
+1011
+...
+...
+✓
+...
+✓
+...
+...
+...
+...
+...
+CETRA
+outer
+Any
+3
+1069
+...
+...
+✓
+...
+...
+✓
+...
+...
+...
+✓
+CETRA
+outer
+Any
+4
+1100
+...
+...
+✓
+...
+✓
+...
+...
+✓
+...
+✓
+CETRA
+outer
+Any
+5
+1123
+...
+...
+✓
+✓
+✓
+...
+✓
+...
+...
+✓
+CETRA
+outer
+Any
+6
+1138
+...
+✓
+✓
+✓
+✓
+...
+✓
+...
+...
+✓
+CETRA
+outer
+Huber spline
+1
+922
+...
+...
+...
+...
+✓
+...
+...
+...
+...
+...
+CETRA
+outer
+Huber spline
+2
+1011
+...
+...
+✓
+...
+✓
+...
+...
+...
+...
+...
+CETRA
+outer
+Huber spline
+3
+1054
+...
+...
+✓
+...
+✓
+...
+...
+✓
+...
+...
+CETRA
+outer
+Huber spline
+4
+1084
+...
+...
+✓
+✓
+✓
+...
+✓
+...
+...
+...
+CETRA
+outer
+Huber spline
+5
+1107
+...
+✓
+✓
+✓
+✓
+...
+✓
+...
+...
+...
+CETRA
+outer
+Huber spline
+6
+1121
+...
+✓
+✓
+✓
+✓
+✓
+✓
+...
+...
+...
+CETRA
+inner
+Huber spline
+1
+1309
+...
+...
+✓
+...
+...
+...
+...
+...
+...
+...
+CETRA
+inner
+Huber spline
+2
+1349
+...
+✓
+...
+✓
+...
+...
+...
+...
+...
+...
+CETRA
+inner
+Huber spline
+3
+1367
+...
+✓
+✓
+...
+...
+✓
+...
+...
+...
+...
+CETRA
+inner
+Huber spline
+4
+1381
+✓
+✓
+✓
+...
+...
+✓
+...
+...
+...
+...
+CETRA
+inner
+Huber spline
+5
+1386
+✓
+✓
+✓
+✓
+...
+✓
+...
+...
+...
+...
+CETRA
+inner
+Huber spline
+6
+1392
+✓
+✓
+✓
+✓
+✓
+...
+✓
+...
+...
+...
+CETRA
+joint
+Huber spline
+1
+2198
+...
+...
+✓
+...
+...
+...
+...
+...
+...
+...
+CETRA
+joint
+Huber spline
+2
+2345
+...
+...
+✓
+...
+...
+✓
+...
+...
+...
+...
+CETRA
+joint
+Huber spline
+3
+2404
+...
+✓
+✓
+...
+...
+✓
+...
+...
+...
+...
+CETRA
+joint
+Huber spline
+4
+2451
+...
+✓
+✓
+...
+✓
+...
+✓
+...
+...
+...
+CETRA
+joint
+Huber spline
+5
+2486
+...
+✓
+✓
+✓
+✓
+...
+✓
+...
+...
+...
+CETRA
+joint
+Huber spline
+6
+2503
+✓
+✓
+✓
+✓
+✓
+...
+✓
+...
+...
+...
+umbra
+outer
+Any
+1
+1033
+...
+...
+...
+...
+...
+...
+...
+...
+✓
+...
+umbra
+outer
+Any
+2
+1109
+...
+...
+...
+...
+...
+...
+✓
+...
+✓
+...
+umbra
+outer
+Any
+3
+1148
+...
+...
+✓
+...
+...
+...
+✓
+...
+...
+✓
+umbra
+outer
+Any
+4
+1174
+...
+✓
+✓
+...
+...
+...
+✓
+...
+...
+✓
+umbra
+outer
+Any
+5
+1195
+...
+✓
+✓
+...
+...
+...
+✓
+✓
+...
+✓
+umbra
+outer
+Any
+6
+1209
+...
+✓
+✓
+...
+...
+✓
+✓
+✓
+...
+✓
+umbra
+outer
+Huber spline
+1
+1009
+...
+...
+...
+...
+✓
+...
+...
+...
+...
+...
+umbra
+outer
+Huber spline
+2
+1093
+...
+...
+✓
+...
+...
+...
+✓
+...
+...
+...
+umbra
+outer
+Huber spline
+3
+1135
+...
+✓
+...
+...
+✓
+...
+✓
+...
+...
+...
+umbra
+outer
+Huber spline
+4
+1160
+...
+✓
+✓
+...
+✓
+...
+✓
+...
+...
+...
+umbra
+outer
+Huber spline
+5
+1180
+...
+✓
+✓
+...
+✓
+...
+✓
+✓
+...
+...
+umbra
+outer
+Huber spline
+6
+1193
+...
+✓
+✓
+...
+✓
+✓
+✓
+✓
+...
+...
+umbra
+inner
+Huber spline
+1
+1325
+...
+...
+...
+✓
+...
+...
+...
+...
+...
+...
+umbra
+inner
+Huber spline
+2
+1381
+...
+✓
+...
+...
+...
+✓
+...
+...
+...
+...
+umbra
+inner
+Huber spline
+3
+1409
+...
+✓
+...
+✓
+...
+✓
+...
+...
+...
+...
+umbra
+inner
+Huber spline
+4
+1417
+✓
+✓
+...
+✓
+...
+✓
+...
+...
+...
+...
+umbra
+inner
+Huber spline
+5
+1425
+✓
+✓
+✓
+✓
+...
+✓
+...
+...
+...
+...
+umbra
+inner
+Huber spline
+6
+1432
+✓
+✓
+✓
+✓
+...
+✓
+...
+✓
+...
+...
+umbra
+joint
+Huber spline
+1
+2308
+...
+...
+...
+...
+✓
+...
+...
+...
+...
+...
+umbra
+joint
+Huber spline
+2
+2467
+...
+✓
+...
+...
+...
+...
+✓
+...
+...
+...
+umbra
+joint
+Huber spline
+3
+2537
+...
+✓
+...
+✓
+...
+...
+✓
+...
+...
+...
+umbra
+joint
+Huber spline
+4
+2573
+...
+✓
+✓
+...
+✓
+...
+✓
+...
+...
+...
+umbra
+joint
+Huber spline
+5
+2602
+...
+✓
+✓
+...
+✓
+...
+✓
+✓
+...
+...
+umbra
+joint
+Huber spline
+6
+2618
+✓
+✓
+✓
+...
+✓
+...
+✓
+✓
+...
+...
+Notes. These results are visualized in Fig. 10.
+Appendix B: Note on thresholds
+Our analysis of the performance of the different filters and search codes was performed without applying any kind of detection
+threshold, either on the periodogram peak values or another detection significance statistic. It is reasonable to expect that applying
+thresholds and comparing on recovered true positives (matching period/epoch, above threshold) our analysis might have been
+qualitatively and quantitatively different. We perform here a simple analysis, where we apply permissive thresholds to the CETRA,
+umbra, and nuance results, to argue that our qualitative conclusions likely hold.
+Figure B.1 shows peak S/N (power) distributions for CETRA, umbra, and nuance. The simple planet-free peak power distribu-
+10
+tions are representative of the peak power distributions obtained from planet-free perfectly filtered light curve and the 95th percentile
+of this distribution represents a permissive threshold. A permissive metric is desirable to achieve PLATO’s aim of finding Earth-like
+planets in the habitable zone, which will show only a few transits in the two year nominal baseline. Further pipeline steps will be
+used to vet the initial list of candidate signals and prioritize targets for follow-up. Using this threshold produces few False Negatives
+(recovered signals with peaks below the threshold), and many False Positives (missed signals with peaks above the threshold). For
+all search codes the planet-free and recovered histograms are roughly equally well-separated, and we can expect no qualitative
+impact on our results from applying thresholds.
+Article number, page 16
+
+
+Geert Jan Talens et al.: Filter and search comparison
+10−4
+10−3
+10−2
+10−1
+Peak Power (umbra)
+0
+200
+400
+600
+800
+1000
+1200
+Recovered
+Missed
+Planet-free
+Planet-free 95%
+101
+102
+Peak S/N (CETRA)
+0
+200
+400
+600
+800
+1000
+Recovered
+Missed
+Planet-free
+Planet-free 95%
+101
+102
+Peak S/N (nuance)
+0
+250
+500
+750
+1000
+1250
+Recovered
+Missed
+Planet-free
+Planet-free 95%
+Fig. B.1. Comparison of periodogram peak strength in the simple planet-free light curves (grey) to peak strength in the joint sample split by
+recovered (blue) and missed (orange) signals for CETRA (left), umbra (middle), and nuance (right). The vertical black line marks the 95th percentile
+of the simple planet-free distribution.
+Appendix C: Supplementary figures
+Figure C.1 shows the full correlations between key stellar and transit parameters for the inner and outer transit sample. There is a
+strong anti-correlation between Teff and Prot, which contributes to the lower detection rate for shallow, long-period transits around
+20
+the hotter stars. The weaker anti-correlation between Teff and the cycle amplitude partly compensates for this effect. There is also a
+well-known correlation between shorter transits T14 and higher impact parameters b. The duration grids in this work neglected this
+effect (see Sec. 3.4.2), which likely accounts for the decrease in performance at high impact parameters seen in CETRA and umbra.
+nuance performs better at high b only because it implements no period dependent limits on the allowed durations, though this can
+also cause increased noise in the periodogram. Figures C.2 and C.3 accompany Fig. 5. They show additional examples of the effect
+of light curve filters on stars across a range of activity levels. Figure C.4 shows example output obtained from running umbra’s
+WLS on one of the simulated PLATO light curves described in this paper. The umbra definition of periodogram power removes
+some of the trend in the ∆χ2 with period, but preserves those parts of it which are due to signal. The WLS template provides a good
+match to the filtered transit shape. Figures C.5 and C.6 compare the performance of the different filter algorithms at comparable
+window sizes when searched with CETRA. The biweight, Lowess, and YSD-Lowess filters recover some signals that are missed
+30
+by the Huber spline filter, though this difference is only marginally significant for the YSD-Lowess filter. The YSD-Lowess filter
+performs slightly better on hot, rapidly rotating, stars which makes sense as it was designed to handle young, rapidly rotating stars.
+Conversely all filters miss a significant number of signals that are recovered by the Huber spline.
+Article number, page 17
+
+
+A&A proofs: manuscript no. aa60423-26
+150
+300
+450
+600
+k2 [ppm]
+6
+12
+18
+24
+30
+T14 [h]
+0.2
+0.4
+0.6
+0.8
+1.0
+b
+4800
+5200
+5600
+6000
+6400
+Teﬀ[K]
+4.05
+4.20
+4.35
+4.50
+4.65
+log g [cgs]
+0.08
+0.16
+0.24
+0.32
+Acyc
+150
+300
+450
+600
+P [days]
+15
+30
+45
+60
+Prot [days]
+150
+300
+450
+600
+k2 [ppm]
+6
+12
+18
+24
+30
+T14 [h]
+0.2
+0.4
+0.6
+0.8
+1.0
+b
+4800
+5200
+5600
+6000
+6400
+Teﬀ[K]
+4.05
+4.20
+4.35
+4.50
+4.65
+log g [cgs]
+0.08
+0.16
+0.24
+0.32
+Acyc
+15
+30
+45
+60
+Prot [days]
+Fig. C.1. Correlations between transit and stel-
+lar parameters for the inner (grey) and outer
+(cyan) samples.
+Article number, page 18
+
+
+Geert Jan Talens et al.: Filter and search comparison
+−1500
+−1000
+−500
+0
+500
+1000
+∆F [ppm]
+LC ID: 0006 – inner
+1.4 d Mean
+1.4 d Biweight
+1.4 d Huber spline
+2.0 d Lowess
+2.0 d YSD-Lowess
+10
+20
+30
+40
+50
+60
+70
+80
+90
+Time [days]
+−3500
+−3000
+−2500
+−2000
+−1500
+−1000
+−500
+0
+∆F [ppm]
+Fig. C.2. Same as Fig. 5 but for a quiet star.
+−3000
+−2000
+−1000
+0
+1000
+2000
+∆F [ppm]
+LC ID: 0164 – inner
+1.4 d Mean
+1.4 d Biweight
+1.4 d Huber spline
+2.0 d Lowess
+2.0 d YSD-Lowess
+460
+480
+500
+520
+540
+Time [days]
+−6000
+−5000
+−4000
+−3000
+−2000
+−1000
+0
+∆F [ppm]
+Fig. C.3. Same as Fig. 5 but for a highly active
+star.
+101
+102
+Period [days]
+0
+1000
+2000
+∆χ2
+LC ID: 0006 – outer
+∆χ2
+−
+∆χ2
++
+101
+102
+Period [days]
+0.0000
+0.0025
+0.0050
+0.0075
+P
+−0.003
+−0.002
+−0.001
+0.000
+0.001
+0.002
+0.003
+Phase
+−250
+0
+250
+∆F [ppm]
+Fig. C.4. Example of the umbra periodogram
+using WLS transit templates, obtained on a
+1.4 d Huber spline filtered light curve. Top:
+the ∆χ2 values computed for this light curve.
+Middle: The periodogram power (P) computed
+from the ∆χ2 values. Bottom: the light curve
+phase-folded to the best period and overlaid
+with the best-fit WLS transit template.
+Article number, page 19
+
+
+A&A proofs: manuscript no. aa60423-26
+200
+400
+600
+0
+100
+200
+300
+Total
+CETRA – 1.4 d Huber spline
+200
+400
+600
+−20
+0
+20
+Difference [%pt.]
+CETRA – 1.4 d Biweight
+200
+400
+600
+−20
+0
+20
+Difference [%pt.]
+CETRA – 2.0 d Lowess
+200
+400
+600
+Period P [days]
+−20
+0
+20
+Difference [%pt.]
+CETRA – 2.0 d YSD-Lowess
+0
+200
+400
+600
+0
+250
+500
+750
+0
+200
+400
+600
+−20
+0
+20
+0
+200
+400
+600
+−20
+0
+20
+0
+200
+400
+600
+Depth k2 [ppm]
+−20
+0
+20
+0
+6
+12
+18
+24
+0
+200
+400
+0
+6
+12
+18
+24
+−20
+0
+20
+0
+6
+12
+18
+24
+−20
+0
+20
+0
+6
+12
+18
+24
+Duration T14 [hours]
+−20
+0
+20
+0.00
+0.25
+0.50
+0.75
+1.00
+0
+100
+200
+0.00
+0.25
+0.50
+0.75
+1.00
+−20
+0
+20
+0.00
+0.25
+0.50
+0.75
+1.00
+−20
+0
+20
+0.00
+0.25
+0.50
+0.75
+1.00
+Impact Parameter b
+−20
+0
+20
+Fig. C.5. Same as Fig. 11, but comparing light
+curve filters searched with CETRA.
+5000
+5500
+6000
+0
+200
+400
+Total
+CETRA – 1.4 d Huber spline
+5000
+5500
+6000
+−20
+0
+20
+Difference [%pt.]
+CETRA – 1.4 d Biweight
+5000
+5500
+6000
+−20
+0
+20
+Difference [%pt.]
+CETRA – 2.0 d Lowess
+5000
+5500
+6000
+Effective Temperature Teﬀ[K]
+−20
+0
+20
+Difference [%pt.]
+CETRA – 2.0 d YSD-Lowess
+4.0
+4.2
+4.4
+4.6
+0
+100
+200
+300
+4.0
+4.2
+4.4
+4.6
+−20
+0
+20
+4.0
+4.2
+4.4
+4.6
+−20
+0
+20
+4.0
+4.2
+4.4
+4.6
+Surface Gravity log g [cgs]
+−20
+0
+20
+0.0
+0.1
+0.2
+0.3
+0
+200
+400
+0.0
+0.1
+0.2
+0.3
+−20
+0
+20
+0.0
+0.1
+0.2
+0.3
+−20
+0
+20
+0.0
+0.1
+0.2
+0.3
+Cycle Amplitude Acyc
+−20
+0
+20
+20
+40
+60
+0
+200
+400
+20
+40
+60
+−20
+0
+20
+20
+40
+60
+−20
+0
+20
+20
+40
+60
+Rotation Period Prot [days]
+−20
+0
+20
+Fig. C.6. Same as Fig. 12, but comparing light
+curve filters searched with CETRA.
+Article number, page 20

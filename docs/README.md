@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-14</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-15</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 7 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 12 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>5</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-14 22:28:45 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-15 21:55:47 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精读5篇、速读2篇，重点锁定系外行星大气：KELT-9b的原子碳氧比拿下满分10.0，带电雾霾如何让透射光谱光学斜率变陡也获9.0高分。</p>
-<p>最值得看的是行星大气成分与雾霾效应的两条线索——前者直接关系到行星形成环境，后者提醒我们观测信号可能被雾霾“扭曲”。</p>
-<p>普通读者可先读这两篇精读的摘要，留意系外行星大气探测中“成分测量”与“雾霾干扰”这对老对手的新进展。</p>
+<p>2026-09-15 日报：12篇筛出5精读7速读，系外行星大气与PLATO凌星探测成今日主线。</p>
+<p>最值得看的是两篇9分精读：GJ 3090b 的强大气外流，以及模拟PLATO数据中光变曲线滤波与凌星搜索算法比较。</p>
+<p>普通读者可先读这两篇，建立“大气逃逸+探测流程”框架，再按兴趣翻速读中的PINNs冲突梯度或混沌纠缠。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -76,7 +76,7 @@
     <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="The atomic C/O ratio of KELT-9b">The atomic C/O ratio of KELT-9b</span></li><li><span class="dpr-home-dashboard-paper-title" title="Steepening Optical Slopes in Exoplanet Transmission Spectra with Charged Hazes">Steepening Optical Slopes in Exoplanet Transmission Spectra with Charged Hazes</span></li><li><span class="dpr-home-dashboard-paper-title" title="JWST/MIRI Imaging Search for Kinematically Detected Protoplanetary Candidates">JWST/MIRI Imaging Search for Kinematically Detected Protoplanetary Candidates</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="WINERED Detects a Strong Atmospheric Outflow on the Sub-Neptune GJ 3090b">WINERED Detects a Strong Atmospheric Outflow on the Sub-Neptune GJ 3090b</span></li><li><span class="dpr-home-dashboard-paper-title" title="Detecting transiting exoplanets in simulated PLATO data: A comparison of light curve filter and transit search algorithms">Detecting transiting exoplanets in simulated PLATO data: A comparison of light curve filter and transit search algorithms</span></li><li><span class="dpr-home-dashboard-paper-title" title="Investigating Variability in Long-lived Protoplanetary Disks (&gt;10 Myr) using NEOWISE">Investigating Variability in Long-lived Protoplanetary Disks (&gt;10 Myr) using NEOWISE</span></li></ul>
   </div>
   <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>4</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
 </section>
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Joinings in Markov categories">Joinings in Markov categories</span></li><li><span class="dpr-home-dashboard-paper-title" title="DiffSWE2d: a differentiable Shallow Water Equations solver for end-to-end flood and tsunami modelling">DiffSWE2d: a differentiable Shallow Water Equations solver for end-to-end flood and tsunami modelling</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Learning Metastable Dynamics">Learning Metastable Dynamics</span></li><li><span class="dpr-home-dashboard-paper-title" title="Tackling Failure Modes of PINNs and PIKANs Using Conflict-Free Gradients">Tackling Failure Modes of PINNs and PIKANs Using Conflict-Free Gradients</span></li><li><span class="dpr-home-dashboard-paper-title" title="Tripartite entanglement in chaotic eigenstates">Tripartite entanglement in chaotic eigenstates</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>7</strong></span></div>
 </section>
 </div>
 

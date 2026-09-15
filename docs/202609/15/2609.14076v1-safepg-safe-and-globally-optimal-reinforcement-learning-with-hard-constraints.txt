@@ -1,0 +1,1380 @@
+SafePG: Safe and Globally Optimal Reinforcement Learning
+with Hard Constraints
+Vipul K. Sharma, Wesley A. Suttle and S. Sivaranjani
+Abstract— We present an optimal and convergent model-free
+policy gradient (PG) reinforcement learning (RL) framework
+for controlling nonlinear dynamical systems under hard safety
+constraints. We first construct a class of stochastic wrapper
+policies centered around a deterministic controller, thereby en-
+abling exploration in unknown environments while preserving
+the underlying deterministic control structure. We then define a
+class of parameterized safe-by-construction control policies by
+truncating these stochastic policies onto hard safety constraints.
+We next establish, via measure-theoretic arguments, that the
+potentially nonconvex RL objective under the truncated policy
+class, as well as its policy gradients, are well-defined. We then
+develop a model-free PG algorithm based on stochastic gradient
+ascent that directly searches over these truncated policies
+and leverage gradient dominance to establish convergence and
+optimality guarantees. Finally, we validate this framework
+through simulations on a safe quadrotor navigation problem.
+I. INTRODUCTION
+Reinforcement Learning (RL) has demonstrated remark-
+able success in learning control policies for complex sys-
+tems by directly interacting with unknown environments.
+However, in safety-critical applications such as autonomous
+driving or robotics, hard constraints on states and actions
+must be satisfied at all times, not only by the final controller
+but also during learning. This is particularly challenging
+in model-free RL, where stochastic exploration is used to
+improve the underlying policy. In such settings, pointwise
+safety requirements must hold along the realized closed-loop
+trajectories generated during exploration.
+In the RL literature, safety is typically addressed via
+constrained Markov decision processes, primal-dual meth-
+ods, or other penalty-based approaches [1], [2]. While these
+methods incorporate safety constraints as penalties within
+a reward function to discourage violations in expectation,
+probability, or cumulative cost, they do not in general
+guarantee pointwise satisfaction of hard constraints along
+the realized trajectories encountered during learning. In the
+control literature, hard constraints are often handled through
+model-based constrained control methods, particularly MPC,
+or learning-based MPC when sufficiently accurate predictive
+models are available or can be learned [3], [4]. In learning-
+based control, hard constraints are also commonly enforced
+through projection-based mechanisms such as control bar-
+rier function (CBF)-based “safety filters”, where a model-
+free RL algorithm is used to learn a potentially unsafe
+Vipul K. Sharma and S. Sivaranjani are with the Edwardson School
+of Industrial Engineering at Purdue University, West Lafayette, IN 47907,
+USA. {sharm697,sseetha}@purdue.edu
+Wesley A. Suttle is with U.S. Army Research Laboratory, Adelphi, MD
+20783, USA. wesley.a.suttle.ctr@army.mil
+controller, whose actions are subsequently projected onto
+safe sets [5]–[9]. While these projection-based filters ef-
+fectively ensure safe exploration, the projection step alters
+the optimization landscape and breaks the underlying op-
+timality and convergence guarantees of the unconstrained
+RL algorithm [10]. Another line of work involves imposing
+hard constraints more directly through constrained neural
+network optimization layers [11], reduced-gradient updates
+[12], or constrained policy parameterizations [10]. While
+these methods are closer in spirit to the present setting, their
+guarantees are often limited either to particular policy classes
+or to weaker notions of optimality.
+In this paper, we address RL under hard safety constraints
+via policy optimization, while ensuring pointwise constraint
+satisfaction during exploration and establishing convergence
+and optimality guarantees. The main contributions of this
+paper are as follows:
+• First, we formulate the safe RL problem with hard
+constraints as optimization over a truncated stochastic
+policy class. We propose a class of safe-by-construction
+policies by introducing a stochastic wrapper policy
+centered around a parameterized deterministic state-
+feedback law and truncating its support to a given
+safe control set. Thus, by optimizing over this class
+of policies, every sampled control input satisfies hard
+constraints by construction, rather than through a sepa-
+rate projection or filtering step. Such stochastic wrapper
+policies have been recently employed to introduce ex-
+ploration into policy-gradient methods for deterministic
+continuous control settings [13], [14], but have not thus
+far been employed in safe learning. The proposed frame-
+work can also accommodate a wide class of state-action
+constraints that are encountered in practice, including
+CBF-type conditions.
+• Second, the truncated safe policy construction alters the
+structure of the underlying policy optimization problem,
+as the resulting exploration is no longer given by the
+unconstrained noise processes used in standard policy-
+gradient analyses. Rather, the induced exploration be-
+comes state-dependent through the closed-loop dynam-
+ics. We use measure-theoretic arguments to establish
+that the resulting RL objective and its gradients are well-
+defined under this truncated safe policy exploration, al-
+lowing us to define valid policy optimization algorithms
+in this setting.
+• Third, we derive the score-function and policy-gradient
+expressions for the truncated safe policy class, and
+arXiv:2609.14076v1  [eess.SY]  12 Sep 2026
+
+
+develop a model-free policy gradient (PG) algorithm
+- SafePG, and leverage gradient dominance (Polyak-
+Łojasiewicz conditions), to establish convergence to a
+global optimum within the constrained safe policy class.
+This is in contrast to prior work on RL with constrained
+policy parameterizations [10], where the available guar-
+antees are typically limited to convergence to stationary
+points. Finally, we demonstrate the proposed framework
+on a safe quadrotor navigation problem.
+In summary, we believe that the proposed framework is
+among the first to enable pointwise satisfaction of hard
+safety constraints during exploration in model-free RL while
+preserving rigorous policy optimization guarantees.
+A. Organization
+This paper is organized as follows. We first formulate
+the safe RL problem in Section II with CBF-based safety
+constraints for nonlinear dynamical systems. Then, in Section
+III, we define a new class of control policies that are safe by
+construction and define our model-free safe RL problem over
+these policies. We show that such a problem is well-defined
+and then provide policy gradient algorithm to update the safe
+policy and optimize the RL objective. We show optimality
+and convergence of the proposed algorithm in Section IV
+and validate our safe RL framework on a safe quadrotor
+navigation problem in Section V. Finally, we present the
+proofs of all our theoretical results in the Appendix.
+B. Notation
+We denote the sets of real numbers and n-dimensional
+real vectors by R and Rn, respectively. For a matrix A, A⊤
+denotes its transpose. We use ⟨·, ·⟩and ∥· ∥to denote the
+standard Euclidean inner product and norm. Given ϵ > 0
+and x ∈Rn, Bϵ(x) denotes the open ball of radius ϵ
+centered at x. A policy is said to be θ-parameterized if
+it depends on a vector θ ∈Θ, where Θ is the set of
+permissible policy parameters, and θ-differentiable if its
+partial derivative, with respect to θ exists. We use Ez1,z2 to
+denote expectation Ez1Ez2 for random variables z1 and z2.
+We define a measurable space as a pair (X, Xσ) consisting of
+a set X and a σ-algebra Xσ on X. The elements of Xσ are
+called measurable sets. Lastly, for two Lebesgue measures
+ν1 and ν2, we say ν1 ≪ν2 iff ν1 is absolutely continuous
+with respect to ν2.
+II. PROBLEM FORMULATION
+We begin by formulating the model-free safe reinforce-
+ment learning problem addressed in this paper.
+A. Markov Decision Process (MDP)
+We consider a discounted MDP (X, U, P, c, γ), where the
+underlying transition kernel denoted by P(xt+1|xt, ut) is in-
+duced by the deterministic nonlinear control-affine dynamics
+xt+1 = f(xt) + g(xt)ut
+(1)
+where xt ∈X ⊆Rn and ut ∈U ⊆Rm are the state
+and control input respectively at time step t, functions f :
+X →Rn, g : X →Rn×m are locally Lipschitz over X.
+We assume that the initial state x0 is sampled according to
+the distribution D, i.e. x0 ∼D. Moreover, c(xt, ut) is the
+cost at time step t, and γ ∈[0, 1] is the discount factor.
+Throughout the paper, we assume that the dynamics and
+hence the transition probabilities of the MDP are unknown.
+B. Safety
+Our notion of safety is concerned with keeping the system
+inside a prescribed subset of the state-space X, called the
+safe set. We define this safe set as a zero-super-level of a
+continuously differentiable function h, given by
+S = {x ∈X : h(x) ≥0}.
+(2)
+Then, safety can be guaranteed, under the dynamics (1) by
+imposing a forward invariance condition given by
+h(xt+1) −(1 −α)h(xt) ≥0.
+(3)
+A continuously differentiable function h satisfying this con-
+dition is termed a control barrier function (CBF). The above
+condition induces the set of safe control inputs at time step
+t, termed the safe control set, given by
+C(xt) = {ut ∈U : h(xt+1) −(1 −α)h(xt) ≥0}.
+(4)
+C. Safe Reinforcement Learning (RL) Problem
+We now state the safe RL problem under hard safety
+constraints over the MDP in (1), with γ ∈[0, 1], given
+the point-wise hard safety constraint ut ∈C(xt) for all
+t ≥0. We solve the following optimization problem to find
+an optimal policy π, with ut ∼π(·|xt), that solves
+minimize
+π
+J := Ex0,π
+∞
+X
+t=0
+γtc(xt, ut)
+subject to
+ut ∈C(xt),
+xt+1 = f(xt) + g(xt)ut,
+(5)
+without knowledge of the MDP transition probabilities.
+III. SAFE POLICY OPTIMIZATION
+WITH HARD CONSTRAINTS
+In this section, we define a class of truncated safe
+policies that guarantees the safety constraints by construc-
+tion, and then redefine the RL objective over these safe-
+by-construction policies. Thereafter, we analyze the well-
+definedness of this new objective, paving the way to jus-
+tify using a policy gradient algorithm to update these safe
+policies. Finally, we obtain model-free policy gradient ex-
+pressions, and then provide the resultant model-free policy
+gradient algorithm for our model-free safe RL problem.
+A. Safe Exploration with Deterministic Policies
+Control tasks often employ a deterministic policy, denoted
+by µθ with θ ∈Θ. For example, µθ can be a linear state-
+feedback policy µθ(xt) = θxt. More generally, µθ may de-
+note any differentiable deterministic policy parameterization,
+including neural networks. When the dynamics is unknown,
+µθ can be learned using exploration while interacting with
+the environment in an RL framework. To enable exploration,
+
+
+we add a zero-mean Gaussian noise ϵt ∼N(0m, Σt) to the
+deterministic µθ to obtain
+πθ(·|xt) ∼N(µθ(xt), Σt),
+(6)
+where Σt ∈Rm×m is the covariance matrix. We refer to ϵt
+as the exploration noise.
+Assumption 3.1: We assume that the θ-parametrized de-
+terministic policy is θ-differentiable.
+As we see, adding a Gaussian exploration noise to the µθ
+yields an infinite-support stochastic policy πθ, which helps us
+obtain a class of θ-parameterized safe policies via truncation.
+We define a class of truncated safe policies by restricting
+the support of πθ to the safe control set C(xt), given by
+πC
+θ (u|xt) =
+(
+πθ(u|xt)
+πθ(C(xt)|xt)
+u ∈C(xt)
+0
+u /∈C(xt),
+(7)
+where πθ(C(xt)|xt) =
+R
+C(xt) πθ(u|xt)du. Note that (7) con-
+stitutes a safe-by-construction policy class, and optimizing
+over (7) automatically guarantees ut ∈C(xt). We define the
+following infinite horizon discounted objective over the class
+of safe policies πC
+θ , with ut ∼πC
+θ (·|xt), as
+JC
+θ = Ex0,πC
+θ
+" ∞
+X
+t=0
+γtc(xt, ut)
+#
+.
+(8)
+Then, (8) is an unconstrained problem where we minimize
+the RL objective by searching over the class of safe-by-
+construction policies, thus guaranteeing a safe exploration
+during learning.
+B. Well-Definedness of the Safe RL Objective
+Our goal is to develop a policy gradient algorithm that
+solves (8). To use any policy gradient algorithm, we first need
+to establish that the objective in (8) is well-defined under
+the truncated safe policy class πC
+θ . We begin by discussing
+reachability of the safe set S with control inputs that satisfy
+the forward invariance condition, i.e. u ∈C(x), x ∈S.
+Suppose that the one-step reachable subset W(x) ⊂S under
+the dynamics (1), for x ∈S, is given by
+W(x) = {z ∈S|z = f(x) + g(x)u, u ∈C(x)}.
+(9)
+That is, W(x) contains all the reachable states in one time
+step when starting from a state x in the set S. Furthermore,
+for any subset A ⊂S, we define its reachable subset as
+R(A) = ∪x∈AW(x), which implies that the reachable set
+of the subset A is fully covered by the reachable sets of
+x ∈A. Finally, we define the set of safe control inputs that
+drive any x ∈S into the subset A ⊂S as
+M−1
+x (A) := {u ∈C(x) | f(x) + g(x)u ∈A}.
+(10)
+Based on the above definitions, we now define the measure
+of the reachable set and its pushforward on the safe set under
+the dynamics (1).
+Suppose X1 = M−1
+x (S) and X2 = S,
+and that X1σ, X2σ represent their corresponding σ-algebras,
+respectively. Furthermore, suppose that ℓ: X1σ →[0, +∞]
+is the Lebesgue measure on X1 and define the map T :=
+T x(u) = f(x) + g(x)u. With a slight abuse of notation,
+we suppress the dependence of T on x in what follows.
+Then, with measurable spaces (X1, X1σ) and (X2, X2σ), the
+map T : X1 →X2, and the measure ℓ: X1σ →[0, +∞] ,
+the pushforward of ℓby T is the measure T#(ℓ): X2σ →
+[0, +∞] defined as:
+(T#ℓ)(G) = ℓ
+ T −1(G)
+
+for all G ∈X2σ
+(11)
+where T −1(G) = {u ∈X1 | T (u) ∈G} is the pre-image of
+G under T . Then, we define T#ℓ-irreducibility as follows.
+Definition 3.2: A πC
+θ -induced Markov chain {xk}k∈N is
+T#ℓ-irreducible on S if, for any T#ℓ-measurable B ⊂S,
+T#ℓ(B) > 0 =⇒
+X
+k∈N
+P(xk ∈B | x0 = x) > 0, ∀x ∈S.
+(12)
+This definition connects system reachability and Markov
+chain irreducibility, implying that a Markov chain is irre-
+ducible on S if every measurable subset of S with positive
+volume is reachable from any initial state x0 ∈S with
+positive probability. In fact, any Markov chain {xk}k∈N
+induced by policy πC
+θ will belong to the safe set S, following
+the fact that every input uk ∼πC
+θ (·|xk), with xk ∈S, k ≥0,
+guarantees that the state evolution xk+1 ∈S.
+We now make some assumptions on system reachability
+that are important to ensure that the safe set is reachable
+under the dynamics (1), and that we have well-defined
+measures on the reachable subsets.
+Assumption 3.3: For each x ∈S, T#ℓ(W(x)) > 0.
+Moreover, for every measurable set B ⊂S and every x ∈S,
+there exists a finite integer s(x, B) ∈N such that B is
+reachable from x in s steps.
+This assumption implies that (i) the reachable set W(x) with
+x ∈S has strictly positive volume; (ii) any safe subset B ⊂S
+is reachable in at most s steps from x ∈S. Furthermore,
+we make the following assumption on measure of reachable
+subsets and their corresponding set of control values.
+Assumption 3.4: For any x ∈S and any T#ℓ-measurable
+set A ⊂W(x), T#ℓ(A) > 0 iff ℓ(M−1
+x (A)) > 0.
+This assumption ensures that the dynamics (1) maps posi-
+tive measure subsets of control inputs to positive measure
+subsets of the state space and vice versa. This assumption
+enables application of Lebesgue-Radon-Nikodym Theorem
+[15, §3.2] in our irreducibility results.
+Given that we are searching for the optimal safe policy
+over the class of truncated safe policies πC
+θ , we make
+the following assumption on this policy class that enables
+sampling safe inputs.
+Assumption 3.5: For any subset F ⊂C(x), x ∈S with
+positive measure ℓ(F) > 0, the policy πC
+θ (·|x), θ ∈Θ
+assigns positive probability to F, that is,
+R
+F πC
+θ (a|x)da > 0.
+This is a mild support condition, common in policy opti-
+mization, and ensures that the truncated policy assigns a
+positive probability to every positive-measure subset of the
+safe control set.
+Under the preceding assumptions, irreducibility on the
+forward-invariant safe set ensures that the expectation defin-
+ing (8), and hence the objective, are well-defined under the
+truncated policy class.
+
+
+Theorem 3.6: Suppose that Assumptions 3.3, 3.4 and 3.5
+hold. Further, for a given θ ∈Θ, suppose {xn} is a Markov
+chain induced by the policy πC
+θ with dynamics (1). Then
+{xn} is T#ℓ-irreducible on the safe set S.
+This irreducibility enables us to conclude the following well-
+definedness result of the safe RL problem.
+Corollary 3.7: The objective in (8) is well-defined.
+Now that we have established that the objective (8) is well
+defined, we can use its gradient with respect to θ, that is, the
+policy gradient, to design a descent algorithm and find the
+optimal safe policy.
+C. Policy Gradient (PG) over Safe Policies
+We now compute the score functions for the truncated
+safe-by-construction policy class and build a safe policy
+gradient algorithm to solve the optimization problem (8).
+Using standard model-free policy gradient theorems [16],
+[17], we write the following gradient expressions:
+∇θJC
+θ = sγEπC
+θ
+h
+QπC
+θ ∇θ log πC
+θ (u|x)
+i
+,
+(13)
+where sγ
+=
+(
+1
+1−γ
+, γ ∈[0, 1),
+1
+, γ = 1
+, with γ ∈[0, 1) and
+γ = 1 corresponding to the discounted and undiscounted
+cases respectively. As πC
+θ is obtained via truncation of the
+unsafe policy πθ which has a Gaussian structure πθ(·|xt) ∼
+N(µθ(xt), Σt) from (6), we can write the following.
+Lemma 3.8 (Score function of the truncated safe policy):
+Suppose that Assumption 3.1 holds. Then, the score function
+of the truncated policy πC
+θ is given by
+∇log πC
+θ (ut|xt) = (∂µθ(xt)
+∂θ
+)⊤(Σ−1
+t )⊤[ut −mC(xt)],
+(14)
+where
+mC(xt) =
+R
+C(xt) u πθ(u|xt)du
+πθ(C(xt)|x)
+.
+(15)
+D. Algorithm
+We estimate the score function by first estimating the
+function mC(xt) in (15) using Monte Carlo with M samples
+{ui}M
+i=1 drawn uniformly from C(xt). Using the identity
+Z
+C(xt)
+φ(u) du = ℓ(C(xt)) Eu∼Unif(C(xt))[φ(u)],
+we obtain
+πθ(C(xt) | xt) =
+Z
+C(xt)
+πθ(u | xt) du
+≈ℓ(C(xt))
+M
+M
+X
+i=1
+πθ(ui | xt),
+and similarly,
+Z
+C(xt)
+u πθ(u | xt) du ≈ℓ(C(xt))
+M
+M
+X
+i=1
+ui πθ(ui | xt).
+Therefore,
+ˆmC(xt) =
+PM
+i=1 ui πθ(ui | xt)
+PM
+i=1 πθ(ui | xt)
+.
+(16)
+From θ, construct
+µθ(x) and then πθ(·|x)
+Construct πθ(·|x) based on C(x)
+Collect rollout and
+then estimate \
+∇θJC
+θt
+θ ←θ −η \
+∇θJC
+θ
+Fig. 1: Flowchart for updating the policy parameter θ
+We now describe the safe policy gradient method SafePG,
+following Flowchart 1, to update the policy parameters θ of
+the safe-by-construction policy πC
+θ in Algorithm 1.
+Algorithm 1 SafePG: Provably Safe Policy Gradient Re-
+inforcement Learning
+Input: x0, θ0, Monte carlo sample size M, rollout length
+N, discount factor γ
+Output: Safe and globally optimal policy
+1: Initialization: Set t ←0.
+2: repeat
+3:
+Construct πθt(·|xt) as πθt(·|xt) ∼N(µθt(xt), Σt)
+4:
+Construct πC
+θt(·|xt) with πθt(·|xt), C(xt)
+5:
+ut ∼πC
+θt(·|xt)
+6:
+for k = t, . . . , t + N −1 do
+7:
+xk+1 ∼P(·|xk, uk)
+8:
+uk+1 ∼πC
+θt(·|xk+1)
+9:
+Compute per-step cost c(xk, uk)
+10:
+end for
+11:
+Compute [
+QπC
+θt = Pt+N−1
+i=t
+γi−tc(xi, ui)
+12:
+Compute
+\
+mC(xt) using (16) with M
+13:
+Compute
+\
+∇log πC
+θt(ut|xt) using (14) with
+\
+mC(xt)
+14:
+Compute \
+∇θJC
+θt = sγ [
+QπC
+θt
+\
+∇log πC
+θt(ut|xt)
+15:
+θt+1 ←θt −ηt \
+∇θJC
+θt
+16:
+t ←t + 1
+17: until convergence
+We will next prove convergence and optimality of this
+algorithm in the following section.
+IV. OPTIMALITY AND CONVERGENCE
+In this section, we characterize the conditions for con-
+vergence and global optimality of the SafePG algorithm.
+We begin by stating a structural assumption used to es-
+tablish convergence and optimality of Algorithm 1, namely
+a Polyak-Lojasiewicz (PL) condition, also referred to as
+gradient dominance (GD), on the objective (8).
+Assumption 4.1 (Weak Gradient Dominance): Suppose
+that the global optima of the hard constrained RL objective
+JC
+θ
+from (8) is given by JC∗
+θ
+. Then, JC
+θ
+satisfies the
+following weak gradient dominance property, with α, β > 0,
+as
+JC
+θ −JC∗
+θ
+≤α∥∇θJC
+θ ∥+ β,
+(17)
+This condition bounds suboptimality in terms of the gradient
+norm, up to the additive term β, and is a key requirement
+in establishing global optimality guarantees for nonconvex
+problems using first-order methods. A strong version of
+
+
+this condition has been shown to hold for unconstrained
+LQR [18], while a weak version akin to Assumption 4.1
+has been established for the proportional-integral-derivative
+(PID) control parameterization [14]. We next state a standard
+regularity assumption on the policy gradient.
+Assumption 4.2 (Lipschitzness of the Policy Gradient):
+The policy gradient ∇θJC
+θ (x0) is Lipschitz, satisfying
+∥∇θJC
+θ′ −∇θJC
+θ ∥≤L∥θ′ −θ∥.
+(18)
+This is a standard regularity assumption in policy-gradient
+analysis, ensuring that the gradient varies smoothly with the
+policy parameter. A final ingredient needed to analyze the
+convergence of Algorithm 1 is a standard assumption on the
+stochastic gradient estimator used in the update. Since the
+policy gradient is estimated from finite-horizon rollouts, the
+resulting estimator is subject to sampling noise. We therefore
+assume that this estimator is unbiased and has variance that
+decreases with the batch size. This assumption is standard in
+policy-gradient analysis and allows us to control the effect
+of sampling noise in the convergence analysis.
+Assumption 4.3: The gradient estimator
+\
+∇θJC
+θ , com-
+puted with batch size N > 0 in Algorithm 1, is unbiased
+and has a bounded variance for some bounded parameter V ,
+given as
+E
+h\
+∇θJC
+θ
+i
+= ∇θJC
+θ , Var
+h\
+∇θJC
+θ
+i
+≤V
+N .
+(19)
+We are now ready to state the main convergence and
+sample-complexity result for SafePG.
+Theorem 4.4: Suppose Assumptions 4.1, 4.2 and 4.3
+hold. Further, suppose that the safe RL algorithm 1 runs for
+T > 0 iterations with updates {θi}T
+i=1, rollout length N > 0
+and step-size ζ satisfying
+ζ ≤min{ 1
+L, α2
+pT
+,
+Nα2
+LV
+1/3
+},
+(20)
+where pT := max{0, JC
+θT −JC∗
+θ
+−β}. We then have
+E
+
+JC
+θT
+
+−JC∗
+θ
+≤β
++ pT
+ 
+1 −
+r
+ζ3LV
+4α2N
+!T
++
+r
+LV ζα2
+N
+.
+(21)
+Furthermore, to show that the objective JC
+θT reaches within
+an ϵ + β-ball, with ϵ > 0, of global minima JC∗
+θ
+with step-
+size ζ = (ϵα)2N
+4V
+, i.e. E
+
+JC
+θT
+
+−JC∗
+θ
+≤ϵ + β, the samples
+complexity follows
+NT ≤16α4LV
+ϵ3
+log pT
+ϵ .
+(22)
+Theorem 4.4 provides sufficient conditions under which the
+SafePG algorithm converges to an (ϵ + β)-neighborhood
+of the global constrained optimum, with sample complexity
+scaling as O( 1
+ϵ3 log 1
+ϵ ).
+V. CASE STUDY
+We now validate the proposed safe RL framework on
+a safe quadrotor environment where the objective is to
+safely navigate around an obstacle to reach the target. We
+demonstrate that SafePG learns a safe policy that enables
+the quadrotor to reach its goal, in comparison to a projection-
+based safety-filter approach where the quadrotor remains safe
+but fails to converge to the goal.
+A. Setup
+We consider the safe quadrotor navigation problem in [19],
+where we denote the positions of the quadrotor, the obstacle
+and the goal as r = (rx, ry, rz), robs = (ro
+x, ro
+y, ro
+z) and
+rgoal respectively in the world frame. Under the small-angle
+approximation, the quadrotor dynamics can be modeled as a
+double integrator ¨r = u, where u ∈R3 is the acceleration
+in the x−, y−, z−axes. The actuator limits are defined by a
+fixed hyperrectangle H := {u ∈R3 | umin ≤u ≤umax}. To
+ensure collision-free navigation around an obstacle located
+at robs, we define the safe set S = {r : h(r) ≥0}, where
+the CBF is given by:
+h(r) =
+∆rx
+a
+4
++
+∆ry
+b
+4
++
+∆rz
+c
+4
+−rs,
+(23)
+where ∆r = r −robs is the distance to the obstacle,
+parameters a, b > 0 represent the shape of the obstacle, and
+rs > 0 is the safety margin. Because the relative degree
+[6], [20] of h(r) with respect to u is 2, we enforce forward
+invariance using an Exponential CBF condition [19]:
+¨h(r) + K2 ˙h(r) + K1h(r) ≥0,
+(24)
+where K1, K2 > 0 are design parameters. This condition
+can be rearranged into an affine constraint on the control
+input, Aru ≤br, yielding the state-dependent safe control
+set C(r) = {u : Aru ≤br}. In this paper, we consider
+navigation in the x and y dimensions with corresponding
+actuator constraints H2 := {u ∈R2 | umin ≤u ≤umax},
+and use K1 = 6, K2 = 8, for which s2 + K2s + K1 =
+(s+4−
+√
+10)(s+4+
+√
+10) is Hurwitz and overdamped. We
+discretize the dynamics and safety condition with discretiza-
+tion period set to 0.1 seconds. A more detailed experiment
+setup including all the hyperparameters for the quadrotor
+dynamics and CBF condition can be found in [21].
+B. SafePG Implementation
+We first parameterize the underlying deterministic policy
+µθ as a PI controller:
+µθ(xt) = KP et + KI
+t−1
+X
+i=0
+ei,
+(25)
+where θ =
+
+K′
+P
+K′
+I
+′, et = rgoal −rt is the distance of
+the quadrotor from the goal, and the hyperparameters are
+chosen as Σ0 = 100I2, M = 200, N = 200, γ = 0.95, θ0 =
+{0.1, 0.1}. For truncation of Gaussian policy πθ(·|xt) ∼
+N(µθ(xt), Σt), we construct a maximal inner hyperrectangle
+Hc(rt) ⊆C(rt) ∩H2, adapted from [22], and then truncate
+the support of πθ(·|xt) to this constraint set Hc(rt) to obtain
+πC
+θ (·|xt). We define the per-time step reward as −∥et∥and
+minimize the episodic cost Pt+N−1
+i=t
+∥et∥to encourage the
+quadrotor to reach the goal while exploring safely with
+πC
+θ (·|xt).
+
+
+Fig. 2: SafePG training trajectories showing obstacle avoid-
+ance and goal attainment.
+Fig. 3: Projection-based training trajectories: the goal is not
+reached in the displayed episodes.
+C. Benchmark and Results
+In order to highlight the importance of searching directly
+over a class of safe policies, we compare SafePG with a
+projection-based safety filter baseline. For the baseline, we
+first learn an unconstrained stochastic PI policy πθ(·|xt) ∼
+N(µθ(xt), Σt) through a policy gradient approach and
+project it onto the constraint set Hc(r(t)) to obtain a safe
+control value uproject
+t
+by solving a Quadratic Program (QP)
+at each time step.
+As illustrated in Figure 2, the SafePG agent successfully
+learns to navigate around the obstacle to reach the goal while
+strictly maintaining safety, even when we varied the explo-
+ration noise variance Σ0 from 10I2 to 100I2. Conversely,
+while the projection-based safety filter prevents collisions,
+the agent fails to reach the goal even after 800 episodes, as
+shown in Figure 3.
+VI. CONCLUSION
+We developed a model-free safe RL framework which
+satisfies hard pointwise safety constraints at all times, and
+provided conditions for convergence and global optimality
+of the proposed PG algorithm. We validated this design
+on a safe quadrotor navigation problem, and showed that
+quadrotor reaches its target while avoiding an obstacle in its
+path. Future directions include integrating with data-driven
+or Gaussian process learning to jointly learn the safe set or
+safety specifications along with the policy parameters while
+preserving formal safety and convergence guarantees, and
+development of scalable policy gradient framework for high-
+order or multi-agent systems.
+REFERENCES
+[1] E. Altman, Constrained Markov Decision Processes.
+Routledge,
+2021.
+[2] J. Achiam, D. Held, A. Tamar, and P. Abbeel, “Constrained policy
+optimization,” in International Conference on Machine Learning.
+PMLR, 2017, pp. 22–31.
+[3] L. Hewing, K. P. Wabersich, M. Menner, and M. N. Zeilinger,
+“Learning-based model predictive control: Toward safe learning in
+control,” Annual Review of Control, Robotics, and Autonomous Sys-
+tems, vol. 3, no. 1, pp. 269–296, 2020.
+[4] M. Zanon and S. Gros, “Safe reinforcement learning using robust
+mpc,” IEEE Transactions on Automatic Control, vol. 66, no. 8, pp.
+3638–3652, 2020.
+[5] L. Brunke, M. Greeff, A. W. Hall, Z. Yuan, S. Zhou, J. Panerati,
+and A. P. Schoellig, “Safe learning in robotics: From learning-based
+control to safe reinforcement learning,” Annual Review of Control,
+Robotics, and Autonomous Systems, vol. 5, pp. 411–444, 2022.
+[6] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath,
+and P. Tabuada, “Control barrier functions: Theory and applications,”
+in 2019 18th European control conference (ECC).
+IEEE, 2019, pp.
+3420–3431.
+[7] V. K. Sharma and S. Sivaranjani, “Safe control design through risk-
+tunable control barrier functions,” in 2023 62nd IEEE Conference on
+Decision and Control (CDC).
+IEEE, 2023, pp. 4393–4398.
+[8] R. Cheng, G. Orosz, R. M. Murray, and J. W. Burdick, “End-to-end
+safe reinforcement learning through barrier functions for safety-critical
+continuous control tasks,” in Proceedings of the AAAI conference on
+artificial intelligence, vol. 33, no. 01, 2019, pp. 3387–3395.
+[9] L. Yang, B. Werner, M. de Sa, and A. D. Ames, “Cbf-rl: Safety filtering
+reinforcement learning in training with control barrier functions,”
+arXiv preprint arXiv:2510.14959, 2025.
+[10] W. Suttle, V. K. Sharma, K. C. Kosaraju, S. Seetharaman, J. Liu,
+V. Gupta, and B. M. Sadler, “Sampling-based safe reinforcement
+learning for nonlinear dynamical systems,” in International Conference
+on Artificial Intelligence and Statistics. PMLR, 2024, pp. 4420–4428.
+[11] T.-H. Pham, G. De Magistris, and R. Tachibana, “Optlayer-practical
+constrained optimization for deep reinforcement learning in the real
+world,” in 2018 IEEE International Conference on Robotics and
+Automation (ICRA).
+IEEE, 2018, pp. 6236–6243.
+[12] S. Ding, J. Wang, Y. Du, and Y. Shi, “Reduced policy optimization
+for continuous control with hard constraints,” Advances in Neural
+Information Processing Systems, vol. 36, pp. 38 642–38 667, 2023.
+[13] A. Montenegro, M. Mussi, A. M. Metelli, and M. Papini, “Learning
+optimal deterministic policies with stochastic policy gradients,” in
+Forty-first International Conference on Machine Learning, 2024.
+[14] V. K. Sharma, W. A. Suttle, and S. Sivaranjani, “Globally optimal
+policy gradient algorithms for reinforcement learning with pid control
+policies,” Advances in Neural Information Processing Systems, vol. 39,
+2025.
+[15] G. B. Folland, Real Analysis: Modern Techniques and Their Applica-
+tions.
+John Wiley & Sons, 1999, vol. 40.
+[16] V. Konda, “Actor-critic algorithms,” Ph.D. dissertation, Massachusetts
+Institute of Technology, 2002.
+[17] R. S. Sutton, D. McAllester, S. Singh, and Y. Mansour, “Policy gradi-
+ent methods for reinforcement learning with function approximation,”
+Advances in neural information processing systems, vol. 12, 1999.
+[18] M. Fazel, R. Ge, S. Kakade, and M. Mesbahi, “Global convergence
+of policy gradient methods for the linear quadratic regulator,” in
+International Conference on Machine Learning.
+PMLR, 2018, pp.
+1467–1476.
+
+
+[19] B. Xu and K. Sreenath, “Safe teleoperation of dynamic uavs through
+control barrier functions,” in 2018 IEEE International Conference on
+Robotics and Automation (ICRA).
+IEEE, 2018, pp. 7848–7855.
+[20] W. Xiao and C. Belta, “High-order control barrier functions,” IEEE
+Transactions on Automatic Control, vol. 67, no. 7, pp. 3655–3662,
+2021.
+[21] V. K. Sharma and S. Sivaranjani, “Risk-tunable safe adaptive control
+for nonlinear systems under dynamical uncertainties,” IEEE Open
+Journal of Control Systems, 2026.
+[22] V.
+K.
+Sharma,
+W.
+A.
+Suttle,
+and
+K.
+C.
+Kosaraju,
+https://github.com/sharma1256/cbf-constrained ppo, 2024.
+APPENDIX
+Proof: [Lemma 3.8] Recall from the definition of πC
+θ
+in (7) that, for u ∈C(xt),
+log πC
+θ (ut|xt) = log
+πθ(ut|xt)
+πθ(C(xt)|x),
+= log πθ(ut|xt) −log πθ(C(xt)|x)
+Taking the operator ∇θ on both sides, we get
+∇θ log πC
+θ (ut|xt) = ∇θπθ(ut|xt)
+πθ(ut|xt)
+−∇θπθ(C(xt)|x)
+πθ(C(xt)|x) .
+(26)
+With the policy πθ from (6), given by
+πθ(ut|xt) = (2π)−m
+2 det(Σt)−1
+2 e−1
+2 [ut−µθ(xt)]⊤Σ−1
+t
+[ut−µθ(xt)],
+we can write the gradient
+∇θπθ(ut|xt) = πθ(ut|xt)(∂µθ(xt)
+∂θ
+)⊤(Σ−1
+t )⊤(ut −µθ(xt)).
+Then, the first term in (26) can be written as
+∇θπθ(ut|xt)
+πθ(ut|xt)
+= (∂µθ(xt)
+∂θ
+)⊤(Σ−1
+t )⊤(ut −µθ(xt)).
+For the second term
+∇θπθ(C(xt)|xt)
+πθ(C(xt)|xt)
+in (26), we begin by
+recalling the definition of πθ(C(xt)|xt) and applying the
+gradient operator ∇θ as
+∇θπθ(C(xt)|xt) = ∇θ
+Z
+C(xt)
+πθ(u|xt)du.
+Note that since the gradient is with respect to θ, we can move
+the ∇θ operator inside the integral as
+∇θπθ(C(xt)|xt)
+=
+Z
+C(xt)
+∇θπθ(u|xt)du,
+=
+Z
+C(xt)
+(∂µθ(xt)
+∂θ
+)⊤(Σ−1
+t )⊤uπθ(u|xt)du
+−
+Z
+C(xt)
+(∂µθ(xt)
+∂θ
+)⊤(Σ−1
+t )⊤µθ(xt)πθ(u|xt)du
+= (∂µθ(xt)
+∂θ
+)⊤(Σ−1
+t )⊤
+Z
+C(xt)
+utπθ(u|xt)du
+−(∂µθ(xt)
+∂θ
+)⊤(Σ−1
+t )⊤µθ(xt)
+Z
+C(xt)
+πθ(u|xt)du.
+Therefore we can write
+∇θπθ(C(xt)|xt)
+πθ(C(xt)|xt)
+= (∂µθ(xt)
+∂θ
+)⊤(Σ−1
+t )⊤
+R
+C(xt) uπθ(u|xt)du
+πθ(C(xt)|x)
+−(∂µθ(xt)
+∂θ
+)⊤(Σ−1
+t )⊤µθ(xt)
+R
+C(xt) πθ(u|xt)du
+πθ(C(xt)|xt)
+.
+From the definition πθ(C(xt)|xt) =
+R
+C(xt) πθ(u|xt)du and
+mC(xt) from (15), we can finally write
+∇θ log πC
+θ (ut|xt) = (∂µθ(xt)
+∂θ
+)⊤(Σ−1
+t )⊤[ut −mC(xt)] .
+Proof: [Theorem 4.4] For a given ε > 0, suppose the fi-
+nite sequence {y0, y1, . . . , yN} ⊂S is such that Bε(yk+1) ⊂
+R(Bε(yk)), for k = 1, . . . , N −1, and Bε(yN)∩F̸ = ∅. For
+a given θ, let {xk}k∈N be the Markov chain induced on S by
+πC
+θ such that x0 = y0. We then show that the finite trajectory
+(x0, x1, . . . , xN) from the Markov chain is contained within
+the set {y0} × Bε(y1) × . . . × Bε(yN) with strictly positive
+probability, which will imply that {xk}k∈N enters F with
+strictly positive probability.
+For each k = 1, . . . , N, consider the probability measure
+νθ defined as
+νθ(A) = P(xk ∈S | xk−1) =
+Z
+M−1
+xk−1(A)
+πC
+θ (a|xk−1) da,
+for any T#ℓ-measurable subset A of S. Note that νθ is
+absolutely continuous with respect to T#ℓ, written νθ ≪
+T#ℓ, since T#ℓ(A) > 0 if and only if ℓ(M−1
+xk−1(A)) > 0,
+by Assumption 3.4. Then, the Lebesgue-Radon-Nikodym
+Theorem from [15, §3.2] implies that there exists a T#ℓ-
+integrable function fθ : S →R, called the Radon-Nikodym
+derivative of νθ, such that νθ(A) =
+R
+S fθ(x)dx (see [15] for
+details). To make the link between fθ and νθ perfectly clear,
+let us write
+fθ(x) =
+Z
+M−1
+xk−1(x)
+πC
+θ (a|xk−1) da,
+νθ(A) =
+Z
+S
+Z
+M−1
+xk−1(x)
+πC
+θ (a|xk−1) da dx.
+By Assumptions 3.4 and 3.5, we also have T#ℓ≪νθ.
+Since both νθ ≪T#ℓand T#ℓ≪νθ, the two measures
+are said to be equivalent, meaning that they agree on which
+sets have measure zero. Since T#ℓand νθ are equivalent,
+a standard result from real analysis allows us to take the
+
+
+Radon-Nikodym derivative fθ to be strictly positive T#ℓ-
+almost everywhere. As a first consequence, notice that
+P
+
+(x0, x1, x2) ∈{y0} × Bε(y1) × Bε(y2) | x0 = y0
+
+= P
+
+(x1, x2) ∈Bε(y1) × Bε(y2) | x0 = y0
+
+× P(x0 = y0)
+= P
+
+(x1, x2) ∈Bε(y1) × Bε(y2) | x0 = y0
+
+=
+Z
+Bε(y1)
+Z
+T −1
+x1 (Bε(y2))
+πC
+θ (a1|x1)f1(x1) da1 dx1
+(27)
+=
+Z
+Bε(y1)
+Z
+T −1
+x1 (Bε(y2)
+πC
+θ (a1|x1)
+×
+"Z
+T −1
+x0 (x1)
+πC
+θ (a0|x0) da0
+#
+da1 dx1.
+Given Assumption 3.5, (27) is strictly positive, since f1
+is strictly positive almost everywhere and the integrals are
+taken over sets of positive volume. Then, we have
+P
+
+(x1, . . . , xN−1, xN) ∈Bε(y1) × . . .
+× Bε(yN−1) × (Bε(yN) ∩F) | x0 = y0
+
+(28)
+=
+Z
+Bε(y1)
+Z
+T −1
+x1 (Bε(y2))
+πC
+θ (a1|x1)
+×
+Z
+Bε(y2)
+Z
+T −1
+x2 (Bε(y3))
+πC
+θ (a2|x2) × . . .
+×
+Z
+Bε(yN−1)
+Z
+T −1
+xN−1(Bε(yN)∩F)
+πC
+θ (aN−1|xN−1)
+× fN−1(xN−1) daN−1 dxN−1 × . . .
+× f2(x2) da2 dx2 · f1(x1) da1 dx1.
+In the innermost integral, we have T#ℓ(Bε(yN)∩F) > 0,
+since both sets are open and their intersection is non-empty
+by hypothesis. Finally, given Assumption 3.5, we have that
+(28) is strictly positive, since all integrals are taken over
+sets of positive volume and fi is strictly positive almost
+everywhere, for each i ∈{1, . . . N −1}. This implies that
+every Markov chain {xk}k∈N, with x0 ∼D, induced by πC
+θ
+has a positive probability. Consequently, we can conclude
+that every πC
+θ -induced Markov chain is T#ℓ−irreducible.
+Proof: [Corollary 3.7] From Theorem 3.6, we know
+that the πC
+θ −induced Markov chain is irreducible, which
+implies that there every induced Markov chain has a unique
+occupancy or probability measure. Therefore, we can con-
+clude that the expectation operator EπC
+θ
+in the safe RL
+objective in (8) is well-defined.
+Proof: [Theorem 4.4] Define ¯JC∗
+θ
+:= JC∗
+θ
++ β. Then,
+from (17), we have the following:
+1
+α max{0, JC
+θ −¯JC∗
+θ
+} ≤∥∇θJC
+θ (θ)∥.
+(29)
+We write JC
+θ at θt, at time step t, as JC
+θ (θt). Then, we note
+that, for time-step t ≥0,
+JC
+θ (θt+1) −¯JC∗
+θ
+=JC
+θ (θt+1) −JC
+θ (θt)
++ JC
+θ (θt) −¯JC∗
+θ
+.
+(30)
+Using the Lipschitzness condition (18) and the second-order
+Taylor expansion gives
+JC
+θ (θt+1) −JC
+θ (θt) ≤⟨∇θJC
+θ (θt), θt+1 −θt⟩
++ L
+2 ∥θt+1 −θt∥2
+2,
+(31)
+and we therefore have that
+JC
+θ (θt+1) −¯JC∗
+θ
+≤JC
+θ (θt) −¯JC∗
+θ
++ ⟨∇θJC
+θ (θt), θt+1 −θt⟩
++ L
+2 ∥θt+1 −θt∥2
+2.
+(32)
+Recalling the update rule θt+1 = θt −ηt c
+∇θJC
+θ (θt), by the
+unbiasedness of the gradient estimator we have
+JC
+θ (θt+1) −¯JC∗
+θ
+≤JC
+θ (θt) −¯JC∗
+θ
+−ηt⟨∇θJC
+θ (θt), c
+∇θJC
+θ (θt)⟩
++ L
+2 η2
+t ∥c
+∇θJC
+θ (θt)∥2.
+(33)
+Let Ft = σ(θθ, ηθ; 0 ≤k ≤t) denote the σ-algebra
+generated by all randomness in the system up until time
+t, and let Et[·] = E[·|Ft−1]. Taking expectations over the
+foregoing yields
+Et
+h
+JC
+θ (θt+1) −¯JC∗
+θ
+i
+≤Et
+h
+JC
+θ (θt) −¯JC∗
+θ
+−ηt⟨∇θJC
+θ (θt), c
+∇θJC
+θ (θt)⟩
++ L
+2 η2
+t ∥c
+∇θJC
+θ (θt)∥2i
+.
+(34)
+Given Et[c
+∇θJC
+θ (θt)] = ∇θJC
+θ (θt) from Assumption 4.3,
+and recalling the definition of the variance of a random
+variable, we can write the following
+Et
+h
+JC
+θ (θt+1) −¯JC∗
+θ
+i
+≤JC
+θ (θt) −¯JC∗
+θ
+−ηt⟨∇θJC
+θ (θt), ∇θJC
+θ (θt)⟩
++ L
+2 η2
+t V ar(c
+∇θJC
+θ (θt)) + L
+2 η2
+t
+
+Et
+h
+∥c
+∇θJC
+θ (θt)∥
+i2
+= JC
+θ (θt) −¯JC∗
+θ
+−ηt∥∇θJC
+θ (θt)∥2
++ L
+2 η2
+t V ar(c
+∇θJC
+θ (θt)) + L
+2 η2
+t ∥∇θJC
+θ (θt)∥2
+= JC
+θ (θt) −¯JC∗
+θ
+−ηt
+
+1 −L
+2 ηt
+
+∥∇θJC
+θ (θt)∥2
++ L
+2 η2
+t V ar(c
+∇θJC
+θ (θt)).
+(35)
+Using Assumption 4.3, we finally obtain
+Et
+h
+JC
+θ (θt+1) −¯JC∗
+θ
+i
+≤JC
+θ (θt) −¯JC∗
+θ
+−ηt
+
+1 −L
+2 ηt
+
+∥∇θJC
+θ (θt)∥2
++ L
+2 η2
+t
+V
+N .
+(36)
+
+
+Further, suppose that we pick a step size ηt ≤
+1
+L; then it
+follows that (1 −L
+2 ηt ≥1
+2). We can then re-write the above
+inequality as follows
+Et
+h
+JC
+θ (θt+1) −¯JC∗
+θ
+i
+≤JC
+θ (θt) −¯JC∗
+θ
+−ηt
+2 ∥∇θJC
+θ (θt)∥2 + L
+2 η2
+t
+V
+N .
+(37)
+At this point, we can now follow the proof of Theorem
+6.1 in [13] with L2 = L to obtain the bound
+E
+
+JC
+θ (θT )
+
+−JC∗
+θ
+≤β + pT
+ 
+1 −
+r
+η3LV
+4α2N
+!T
++
+r
+LV ηα2
+N
+.
+(38)
+The remainder of the proof now follows in a straightforward
+manner from the proof of [13, Theorem 6.1].

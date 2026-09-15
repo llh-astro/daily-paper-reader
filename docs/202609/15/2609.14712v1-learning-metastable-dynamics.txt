@@ -1,0 +1,1418 @@
+Learning Metastable Dynamics
+Rupak Majumdar
+Max Planck Institute for Software Systems
+Germany
+rupak@mpi-sws.org
+Mahmoud Salamati
+Max Planck Institute for Software Systems
+Germany
+msalamati@mpi-sws.org
+Nikhil Singh
+Max Planck Institute for Software Systems
+Germany
+niksingh@mpi-sws.org
+Sadegh Soudjani
+Max Planck Institute for Software Systems, Germany
+University of Birmingham, United Kingdom
+sadegh@mpi-sws.org
+Abstract
+Metastability—a phenomenon where systems remain trapped
+in quasi-stable states before abruptly transitioning under rare
+perturbations—is ubiquitous in physical systems. Although
+metastability is a widely observed phenomenon, its identifi-
+cation and analysis present significant challenges. To address
+these challenges, we propose a novel framework for analyz-
+ing metastability using Koopman theory. We use a finite set
+of system trajectories to learn a representation of the dynam-
+ics that defines a latent space in which the system evolves
+linearly, thereby enabling a systematic characterization of
+metastable behavior through the spectral properties of the
+linear mapping. Empirical evaluations demonstrate that our
+approach is capable of anticipating metastable behavior sig-
+nificantly earlier than its actual manifestation, even with
+10% of the simulation duration. Moreover, we establish that
+the dominant eigenvalue of the learned Koopman matrix
+in the latent space serves as a critical indicator for detect-
+ing metastability across both single-server and multi-server
+configurations.
+CCS Concepts: • Computing methodologies →Simula-
+tion tools; Modeling methodologies.
+Keywords: Metastability, Koopman Theory, Queuing Sys-
+tems, Performance Evaluation
+ACM Reference Format:
+Rupak Majumdar, Mahmoud Salamati, Nikhil Singh, and Sadegh
+Soudjani. 2026. Learning Metastable Dynamics. In 29th ACM Inter-
+national Conference on Hybrid Systems: Computation and Control
+(HSCC ’26), May 11–14, 2026, Saint Malo, France. ACM, New York,
+NY, USA, 11 pages. https://doi.org/10.1145/3801146.3805671
+This work is licensed under a Creative Commons Attribution 4.0 Interna-
+tional License.
+HSCC ’26, Saint Malo, France
+© 2026 Copyright held by the owner/author(s).
+ACM ISBN 979-8-4007-2566-1/2026/05
+https://doi.org/10.1145/3801146.3805671
+1
+Introduction
+Metastability is a widespread phenomenon in physical sys-
+tems [14, 15, 25], such as magnetic hysteresis [2] or conden-
+sation of over-saturated water vapor [10], where a system re-
+mains “persistently” in one state and then rapidly transitions
+into another in the presence of some rare event. Metastability
+plays a crucial role in the design and operation of distributed
+server systems—the backbone of today’s cloud computing
+infrastructure [17].
+A representative instance of metastable behavior in dis-
+tributed systems is a retry storm at a server. Retries are a
+mechanism to deal with failures: if a request is not responded
+to within a certain timeout, something went wrong and the
+client is advised to retry the request. While retries are an
+excellent mechanism to mitigate transient failures, in rare
+occasions, they may form a sustaining effect: the additional
+workload from retries prevents the system to respond to re-
+quests on time, thereby leading to further client-side retries
+that increases the workload. In the worst case, the retry storm
+propagates to multiple services, culminating in large-scale
+service degradation or complete loss of availability.
+In metastable systems, the interplay of time scales is of
+paramount importance. A system may be stable, yet exhibit
+extremely long transients, meaning that trajectories start-
+ing from certain regions of the state space take a very long
+expected time to settle down. Detecting such behavior is
+computationally intensive as it necessitates the simulation
+of numerous long trajectories. Moreover, even extensive
+simulation-based analysis often fails to reliably capture or
+characterize metastable phenomena due to the rarity and
+complexity of the underlying dynamics.
+Existing studies on metastability have predominantly con-
+centrated on linear systems or relatively simple models such
+as Markov chains. In case of Markov chains, metastability
+can be investigated through spectral analysis of the transi-
+tion probability matrix [5]. However, for stochastic nonlinear
+dynamical systems, there remains no general framework for
+systematic metastability analysis. A further challenge arises
+in many real-world engineering domains, where suitable an-
+alytical models are often unavailable for such analysis. This
+motivates the need to develop a general framework capable
+arXiv:2609.14712v1  [cs.PF]  13 Sep 2026
+
+
+HSCC ’26, May 11–14, 2026, Saint Malo, France
+Rupak Majumdar, Mahmoud Salamati, Nikhil Singh, and Sadegh Soudjani
+of learning arbitrarily complex dynamics from trajectories
+of the real system or its simulators.
+In this work, we present the first practical methodology
+for analyzing metastability in stochastic nonlinear systems
+with unknown dynamics. Our approach comprises three key
+components
+• Reduction to deterministic dynamics: Assuming ergod-
+icity, we demonstrate that metastability in the under-
+lying stochastic system can be studied through the
+time-scale separation in the corresponding determinis-
+tic dynamics of statistical moments (e.g., expectations);
+• Learning Koopman autoencoders: By exploiting Koop-
+man theory, we use a finite number of system trajec-
+tories to learn a representation of the deterministic
+dynamics that induces a latent space in which the sys-
+tem evolves linearly; and
+• Spectral characterization: We characterize metastabil-
+ity by analyzing the spectral gap of the learned linear
+operator, establishing a rigorous connection between
+metastability properties in the latent and original state
+spaces.
+Our experimental study focuses on queuing systems with
+retry mechanisms. The empirical results demonstrate that
+the proposed method can anticipate the onset of metastable
+behavior substantially earlier than its observable manifes-
+tation—requiring only approximately 10% of the total sim-
+ulation duration to do so. Furthermore, we show that the
+dominant eigenvalue of the learned Koopman matrix in the
+latent space functions as a robust and interpretable indi-
+cator of metastability, consistently identifying transitions
+across both single-server and multi-server configurations.
+In addition, we show that the theoretically derived upper
+bounds on the settling time align closely with the empiri-
+cally observed settling times in both the original and latent
+state spaces, thereby validating the analytical consistency
+of our framework. Through our experimental analysis, we
+further investigate effective mitigation strategies for pre-
+venting metastable failures, including the implementation
+of controlled throttling mechanisms and the substitution of
+queues with stacks in conventional server architectures.
+2
+Related Work
+Metastability in the sciences. Metastability has been stud-
+ied formally in the context of perturbed dynamical systems
+[15], magnetic hysteresis [2] or the condensation of super-
+saturated water vapor [10]. Within the framework of Markov
+processes, Bovier et al. [5–7] defined metastability for discrete-
+time Markov chains and characterize metastability using
+potential theory and spectral methods. The application of
+spectral methods to metastability originates from the seminal
+works of Davies [11–13], whose results primarily pertain to
+reversible Markov chains — i.e., chains satisfying the detailed
+balance condition — with subsequent technical generaliza-
+tions extending to non-reversible settings. Building on these
+foundations, Betz and Le Roux [3] studied metastability for
+perturbed Markov chains, considering the asymptotics of
+metastability as the perturbation parameter goes to zero [3].
+Despite these significant advances, existing analyses remain
+limited in generality, often relying on restrictive assump-
+tions such as asymptotic regimes or reversibility. In contrast,
+the present work aims to provide a unified framework that
+captures metastable behavior beyond these assumptions.
+Metastable failures in systems. Metastable failures are
+introduced in the context of computer systems by Bronson
+et al. [8], providing illustrative examples and informal def-
+initions of this phenomenon. Further, they emphasize that
+such failures have been observed across various domains in
+systems and networking, often with different names, such
+as persistent congestion [24], retry storms [22], or cascading
+failures [4]. Building upon this foundation, Huang et al. [17]
+performed an extensive empirical study, demonstrating that
+metastable failures represent a prevalent cause of service
+outages across major software organizations. Their work
+further refines the informal conceptualizations proposed by
+Bronson et al. [8] and empirically reproduces these failures
+to better understand their dynamics. Despite these advances,
+practical analysis and mitigation of metastable failures re-
+main challenging due to the complex feedback loops that
+underlie their behavior and the difficulty of reproducing such
+failures in controlled environments. This paper addresses
+these challenges by providing a framework for detecting
+and characterizing metastable behavior. Habibi et al. [16]
+modeled metastable server systems using continuous-time
+Markov chains (CTMCs) and employed Monte Carlo simula-
+tions to analyze their metastability. Alvaro et al. [1] observed
+that ab initio CTMCs fail to capture the true system dynam-
+ics and proposed a calibration method that leverages data
+trajectories to adjust the CTMC transition rates. They then
+used the spectral properties of the calibrated CTMC to rea-
+son about metastability in simple FIFO systems. Isaacs et
+al. [18] propose using an integrated ensemble of CTMCs,
+discrete-event simulators, and service emulations to perform
+CTMC calibration more efficiently. However, their approach
+remains limited to systems that can be modeled as CTMCs.
+In this paper, we propose a more general model and demon-
+strate experimentally that it can capture richer dynamics,
+such as those arising in multi-server systems and implemen-
+tations with controlled throttling mechanisms. Our choice
+of model—Koopman autoencoders—enables formal metasta-
+bility analysis of complex distributed server systems.
+Koopman theory. The Koopman theory was introduced by
+Koopman in his seminal paper [19]. In recent years, numer-
+ous studies [9] have explored the integration of Koopman
+theory with machine learning methodologies across a wide
+range of applications.One of the earliest contributions em-
+ploying Koopman-based autoencoders to learn embeddings
+
+
+Learning Metastable Dynamics
+HSCC ’26, May 11–14, 2026, Saint Malo, France
+for linear dynamical systems is presented in [20]. The work
+by Meanti et al. [21] extends this line of research by estimat-
+ing Koopman operators with sketching to provably learn
+large scale dynamical systems. Furthermore, an adaptive
+approach for learning kernel functions to approximate the
+spectral properties of the Koopman operator is proposed
+in [26]. While these studies offer valuable insights into differ-
+ent strategies for learning within the Koopman framework,
+they have not been investigated in the context of analyzing
+metastability, which is part of this work.
+3
+Preliminaries
+Notation. We denote the set of natural, real, and non-negative
+real numbers by N, R, and R≥0, respectively. Further, let
+N0 = N ∪{0}. We use superscript 𝑛> 0 with R to de-
+note the Cartesian product of 𝑛copies of R. For a vector
+𝑎∈R𝑛, the notation ∥𝑎∥∞is used for the infinity norm of
+𝑎. For 𝑛∈N, 1𝑛denotes an 𝑛-dimensional vector whose
+entries are all one. Given 𝑐∈R𝑛and 𝛿∈R≥0, we define
+B𝛿(𝑐) := { 𝑥∈R𝑛| ∥𝑥−𝑐∥∞≤𝛿}. We denote 𝑖𝑡ℎentry of
+𝑥∈R𝑛by 𝑥[𝑖]. For a matrix 𝐴∈R𝑛×𝑛, we denote the spec-
+tral radius of 𝐴by 𝜌(𝐴), which is the largest modulus of the
+eigenvalues of 𝐴. A matrix 𝐴∈R𝑛×𝑛is said to be diagonal-
+izable if there exists an invertible matrix 𝑆and a diagonal
+matrix Γ such that 𝐴= 𝑆Γ𝑆−1. The condition number of 𝑆,
+defined (with respect to the ℓ∞-norm) as
+𝜅∞= ∥𝑆∥∞∥𝑆−1∥∞.
+This quantity controls how the norm of 𝐴𝑡can amplify rela-
+tive to its spectral radius, since
+∥𝐴𝑡∥∞≤𝜅∞𝜌(𝐴)𝑡.
+Let 𝜇and 𝜈be two probability measures on a measur-
+able space (𝑆, B(𝑆)). The total variation norm (or total vari-
+ation distance) between 𝜇and 𝜈is defined as ∥𝜇−𝜈∥TV =
+sup𝐴∈B(𝑆) |𝜇(𝐴) −𝜈(𝐴)|. This represents the largest possi-
+ble difference in probability that 𝜇and 𝜈assign to the same
+measurable event 𝐴.
+Let 𝐴⊂R𝑛be a compact and connected set. ℓ∞radius of
+𝐴is an 𝑛-dimensional vector whose 𝑖𝑡ℎentry is defines as
+sup𝑥,𝑥′∈𝐴∥𝑥[𝑖] −𝑥′[𝑖]∥∞/2. Let 𝐴⊂R𝑛be a compact and
+connected set with ℓ∞-radius greater than 𝜀> 0. Then 𝐴−𝜀
+and 𝐴+𝜀denote the 𝜀-shrunk and 𝜀-expanded sets of 𝐴, re-
+spectively. Formally, 𝐴−𝜀= { 𝑥| B𝜀(𝑥) ⊆𝐴}, and 𝐴+𝜀=
+{ 𝑥| B𝜀(𝑥) ∩𝐴≠∅}. For two sets 𝐴, 𝐵⊂R𝑛, we define
+dist(𝐴, 𝐵) = inf (𝑥,𝑥′)∈𝐴×𝐵∥𝑥−𝑥′∥∞.
+For a mapping 𝑓: 𝑆→ˆ𝑆, with 𝑆⊂R𝑛and ˆ𝑆⊂R𝑚, and
+a set 𝐴⊆𝑆, we define 𝑓(𝐴) = { ˆ𝑥∈ˆ𝑆| ∃𝑥∈𝐴, ˆ𝑥= 𝑓(𝑥) }.
+Furthermore, we define
+𝑈𝑓:= sup
+𝑥,𝑥′∈𝑆
+∥𝑓(𝑥′) −𝑓(𝑥)∥∞
+∥𝑥−𝑥′∥∞
+, and
+𝐶𝑓:= inf
+𝑥,𝑥′∈𝑆
+∥𝑓(𝑥′) −𝑓(𝑥)∥∞
+∥𝑥−𝑥′∥∞
+.
+(1)
+3.1
+Discrete-time Markov Processes
+Definition 3.1 (Discrete-time Markov process). Let 𝑆⊆R𝑛
+be a set, and let B(𝑆) denote the Borel 𝜎–algebra on 𝑆, i.e.,
+the smallest 𝜎–algebra containing all open subsets of 𝑆. A
+stochastic process (𝑋𝑡)𝑡∈N0 taking values in 𝑆is called a
+discrete-time Markov process if, for all 𝑡∈N0 and all measur-
+able sets 𝐴⊆𝑆,
+P 𝑋𝑡+1 ∈𝐴
+𝑋0,𝑋1, . . . ,𝑋𝑡
+ = P 𝑋𝑡+1 ∈𝐴
+𝑋𝑡
+ = 𝑃(𝑋𝑡,𝐴),
+where 𝑃: 𝑆× B(𝑆) →[0, 1] denotes the transition kernel of
+the process.
+Definition 3.2 (Stationary Distribution). A probability mea-
+sure 𝜋∞on (𝑆, B(𝑆)) is called stationary (or invariant) if
+𝜋∞(𝐴) =
+∫
+𝑆
+𝑃(𝑥,𝐴) 𝜋∞(𝑑𝑥),
+∀𝐴∈B(𝑆).
+Definition 3.3 (Ergodicity). The Markov process is said
+to be ergodic if there exists a unique stationary probability
+measure 𝜋∞, and for every initial state 𝑥∈𝑆,
+lim
+𝑡→∞∥𝑃𝑡(𝑥, ·) −𝜋∞(·)∥TV = 0,
+where 𝑃𝑡(𝑥, ·) denotes the distribution of 𝑋𝑡given 𝑋0 = 𝑥.
+Ergodicity implies that 𝑋𝑡converges to 𝜋∞in probability as
+𝑡→∞, independently of the initial state 𝑥.
+3.2
+Dynamical Systems
+Definition 3.4 (Deterministic dynamical systems). A deter-
+ministic dynamical system Σ is defined as a tuple Σ = (𝑆, 𝑓),
+where 𝑆⊆R𝑛denotes the state space, and 𝑓: 𝑆→𝑆specifies
+the dynamics. The system evolves according to
+𝑥𝑡+1 = 𝑓(𝑥𝑡),
+𝑥0 ∈𝑆.
+If 𝑓(𝑥) = 𝐴𝑥with 𝐴∈R𝑛×𝑛, the system is said to be linear.
+Such systems are denoted by Σ = (𝑆,𝐴).
+For a linear dynamical system with state matrix 𝐴, we or-
+der the eigenvalues of𝐴in descending order of their modulus,
+such that 𝜆1 has the largest modulus and 𝜆𝑛the smallest.
+A discrete-time linear dynamical system Σ = (𝑆,𝐴) is
+stable if 𝜌(𝐴) < 1. For a bounded and connected state space
+𝑆⊂R𝑛, we define the diameter of 𝑆as follows:
+𝐷(𝑆) := sup
+𝑥,𝑥′∈𝑆
+∥𝑥−𝑥′∥∞.
+(2)
+In the following, we introduce two notions for formal-
+izing time scales in dynamical systems which will be used
+throughout of the paper.
+Definition 3.5 (𝜀-hitting time). For a given dynamical sys-
+tem Σ = (𝑆, 𝑓), constant 𝜀> 0 and sets 𝐶, 𝐷⊂𝑆with ℓ∞
+radius greater than 𝜀and dist(𝐶, 𝐷) > 𝜀, 𝜏Σ
+𝜀(𝐶, 𝐷) denotes
+the infimum over the first time to reach 𝐷+𝜀when starting
+from 𝑥0 ∈𝐶−𝜀.
+
+
+HSCC ’26, May 11–14, 2026, Saint Malo, France
+Rupak Majumdar, Mahmoud Salamati, Nikhil Singh, and Sadegh Soudjani
+Definition 3.6 (𝛿-settling time). For a dynamical system
+Σ = (𝑆, 𝑓) and a real valued constant 𝛿> 0, let 𝑥0 ∈𝑆and
+𝑥∞:= lim𝑡→∞𝑥𝑡denote initial state and the corresponding
+steady state value. We define 𝛿-settling time as
+𝑇Σ
+𝛿:= sup
+𝑥0∈𝑆
+min { 𝑡∈N | ∥𝑥𝑡−𝑥∞∥∞< 𝛿} .
+(3)
+Remark 3.7. For a stable linear system Σ = (𝑆,𝐴) with
+𝜌(𝐴) < 1, we have 𝑥∞= 0 and
+𝑇Σ
+𝛿:= sup
+𝑥0∈𝑆
+min { 𝑡∈N | ∥𝐴𝑡𝑥0∥∞< 𝛿} .
+(4)
+3.3
+Koopman Autoencoders
+A Koopman autoencoder model M = (Λ𝑒, Λ𝑑,𝐴) consists of
+the following components:
+1. Encoder Λ𝑒is a mapping Λ𝑒: R𝑛→R𝑚that maps
+the system’s initial state 𝑥0 ∈R𝑛into a latent repre-
+sentation ˆ𝑥0 = Λ𝑒(𝑥0).
+2. Linear Koopman operator 𝐴∈R𝑚×𝑚models the
+linear evolution of the latent dynamics via ˆ𝑥𝑡+1 = 𝐴ˆ𝑥𝑡
+for every 𝑡∈N0.
+3. Decoder Λ𝑑is a mapping Λ𝑑: R𝑚→R𝑛that recon-
+structs the original state from its latent representation,
+i.e., 𝑥′
+𝑡= Λ𝑑( ˆ𝑥𝑡) for every 𝑡∈N0.
+Assumption 3.8. Throughout the paper we assume that
+the Koopman operator 𝐴is diagonalizable.
+3.4
+M/M/1 with Retries And Timeouts
+An M/M/1 queue models a simple client-server system with
+a single queue and a single server. Clients send requests
+according to an exponential distribution with rate𝜈. Requests
+are enqueued at the tail and processed in a First In, First Out
+(FIFO) order. Each request is served at an exponential rate
+𝜇. The service times are independent from each other and
+from the arrival process.
+The M/M/1 model can be extended to incorporate time-
+outs and retry mechanisms. Timeout means that there is a
+constant 𝑇𝑡𝑖𝑚𝑒𝑜𝑢𝑡such that, if a request has not been served
+within 𝑇𝑡𝑖𝑚𝑒𝑜𝑢𝑡, a client can take further action. This action
+can take one of two forms: a retry, where a new instance
+of the request is added to the queue without removing the
+original request, or a drop, where the client abandons the
+request entirely. Incorporating these behaviors allows the
+model to capture the dynamics underlying phenomena such
+as retry storms and metastable failures in queuing systems.
+M/M/1 queues with retries and timeouts can be modeled
+as continuous-time Markov chains (CTMCs) defined over
+discrete state spaces [1, 16]. A fundamental limitation of
+CTMC-based approaches, however, is the requirement of a
+discrete state space whose size grows exponentially with
+the number of servers, resulting in very large CTMCs. This
+renders metastability analysis computationally intractable
+in practice, even when black-box linear algebra methods are
+utilized to exploit the existing sparsity. Moreover, extending
+CTMCs to systems with additional features—such as multiple
+servers, throttling mechanisms, or substituting FIFO queues
+with LIFO stacks—is nontrivial and, when possible at all,
+leads to further combinatorial explosion of the state space.
+Although we ultimately analyze discrete-time trajectories,
+these trajectories are obtained from a discrete-event simula-
+tor that operates in continuous time. Our goal is not to model
+the exact queue-length dynamics at the state-transition level,
+but rather to capture the aggregate or average behavior of
+the system. Therefore, in this paper, we focus on discrete-
+time Markov processes with continuous state spaces, which
+can efficiently capture the dynamics of a broader class of
+real-world queuing systems.
+4
+Metastability Characterization
+We consider stochastic systems exhibiting metastability due
+to rare events and show that, for ergodic systems, metasta-
+bility admits a deterministic formulation in terms of the
+moment dynamics. We thus start with ergodic stochastic
+systems.
+Lemma 4.1 (Expectation convergence for ergodic Markov
+processes). Let (𝑋𝑡)𝑡∈N0 be a discrete-time Markov process
+on a measurable state space (𝑆, B(𝑆)) with 𝑆⊂R𝑛bounded.
+Assume the Markov process is ergodic. Then,
+E𝑥
+
+𝑋𝑡
+
+=
+∫
+𝑆
+𝑦𝑃𝑡(𝑥,𝑑𝑦) −−−−→
+𝑡→∞
+∫
+𝑆
+𝑦𝜋∞(𝑑𝑦),
+that is expectation of 𝑋𝑡converges to a unique stationary
+(steady-state) value.
+Proof. Since 𝑆is bounded, 𝑔(𝑦) = 𝑦is bounded on 𝑆: there
+exists 𝑀< ∞with sup𝑦∈𝑆𝑔(𝑦) ≤𝑀. Hence 𝑔is a bounded
+measurable function.
+Total variation convergence implies convergence of ex-
+pectations for bounded measurable test functions: for any
+bounded measurable 𝑔,
+
+∫
+𝑔𝑑𝑃𝑡(𝑥, ·) −
+∫
+𝑔𝑑𝜋
+ ≤∥𝑔∥∞∥𝑃𝑡(𝑥, ·) −𝜋∥TV.
+Applying this we obtain
+E𝑥
+
+𝑋𝑡
+
+−
+∫
+𝑦𝜋(𝑑𝑦)
+ ≤𝑀∥𝑃𝑡(𝑥, ·) −𝜋∥TV −−−−→
+𝑡→∞
+0.
+This proves the claim.
+□
+Remark 4.2. The arguments used in the proof of the previous
+lemma extend directly to show that all higher-order moments
+of 𝑋𝑡converge to unique steady-state values.
+Based on the lemma above, ergodicity guarantees that
+E(𝑋𝑡) converges to a unique steady state value 𝑥∞∈𝑆. Here-
+after, we consider Σ = (𝑆, 𝑓) as the dynamics that governs
+evolution of E(𝑋𝑡) and use
+𝑥𝑡:= E(𝑋𝑡).
+(5)
+
+
+Learning Metastable Dynamics
+HSCC ’26, May 11–14, 2026, Saint Malo, France
+We further denote the 𝛿-neighborhood of the attractor as
+𝐷∞:= B𝛿(𝑥∞).
+(6)
+For stochastic systems, metastability is often character-
+ized using either expected hitting time that is required to
+take the system from one metastable set to another, or us-
+ing the mixing time, that is the maximum time required for
+a process, starting from an arbitrary initial distribution, to
+reach the neighborhood of its stationary distribution. Sys-
+tems with large mixing times are regarded as metastable [1].
+In the following we provide an analogous characterization
+of metastability that is applicable to the average dynamics
+Σ. The characterization stated below uses the concept of
+𝜀-hitting time (Def. 3.5).
+Definition 4.3 ((𝑇,𝜀, 𝐷∞)-metastability for ergodic Markov
+processes). For an ergodic Markov process (𝑋𝑡)𝑡∈N0 defined
+over a measurable state space (𝑆, B(𝑆)), let Σ = (𝑆, 𝑓) denote
+the dynamical system that describes the evolution of 𝑥𝑡=
+E(𝑋𝑡). Given candidate sets 𝐷1, 𝐷2, . . . , 𝐷𝐾⊂𝑆(𝐾≥1),
+attractor set 𝐷∞⊂𝑆, time horizon 𝑇∈N, and constants
+0 < 𝜀< 𝛿, we say that Σ is (𝑇,𝜀, 𝐷∞)-metastable if the
+candidate sets are 𝜀-separate from each other and
+min
+1≤𝑖≤𝐾𝜏Σ
+𝜀(𝐷𝑖, 𝐷∞) > 𝑇.
+(7)
+5
+Metastability Analysis via Koopman
+Autoencoders
+In Sec. 4, we provided formal characterizations for metasta-
+bility in a deterministic dynamical system Σ = (𝑆, 𝑓) that
+corresponds to the average dynamics of the underlying er-
+godic Markov process. The stated characterization relies
+on computation of 𝜏Σ
+𝜀that in practice for general nonlin-
+ear 𝑓may be computationally intractable. In this section,
+we (1) propose a modeling framework using Koopman au-
+toencoders of the form (Λ𝑒, Λ𝑑,𝐴) for which we relate the
+metastability of Σ and ˆΣ = (Λ𝑒(𝑆),𝐴), and (2) we provide
+quantitative relation between spectral radius of ˆΣ and time
+scales of Σ.
+5.1
+Learning from Data Trajectories
+In this section, we present a method for learning a model that
+takes the form of Koopman autoencoders, using a finite set
+of trajectories generated either by the real system or a high-
+fidelity simulator. Our learning objective is to fit parameters
+of the Koopman autoencoder model with respect to a number
+of average trajectories of the system.
+To collect trajectories, we choose a set of initial states
+{ ¯𝑥(1)
+0 , ¯𝑥(2)
+0 , . . . , ¯𝑥(𝑍)
+0
+}. For each 1 ≤𝑖≤𝑍, we run the sim-
+ulator 𝑀times, to produce 𝑀simulated trajectories, each
+of length 𝐿∈N and sampled regularly with respect to a
+chosen sampling time T > 0. Note that 𝑍, 𝑀, 𝐿, and T are
+hyperparameters for the data collection.
+For every 1 ≤𝑖≤𝑍and 1 ≤𝑗≤𝑀, we write ¯𝑋𝑖,𝑗
+𝑡
+for
+the simulator state at time steps 0 ≤𝑡≤𝐿−1. Note that
+¯𝑋𝑖,𝑗
+0
+= ¯𝑥(𝑖)
+0
+for every 1 ≤𝑗≤𝑀.
+Next, for every 1 ≤𝑖≤𝑍and 0 ≤𝑡≤𝐿−1, we compute
+the empirical average
+¯𝑥𝑖
+𝑡:= 1
+𝑀
+𝑀
+∑︁
+𝑗=1
+¯𝑋𝑖,𝑗
+𝑡
+This gives the averaged dynamics of the simulator over 𝑀
+runs.
+We would like to “match” this average simulator dynamics
+to the output of the Koopman auto encoder model at cor-
+responding times. The corresponding auto encoder outputs
+are computed as
+𝑦𝑖
+𝑡(𝜃) := Λ𝑑(𝜃)(𝐴𝑡(𝜃)Λ𝑒(𝜃)( ¯𝑥𝑖
+0)),
+where 𝜃denotes the set of parameters of the M(𝜃).
+Our aim is to find 𝜃∗such that the average output trajecto-
+ries of M(𝜃∗) , i.e., 𝑦𝑖
+𝑡(𝜃∗)|𝐿−1
+𝑡=0 , match as closely as possible
+with the trajectories of the simulator, i.e., ¯𝑥𝑖
+𝑡|𝐿−1
+𝑡=0 , for every
+1 ≤𝑖≤𝑍.
+Formally, we solve the following optimization problem
+that minimizes the loss:
+min
+𝜃
+𝑍
+∑︁
+𝑖=1
+𝐿−1
+∑︁
+𝑡=0
+∥𝑦𝑖
+𝑡(𝜃) −¯𝑥𝑖
+𝑡∥2
+2.
+(8)
+5.2
+Relating Time Scales
+We first consider the (unrealistic) case wherein the model
+introduces no error compared to the actual dynamics.
+Definition 5.1 (Perfect representation). For a discrete-time
+deterministic dynamical system Σ = (𝑆, 𝑓) with 𝑆⊂R𝑛,
+let M = (Λ𝑒, Λ𝑑,𝐴) denote a Koopman autoencoder model,
+such that for every 𝑡∈N0 and 𝑥0 ∈𝑆we have 𝑓𝑡(𝑥0) =
+Λ𝑑(𝐴𝑡Λ𝑒(𝑥0)). We then call M a perfect representation of
+Σ.
+The next lemma addresses the following question: under
+the perfect representation, can the metastability of the aver-
+age dynamics Σ be inferred from the metastability properties
+of the linear operator 𝐴that constitutes part of the model
+M?
+Lemma 5.2 (Time scale changes under perfect representa-
+tion). Let 𝐼, 𝐹⊂𝑆be compact and connected sets, and let
+M = (Λ𝑒, Λ𝑑,𝐴) be a perfect representation of Σ = (𝑆, 𝑓).
+Further, let ˆ𝐼= Λ𝑒(𝐼) and ˆ𝐹= Λ𝑒(𝐹). Then we have
+𝜏Σ
+0 (𝐼, 𝐹) = 𝜏ˆΣ
+0 (ˆ𝐼, ˆ𝐹),
+(9)
+where ˆΣ = (𝐴, ˆ𝑆) and ˆ𝑆= Λ𝑒(𝑆).
+Proof. Let 𝑥0,𝑥1, . . . denote the sequence of states generated
+by applying 𝑓consecutively. Let 𝑁= 𝜏Σ
+0 (𝑥0, 𝐹) for some
+𝑥0 ∈𝐼. For every 𝑡< 𝑁we have 𝑥𝑡∉𝐹, and 𝑥𝑁∈𝐹.
+This gives (1) Λ𝑒(𝑥0) ∈ˆ𝐼(since ˆ𝐼= Λ𝑒(𝐼)), (2) for every
+
+
+HSCC ’26, May 11–14, 2026, Saint Malo, France
+Rupak Majumdar, Mahmoud Salamati, Nikhil Singh, and Sadegh Soudjani
+𝑡< 𝑁, 𝐴𝑡Λ𝑒(𝑥0) ∉ˆ𝐹(since Λ𝑒= Λ𝑑−1, Λ𝑒(Λ𝑑(𝐴𝑡Λ𝑒(𝑥0))) =
+𝐴𝑡Λ𝑒(𝑥0) and ˆ𝐹= Λ𝑒(𝐹)), and (3) 𝐴𝑁Λ𝑒(𝑥0) ∈ˆ𝐹(since ˆ𝐹=
+Λ𝑒(𝐹)). Therefore, 𝜏Σ
+0 (𝑥0, 𝐹) = 𝜏ˆΣ
+0 ( ˆ𝑥0, ˆ𝐹), where ˆ𝑥0 = Λ𝑒(𝑥0).
+Since the arguments above hold for every 𝑥0 ∈𝐼, we can
+conclude that 𝜏Σ
+0 (𝐼, 𝐹) = 𝜏ˆΣ
+0 (ˆ𝐼, ˆ𝐹).
+□
+Corollary 5.3 (Metastability under perfect representation).
+Let Σ = (𝑆, 𝑓) be (𝑇, 0, 𝐷∞)-metastable with respect to the
+(compact and connected) sets 𝐷1, · · · , 𝐷𝐾. Further, let M =
+(Λ𝑒, Λ𝑑,𝐴) be a perfect representation for Σ, and ˆ𝐷𝑖:= Λ𝑒(𝐷𝑖)
+for every 1 ≤𝑖≤𝐾. Then, ˆΣ = ( ˆ𝑆,𝐴) with ˆ𝑆= Λ𝑒(𝑆) is
+(𝑇, 0, 𝐷∞)-metastable with respect to the sets ˆ𝐷1, · · · , ˆ𝐷𝐾.
+Proof. Based on Lem. 5.2, we have for every 1 ≤𝑖≤𝐾that
+𝜏Σ
+0 (𝐷𝑖, 𝐷∞) = 𝜏ˆΣ
+0 ( ˆ𝐷𝑖, ˆ𝐷∞). This proves the claim.
+□
+So far, we have discussed that, when the representation
+is perfect, the metastability properties of the nonlinear dy-
+namical system carry over directly to those of the linear
+mapping in the latent space. However, in practice, learned
+representations may not be perfect.
+The following definition formalizes a useful performance
+measure for learning that we will use later.
+Definition 5.4 ((𝑆,𝑇,𝜀)-close learned Koopman autoencoder).
+Given an original dynamical system Σ = (𝑆, 𝑓) and a Koop-
+man autoencoder model M = (Λ𝑒, Λ𝑑,𝐴), for every 𝑡∈N0
+let 𝑥𝑡and ˆ𝑥𝑡, respectively, denote the state vectors of Σ and
+ˆΣ = (Λ𝑒(𝑆),𝐴), where ˆ𝑥0 = Λ𝑒(𝑥0). Further let 𝑥′
+𝑡= Λ𝑑( ˆ𝑥𝑡)
+for 𝑡∈N0. For a time horizon 𝑇∈N0, we say M is an
+(𝑆,𝑇,𝜀)-close learned linear dynamics for Σ if
+∀𝑥0 ∈𝑆, ∀0 ≤𝑡≤𝑇: ∥𝑥𝑡−𝑥′
+𝑡∥≤𝜀.
+(10)
+In the following lemma, we show how (𝑆,𝑇,𝜀)-closeness
+affects the time scales.
+Lemma 5.5 (Time scales changes under (𝑆,𝑇,𝜀)-close learned
+Koopman autoencoders). Let 𝐼, 𝐹⊂𝑆be compact and con-
+nected sets, and let M = (Λ𝑒, Λ𝑑,𝐴) be a (𝑆,𝑇,𝜀)-close learned
+representation of Σ = (𝑆, 𝑓). Further, let ˆ𝐼= Λ𝑒(𝐼) and ˆ𝐹=
+Λ𝑒(𝐹). If 𝜏Σ
+0 (𝐼, 𝐹) ≤𝑇, we have
+𝜏Σ
+𝜀(𝐼, 𝐹) ≤𝜏ˆΣ
+0 (ˆ𝐼, ˆ𝐹).
+(11)
+Proof. For 𝑥0 ∈𝐼, the evolution of 𝑥0 after 𝑡steps in the
+original space and latent space is given by 𝑥𝑡= 𝑓𝑡(𝑥0) and
+𝑥′
+𝑡= Λ𝑑(𝐴𝑡Λ𝑒(𝑥0)), respectively. Using (𝑆,𝑇,𝜀)-closeness,
+we have ∥𝑥𝑡−𝑥′
+𝑡∥≤𝜀for every 1 ≤𝑡≤𝑇. Therefore, we
+have (1) 𝑥𝑡∈𝐼−𝜀implies that ˆ𝑥𝑡∈ˆ𝐼and (2) 𝑥𝑡∉𝐹+𝜀implies
+that ˆ𝑥𝑡∉ˆ𝐹. Note that 𝑥𝑡∈𝐹+𝜀does not imply that ˆ𝑥𝑡∈ˆ𝐹.
+Therefore, we have 𝜏Σ
+𝜀(𝐼, 𝐹) ≤𝜏ˆΣ
+0 (ˆ𝐼, ˆ𝐹).
+□
+Based on the above lemma, under the (𝑆,𝑇,𝜀)-closeness,
+large time scales in the latent space implies large time scales
+in the original state space with tolerance 𝜀.
+Corollary 5.6 (Metastability under imperfect representa-
+tion). Let M = (Λ𝑒, Λ𝑑,𝐴) denote a Koopman autoencoder
+model that is (𝑆,𝑇,𝜀)-close with respect to the dynamical sys-
+tem Σ = (𝑆, 𝑓). Further, let 𝐷1, 𝐷2, . . . , 𝐷𝐾denote the candi-
+date sets in 𝑆and ˆ𝐷1, ˆ𝐷2, . . . , ˆ𝐷𝐾are defined as ˆ𝐷𝑖= Λ𝑒(𝐷𝑖)
+for every 1 ≤𝑖≤𝐾. Finally, let 𝐷∞= B𝛿(𝑥∞) and ˆ𝐷∞=
+Λ𝑒(𝐷∞). We have that (𝑇,𝜀, 𝐷∞)-metastability of Σ over the
+original space with respect to the candidate sets 𝐷1, 𝐷2, . . . , 𝐷𝐾
+implies (𝑇, 0, ˆ𝐷∞)-metastability of ˆΣ = ( ˆ𝑆,𝐴) over the latent
+space ˆ𝑆= Λ𝑒(𝑆) with respect to the candidate sets ˆ𝐷1, ˆ𝐷2, . . . , ˆ𝐷𝐾.
+Proof. From Lem. 5.5, we have 𝜏Σ
+𝜀(𝐷𝑖, 𝐷∞) ≤𝜏ˆΣ
+0 ( ˆ𝐷𝑖, ˆ𝐷∞) for
+every 1 ≤𝑖≤𝐾. Therefore, (𝑇,𝜀, 𝐷∞)-metastability of Σ =
+(𝑆, 𝑓) over the original space with respect to the candidate
+sets 𝐷1, 𝐷2, . . . , 𝐷𝐾implies (𝑇, 0, ˆ𝐷∞)-metastability of ˆΣ =
+( ˆ𝑆,𝐴) over the latent space ˆ𝑆= Λ𝑒(𝑆) with respect to the
+candidate sets ˆ𝐷1, ˆ𝐷2, . . . , ˆ𝐷𝐾.
+□
+At this stage, we have established that for a Markov pro-
+cess (𝑋𝑡)𝑡∈N0 defined over a measurable space (𝑆, B(𝑆)) with
+average dynamics represented by the dynamical system Σ =
+(𝑆, 𝑓), metastability analysis can be carried out by (1) learn-
+ing a high-fidelity Koopman autoencoder M = (Λ𝑒, Λ𝑑,𝐴),
+(2) analyzing the time scales of the associated linear system
+ˆΣ = ( ˆ𝑆,𝐴) with ˆ𝑆= Λ𝑒(𝑆), and (3) applying Lem. 5.5 and
+Cor. 5.6 to infer the time scales and metastability of Σ.
+However, the main motivation for employing the Koop-
+man operator model M = (Λ𝑒, Λ𝑑,𝐴) is to obtain a com-
+putationally tractable means for quantitative estimation of
+time scales by leveraging the spectral properties of the linear
+operator 𝐴.
+It is well known that the spectral gap of the matrix 𝐴
+provides valuable insight into the characteristic time scales
+of the system. In particular, the following corollary holds.
+Corollary 5.7 (Qualitative relationship between spectral
+radius and metastability). Given a high-fidelity Koopman
+model M = (Λ𝑒, Λ𝑑,𝐴) learned for a nonlinear dynamical
+system Σ = (𝑆, 𝑓), the metastability properties of Σ can be
+inferred from the spectral radius of 𝐴.
+The result stated in Corollary 5.7 is qualitative. Intuitively,
+this means that long time scales of 𝑓correspond to 𝐴having
+a spectral radius close to one (𝜌(𝐴) ≈1).
+Remark 5.8. As shown in Lem. 4.1, when Σ = (𝑆, 𝑓) describes
+the evolution of an ergodic Markov process, it takes a unique
+steady state value. Therefore, we only consider stable dy-
+namics over the latent space, that is ˆΣ = ( ˆ𝑆,𝐴) is a stable
+linear dynamical system.
+The metastability characterization in Def. 4.3 is suitable
+for the case where we have a number of candidate metastable
+sets together with a threshold for large time scales and would
+like to assess metastability with respect to them. In practice,
+
+
+Learning Metastable Dynamics
+HSCC ’26, May 11–14, 2026, Saint Malo, France
+we may not have access to the candidate sets and prefer an al-
+ternative characterization that tells us whether converging to
+the equilibrium is fast or not: such characterization basically
+can be considered as an approximation of mixing time for the
+underlying system. To this end, we use 𝛿-settling time, and
+notice that for every choice of candidate sets 𝐷1, 𝐷2, . . . , 𝐷𝐾,
+and 0 < 𝜀≤𝛿, we have
+𝑇Σ
+𝛿≥𝜏Σ
+𝜀(𝐷𝑖, 𝐷∞).
+(12)
+Note that 𝜏Σ
+𝜀(𝐷𝑖, 𝐷∞) takes the effect of 𝛿since 𝐷∞is defined
+with respect to 𝛿. Therefore, if 𝛿-settling time for a system
+is large, one can expect existence of candidate set(s) starting
+from which it takes a large amount of time to reach to 𝐷∞.
+The following lemma relates the settling time of a linear
+matrix 𝐴to its spectral radius as well as diameter of the state
+space.
+Lemma 5.9 (Quantitative relation between spectral radius
+and time scales for linear stable systems). Let ˆΣ = ( ˆ𝑆,𝐴) be a
+stable diagonalizable linear dynamical system, where ˆ𝑆⊂R𝑚
+is a compact and connected set. Let 𝜆1, 𝜆2, . . . , 𝜆𝑚denote the
+eigenvalues of 𝐴, ordered such that |𝜆𝑚| ≤|𝜆𝑚−1| ≤· · · ≤|𝜆1|.
+Then we have
+𝑇ˆΣ
+ˆ𝛿(𝐴, ˆ𝑆) ≤log(𝜅∞𝐷( ˆ𝑆)/ ˆ𝛿)
+−log(𝜌(𝐴))
+.
+(13)
+Proof. Since 𝐴is stable, all its eigenvalues satisfy |𝜆𝑖| < 1 for
+1 ≤𝑖≤𝑚, and hence 𝜌(𝐴) = |𝜆1|. Using Eq. (2), we get that
+for every 𝑥0 ∈ˆ𝑆
+∥𝐴𝑡𝑥0∥∞≤∥𝑥0∥∥𝐴𝑡∥∞≤𝐷( ˆ𝑆)∥𝐴𝑡∥∞≤𝜅∞𝐷( ˆ𝑆)|𝜆1|𝑡.
+From the above, it suffices to ensure that 𝜅∞𝐷( ˆ𝑆)|𝜆1|𝑡≤ˆ𝛿.
+We obtain 𝑡≥log(𝜅∞𝐷( ˆ𝑆)/ ˆ𝛿)
+−log(𝜌(𝐴)) . Hence, the claim follows.
+□
+Now that we know how knowledge of 𝜌(𝐴) in stable linear
+dynamical systems, we would like to have a quantitative
+result that relates the time scales of 𝑓and 𝐴. To that end,
+we are going to exploit characteristics of the encoding and
+decoding transformations.
+Lemma 5.10. Let M = (Λ𝑒, Λ𝑑,𝐴) be a perfect representation
+for a dynamical system Σ = (𝑆, 𝑓). Let 𝐿𝑒= 𝑈Λ𝑒and 𝐿′
+𝑒= 𝐶Λ𝑒.
+Then, we have
+𝑇Σ
+𝛿≤log(2𝜅∞𝐿𝑒𝐷(𝑆)/𝐿′
+𝑒𝛿)
+−log(𝜌(𝐴))
+.
+(14)
+Proof. Let ˆ𝐷∞= Λ𝑒(𝐷∞). We define
+ˆ𝛿=
+sup
+ˆ𝑥, ˆ𝑥′∈Λ𝑒(𝐷∞)
+∥ˆ𝑥−ˆ𝑥′∥∞=
+sup
+𝑥,𝑥′∈𝐷∞
+∥Λ𝑒(𝑥) −Λ𝑒(𝑥′)∥∞,
+which gives
+𝐿′
+𝑒𝛿≤ˆ𝛿≤2𝐿𝑒𝛿.
+We know that under perfect representation regime, we have
+𝑇Σ
+𝛿≤𝑇ˆΣ
+ˆ𝛿/2.
+Note that under perfect representation, we have 0 < 𝐿′
+𝑒≤
+𝐿𝑒(since Λ𝑑= Λ𝑒−1). We can write
+𝑇Σ
+𝛿≤𝑇ˆΣ
+ˆ𝛿/2 ≤log(2𝜅∞𝐷( ˆ𝑆)/ ˆ𝛿)
+−log(𝜌(𝐴))
+≤log(2𝜅∞𝐷( ˆ𝑆)/𝐿′
+𝑒𝛿)
+−log(𝜌(𝐴))
+≤log(2𝜅∞𝐿𝑒𝐷(𝑆)/𝐿′
+𝑒𝛿)
+−log(𝜌(𝐴))
+.
+□
+Finally, we consider the case of imperfect representation.
+Theorem 5.11. Let M = (Λ𝑒, Λ𝑑,𝐴) be a (𝑆,𝑇,𝜀)-close rep-
+resentation for a dynamical system Σ = (𝑆, 𝑓). Let 𝐿𝑒= 𝑈Λ𝑒
+and 𝐿′
+𝑒= 𝐶Λ𝑒. We have
+𝑇Σ
+𝛿≤log(2𝜅∞𝐿𝑒𝐷(𝑆)/𝐿′
+𝑒(𝛿−𝜀))
+−log(𝜌(𝐴))
+.
+(15)
+Proof. Reaching to 𝛿−𝜀neighborhood of the equilibrium of
+𝑓in 𝑆by M guarantees reaching to its 𝛿neighborhood by
+Σ. Further, we have 𝑇Σ
+𝛿≤𝑇Σ
+𝛿−𝜀. Substituting 𝛿with 𝛿−𝜀in
+(14) completes the proof.
+□
+6
+Evaluation
+6.1
+Experimental Setup
+All the experiments were performed on Intel(R) Core(TM)
+i5-6600 CPU @ 3.30GHz Debian platform. For the purpose
+of these experiments, we developed a custom simulator that
+models a nonlinear queuing system with retries and time-
+outs, denoted as S. The simulator is defined by the tuple
+⟨𝑇𝑠𝑖𝑚,𝑛𝑟𝑢𝑛𝑠,𝜈, 𝜇,𝑛𝑟𝑒𝑡𝑟𝑖𝑒𝑠,𝑇𝑡𝑖𝑚𝑒𝑜𝑢𝑡⟩, where𝑇𝑠𝑖𝑚denotes the max-
+imum duration of a single simulation run, 𝑛𝑟𝑢𝑛𝑠represents
+the total number of runs, 𝜈corresponds to the job arrival
+rate, 𝜇denotes the service rate, 𝑛𝑟𝑒𝑡𝑟𝑖𝑒𝑠specifies the maxi-
+mum number of reattempts for processing failed jobs, and
+𝑇𝑡𝑖𝑚𝑒𝑜𝑢𝑡defines the maximum permissible waiting time for
+a job to complete. The configuration used for our experi-
+ments is ⟨𝑇𝑠𝑖𝑚= 10000,𝑛𝑟𝑢𝑛𝑠= 100,𝜈= 9.7, 𝜇= 10,𝑛𝑟𝑒𝑡𝑟𝑖𝑒𝑠=
+3,𝑇𝑡𝑖𝑚𝑒𝑜𝑢𝑡= 9⟩.
+6.2
+Data Generation
+The state evolves according to stochastic arrival and service
+processes with time-dependent rates. For each configuration,
+we simulate trajectories for 𝑇𝑠𝑖𝑚under a fixed arrival rate 𝜈
+and service rate 𝜇. The system state consists of queue length
+and latency, i.e., 𝑥𝑡= (𝑞𝑡,𝑙𝑡).
+We generate 100 simulation trajectories 𝜔to construct
+the training dataset Ω. Each trajectory is embedded with
+a history length (depth) of 𝑑= 1, producing autoregres-
+sive input–output pairs for learning. Our goal is to learn
+an autoencoder based model for the simulator. We learn an
+Autoencoder model (Λ𝑒, Λ𝑑,𝐴) using the dataset Ω.
+
+
+HSCC ’26, May 11–14, 2026, Saint Malo, France
+Rupak Majumdar, Mahmoud Salamati, Nikhil Singh, and Sadegh Soudjani
+0
+2000
+4000
+6000
+8000
+10000
+Time
+0
+5
+10
+15
+20
+25
+Average Latency
+1.0
+2.0
+5.0
+7.5
+9.0
+9.7
+2
+4
+6
+8
+10
+Average Arrival Rate
+0
+2000
+4000
+6000
+8000
+10000
+Time
+0
+20
+40
+60
+80
+100
+Average Queue Length
+1.0
+2.0
+5.0
+7.5
+9.0
+9.7
+2
+4
+6
+8
+10
+Average Arrival Rate
+Figure 1. Average latency (top) and Average queue length
+(bottom) for different arrival rates.
+We trained the autoencoder-based model with two input
+(and corresponding output) dimensions. To ensure a small
+reconstruction error (𝜀), the model 𝐴should have sufficient
+number of parameters. Hence, we employ a relatively high
+number of latent dimensions (20). Furthermore, spectral nor-
+malization is applied to the matrix 𝐴to prevent numerical
+instability or divergence during rollouts.
+6.3
+Eigenvalue Analysis
+This section presents the results for evaluation of the Koop-
+man autoencoder model on the queuing system. The results
+highlight the relationship between the system’s arrival rate
+𝜈, the metastable behavior, and the spectral properties of the
+learned Koopman operator 𝐴.
+Figure 1 illustrates the variation in the average latency
+and average queue length with respect to the arrival rate 𝜈.
+We observe that for higher 𝜈, a retry storm could lead to the
+sustaining effect, where the system dynamics transition from
+a stable to a metastable regime.
+Figure 2 illustrates the predictions from the learned model,
+demonstrating that the learned model effectively captures
+the underlying system behavior.
+The largest eigenvalue of the learned Koopman matrix 𝐴
+for different arrival rates is shown in Figure 3. We observe
+that the largest eigenvalue increases monotonically with the
+arrival rate. For low arrival rates, the dominant eigenvalue
+is significantly below unity, indicating fast decay toward
+the attractor. As 𝜈approaches the service rate, the largest
+0
+1000
+2000
+3000
+4000
+Time
+0
+10
+20
+30
+40
+50
+60
+Average Queue Length
+True q
+Model q
+0
+1000
+2000
+3000
+4000
+5000
+Time
+60
+70
+80
+90
+100
+Average Queue Length
+True q
+Model q
+Figure 2. Illustrating the learned model performance for
+trajectories initialized from empty queue (top plot) and full
+queue (bottom plot).
+2
+4
+6
+8
+10
+Average Arrival Rate
+0.825
+0.850
+0.875
+0.900
+0.925
+0.950
+0.975
+1.000
+Largest 
+Figure 3. The largest eigenvalue of the Koopman matrix for
+different values of arrival rates.
+eigenvalue approaches one, reflecting the emergence of slow
+timescales and metastability in the system.
+6.4
+Throttling
+To prevent the system from entering a metastable regime,
+we use a random early detection throttling mechanism that
+adaptively throttles job arrivals as the queue approaches its
+maximum capacity. Let 𝑞(𝑡) denote the current queue length,
+𝑞𝑚𝑎𝑥the maximum queue capacity and 𝑝𝑎is the admission
+probability. The throttling strategy is given as
+𝑝𝑎=
+
+
+1
+𝑞(𝑡) < 0.9𝑞𝑚𝑎𝑥
+0.5
+0.9𝑞𝑚𝑎𝑥< 𝑞(𝑡) ≤𝑞𝑚𝑎𝑥
+0
+𝑞(𝑡) > 𝑞𝑚𝑎𝑥.
+(16)
+• Normal mode: When 𝑞(𝑡) < 0.9𝑞𝑚𝑎𝑥, the incoming
+jobs are enqueued unconditionally.
+• Throttling mode: Once the queue occupancy exceeds
+90% of capacity, i.e., 0.9𝑞𝑚𝑎𝑥< 𝑞(𝑡) ≤𝑞𝑚𝑎𝑥, a prob-
+abilistic admission is triggered. Specifically, each in-
+coming job is admitted with probability 𝑝= 0.5 and
+
+
+Learning Metastable Dynamics
+HSCC ’26, May 11–14, 2026, Saint Malo, France
+0
+2000
+4000
+6000
+8000
+10000
+Time
+0
+20
+40
+60
+80
+100
+Average Queue Length
+Default
+Throttle
+2
+4
+6
+8
+10
+Average Arrival rate
+Figure 4. Illustrating the effect of throttling on the average
+queue length.
+dropped with probability 1−𝑝. This probabilistic inter-
+vention prevents congestion by reducing the effective
+arrival rate as queue gets full.
+• Full queue: When the queue reaches full capacity, i.e.,
+𝑞(𝑡) > 𝑞𝑚𝑎𝑥, all incoming jobs are immediately dropped.
+In Figure 4, we show the average queue length observed for
+normal simulation (default) and using the throttling strategy.
+Using the trajectories obtained under throttling, we learn
+another autoencoder-koopman model (Λ𝑒𝑡𝑜, Λ𝑑𝑡𝑜,𝐴𝑡𝑜). We
+observed that the largest eigenvalue for the koopman matrix
+𝐴𝑡𝑜if 0.9913. Using Figure 3 and Figure 1 (bottom), we infer
+that throttling reduces the effective arrival rate of the system.
+6.5
+LIFO Versus FIFO
+In Figure 5, we show the comparison between latencies of
+Queue (FIFO) and Stack (LIFO) scheduling policies within
+the queuing framework. Given that the exponential service
+time is memoryless, the steady-state behavior of the LIFO
+system is theoretically expected to be closer to that of the
+FIFO system. Since the newly arrived jobs see much shorter
+waiting times, this configuration results in higher latency
+variance and the potential starvation of older jobs.
+In Figure 6, we further observe that the LIFO mechanism
+demonstrates superior performance relative to FIFO in recov-
+ering from the metastable state. Specifically, the largest eigen-
+value of the learned Koopman operator for the LIFO-based
+system is 0.9915, which is lower than the corresponding
+eigenvalue of 0.9973 for the FIFO-based system, indicating a
+faster convergence to steady state.
+6.6
+Metastability Over Shorter Simulation
+Up to this point, we trained a global model that effectively
+captures the metastable dynamics of the system. To further
+analyze metastability over shorter time scales, we learn a
+model over shorter duration, each corresponding to a sim-
+ulation time of 1000 timesteps, which is one-tenth of the
+original duration. Despite this temporal reduction, the domi-
+nant eigenvalue remains close to one (0.9947), indicating the
+preservation of metastable behavior. Figure 7 illustrates the
+predictions of the learned model over the short simulations.
+0
+2000
+4000
+6000
+8000
+10000
+Time
+0
+20
+40
+60
+80
+Average Latency
+FIFO
+LIFO
+2
+4
+6
+8
+10
+Average Arrival Rate
+Figure 5. Comparison of average latency under LIFO and
+FIFO scheduling policies.
+0
+2000
+4000
+6000
+8000
+10000
+Timesteps
+0
+20
+40
+60
+80
+100
+Average queue length
+FIFO
+LIFO
+2
+4
+6
+8
+10
+Average Arrival rate
+Figure 6. Comparison of average queue length under LIFO
+and FIFO scheduling policies.
+0
+100
+200
+300
+400
+500
+Time
+0
+5
+10
+15
+20
+25
+30
+35
+Average Queue Length
+True q
+Model q
+Figure 7. Illustrating the performance of the learned model
+when trained on shorter-duration trajectories.
+6.7
+Settling Times
+Figure 8 (top) illustrates the comparison between the em-
+pirically observed settling times and the theoretical bounds
+derived from Equation (14) as a function of 𝛿. For these com-
+putations, we set 𝐿𝑒= 1.6, 𝐿′
+𝑒= 0.8, and 𝐷(𝑆) = 103.
+For the learned model, we define the steady-state behavior
+as the asymptotic value obtained in the limit 𝑡→∞, as
+formalized in Equation (3). In practice, since it is infeasible
+to simulate an infinite horizon, we approximate this limit
+numerically using a finite horizon of 105 time steps.
+Equation (3) gives the time it takes for trajectories from
+the learned model to get within ˆ𝛿of their attractor projec-
+tion. The 𝛿-settling time for different values of ˆ𝛿is shown
+in Figure 8 (bottom). It is important to note that the error
+bands measured in the original space (𝛿) differ from the cor-
+responding tolerance levels ( ˆ𝛿) defined in the latent space.
+
+
+HSCC ’26, May 11–14, 2026, Saint Malo, France
+Rupak Majumdar, Mahmoud Salamati, Nikhil Singh, and Sadegh Soudjani
+0
+5
+10
+15
+20
+25
+30
+0
+2000
+4000
+6000
+8000
+10000
+12000
+14000
+16000
+Time
+Simulation
+Theoretical upper bound
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+7500
+10000
+12500
+15000
+17500
+20000
+22500
+25000
+Time
+Mean
+±1 std. dev.
+Figure 8. Variation in settling time in the original space as a
+function of 𝛿(top plot) and in the latent space as a function
+of ˆ𝛿(bottom plot).
+6.8
+Metastability in Multi Server Setting
+For simplicity, we consider a two server system in which
+the two servers form a tandem queuing system. A job is
+considered complete only after it has finished execution on
+both servers. The configuration used for multi-server setting
+is ⟨𝑇𝑠𝑖𝑚= 10000,𝑛𝑟𝑢𝑛𝑠= 100,𝜈= 9.5, 𝜇= 10,𝑛𝑟𝑒𝑡𝑟𝑖𝑒𝑠=
+3,𝑇𝑡𝑖𝑚𝑒𝑜𝑢𝑡= 9⟩and the parameters are kept identical across
+both servers to ensure consistency in comparison.
+Figures 9 and 10 illustrate the average latency and average
+queue lengths observed for each server in the two-server
+system. From the learned system dynamics, we observe that
+the largest eigenvalues of the Koopman operator for servers
+1 and 2 are 0.9832 and 0.9981, respectively. This indicates that
+Server 2 exhibits metastable behavior, as its dynamics evolve
+more slowly toward equilibrium. This disparity in stability
+between the two servers can be attributed to differences in
+their processing times. As evident from Figure 9, the latency
+for Server 2 is approximately twice that for Server 1.
+The 𝛿-settling times corresponding to the learned model
+for both servers is shown in Figure 11. Consistent with the
+metastable nature of Server 2, we observe larger 𝛿-settling
+times, indicating slower mixing and delayed convergence.
+7
+Conclusion
+We presented a practical framework for formal analysis of
+metastability in stochastic nonlinear systems with unknown
+dynamics. By restricting attention to ergodic stochastic sys-
+tems, we showed how one can reason about metastability
+through the underlying deterministic dynamics that govern
+0
+2000
+4000
+6000
+8000
+10000
+Time
+0
+5
+10
+15
+20
+25
+30
+Average Latency
+Server1
+Server2
+2
+4
+6
+8
+10
+Average Arrival Rate
+Figure 9. Average latency in the two-server system.
+0
+2000
+4000
+6000
+8000
+10000
+Time
+0
+20
+40
+60
+80
+100
+Average Queue Length
+Server1
+Server2
+2
+4
+6
+8
+10
+Average Arrival rate
+Figure 10. Average queue length in the two-server system.
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+0
+1000
+2000
+3000
+4000
+5000
+6000
+Time
+Server1
+Server2
+Figure 11. Variation in settling time as a function of ˆ𝛿.
+the evolution of state moments, such as expectations. We
+learned high-fidelity representations of these determinis-
+tic dynamics from finitely many system trajectories using
+Koopman autoencoders. Koopman autoencoders define a
+transformation into a latent space where the dynamics be-
+come linear. We then analyzed the spectral properties of
+the learned linear dynamics to reason about metastability,
+focusing on the eigenvalue of largest modulus. Empirical re-
+sults demonstrated that the proposed framework effectively
+identifies and characterizes metastable phenomena across
+several distributed system case studies. As future work, we
+plan to explore alternative approaches for relating stochastic
+dynamics to deterministic representations using moment
+closures [23].
+References
+[1] Peter Alvaro, Rebecca Isaacs, Rupak Majumdar, Kiran-Kumar
+Muniswamy-Reddy, Mahmoud Salamati, and Sadegh Soudjani.
+
+
+Learning Metastable Dynamics
+HSCC ’26, May 11–14, 2026, Saint Malo, France
+2025. Formal Analysis of Metastable Failures in Software Systems.
+arXiv:2510.03551 [cs.PF]
+[2] N. V. Baranov, N. V. Selezneva, E. M. Sherokalova, Y. A. Baglaeva,
+A. S. Ovchinnikov, A. A. Tereshchenko, D. I. Gorbunov, A. S. Volegov,
+and A. A. Sherstobitov. 2019. Magnetic phase transitions, metastable
+states, and magnetic hysteresis in the antiferromagnetic compounds
+Fe0.5TiS2−𝑦Se𝑦. Phys. Rev. B 100 (Jul 2019), 024430. Issue 2.
+[3] Volker Betz and Stéphane Le Roux. 2016. Multi-scale metastable dy-
+namics and the asymptotic stationary distribution of perturbed Markov
+chains. Stochastic Processes and their Applications 126, 11 (2016), 3499–
+3526.
+[4] Betsy Beyer, Chris Jones, Jennifer Petoff, and Niall Richard Murphy.
+2016. Site Reliability Engineering: How Google Runs Production Systems
+(1st ed.). O’Reilly Media, Inc.
+[5] Anton Bovier and Frank den Hollander. 2015. Metastability : a potential-
+theoretic approach. Springer.
+[6] Anton Bovier, Michael Eckhoff, Veronique Gayrard, and Markus Klein.
+2001. Metastability in stochastic dynamics of disordered mean-field
+models. Probab. Theor. Rel. Fields 119 (2001), 99–161.
+[7] Anton Bovier, Michael Eckhoff, Veronique Gayrard, and Markus Klein.
+2002. Metastability and low lying spectra in reversible Markov chains.
+Commun. Math. Phys. 228 (2002), 219–255.
+[8] Nathan Bronson, Abutalib Aghayev, Aleksey Charapko, and Timothy
+Zhu. 2021. Metastable failures in distributed systems (HotOS ’21). ACM,
+New York, NY, USA.
+[9] Steven L. Brunton, Marko Budišić, Eurika Kaiser, and J. Nathan Kutz.
+2022. Modern koopman theory for dynamical systems. SIAM Rev. 64,
+2 (2022), 229–340.
+[10] Woo Jong Cho, Jaegil Kim, Joonho Lee, Thomas Keyes, John E. Straub,
+and Kwang S. Kim. 2014. Limit of Metastability for liquid and vapor
+phases of water. Phys. Rev. Lett. 112 (Apr 2014), 157802. Issue 15.
+[11] E. Brian Davies. 1982. Metastable states of symmetric Markov semi-
+groups. I. Proc. Longon Math. Soc. III 45 (1982), 133–150.
+[12] E. Brian Davies. 1982. Metastable states of symmetric Markov semi-
+groups. II. Proc. Longon Math. Soc. II 26 (1982), 541–556.
+[13] E. Brian Davies. 1983. Spectral properties of metastable Markov semi-
+groups. J. Funct. Anal. 52 (1983), 315–329.
+[14] Ken A. Dill and Sarina Bromberg. 2010. Molecular Driving Forces:
+Statistical Thermodynamics in Biology, Chemistry, Physics, and
+Nanoscience. Garland Science.
+[15] Mark I. Freidlin and Alexander D. Wentzell. 1984. Random perturba-
+tions of dynamical systems. Springer.
+[16] Farzad Habibi, Tania Lorido-Botran, Ahmad Showail, Daniel C. Stur-
+man, and Faisal Nawab. 2024. MSF-Model: Queuing-Based Analysis
+and Prediction of Metastable Failures in Replicated Storage Systems.
+In SRDS, Charlotte, NC, USA, September 30 - Oct. 3, 2024. IEEE.
+[17] Lexiang Huang, Matthew Magnusson, Abishek Bangalore Muralikr-
+ishna, Salman Estyak, Rebecca Isaacs, Abutalib Aghayev, Timothy Zhu,
+and Aleksey Charapko. 2022. Metastable Failures in the Wild. In OSDI.
+USENIX Association, Carlsbad, CA.
+[18] Rebecca Isaacs, Peter Alvaro, Rupak Majumdar, Kiran-Kumar
+Muniswamy-Reddy, Mahmoud Salamati, and Sadegh Soudjani. 2025.
+Analyzing Metastable Failures (HotOS ’25). ACM, New York, NY, USA.
+[19] B. O. Koopman. 1931. Hamiltonian Systems and Transformations in
+Hilbert Space. Proceedings of the National Academy of Science 17, 5
+(May 1931), 315–318.
+[20] Bethany Lusch, J. Nathan Kutz, and Steven L. Brunton. 2018. Deep
+learning for universal linear embeddings of nonlinear dynamics. Na-
+ture Communications 9, 1 (December 2018), 1–10.
+[21] Giacomo Meanti, Antoine Chatalic, Vladimir R. Kostic, Pietro Novelli,
+Massimiliano Pontil, and Lorenzo Rosasco. 2023. Estimating Koop-
+man operators with sketching to provably learn large scale dynamical
+systems. In NeurIPS ’23 (New Orleans, LA, USA), Vol. 36.
+[22] Microsoft. 2021.
+Azure Architecture Performance Antipatterns.
+Retry Storm antipattern.
+https://docs.microsoft.com/en-us/azure/
+architecture/antipatterns/retry-storm/.
+[23] Mohammad Naghnaeian and Domitilla Del Vecchio. 2017. Robust
+moment closure method for the chemical master equation. In 2017
+IEEE Conference on Control Technology and Applications (CCTA).
+[24] Amazon Web Services. 2021. Summary of the AWS Service Event in
+the Northern Virginia (US-EAST-1) Region. https://aws.amazon.com/
+message/12721/.
+[25] Naoto Shiraishi. 2023. An Introduction to Stochastic Thermodynamics.
+Springer.
+[26] Naoya Takeishi. 2019. Kernel Learning for Data-Driven Spectral Anal-
+ysis of Koopman Operators. In Proceedings of The Eleventh Asian Con-
+ference on Machine Learning (PMLR, Vol. 101).

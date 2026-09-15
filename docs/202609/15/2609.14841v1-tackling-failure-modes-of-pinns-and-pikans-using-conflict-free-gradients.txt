@@ -1,0 +1,2666 @@
+Tackling Failure Modes of PINNs and PIKANs Using Conflict-Free
+Gradients
+Sidharth S. Menon1, Irina Tezaur2, and Ameya D. Jagtap∗1
+1Aerospace Engineering Department, Worcester Polytechnic Institute, Worcester, MA 01609, USA.
+2Sandia National Laboratories, 7011 East Ave, Livermore, CA 94550, USA.
+Abstract
+Scientific machine learning methods such as physics-informed neural networks (PINNs) increasingly rely on
+domain decomposition for better scalability while solving partial differential equations (PDEs) over complex
+geometries, yet the resulting composite loss comprising residual, boundary, and interface terms is highly susceptible
+to conflicting gradients that degrade training. This work bridges domain decomposition with projection-based
+gradient surgery to systematically mitigate such conflicts in 2D and 3D settings. We evaluate two existing projection-
+based algorithms, PCGrad and ConFIG, and identify their performance degradation in specific scenarios such as 3D
+domains with multiple overlapping interfaces. To address this limitation, we propose Norm-PCGrad, a normalized
+variant that achieves state-of-the-art accuracy across a range of 2D and 3D domain decomposition problems. Across
+the benchmarks considered, Norm-PCGrad consistently achieves the lowest relative L2 error compared to training
+without gradient surgery as well as to existing algorithms such as PCGrad and ConFIG, while incurring negligible
+additional computational overhead. We further investigate gradient conflict mitigation through curvature-aware
+optimization by utilizing the quasi-Newton SSBroyden optimizer, either independently or in combination with
+Adam, and compare the resulting performance gains against Norm-PCGrad. To improve computational efficiency
+of domain decomposition frameworks such as Extended PINN (XPINN), we propose replacing vanilla PINNs in
+selected subdomains with separable architectures such as Separable PINN (SPINN), reducing the computational
+cost from quadratic (or cubic) to linear. We additionally demonstrate that gradient surgery extends to physics-
+informed Kolmogorov–Arnold Networks (PIKANs), yielding substantial accuracy improvements for 3D domain
+decomposition and confirming the generality of the proposed approach across network architectures. We also
+identify a previously unreported PINN failure mode in domain decomposition, where an incorrect choice of interface
+location leads to a physically inconsistent trivial solution, independent of the gradient surgery employed. The code
+is available at https://github.com/ParamIntelligence/Conflict-Free-Domain-Decomposition. The YouTube video
+for the 2D Poisson test case is available at YouTube Video.
+Keywords: Physics-Informed Neural Networks, Gradient Conflicts, Gradient Surgery, Quasi-Newton Optimizers, Domain
+Decomposition, Kolmogorov Arnold Networks;
+1
+Introduction
+Solving partial differential equations (PDEs) over complex geometries is a fundamental challenge across science and
+engineering disciplines. While conventional numerical methods such as the finite element method (FEM) have long
+served as reliable tools for this purpose, they often require expensive mesh generation and can become computationally
+prohibitive for large-scale three-dimensional problems. Moreover, these conventional approaches can struggle with
+inverse problems and high-dimensional problems, where the computational cost and complexity can increase substan-
+tially. The emergence of physics-informed neural networks (PINNs) [1] and their variants [2, 3, 4] has introduced
+a promising mesh-free alternative by embedding the governing physical laws directly into the neural network loss
+function. This framework not only avoids the need for explicit mesh generation but also offers a flexible approach
+for addressing ill-posed inverse problems and high-dimensional problems that are often challenging for conventional
+numerical methods. See, for example, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] for a broad range of applications of
+PINNs. However, PINNs face their own scalability challenges, particularly when applied to large or geometrically
+complex domains, motivating the adoption of domain decomposition strategies [17, 18, 19, 20, 21, 22] that partition
+∗Corresponding author: Ameya D. Jagtap (ajagtap@wpi.edu, ameyadjagtap@gmail.com)
+1
+arXiv:2609.14841v1  [cs.LG]  13 Sep 2026
+
+
+the problem into smaller, tractable subdomains. This decomposition, while beneficial for scalability, introduces
+additional loss terms to enforce solution continuity across subdomain interfaces, making the resulting composite loss
+function susceptible to conflicting gradients that can degrade training. Addressing these gradient conflicts in the
+context of domain decomposition, through both gradient surgery and curvature-aware optimization, forms the central
+focus of this work. While a formal mathematical definition is described later in this paper, a conflict-free gradient
+can be qualitatively defined as gradient that has non-negative cosine similarity with all its counter-parts in the loss
+landscape.
+Gradient Surgery: In the realm of deep learning, it is well-known that multi-task learning is harder than
+single-task learning, although the full picture of this difficulty is not yet well understood. One widely studied cause of
+this difficulty has been attributed to the destructive interference between task gradients, commonly referred to as
+gradient conflict in the literature. A simple, yet effective approach to overcome this conflict was proposed by Yu et al.
+[23] in the context of multi-task learning. PCGrad was proposed in their work as a computationally efficient remedy
+that projects conflicting gradients based on their cosine similarity in the shared parameter space. An earlier work in
+this direction −GradNorm [24] utilized adaptive tuning of the gradient magnitudes to facilitate multi-task learning
+using deep neural networks. They ensured similar learning speed for individual tasks in a multi-task learning setup to
+mitigate the imbalance between tasks during model training. Another work, Impartial Multi-task Learning-Gradient
+(IMTL-G) [25], achieved gradient balance and loss balance simultaneously, with the authors recognizing both as
+complementary to one another in the context of multi-task learning. Inspired by the aforementioned methods, a more
+recent work [26] utilized simultaneous rescaling and balancing of multi-task gradients to further improve upon the
+performance of PCGrad on segmentation and depth estimation tasks in computer vision.
+With the advent of physics-informed machine learning [1], the gradient surgery techniques developed for multi-task
+learning were adopted for balancing the gradients of different loss terms involved while solving differential equations
+using neural networks. An earlier work [27] in this direction utilized PCGrad to mitigate the gradient imbalance
+across loss terms while solving multi-state systems using PINNs, showing substantial improvement in accuracy that
+was otherwise hindered during model training. A more recent work by Liu et al. [28] proposed ConFIG, inspired by
+existing algorithms like PCGrad, for mitigating gradient conflicts while solving PDEs using PINNs and demonstrated
+state-of-the-art performance for linear and non-linear PDEs. Furthermore, their experiments showed that both
+ConFIG and PCGrad surpassed the performance of methods like Learning Rate Annealing (LRA) [29], that adaptively
+mitigates any loss imbalance between different loss terms within the composite loss function, and others like IMTL-G
+that performs gradient surgery to ensure an equal learning speed across various loss terms before backpropagation.
+Separately, Thanasutives et al. [30] leveraged adversarial training strategies [31] in combination with multi-task
+learning techniques to improve generalization of PINN-like architectures for handling a range of PDEs. Here, adver-
+sarial training was used to generate samples that maximize the loss, which in turn enabled the training procedure to
+focus on reducing these high-loss regions to attain better generalization, as opposed to merely overfitting to a specific
+type of PDE. Fundamentally, gradient surgery [23, 25, 28] and dynamic weighting methods [29] can be considered as
+two independent strategies used to improve training of physics-informed neural networks. More precisely, the dynamic
+weighting strategy is meant to tackle the magnitude imbalance of the loss terms, while gradient surgery tackles the
+directional conflicts between gradients of the loss terms in the loss landscape. Since dynamic weighting scales the loss
+terms to suppress the dominance of any one term over the others, gradient conflicts can still be present even after
+mitigating the magnitude imbalance, as was shown by previous works [28].
+Domain Decomposition: Domain decomposition is a well-developed strategy that is widely adopted to make solving
+large-scale numerical problems tractable using parallel computing hardware. More recently, this strategy has also
+been adopted for improving the computational efficiency of architectures like PINNs [1], which become prohibitively
+expensive to train for large-scale problems of practical relevance. To address these challenges, the conservative PINN
+(cPINN) [18] introduced the first domain-decomposition-based PINN framework specifically designed for conservation
+laws. Further, XPINN [17] was proposed as an efficient improvement upon PINNs to solve the problem across
+decomposed subdomains, potentially leveraging multiple hardware resources to accelerate the training process. Other
+works [32] in this direction leveraged the Schwarz alternating method to facilitate coupling of PINNs with conventional
+numerical methods like FEM via domain decomposition. A further direction was pursued by Pan et al. [33], who
+utilized POD-generated local basis functions within each subdomain, thereby reducing the computational cost while
+preserving the essential dynamics at the global scale. While the initial works on domain decomposition [17] ensure
+continuity across subdomain interfaces by modeling this as an additional loss term in the composite loss function
+of PINNs, some recent works [20] [34] have proposed to model the interface as a hard constraint, which ensures
+exact satisfaction of interface continuity and thereby avoids the need for an additional loss term. However, it is
+2
+
+
+worth noting that hard constraints often require careful selection of the solution ansatz prior to training and may
+not be applicable for large-scale 3D problems where choosing a suitable ansatz becomes non-trivial or non-intuitive.
+Furthermore, Snyder et al. [32] observed that strong enforcement of boundary conditions via a solution ansatz does
+not always improve convergence and can even hinder training due to the sensitivity of the scaling functions to their
+hyperparameters, particularly for higher-dimensional or multi-subdomain settings.
+Along a complementary direction, DADD-PINN [35] showcased orders of magnitude improvement in continuity
+across the interface through an adaptive sampling strategy combined with the utilization of overlapping interfacial
+domains across the different subdomains. However, their work was limited to 2D domains, and such overlapping
+strategies [35, 36] can become intractable for 3D domains [37] encountered in practice. Other notable works in
+this direction include D3M [38] and DeepDDM [39], which utilized deep learning-based domain decomposition
+to solve elliptic PDEs, and Mosaic Flows [40], which proposed a transferable framework for coupling pre-trained
+subdomain-local PINNs to solve PDEs on unseen domains. It is worth noting that domain decomposition in the
+context of PINNs can be leveraged in two distinct ways: (i) using domain decomposition to facilitate PINN training
+offline, where subdomain-local models are trained jointly via interface coupling [17, 32, 38, 39], and (ii) coupling
+pre-trained subdomain-local PINNs online to solve PDEs on unseen or composite domains [40]. The current work
+follows the former approach, where domain decomposition is utilized to improve the training of PINNs by decomposing
+the problem into manageable subdomains that are solved simultaneously with interface conditions ensuring solution
+continuity.
+Optimizers: While most previous discussions focused on gradient projection-based strategies to overcome conflicts
+between the individual loss terms within the composite loss function during model training, there has also been
+considerable emphasis on choosing a suitable optimizer to address such conflicts in the context of solving PDEs using
+PINN-based architectures.
+One of the initial works along this line proposed a scale-invariant approach called MultiAdam [41] that segregates
+the loss terms (such as the PDE loss and boundary loss) into separate groups, each equipped with its own optimizer
+state. The gradients for each group are computed independently, and the resulting updates are aggregated before
+modifying the trainable parameters of the model. The proposed strategy consistently showcased superior performance,
+especially for cases where projection-based methods like PCGrad were shown to fail. In a related effort, Hwang et al.
+[42] proposed adjusting the gradients such that the resulting update lies within the dual-cone region, where the inner
+product between the gradient vectors is known to be non-negative (or conflict-free). Beyond first-order methods,
+some recent works [43] have advocated for quasi-Newton methods such as SSBroyden and SSBFGS for improving
+the convergence and accuracy of PINN-based architectures. While the SOAP [44] (ShampoO [45] with Adam in the
+Preconditioner’s eigenbasis) optimizer has also been explored for mitigating gradient imbalances [46] over first-order
+optimizers like Adam [47], recent empirical studies [43] have clearly shown self-scaled variants of quasi-Newton-based
+optimizers to outperform both SOAP and other first-order optimizers across a range of PDE benchmarks. Optimizers
+such as SOAP [44] have been analyzed and demonstrated to overcome gradient conflicts through gradient whitening
+which is essentially rescaling the gradients by local curvature information leading to dampening of ill-conditioned
+components in a multi-objective loss landscape.
+Kolmogorov-Arnold Networks: Kolmogorov-Arnold Networks (KANs) [48] are a notable recent development in
+the scientific machine learning community that motivates the design of interpretable architectures as opposed to
+conventional black-box models based on MLPs. Although the fundamental building blocks of this architecture were
+proposed in the 20th century through the seminal contributions of Kolmogorov [49, 50] and Arnold [51, 52], it was only
+recently that researchers recognized their potential when combined with modern advancements in backpropagation
+to formulate KANs as an independent architecture. Although the original architecture [48] is based on spline basis
+functions, it has been found to be computationally expensive, and many recent works have proposed alternate
+formulations such as Chebyshev polynomials [53] and radial basis functions [54], which have been shown to be
+computationally more efficient. Despite the known numerical instability of Chebyshev polynomials at higher orders,
+the Chebyshev basis has been identified as a suitable candidate especially for solving PDEs [55], mainly owing to
+desirable traits such as orthogonality that enable these basis functions to accurately learn and facilitate internal
+representations of solutions to many different PDEs. Owing to their interpretability, KANs have also been extensively
+utilized for solving physical systems [56], high-dimensional PDEs [57], and operator learning [58]. A more recent work
+proposing Feature-Enriched KAN [59] (FEKAN) showcased state-of-the-art performance for different basis functions
+across a range of tasks that include function approximation, solving PDEs, and operator learning.
+The primary work on domain decomposition using KANs was proposed by Howard et al. [60], inspired by the Finite
+Basis PINN (FBPINN) [20] architecture. In their work, they utilized the B-spline basis for their Finite Basis KAN
+3
+
+
+(FBKAN) architecture, with smaller overlapping subdomains that were trained in parallel for multiscale problems
+of varying frequencies. Another recent work proposed a hybrid architecture −HPKM-PINN [61] that utilizes both
+MLP and KAN simultaneously to capture the global low-frequency and local high-frequency features, respectively,
+of a given multiscale problem. In both of the aforementioned works [60, 61] on domain decomposition, overlapping
+subdomains are handled similar to FBPINN [20], and the solution ansatz utilizes partition-of-unity basis functions
+to facilitate continuity across the multiple interfaces. However, it is worthwhile to note that these existing works
+are strictly limited to 2D domains, since choosing a suitable unity function for the ansatz becomes non-trivial for
+3D domains, and further investigation is needed to assess the capability of KAN-based domain decomposition to
+efficiently handle complex 3D geometries.
+It is evident that while gradient surgery is utilized in the context of PINNs to mitigate gradient conflicts between
+different loss terms present in a composite loss function, the current literature does not provide any clarity on its
+utilization in scenarios such as domain decomposition [17], where multiple subdomains are solved simultaneously.
+Unlike in a typical PINN [1] problem where the total loss comprises a fixed number of individual loss terms, domain
+decomposition, on the other hand, involves handling additional loss terms to ensure continuity across the interfaces of
+the different subdomains. In such a setup, each subdomain needs to be solved simultaneously while minimizing the
+losses and ensuring continuity across all the interfaces. Consequently, domain decomposition is more prone to gradient
+conflicts due to the interplay between the various loss terms within the composite loss function, and we address this
+extensively in the current work using gradient surgery. The contributions of this work are as follows:
+• We recognize gradient imbalance as a critical concern for domain decomposition methods. Accordingly, we
+investigate the efficacy of some of the existing projection-based methods to ensure conflict-free gradients for
+domain decomposition. Inspired by PCGrad, we also propose a simple yet effective formulation called Norm-
+PCGrad to ensure conflict-free gradients for 2D and 3D domain decomposition. We showcase the effectiveness
+of the proposed methods through rigorous empirical studies in the results section of this paper.
+• We propose to assign separable architectures such as SPINN [62] to specific subdomains as opposed to naively using
+PINN [1] in all scenarios. This serves as a computational enhancement for the existing domain decomposition
+methods by facilitating linear computational complexity for certain specific subdomains. For instance, if an
+arbitrary domain Ωcan be decomposed into subdomains Ω1 and Ω2, and if Ω1 is Euclidean, then we propose
+to utilize a SPINN-PINN configuration (denoting the architecture assigned to each subdomain) as opposed to
+PINN-PINN for improved computational efficiency.
+• We further tackle gradient conflicts in the context of domain decomposition through curvature-aware optimization
+using self-scaled variants [63] of quasi-Newton optimizers (such as SSBroyden), either independently or in
+combination with first-order optimizers like Adam [47]. Specifically, we study the effectiveness of SSBroyden
+both as a standalone remedy for gradient conflicts and in conjunction with gradient surgery.
+• Finally, we extend all the proposed strategies to facilitate fast, conflict-free 2D and 3D domain decomposition for
+architectures based on Kolmogorov-Arnold Networks, supporting both non-overlapping interfaces and overlapping
+interfacial domains. In doing so, we overcome the limitations of existing works on domain decomposition using
+KANs [60] [61], which were demonstrated only for simple 2D domains with overlapping interfaces and are
+challenging to extend to 3D domains in their current setup.
+2
+Methodology
+PINNs incorporate physical laws into neural network training by embedding governing equations directly into the loss
+function. This physics-based regularization constrains the admissible solution space and enables accurate modeling
+even with limited or noisy data. One of the major concerns with the framework is its immense computational cost
+incurred while training a model. To this end, an effective alternative based on domain decomposition was proposed to
+tackle this inefficiency by decomposing a domain into multiple sub-domains and solving them as manageable chunks
+especially in a resource-constrained environment.
+We consider a parametric PDE of the general form,
+N(u; β) = f(x),
+x ∈Ω⊂Rd,
+(1)
+Bk(u) = gk(x),
+x ∈Γk ⊂∂Ω.
+(2)
+Here, k = 1, 2, . . . , nb, and N(·) denotes a (possibly nonlinear) differential operator and Bk(·) represents a boundary
+operator corresponding to Dirichlet, Neumann, or Robin conditions. Furthermore, u is the solution approximated
+4
+
+
+by a neural network surrogate, β denotes the physical parameter(s) of the parametric PDE, and f(x) is the forcing
+term. While the above formulation is generic, it is worthwhile to note that time, t, can be incorporated as one of the
+components of x and initial conditions treated as a specific type of boundary condition for a given spatiotemporal
+domain.
+To enable domain decomposition, the domain Ωis partitioned into Nsd non-overlapping sub-domains, Ω= SNsd
+q=1 Ωq,
+with shared interfaces Γqq′ = ∂Ωq ∩∂Ωq′ between adjacent sub-domains Ωq and Ωq′. Within each sub-domain, the
+unknown solution u(x) is approximated by a separate parametric model uθq(x), where θq denotes its trainable
+parameters and θ = {θq}Nsd
+q=1 collects all parameters. For notational convenience, we define the qth-subdomain PDE
+residual
+rθq(x) = N
+ uθq(x); β
+
+−f(x).
+(3)
+The models are trained jointly by minimizing the XPINN sub-domain loss function of the following form:
+Lq(θ) = λPDE LPDE(θ) + λu Lu(θ) + λuavg Luavg(θ) + λR LR(θ),
+(4)
+where the individual terms are defined as
+LPDE(θ) =
+Nsd
+X
+q=1
+1
+N q
+r
+Nq
+r
+X
+i=1
+rθq(xq,i
+r )
+2 ,
+(5)
+Lu(θ) =
+Nsd
+X
+q=1
+1
+N q
+u
+Nq
+u
+X
+i=1
+uθq(xq,i
+u ) −uq,i2 ,
+(6)
+Luavg(θ) =
+Nsd
+X
+q=1
+1
+N q
+I
+Nq
+I
+X
+i=1
+uθq(xq,i
+I ) −
+
+u(xq,i
+I )
+		
+2
+,
+(7)
+LR(θ) =
+Nsd
+X
+q=1
+1
+N q
+I
+Nq
+I
+X
+i=1
+rθq(xq,i
+I ) −rθq+(xq,i
+I )
+
+2
+.
+(8)
+Here, {xq,i
+r }Nq
+r
+i=1 are the residual (collocation) points in the interior of Ωq; {xq,i
+u }Nq
+u
+i=1 are the supervised points with
+prescribed boundary/initial values or observed data uq,i; and {xq,i
+I }
+Nq
+I
+i=1 are the points on the interfaces of Ωq, with q+
+indexing the adjacent sub-domain across the interface. The interface average is defined as {{u}} = 1
+2
+ uθq + uθq+
+
+.
+As in conventional deep neural networks, the trainable parameters θ are optimized via backpropagation using
+automatic differentiation. Equation (4) predominantly comprises four components −PDE residual loss (LPDE),
+data loss (Lu), average solution continuity loss (Luavg), and residual continuity loss (LR). LPDE and Lu are the
+loss functions responsible for enforcing the PDE and the boundary and/or initial conditions, respectively, within
+each sub-domain. On the other hand, Luavg and LR facilitate continuity across the interfaces shared between the
+sub-domains. Each of these loss components is prioritized based on the weights −λPDE, λu, λuavg, and λR, which
+are typically assigned prior to the model training.
+Remark. Similar to PINNs, XPINN also emphasizes on the importance of choosing optimal weights that play a crucial
+role in the convergence of the loss function. It is worthwhile to note that suboptimal weighting of the loss terms can
+adversely affect the model training. To this end, dynamically adapting weights during training is a potential strategy
+that is prevalent in the literature. However, we note that the dynamic weighing strategy comes at an additional
+computational cost since the weights would be no longer fixed, but instead are trainable parameters. To this end,
+gradient surgery [23] provides an alternate strategy based on the projection of the gradients for the individual loss
+terms. Gradient surgery not only ensures conflict-free gradients for the loss terms but also ensures minimization of
+all the loss terms simultaneously within a composite loss function irrespective of the fixed weights chosen prior to
+model training. In our experiments we fix λPDE = λR = 1 and set the data (λuavg) and interface (λu) weights larger
+to emphasize continuity similar to the strategy adopted by XPINN [17]. To this end, we note that even if the chosen
+weights are suboptimal, the model still attains superior accuracy and convergence through gradient surgery which is
+discussed in our work. A previous work [28] has also demonstrated performance gains of PCGrad and ConFIG (based
+on gradient surgery) over LRA [64] (based on dynamic weights) while solving a range of different PDEs.
+5
+
+
+Respecting the Implicit Coupling at the Interface
+In the context of domain decomposition using methods like XPINN [17], the interface is modeled using an interface
+loss function as shown in Equation (4). Minimizing this loss function is critical for attaining continuity of the solution
+across the interface spanning any two subdomains. In other words, the interface loss function can be considered as an
+implicit coupling between any two subdomains that must be respected for maintaining solution continuity.
+As discussed earlier, conflicting gradients are prevalent in the context of PINNs since their training involves
+optimizing a composite loss function comprising individual loss terms for PDE residuals, boundary conditions, and
+initial conditions. Recent works have shown such conflicts to be detrimental for training of PINNs, and these conflicts
+can become more pronounced with an increasing number of loss terms within the composite loss function. The existing
+methods for gradient surgery (such as PCGrad [23], ConFIG [28]) are typically based on gradient projections, which
+involve recognizing conflicting gradients and projecting them such that their inner product remains non-negative,
+thereby rendering the gradients conflict-free.
+Gradient conflicts are expected to be more pronounced in domain-decomposition methods such as XPINN, which
+involve multiple loss terms across subdomains and interfaces. However, applying gradient surgery in this setting can
+alter the directions of interface gradients, potentially disrupting the implicit coupling between adjacent subdomains
+and introducing discontinuities at the interfaces. Thus, while gradient surgery can effectively mitigate conflicts in
+PINN-like architectures, it may be counterproductive for domain decomposition. In this work, we investigate the
+effectiveness of existing gradient surgery methods for XPINN and propose alternative strategies that mitigate gradient
+conflicts while preserving the coupling of interface gradients.
+Gradient Surgery
+Figure 1: Gradient surgery overview. Comparison of gradient update strategies for two conflicting gradients
+g1 = ∇θL1(θ) and g2 = ∇θL2(θ). Top row (gradient surgery): ConFIG normalizes each orthogonal projection before
+summing and rescales by the total projection length; PCGrad sums the orthogonal projections O(g1, g2) and O(g2, g1)
+at their original magnitudes; Norm-PCGrad normalizes each projection to unit length U(·) before summing, attaining
+the same conflict-free direction as ConFIG but with a different magnitude rule. Bottom row (scaling-based methods):
+IMTL-G rescales the original gradients using task-specific weights α1, α2 to ensure equal decrease across loss terms
+without explicit projections; dynamic weighting and NTK-based weights scale the gradients using heuristic-dependent
+factors (β1, β2 and γ1, γ2, respectively). Unlike gradient surgery, these scaling-based methods do not resolve gradient
+conflicts; instead, they scale the different components of gradients based on magnitude imbalance. Note: The scaling
+of the gradients shown is for illustrative purposes only.
+The current work recognizes choosing these weights and fixing them prior to model training as a sub-optimal and
+instead explores gradient surgery as an effective way of dealing with sub-optimal weights directly in the loss landscape
+through conflict-free gradients. An alternate strategy called as Norm-PCGrad (as shown in Figure 1) is proposed in
+6
+
+
+the current work, inspired by the existing PCGrad [23] algorithm that was originally proposed for multi-task learning.
+In addition to PCGrad, we also test the efficacy of another algorithm for gradient surgery, ConFIG [28] for domain
+decomposition. The algorithm proposed in this work, −Norm-PCGrad is described as Algorithm 1.
+By inspection of Figure 1 with two loss terms, it is worthwhile to observe the similarities and differences between
+the algorithms of gradient surgery. While the algorithms share a similarity due to their shared objective of producing
+a conflict-free update direction, their differences mainly arise from the specific strategies they adopt to avoid conflicts
+between the gradients in the loss landscape. In PCGrad, typically a loss-specific gradient is projected onto the normal
+plane of others and vice versa, while algorithms like IMTL-G [25] rescale the loss-specific gradients (using α1 and α2
+with reference to Figure 1) to ensure an equal decrease of all loss terms without any explicit gradient projections.
+On the other hand, ConFIG attains a trade-off where it performs orthogonal projections similar to PCGrad while
+ensuring an equal decrease rate for all loss terms like IMTL-G. The proposed Norm-PCGrad is an extension of
+PCGrad where the gradients are orthogonally projected and the individual components are normalized before their
+accumulation, as shown in Algorithm 1. We demonstrate that Norm-PCGrad attains conflict-free gradients while
+ensuring an equal decrease rate similar to ConFIG. However, it is worth noting the differences in their formulations
+that lead to differences in performance while solving PDEs through domain decomposition.
+It is also worth noting that, the dynamic weighting methods, including LRA, GradNorm, and NTK-based
+approaches, rescale loss terms and their gradients without changing their directions. Thus, like IMTL-G, they cannot
+resolve gradient conflicts. Given the demonstrated advantage of gradient surgery over dynamic weighting for PDEs
+[28], we focus on gradient-surgery methods for obtaining conflict-free gradients in domain-decomposed PDE solvers.
+Conflict-Free Gradient Updates
+The forthcoming discussion is with reference to Figure 1 which illustrates the conflict between only two gradients
+for the purpose of concise discussions. The composite objective in Equation (4) produces one gradient per term,
+gi = ∇θLi(θ). A plain summation P
+i gi can point along a direction that increases an individual loss whenever the
+terms disagree: an update gc conflicts with the decrease of Li when g⊤
+i gc < 0. PCGrad [23] and ConFIG [28] both
+resolve such conflicts using the same two operators, which we state first for a consistent presentation. For two loss
+terms we denote the corresponding gradients by g1 and g2. The normalization and orthogonality operators are defined
+in the literature as follows:
+U(g) =
+g
+∥g∥+ ε,
+O(gi, gj) = gj −g⊤
+i gj
+∥gi∥2 gi,
+(9)
+where ε is a small constant for numerical stability. The operator O(gi, gj) returns the component of gj orthogonal to
+gi, and the cosine similarity between two gradients is written as
+Sc(gi, gj) =
+g⊤
+i gj
+(∥gi∥∥gj∥+ ε).
+(10)
+PCGrad.
+When the two gradients conflict, i.e. g⊤
+1 g2 < 0, PCGrad projects each gradient onto the plane orthogonal
+to the other and sums the two components,
+gPCGrad = O(g1, g2) + O(g2, g1),
+(11)
+and leaves the gradients unchanged when they do not conflict. The resulting direction is conflict-free, but since the
+orthogonal components are added at their original magnitudes, gPCGrad is biased toward the loss with the larger
+gradient and its projection lengths onto g1 and g2 are unequal.
+ConFIG.
+ConFIG builds on the same two orthogonal components but rescales each to unit length before summing.
+This removes the magnitude bias and fixes the update direction so that both losses receive an equal projection, and
+hence a uniform decrease rate,
+gv = U
+
+U
+ O(g1, g2)
+
++ U
+ O(g2, g1)
+
+.
+(12)
+The final update scales this direction by the sum of the projection lengths of both loss-specific gradients onto it,
+gConFIG = G(g1, g2) =
+ g⊤
+1 gv + g⊤
+2 gv
+
+gv.
+(13)
+The magnitude in Equation (13) adapts to the level of conflict: it increases when the loss-specific gradients are
+aligned (a favorable descent direction) and decreases when they oppose one another, which prevents the optimizer
+from stalling in a local minimum of a single term.
+7
+
+
+Norm-PCGrad.
+It is interesting to note that for the two-loss case, PCGrad shares the same conflict-free direction
+as ConFIG and differs only in their magnitude rule [28] and this is also depicted in Figure 1. To this end, we introduce
+Norm-PCGrad through the current work which again shares similarities with PCGrad and ConFIG in terms of their
+resultant directions while differ only in the magnitude rule for the two-loss case as follows:
+gNorm−PCGrad = U(O(g1, g2)) + U(O(g2, g1)).
+(14)
+Unlike ConFIG which shares similarities in its updates only for the two-loss case, Norm-PCGrad on the other hand
+attains a middle ground between PCGrad and IMTL-G for any number of loss terms. This is because Norm-PCGrad
+shares the update rule similar to PCGrad with an additional step of normalization that makes it also align with
+update rule of IMTL-G. The extension of PCGrad to Norm-PCGrad is described as Algorithm 1.
+How does Norm-PCGrad ensure conflict-free gradients for domain decomposition?
+As discussed in
+the previous section, domain decomposition especially using methods like XPINN involves an implicit coupling
+between the subdomains through an interface loss function as well as their corresponding gradients to ensure interface
+continuity. While the two subdomains share the same magnitude of the interface loss, their gradients can be entirely
+different and point towards different directions to minimize the same interface loss within their respective subdomains.
+To this end, we note that the magnitude of the gradients resulting from PCGrad is biased towards the direction of the
+gradient with the largest magnitude and this bias is localized to a given subdomain. It is also worth noting that the
+bias in the resulting gradients for one subdomain can be independent of the other, leading to the resulting interface
+gradients not respecting the coupling at the interface between the two subdomains after the gradient projections.
+This in turn leads to discontinuities at the interface in spite of using the state-of-the-art algorithms for mitigation of
+conflicting gradients.
+However, by explicitly normalizing the resulting gradients after their projections as shown in Equation (14),
+Norm-PCGrad suppresses any abrupt changes in the resultant gradient direction towards the gradient with a larger
+magnitude.
+Instead, it ensures an equal priority to all directions, and also respects the coupling between the
+subdomains, facilitated by the interface gradients. We demonstrate their performance enhancement through detailed
+empirical studies for both 2D and 3D domain decompositions and showcase their difference in performance compared
+to the existing state-of-the-art algorithms like PCGrad and ConFIG.
+Formulation of ConFIG to more than two losses.
+The objective in Equation (4) contains four terms, so the
+two-term form of Equations (11)–(13) is a special case. For m losses, ConFIG replaces the explicit orthogonal sum
+with the pseudoinverse form:
+gv = U
+
+U(g1), . . . , U(gm)
+−⊤1m
+
+,
+gConFIG =
+ m
+X
+i=1
+g⊤
+i gv
+!
+gv,
+(15)
+where [·]−⊤is the pseudoinverse of the transposed gradient matrix and 1m is the all-ones vector; setting the direction
+weights to 1m recovers the uniform decrease rate of Equation (12). PCGrad and the proposed Norm-PCGrad
+generalizes instead by looping over losses in random order and projecting out one conflict at a time, which no longer
+guarantees a conflict-free direction once more than two terms are involved. We adopt Equation (15) for the four-term
+loss of Equation (4). It is also worthwhile to note that in the current work, we also note that the sampling of the
+gradients need not always be performed in the random order specifically in the context of solving PDEs.
+In the context of PINNs, ConFIG [28] and PCGrad have demonstrated state-of-the-art performance across a
+range of PDEs compared with adaptive loss-weighting methods, including linear rate annealing [64], MinMax [65],
+and ReLoBRaLo [66]. These results motivate our investigation of projection-based methods for mitigating gradient
+conflicts in domain-decomposed PDE solvers.
+Curvature-Aware Optimization
+The previous discussions on gradient surgery dealt with the alignment of gradients corresponding to different loss
+terms within a composite loss function to mitigate the conflicting gradients in the loss landscape. However, it is
+worthwhile to note that gradient conflicts can also be resolved by appropriately choosing a suitable optimizer that
+can lead to conflict-free updates during the model training.
+To this end, several studies on PDEs have demonstrated the benefits of curvature-aware optimizers, such as
+BFGS, over widely used first-order methods such as Adam. By leveraging Hessian information, curvature-aware
+methods can achieve faster convergence than optimizers based solely on the gradient. However, Newton-type methods
+8
+
+
+Algorithm 1 Norm-PCGrad/PCGrad
+Require: Model parameters θ, task minibatch B = {Tk}
+1: gk ←∇θLk(θ) ∀k
+2: gPC
+k
+←gk ∀k
+3: for Ti ∈B do
+4:
+for Tj
+uniformly
+∼
+B \ Ti in random order do
+5:
+if gPC
+i
+· gj < 0 then
+6:
+// Subtract the projection of gPC
+i
+onto gj
+7:
+Set gPC
+i
+= gPC
+i
+−gPC
+i
+· gj
+∥gj∥2 gj
+8:
+end if
+9:
+end for
+10: end for
+11: return update ∆θ = gPC = P
+i gPC
+i
+// For PCGrad
+12: Normalize the gradients before update: gNorm-PC
+i
+=
+gPC
+i
+gPC
+i
+
+// For Norm-PCGrad
+13: return update ∆θ = gNorm-PC = P
+i gNorm-PC
+i
+// For Norm-PCGrad
+incur prohibitive computational costs due to the evaluation and inversion of dense Hessians and can be unstable
+for ill-conditioned problems. Quasi-Newton methods provide a practical alternative by approximating the Hessian,
+reducing computational cost while retaining valuable curvature information.
+Based on recent findings [43] [46], quasi-Newton optimizers in combination with Adam or independently have
+been shown to improve the convergence and accuracy of PINNs for a range of PDEs. The general formulation of the
+Broyden family of quasi-Newton methods and its derivation are provided in Appendix E. It is worth noting that the
+performance of Broyden class optimizers can deteriorate for ill-conditioned problems. A potential alternative was
+proposed as self-scaled variants that overcome this limitation by scaling the Hessian approximation using a positive
+scalar τk. The self-scaled Broyden (SSBroyden) optimizer is defined with the Hessian approximation of the following
+form,
+Bk+1 = τk
+
+Bk −Bksks⊺
+kBk
+s⊺
+kBksk
++ θk(s⊺
+kBksk)wkw⊺
+k
+
++ yky⊺
+k
+y⊺
+ksk
+(16)
+with its inverse update given by,
+Hk+1 = τk
+
+Hk −Hkyky⊺
+kHk
+y⊺
+kHkyk
++ ϕk(y⊺
+kHkyk)vkv⊺
+k
+
++ sks⊺
+k
+y⊺
+ksk
+where sk = xk+1 −xk represents the change in parameters, yk = ∇fk+1 −∇fk represents the change in gradients,
+and Hk = B−1
+k
+approximates the inverse Hessian. The remaining terms vk, ϕk, and θk are defined in Appendix E.
+Specifically, the JAX-based optimistix [67] library in combination with the SSBroyden [68] wrapper was used for
+the implementation of SSBroyden in the current work. While the source implementation of the wrapper [68] is based
+on Equinox, the implementation in the current work was modified to facilitate JIT-compilation for better speed and
+compatibility with our existing Flax implementation of the neural networks.
+Kolmogorov-Arnold Networks
+KANs [48] replace the fixed activation functions of conventional MLPs with learnable univariate basis functions on
+the network edges, enabling function approximation grounded in the Kolmogorov-Arnold representation theorem.
+Although the original architecture is based on spline basis functions, it is known to struggle with high computational
+cost. Faster alternatives such as the Chebyshev basis [53] have been proposed, though they are shown to be highly
+unstable [55] in the context of solving PDEs. To this end, the recently proposed Feature-Enriched KAN (FEKAN) [59]
+overcomes this computational bottleneck while improving stability, convergence, and attaining extreme parametric
+efficiency compared to KAN. The formulation of FEKAN is defined as follows,
+f
+ x, u1(x), . . . , um(x)
+
+=
+2(n+m)+1
+X
+i=1
+ϕi
+ 
+n
+X
+q=1
+ψq(xq)
+|
+{z
+}
+original inputs
++
+m
+X
+j=1
+ψn+j(uj(x))
+|
+{z
+}
+additional features
+!
+(17)
+9
+
+
+The additional terms in Equation (17) emerge from the feature enrichment, which can range from higher-order
+polynomials to Fourier features. Essentially, the representation of KAN can be derived from FEKAN in Equation (17)
+by removing the additional features.
+Beyond computational efficiency, KANs are distinguished by their interpretability, enabled by learnable internal
+basis functions absent in conventional MLPs. This property has also been leveraged for discovering governing
+physical laws from data by incorporating symbolic structures into the architecture [69]. For PDEs, physics-informed
+KANs (PI-KANs) [70, 71, 56, 55] incorporate governing equations into the loss function, analogous to PINNs, with
+trainable basis-function parameters. PI-FEKAN [59] follows the same framework but augments the KAN with a
+feature-enrichment layer that maps input coordinates to a richer representation before the KAN backbone, using
+orthogonal sine-cosine pairs at varying frequencies as Fourier features, with the number of enrichment terms serving
+as an additional architectural hyperparameter.
+In the context of domain decomposition, we observe a lack of relevant studies utilizing KANs. The existing works
+are limited to 2D domains where continuity is ensured through predefined unity basis functions for the ansatz, which
+can become non-trivial for 3D domains. The current work extends the proposed strategies for overcoming gradient
+conflicts in domain decomposition to KAN-based architectures. Specifically, we utilize the FEKAN architecture for
+the empirical studies to showcase the efficacy of gradient surgery using the proposed Norm-PCGrad to attain higher
+accuracy at minimal-to-no increase in computational cost. For a comprehensive discussion of the recent advancements
+in KAN architectures and practical guidance for practitioners, the reader is referred to the review by Noorizadegan et
+al. [72].
+2.1
+Theoretical Study for Gradient Surgery
+Theorem 1 (Conflict-free property of PCGrad with two-gradients). For two nonzero, non-collinear conflicting
+gradients, the PCGrad update
+gPCGrad = p1 + p2
+satisfies
+g⊤
+1 gPCGrad = ∥p2∥2 > 0,
+g⊤
+2 gPCGrad = ∥p1∥2 > 0.
+Therefore, gPCGrad is a simultaneous first-order descent direction for both loss functions. More details on proof of
+theorem is described in Appendix A.
+Theorem 2 (Magnitude bias of PCGrad and normalization). Let
+Sc(g1, g2) =
+g⊤
+1 g2
+∥g1∥∥g2∥
+denote the cosine similarity between the two gradients. Then the orthogonalized components satisfy
+∥p1∥= ∥g2∥
+p
+1 −c2,
+∥p2∥= ∥g1∥
+p
+1 −c2.
+Consequently, the relative first-order contribution of the two losses under PCGrad is
+g⊤
+1 gPCGrad
+g⊤
+2 gPCGrad
+= ∥g1∥2
+∥g2∥2 .
+(18)
+Thus, PCGrad exhibits a quadratic dependence on the relative gradient magnitudes. In contrast, define the normalized
+projected components
+u1 =
+p1
+∥p1∥,
+u2 =
+p2
+∥p2∥,
+and the Norm-PCGrad update
+gNorm = u1 + u2.
+10
+
+
+Then
+g⊤
+1 gNorm = ∥p2∥,
+g⊤
+2 gNorm = ∥p1∥,
+and therefore
+g⊤
+1 gNorm
+g⊤
+2 gNorm
+= ∥g1∥
+∥g2∥.
+(19)
+Hence, normalization changes the quadratic magnitude dependence of PCGrad to a linear dependence and removes the
+explicit weighting of the aggregate direction by the magnitudes of the projected gradients. More details on proof of
+theorem is described in Appendix A.
+Theorem 3 (Max–min optimality of Norm-PCGrad). Under the assumptions above, let
+u1 =
+p1
+∥p1∥,
+u2 =
+p2
+∥p2∥.
+The unit-norm Norm-PCGrad direction
+dNorm =
+u1 + u2
+∥u1 + u2∥
+solves the max–min optimization problem
+dNorm = arg max
+∥d∥=1
+min
+
+d⊤u1, d⊤u2
+	
+.
+(20)
+Therefore, Norm-PCGrad selects the unit-norm direction that maximizes the worst-case alignment with the two
+normalized orthogonalized gradient components. More details on proof of theorem is described in Appendix A.
+Corollary (Equivalence of Norm-PCGrad and two-gradient ConFIG directions). For two nonzero, non-collinear
+conflicting gradients, the Norm-PCGrad direction is identical to the two-gradient ConFIG direction:
+dNorm = U [U(p1) + U(p2)] = gv.
+(21)
+Hence, PCGrad, Norm-PCGrad, and ConFIG have the same conflict-free direction in the two-loss case only after
+accounting for the normalization of the projected components. PCGrad differs through magnitude weighting, whereas
+Norm-PCGrad and ConFIG generate the same unit direction. More details on proof of theorem is described in
+Appendix A.
+3
+Results
+In the current section, we perform elaborate empirical experiments to demonstrate the benefits of gradient surgery
+on domain decomposition methods. We specifically study the effectiveness of existing state-of-the-art algorithms
+like PCGrad and ConFIG for solving different PDEs with varying complexity arising from differences in the number
+of dimensions and interfaces in the domain decomposition problem. We also compare the performance of these
+existing algorithms with the newly proposed Norm-PCGrad. We utilize a learning rate of 5 × 10−4 and Glorot [73]
+initialization for all empirical studies unless stated otherwise.
+It is worth noting that the loss weights λPDE, λu, λuavg and λR in Equation (4) are fixed rather than individually
+optimized, and we rely on gradient surgery using a suitable algorithm to handle the resulting gradient conflicts directly
+in the loss landscape during training. For all experiments, we use fixed weights: λPDE = λR = 1 and λu = λuavg = 20
+unless stated otherwise. All implementations are based on JAX and run on an RTX6000B GPU with 16 CPU
+cores and 16 GB of system memory. Each experiment is repeated across multiple random seeds drawn from the set
+{12, 123, 1234, 12345, 44, 444, 4444}, with three or more seeds selected depending on problem size.
+Consider a 2D domain decomposed into two subdomains, Ω1 and Ω2. The model accuracy is evaluated using the
+relative L2 error,
+(Relative L2 Error)Ω# =
+∥uΩ#
+pred −uΩ#
+exact∥2
+∥uΩ#
+exact∥2
+,
+(22)
+11
+
+
+computed separately over Ω1 and Ω2 (i.e., # ∈{1, 2}) using each subdomain’s own network, where uΩ#
+pred denotes
+the predicted solution from the Ω# network and uΩ#
+exact denotes the reference solution over Ω#. At the interface, we
+additionally report a consistency error,
+(Relative L2 Error)Ω1∩Ω2 =
+∥uΩ1∩Ω2
+1,pred −uΩ1∩Ω2
+2,pred ∥2
+∥uΩ1∩Ω2
+exact ∥2
+,
+(23)
+where uΩ1∩Ω2
+1,pred and uΩ1∩Ω2
+2,pred denote the predictions of the Ω1 and Ω2 networks evaluated at the interface points, and
+uΩ1∩Ω2
+exact
+is the reference solution at those points. This metric measures the disagreement between the two subnetworks
+at the interface, normalized by the reference solution, and is applicable for both overlapping and non-overlapping
+interfaces. Together, these three metrics separate domain-wise accuracy from interfacial consistency, and the same
+formulation extends to domain decompositions with more than two subdomains.
+To quantify gradient conflicts during training, we utilize the cosine similarity score Sc(g1, g2), computed using
+Equation (10), where g1 and g2 are selected from the set of gradients corresponding to different loss terms in the
+composite loss function. The moving averages of different gradient pairs across training iterations are aggregated and
+represented as a density distribution over [−1, 1]. Gradient conflicts are characterized based on the following criteria:
+• Sc ∈[−1, 0): gradients are in conflict.
+• Sc ≈0: gradients are orthogonal.
+• Sc ∈(0, 1]: gradients are aligned and conflict-free.
+For a domain decomposition with two subdomains, gradient conflicts are analyzed using SΩ1
+c
+and SΩ2
+c , while for three
+subdomains, SΩ1
+c , SΩ2
+c , and SΩ3
+c
+are used, following the criteria defined above.
+The following sections systematically evaluate gradient surgery for domain decomposition across five increasingly
+complex benchmark problems. Section 3.1 considers a high-frequency 2D Helmholtz equation with two subdomains,
+introducing mSPINN for efficient collocation sampling and comparing initialization sensitivity and PINN-PINN
+(XPINN) and SPINN-PINN configurations. Section 3.2 considers a 2D Poisson equation with two Euclidean subdomains
+using SPINN-SPINN decomposition and evaluates SSBroyden for mitigating gradient conflicts. Sections 3.3 and 3.4
+extend the study to 3D Poisson and nonlinear sine-Gordon equations. To the best of our knowledge, Sections 3.3 and
+3.4 provide the first demonstrations of KAN-based domain decomposition for 3D linear and nonlinear PDEs. Gradient
+surgery remains the primary focus, with quasi-Newton methods evaluated on selected problems for comparison. The
+domain-decomposition configurations are summarized below.
+Section
+PDE
+Domain Interface Type Interface Losses (LI) Subdomain
+Loss Terms
+Conflicts
+3.1
+Helmholtz
+2D
+Non-overlapping
+Data loss
+Ω1
+LΩ1
+PDE, LΩ1
+BC, LΩ1∩Ω2
+I
+6 + 1 = 7
+Ω2
+LΩ2
+PDE, LΩ2
+BC, LΩ2∩Ω1
+I
+3.2
+Poisson
+2D
+Non-overlapping
+Data loss
++ 1st-order deriv.
+Ω1
+LΩ1
+PDE, LΩ1
+BC, LΩ1∩Ω2
+I
+6 + 1 = 7
+Ω2
+LΩ2
+PDE, LΩ2
+BC, LΩ2∩Ω1
+I
+3.3
+Poisson
+3D
+Overlapping
+Data loss
++ 1st-order deriv.
+Ω1
+LΩ1
+PDE, LΩ1
+BC, LΩ1∩Ω2
+I
+, LΩ1∩Ω3
+I
+12 + 2 = 14
+Ω2
+LΩ2
+PDE, LΩ2
+BC, LΩ2∩Ω1
+I
+Ω3
+LΩ3
+PDE, LΩ3
+BC, LΩ3∩Ω1
+I
+3.4
+Sine-
+Gordon
+3D
+Overlapping
+Data loss
++ 1st-order deriv.
+Ω1
+LΩ1
+PDE, LΩ1
+BC, LΩ1∩Ω2
+I
+6 + 1 = 7
+Ω2
+LΩ2
+PDE, LΩ2
+BC, LΩ2∩Ω1
+I
+Table 1: Overview of benchmark problems and potential gradient conflicts. Summary of PDE, domain
+dimensionality, interface type, interface losses, and per-subdomain loss terms with the total number of potential
+gradient conflicts. The interface losses comprise a data loss (Eqn (7)) for solution continuity and, where indicated,
+1st-order derivative matching (Eqn (8)) for flux continuity. The within-subdomain conflicts are computed as
+ n
+2
+
+per subdomain (where n is the number of loss terms) and summed across all subdomains. Additionally, one cross-
+subdomain conflict is added per shared interface to account for the implicit coupling between the interface gradients
+of adjacent subdomains. LBC and LI denote boundary and interface losses, respectively.
+12
+
+
+3.1
+Helmholtz Equation: 2D Domain →Non-Euclidean + Euclidean
+We consider the two-dimensional inhomogeneous Helmholtz equation
+∇2u(x, y) + k2u(x, y) = f(x, y),
+(x, y) ∈Ω,
+(24)
+where ∇2u = uxx + uyy and k is the wavenumber.
+We prescribe the manufactured solution uexact(x, y) =
+sin(πa1x) sin(πa2y), where a1 and a2 control the oscillation frequencies along the x- and y-directions.
+Since
+uxx = −(πa1)2uexact,
+uyy = −(πa2)2uexact, the corresponding source term is
+f(x, y) =
+
+k2 −π2(a2
+1 + a2
+2)
+
+sin(πa1x) sin(πa2y).
+Thus, uexact satisfies (24) exactly, providing a closed-form benchmark for evaluating the trained network. The
+spatial domain is Ω= [−1, 1]2, with k = 1 and a1 = a2 = 10.
+Figure 2: 2D Helmholtz – Domain setup. Domain decomposition of a non-Euclidean domain for the Helmholtz
+equation with frequencies a1 = 10 and a2 = 10. The circular domain is decomposed into two non-overlapping
+subdomains: Ω1 (Euclidean) and Ω2 (non-Euclidean).
+Here, we decompose the circular domain into two sub-domains which are Euclidean (Ω1) and non-Euclidean (Ω2)
+as shown in Figure 2. We note that this combination enables the utilization of SPINN [62] architecture to solve Ω1
+while leveraging the O(Nd) computational cost where d is the dimension and N is the number of collocation points.
+On the other hand, Ω2 will be solved with minimal utilization of collocation points using the PINN [1] architecture at
+O(N d) computational cost.
+Remark 1: We note that an important step in domain decomposition could be to maximize the coverage of Euclidean
+domain and minimize the coverage of non-Euclidean domain to make the best utilization of a separable architecture
+to attain superior accuracy and computational cost.
+Remark 1: While our earlier work [57] demonstrated that separable architectures can solve high-dimensional PDEs
+with linear computational cost, this work extends their use to non-Euclidean domains through domain decomposition.
+The proposed hybrid approach improves the efficiency of methods such as XPINN while overcoming the restriction of
+separable architectures such as SPINN to Euclidean domains.
+Better Accuracy using Multi-Grid SPINN (mSPINN)
+Besides using SPINN for domain decomposition, we also propose an improvement to the training procedure for this
+architecture. SPINN relies on a grid of collocation points that are structured in a tensor-product (Cartesian) fashion
+within the domain. However, in the current work, we propose a multi-grid strategy to sample multiple staggered
+collocation grids from the domain as opposed to relying solely on a fixed set of points within a single grid. This ensures
+that the collocation points are distributed more broadly across the domain and are not limited by the requirement of
+a Cartesian structure from the SPINN architecture. We define this architecture as multi-grid SPINN (mSPINN), and
+the difference between these methods by virtue of the sampling strategies is illustrated in Figure 3. The pseudo-code
+for the mSPINN algorithm is provided in Appendix B.
+13
+
+
+Here, we note that mSPINN attains a perfect balance between PINN and SPINN for speed, accuracy, and
+robustness while solving PDEs within a non-Euclidean domain such as the one considered in Figure 2.
+Figure 3: 2D Helmholtz – Collocation strategies. Collocation sampling methods for domain decomposition
+of the non-Euclidean domain. With reference to Figure 2, collocation points in Ω1 can be sampled as a single grid
+(center) or multi-grid (right), while random sampling (left) is used for Ω2 handled by PINN.
+The comparison of the relative L2 error and computational cost between the PINN-PINN (same as XPINN),
+SPINN-PINN, and mSPINN-PINN domain decomposition is presented in Table 2. It is worth noting that mSPINN
+requires choosing two additional hyperparameters, namely: the number of batches and the batch size. Here, the
+number of batches is the total number of staggered collocation grids used for training, while the batch size is the fixed
+number of random grids chosen at each iteration during training. Also, during each training iteration, the average of
+the gradients from the grids is used to update the trainable parameters of the model.
+Method
+# Collocation Points
+Batch Size
+Rel. L2 Err.
+Time (ms/iter)
+Speed-Up
+Ω1
+Ω2
+PINN-PINN
+16384
+-
+0.7617
+0.6729
+62.44
+Baseline
+SPINN-PINN
+128 × 128 = 16384
+-
+1.0291
+0.9466
+24.26
+(+) 2.5×
+mSPINN-PINN
+(16) × 32 × 32 = 16384
+2
+0.0733
+0.2532
+60.98
+(+) 1.02×
+(16) × 32 × 32 = 16384
+4
+0.0387
+0.2300
+87.91
+(−) 1.4×
+‘
+Table 2: 2D Helmholtz – Architectural comparison. Relative L2 error and computational time for PINN-PINN,
+SPINN-PINN, and mSPINN-PINN domain decomposition of the non-Euclidean domain shown in Figure 3. Note:
+For SPINN-PINN, SPINN is assigned to Ω1 to leverage the computational efficiency of a separable architecture on
+a Euclidean subdomain. Note: The results shown in the table does not employ gradient surgery. It is only the
+demonstration of multi-grid collocation grid sampling. The relative L2 error is represented as mean ± standard
+deviation computed from three random realizations.
+Here, utilization of a separable architecture such as SPINN for domain decomposition clearly leads to substantial
+speed-up compared to using PINN, as shown in Table 2. However, it leads to accuracy degradation for a fixed number
+of collocation points. On the other hand, mSPINN outperforms the baseline with an order of magnitude improvement
+in accuracy for the Euclidean subdomain (Ω1) and an overall improvement for the domain as a whole. We observe a
+minor speed-up using mSPINN with a batch size of 2, which is not as substantial as the acceleration observed while
+using SPINN. Furthermore, we note that accuracy improves further by increasing the batch size, albeit at a larger
+computational cost, leading to a slowdown compared to the baseline.
+Handling Gradient Conflicts through Gradient Surgery
+The current section focuses on leveraging gradient surgery to overcome gradient conflicts in the domain decomposition of
+the non-Euclidean domain considered in Figure 2. We specifically compare the different architectural configurations for
+domain decomposition — PINN-PINN, SPINN-PINN, and mSPINN-PINN — in terms of accuracy and computational
+cost. We then apply different algorithms for gradient surgery, namely PCGrad and ConFIG, to mitigate the conflict
+between gradients during training, and compare the performance of these existing state-of-the-art algorithms with the
+proposed Norm-PCGrad algorithm.
+14
+
+
+Figure 4: 2D Helmholtz – Absolute error. Point-wise absolute error for domain decomposition of the non-
+Euclidean domain with frequencies a1 = 10 and a2 = 10. (Top Row) Without gradient surgery. (Bottom Row) With
+gradient surgery.
+Figure 4 presents the point-wise absolute error while solving the Helmholtz equation through domain decomposition.
+Specifically, Figure 4 (Top Row) shows the results without gradient surgery. Here, the multi-grid configuration
+mSPINN-PINN clearly has advantages in solution quality compared to other configurations. However, these gains
+come at a substantially higher computational cost, consistent with our observations in the previous section. Based
+on Figure 4 and Table 3, SPINN-PINN offers gains in computational efficiency at the expense of accuracy, while
+mSPINN-PINN achieves superior accuracy but at a considerably higher cost. We then apply gradient surgery to these
+configurations and observe substantial improvements in accuracy relative to the PINN-PINN baseline. We attribute
+these improvements to the mitigation of gradient conflicts between the different loss terms within the composite
+loss function. Figure 4 (Bottom Row) illustrates the point-wise absolute error after implementing gradient surgery
+using ConFIG, PCGrad, and Norm-PCGrad for SPINN-PINN and mSPINN-PINN domain decompositions. Although
+ConFIG has demonstrated exceptional performance [28] while solving PDEs in single domains, it is observed to
+undergo substantial degradation in its performance for SPINN-PINN domain decomposition. A more recent work
+[74] also reported a similar degradation in performance for ConFIG while solving different PDEs in single domains
+compared to existing algorithms like PCGrad.
+Method
+Gradient Surgery
+Relative L2 Error
+Time (ms/iter)
+Ω1
+Ω2
+PINN-PINN
+None
+1.2090 ± 0.6386
+0.9681 ± 0.8690
+1.89
+SPINN-PINN
+1.0781 ± 0.2099
+0.9288 ± 0.1944
+1.29
+mSPINN-PINN
+0.4386 ± 0.5898
+0.4792 ± 0.2820
+11.73
+SPINN-PINN
+ConFIG
+1.1147 ± 0.1307
+0.7966 ± 0.0889
+2.52
+Norm-PCGrad
+0.1312 ± 0.0314
+0.1655 ± 0.0125
+3.75
+PCGrad
+0.4569 ± 0.6389
+0.2146 ± 0.2333
+3.71
+mSPINN-PINN
+0.0785 ± 0.0591
+0.0885 ± 0.0659
+12.96
+Norm-PCGrad
+0.1577 ± 0.0652
+0.1382 ± 0.0240
+12.81
+Table 3: 2D Helmholtz – Gradient surgery. Relative L2 error (mean ± std. devi) and computational time for
+gradient surgery across PINN-PINN, SPINN-PINN, and mSPINN-PINN domain decomposition of the non-Euclidean
+domain shown in Figure 3. Note: mSPINN-PINN uses a total of 16 grids with a batch size of 4.
+In contrast, PCGrad provides substantial accuracy gains with modest computational overhead, as shown in Table 3,
+15
+
+
+while mSPINN-PINN further improves accuracy at significantly higher cost. In contrast, Norm-PCGrad with SPINN-
+PINN achieves a substantial reduction in relative L2 error at comparable computational cost to PCGrad, whereas
+combining Norm-PCGrad with mSPINN-PINN offers limited accuracy gains while increasing cost due to multi-grid
+aggregation. Overall, mSPINN-PINN improves accuracy at higher computational cost, whereas SPINN-PINN with
+Norm-PCGrad provides the most favorable accuracy–efficiency trade-off, reducing the relative L2 error compared
+with PINN-PINN at only one-third of the multi-grid computational cost.
+Remark. While comparing the area between the two subdomains, it is worth noting that AΩ1 ≈1.75 AΩ2 for the
+domain shown in Figure 2, where Ω1 (Euclidean) covers roughly 63.7% of the circular domain. Since SPINN [62]
+can handle more collocation points at comparatively lower computational cost than PINN by virtue of its separable
+architecture, we observe better accuracy for Ω1 compared to Ω2. The accuracy of Ω2 may be further improved by
+sampling more collocation points, albeit at a higher computational cost. Therefore, it is beneficial to maximize
+the coverage of the Euclidean subdomain over the non-Euclidean subdomain to attain higher accuracy at a lower
+computational cost.
+Table 3 can be considered as representative of the accuracy for the global solution.
+However, for domain
+decomposition, it is important to also evaluate performance locally at the interface region. In the current work,
+we also evaluate the solution continuity at the interface between the subdomains to clearly observe the advantages
+of mitigating gradient conflicts. Figure 5 presents the comparison at the interfaces of the subdomains Ω1 and Ω2,
+with and without gradient surgery. While mSPINN-PINN demonstrates moderate accuracy for the global solution
+without any gradient surgery as shown in Figure 4, its accuracy at the interface is noticeably degraded. However,
+both SPINN-PINN and mSPINN-PINN showcase accurate interface continuity using PCGrad, with the latter slightly
+better than the former. On the other hand, while Norm-PCGrad has good accuracy at the interface for Ω1, it struggles
+with Ω2. Furthermore, its solution approximation at the interface is bounded: it neither fluctuates vigorously as is
+the case without gradient surgery, nor drops significantly below the ground truth as in the case of ConFIG.
+Figure 5: 2D Helmholtz – Interface comparison. Solution comparison at the interface between Ω1 and Ω2 for
+the Helmholtz equation with frequencies a1 = 10 and a2 = 10. (Top Row) Without gradient surgery. (Bottom Row)
+With gradient surgery.
+Thus, mSPINN-PINN is justified by its superior global and interface accuracy (Figures 4 and 5), but not by
+computational efficiency in the current serial implementation.
+16
+
+
+Figure 6: 2D Helmholtz – Cosine Similarity.
+Density distribution of cosine similarity scores for the two
+subdomains, SΩ1
+c
+and SΩ2
+c . Vertical solid lines represent the mean of each distribution (SΩ1
+c, mean and SΩ2
+c, mean), while
+the dashed line marks the zero-line where gradients are orthogonal. If SΩ1
+c, mean and/or SΩ2
+c, mean < 0, the gradients
+were in conflict for the majority of training in Ω1 and/or Ω2. On the other hand, if SΩ1
+c, mean and/or SΩ2
+c, mean > 0, the
+gradients were conflict-free for the majority of training in Ω1 and/or Ω2. The extent of gradient conflicts (or their
+suppression) is measured by the distance of SΩ1
+c, mean and SΩ2
+c, mean from the zero-line.
+While solving the Helmholtz equation using SPINN-PINN domain decomposition, we compare the gradient conflicts
+across different algorithms of gradient surgery using the cosine similarity score, as shown in Figure 6. Without any
+gradient surgery, we observe that SΩ1
+c, mean > 0, denoting conflict-free gradients in Ω1, while SΩ2
+c, mean ≪0, denoting
+severe gradient conflicts in Ω2. On the other hand, PCGrad and ConFIG attain SΩ1
+c, mean and SΩ2
+c, mean ≈0, indicating
+that their gradients were nearly orthogonal for the majority of training. This means that the gradients have overcome
+conflicts but are still not aligned with each other. We note that Norm-PCGrad attains conflict-free gradients for the
+majority of training, since both SΩ1
+c, mean and SΩ2
+c, mean ≫0. These observations further support the trend of relative
+L2 error for SPINN-PINN domain decomposition shown in Table 3.
+Sensitivity to Initialization
+In spite of the performance gains observed for different algorithms of gradient surgery in Table 3, it is worth
+understanding the sensitivity of these gains to random initialization for a high-frequency Helmholtz equation. Based
+on the different random seeds used in the current study, we observe large deviations in performance when changing
+the seeds for the Helmholtz equation with a1 = 10 and a2 = 10, as shown in Figure 7. However, we also observe a
+reduction in this sensitivity as the frequencies (a1 and a2) are decreased.
+17
+
+
+Figure 7: 2D Helmholtz – Initialization sensitivity. Sensitivity to random initialization using Glorot [73] for
+the Helmholtz equation with frequencies a1 = 10 and a2 = 10. (Left) Absolute error. (Right) Interface solution for
+random seeds 444 and 1234.
+Based on the absolute error for the global solution field shown in Figure 7 (Left), Norm-PCGrad is less sensitive
+to changes in initialization compared to PCGrad or other algorithms. However, at the interface between the two
+subdomains, both PCGrad and Norm-PCGrad demonstrate large deviations from the expected ground truth for
+certain random seeds (Seed:1234).
+Combining the results from Figure 7 and Table 3, we observe that PCGrad incurs a larger relative L2 error due
+to its poor performance for specific initialization seeds. In contrast, Norm-PCGrad achieves an overall reduction
+in relative L2 error, confirmed by an order of magnitude improvement compared to PCGrad. While the interface
+continuity is not perfectly attained for Norm-PCGrad, the deviation from the ground truth remains limited and
+bounded across different seeds. This demonstrates the robustness of Norm-PCGrad over PCGrad under varying
+initializations while solving high-frequency Helmholtz equation through domain decomposition.
+3.2
+Poisson Equation: 2D Domain →Euclidean + Euclidean
+We consider the steady-state Poisson equation in a two-dimensional domain,
+∆u(x) = q(x),
+x ∈Ω,
+(25)
+subject to Dirichlet boundary conditions
+u(x) = 1,
+x ∈∂Ω1,
+u(x) = 0,
+x ∈∂Ω2,
+where Ω= [0, 1]2, q is the forcing term, and ∂Ω1 and ∂Ω2 are distinct boundary portions. In the context of steady-state
+heat conduction, u represents temperature and q internal heat generation; hence, the imposed conditions correspond
+to a fixed potential (temperature) difference, with u|∂Ω1 > u|∂Ω2, as illustrated in Figure 8. Here, q = 0, reducing
+(26) to the homogeneous Laplace equation
+∆u(x) = 0,
+x ∈Ω,
+(26)
+so that, in the absence of internal sources, the solution is driven solely by the imposed boundary potential (temperature)
+difference.
+18
+
+
+Figure 8: 2D Poisson – Domain setup. Decomposition of a 2D domain into Euclidean subdomains through a
+non-overlapping interface.
+PINN Failure: Choosing the Correct Interface
+For the current problem setup, we decompose the domain into two subdomains at the non-overlapping interface as
+shown in Figure 8. However, it is also reasonable to test other interfaces that can lead to a different set of subdomains
+as shown in Figure 9. The boundary conditions for the interface comparison are similar to the boundary conditions
+described for Figure 8.
+Figure 9: 2D Poisson – Interface failure. Comparison between FEM and PINN solutions for different interface
+locations, illustrating PINN sensitivity to interface placement.
+Compared to conventional numerical solvers such as the Finite Element Method (FEM), PINNs are highly sensitive
+to the interface locations for domain decomposition. We observe from Figure 9 that vertical interfaces lead to the
+same solutions for both FEM and PINNs as expected. While the PINN solution is vastly different from the FEM
+solution for a horizontal interface, the FEM solution remains unchanged for both interfaces.
+Both PINN solutions for the vertical and horizontal interfaces satisfy the underlying PDE by minimizing the
+residual loss and also ensure continuity across the interface between the two subdomains. However, the global solution
+for the whole domain still deviates largely from the expected true solution obtained from FEM for the horizontal
+interface. We attribute this PINN failure in the context of domain decomposition to the manner in which the
+optimization of the loss functions is carried out for the two subdomains connected by a horizontal interface. We make
+the following observations:
+• With respect to the boundary conditions shown in Figure 8, the solution field is driven by the potential difference
+between the bottom (∂Ω1) and top (∂Ω2) boundaries −u|∂Ω1 > u|∂Ω2.
+19
+
+
+• For a vertical interface, we note that both subdomains have portions of ∂Ω1 and ∂Ω2 (denoted as ∂Ω1
+1, ∂Ω2
+1 for
+Ω1 and ∂Ω1
+2, ∂Ω2
+2 for Ω2) influencing the optimization of the loss functions for the two subdomains.
+• However, for a horizontal interface, we note that only Ω1 has both ∂Ω1
+1 and ∂Ω2
+1 while Ω2 is strictly limited to
+∂Ω2
+2. In other words, the high-potential boundary ∂Ω1
+2 that drives the solution field does not exist for Ω2.
+• The optimizer therefore minimizes the loss function constituting the residual loss, the boundary loss, and the
+interface loss for subdomain Ω2 with only ∂Ω2
+2 = 0 and an interface between the subdomains. This leads to the
+trivial solution (zero everywhere within Ω2) that still minimizes all the losses for Ω1 and Ω2 in a “physics-informed”
+manner while ensuring continuity across the interface. ⇒A clear PINN failure case.
+• This leads to an unexpected deviation of the PINN solution from the FEM solution for a horizontal interface
+as shown in Figure 9. This in turn means that a converged solution from a PINN model does not necessarily
+guarantee a physically realizable solution unless a correct interface is chosen for domain decomposition.
+It is also worth noting that the choice of interface location can critically affect the solution quality for domain
+decomposition using PINNs, independent of any gradient surgery applied. A horizontal interface can lead to a trivial
+zero solution in one of the subdomains due to the absence of information from the high-potential boundary condition.
+A detailed investigation of this failure mode across different gradient surgery algorithms is also provided in Appendix
+D. Therefore, the aforementioned discussion emphasizes the need to select a suitable interface while solving PDEs
+through domain decomposition using PINNs. These observations for the 2D domain hold true and extend to 3D
+domains as well.
+Gradient Surgery to tackle Gradient Conflicts
+For the domain decomposition discussed in the current section, we utilize SPINN-SPINN domain decomposition
+since we can decompose the current domain into two Euclidean subdomains, instead of the SPINN-PINN domain
+decomposition discussed in the previous section. As shown in the previous section, utilizing a separable architecture
+such as SPINN has its computational advantages for domain decomposition, and we leverage this extensively in the
+current domain.
+Figure 10: 2D Poisson – Absolute error. Point-wise absolute error for 2D domain decomposition: (a) without
+gradient surgery, (b) with PCGrad, (c) with ConFIG, and (d) with Norm-PCGrad.
+Here, we test and compare the influence of gradient surgery on the accuracy of the solution from domain
+decomposition of the domain described in Figure 8. It is worth noting that the discontinuity denoted in Figure 8
+emerges at the lower corners of the domain where the two sets of Dirichlet boundary conditions −∂Ω1 = 1 and
+∂Ω2 = 0 meet. It is expected for the model to struggle with learning the corner section of the domain accurately if
+20
+
+
+gradient conflicts are present during training. Furthermore, we also investigate different combinations of derivative
+orders at the interface loss formulation to ensure continuity, and we observe that first-order spatial derivatives facilitate
+the best solution continuity compared to other combinations that predominantly include second-order derivatives.
+This is notable despite the direct presence of second-order derivatives in the Poisson equation given by Equation (25).
+A detailed comparison of different combinations at the interface is shown in Appendix C.
+We implement PCGrad and ConFIG to ensure conflict-free gradients and compare their performance against the
+baseline without any gradient surgery. Furthermore, the proposed Norm-PCGrad algorithm is also introduced here to
+test its performance against the existing algorithms for gradient surgery. Figure 10 shows the comparison between the
+solutions to the Poisson equation using different algorithms for gradient surgery. We examine the predicted solution
+field and the point-wise absolute error for the different cases, compared against the reference solution from the FEM
+solver.
+With reference to the global solution field shown in Figure 10, we observe reasonable accuracy for domain
+decomposition without any gradient surgery. With PCGrad, there is minor improvement in accuracy, reflected by
+comparable magnitude of the point-wise absolute error. On the other hand, ConFIG substantially degrades the
+performance, leading to an order of magnitude increase in the error compared to the baseline. However, Norm-PCGrad
+showcases exceptional performance in predicting an accurate global solution field, evident from the near zero absolute
+error compared to the baseline.
+With respect to the direction of propagation of the solution field, we observe a smooth propagation represented by
+a smooth and continuous gradient from the high-potential boundary to the low-potential boundary (∂Ω1 →∂Ω2)
+across all cases shown in Figure 10.
+Figure 11: 2D Poisson – Interface comparison. Solution comparison at the interface (x = 0.46) of Ω1 and Ω2: (a)
+without gradient surgery, (b) with ConFIG, (c) with PCGrad, (d) with Norm-PCGrad.
+Another important criterion for any domain decomposition problem is the interface continuity. Figure 11 clearly
+shows the continuity across the interface between the two subdomains for domain decomposition by a vertical interface.
+It can be observed that Norm-PCGrad outperforms all other cases to attain a continuous and smooth solution
+field across the interface. Comparing the solution of Norm-PCGrad at the interface with the ground truth reveals
+near-perfect alignment. On the other hand, the interface continuity for domain decomposition without gradient
+surgery and with PCGrad is satisfactory. Moreover, their alignment with the ground truth deviates as they move
+away from the lower boundary ∂Ω1, as evident from Figure 11. Similar to the observations for the Helmholtz equation
+in the previous section, ConFIG shows discontinuities at the interface also for the Poisson equation considered in this
+section.
+21
+
+
+Figure 12: 2D Poisson – Corner comparison. Solution comparison at the corner (0, 0) of Ω1: (a) without gradient
+surgery, (b) with ConFIG, (c) with PCGrad, (d) with Norm-PCGrad.
+Furthermore, by comparing the accuracy of each case at the discontinuities −(0, 0) and (1, 0), we observe bare
+minimum error accumulation for Norm-PCGrad. However, all other cases with and without gradient surgery struggle
+at the corner points, as evidenced by the localized error concentration observed in Figure 10. This is also reflected as
+a spreading of the error for PCGrad as the solution approaches the corner points from the interior of the subdomains.
+With reference to Figure 12, we observe something interesting. For cases without any gradient surgery and with
+PCGrad, we observe a spread out of the solution field as we approach the corner, (0, 0). On the hand, there is no such
+spread out observed for Norm-PCGrad at the corners leading to accurate representation of the solution compared to
+the ground truth.
+Figure 13: 2D Poisson – Cosine Similarity. Density distribution of cosine similarity scores for the two subdomains,
+SΩ1
+c
+and SΩ2
+c . Vertical solid lines represent the mean of each distribution (SΩ1
+c, mean and SΩ2
+c, mean), while the dashed
+line marks the zero-line where gradients are orthogonal. If SΩ1
+c, mean and/or SΩ2
+c, mean < 0, the gradients were in conflict
+for the majority of training in Ω1 and/or Ω2. On the other hand, if SΩ1
+c, mean and/or SΩ2
+c, mean > 0, the gradients were
+conflict-free for the majority of training in Ω1 and/or Ω2. The extent of gradient conflicts (or their suppression) is
+measured by the distance of SΩ1
+c, mean and SΩ2
+c, mean from the zero-line.
+While solving the 2D Poisson equation using SPINN-SPINN domain decomposition, we compare the gradient
+conflicts across different algorithms of gradient surgery using the cosine similarity score, as shown in Figure 13.
+Without any gradient surgery, we observe that SΩ1
+c, mean and SΩ2
+c, mean > 0, denoting conflict-free gradients in both
+Ω1 and Ω2. On the other hand, PCGrad attains SΩ1
+c, mean and SΩ2
+c, mean < 0 or ≈0, indicating that its gradients
+were slightly conflicting or nearly orthogonal for the majority of training. Applying ConFIG leads to SΩ1
+c, mean and
+SΩ2
+c, mean ≪0, making its utilization counterproductive. We note that Norm-PCGrad attains stronger gradient
+alignment for the majority of training, with both SΩ1
+c, mean and SΩ2
+c, mean ≫0, substantially exceeding the baseline case
+22
+
+
+without gradient surgery. These observations further support the trend of relative L2 error for SPINN-SPINN domain
+decomposition shown in Table 4. YouTube video is available at 2D Poisson’s equation with conflict-free gradients.
+Gradient Surgery + Curvature-Aware Optimization to tackle Gradient Conflicts
+In the previous sections, we addressed gradient conflicts through gradient surgery with the Adam optimizer; although
+recent works [43][46] have explored curvature-aware quasi-Newton optimizers for mitigating such conflicts, their
+effectiveness for PDE domain decomposition remains unclear. Here, we combine gradient projection with quasi-Newton
+optimization, using Norm-PCGrad with Adam during the initial warm-up phase followed by the SSBroyden optimizer,
+providing an intermediate approach between first-order methods such as Adam and computationally expensive
+second-order Newton methods.
+Figure 14: 2D Poisson – SSBroyden convergence. Convergence of relative L2 error for 2D domain decomposition
+using double-precision training. (Left) Adam with Norm-PCGrad followed by SSBroyden. (Right) SSBroyden only,
+without gradient surgery. Note: All cases with SSBroyden is evaluated in float64.
+From a practical standpoint, it is worth noting that all cases in Table 4 that use the SSBroyden optimizer leverage
+double-precision training (using float64 datatype) for the entire training phase including the Adam optimizer. This
+remains a basic requirement for all quasi-Newton optimizers, including the Broyden family, to maintain numerical
+stability during training.
+Here, we utilize the SSBroyden optimizer to test its capability in mitigating gradient conflicts. We specifically use it
+independently as well as in combination with Adam for solving PDEs through domain decomposition. Figure 14
+shows the convergence of SSBroyden when used along with Adam after an initial warm-up phase and when used
+independently without any warm-up. While the final state of convergence appears nearly identical for both cases,
+Table 4 provides better insights on their difference in performance. For all experiments in Table 4, it is worth noting
+that the total number of iterations is fixed (150000) to ensure fair comparison between the different cases. However,
+for cases with the SSBroyden optimizer, training may stop early if the total loss reaches the minimum threshold
+tolerance.
+Gradient Surgery
+Optimizer
+Relative L2 Error
+Time (ms/iter)
+Ω1
+Ω2
+None
+Adam [150000]
+0.09595 ± 0.00808
+0.06512 ± 0.00371
+7.47
+ConFIG
+Adam [150000]
+0.51062 ± 0.00466
+0.61174 ± 0.00881
+6.27
+PCGrad
+Adam [150000]
+0.06814 ± 0.00443
+0.05617 ± 0.00359
+8.19
+Norm-PCGrad
+Adam [150000]
+0.01598 ± 0.00241 0.01947 ± 0.00916
+8.11
+None
+SSBroyden [150000]
+0.02256 ± 0.00338
+0.01598 ± 0.00176
+31
+Norm-PCGrad
+Adam [10000] + SSBroyden [140000]
+0.01796 ± 0.00207
+0.01487 ± 0.00837
+30.78
+Norm-PCGrad
+Adam [50000] + SSBroyden [100000] 0.01632 ± 0.00673 0.01252 ± 0.00311
+30.71
+Table 4: 2D Poisson – Gradient surgery and curvature-aware optimization. Relative L2 error (mean ± std.
+devi) and computational time for gradient surgery and curvature-aware optimization using SSBroyden for domain
+decomposition. Note: Gradient surgery is applied only in the Adam phase and not in the SSBroyden phase. All cases
+with SSBroyden is evaluated in float64.
+23
+
+
+Table 4 shows that SSBroyden performs best when warmed up with Adam rather than used throughout training,
+achieving lower relative L2 errors at reduced computational cost, as the initial Adam phase brings the parameters near
+a local optimum before SSBroyden performs precise convergence. Without gradient surgery, SSBroyden alone achieves
+substantially lower relative L2 error than Adam but incurs 6–7× higher computational cost due to approximate
+Hessian computation in double precision, whereas Adam uses single-precision training without curvature information.
+Thus, curvature-aware optimization can mitigate gradient conflicts, but at significantly higher computational cost.
+Figure 15: 2D Poisson – Interface with curvature-aware optimization. Solution comparison at the interface
+(x = 0.46) of Ω1 and Ω2 using Adam + SSBroyden optimizers. With reference to Table 4: Case-1: (Adam + Norm-
+PCGrad)[50k] + SSBroyden[100k], Case-2: (Adam + Norm-PCGrad)[10k] + SSBroyden[140k], Case-3: SSBroyden
+only [150k], Case-4: (Adam + Norm-PCGrad)[150k].
+With Norm-PCGrad, Table 4 shows that an Adam warm-up followed by SSBroyden improves convergence, accuracy,
+and computational efficiency compared with SSBroyden alone; however, no SSBroyden configuration surpasses Adam
+with Norm-PCGrad. This improvement also extends to the subdomain interface (Figure 15). Notably, all SSBroyden
+cases outperform the gradient-surgery methods except Norm-PCGrad, both globally and at the interface (Table 4,
+Figures 11 and 15).
+Overall, these results demonstrate that combining gradient surgery with curvature-aware
+optimization can mitigate gradient conflicts in PINN-based domain decomposition. We apply gradient surgery only
+to first-order optimizers such as Adam, while SSBroyden operates independently, as combining both substantially
+increases computational cost and obscures their individual contributions to conflict mitigation.
+3.3
+Poisson Equation: 3D Domain →Euclidean + Euclidean + Euclidean
+1
+2
+3
+Figure 16: 3D Poisson (3 subdomains) – Domain setup. Decomposition of a 3D domain into three Euclidean
+subdomains through multiple overlapping interfacial domains. Interfaces are highlighted in red and blue hatches.
+24
+
+
+1
+3
+2
+Figure 17: 3D Poisson (3 subdomains) – No gradient surgery. Solution to the Poisson equation through 3D
+domain decomposition without gradient surgery. Sections correspond to the slices shown in Figure 16.
+The domain considered in the current section is decomposed into three subdomains using SPINN, as shown in Figure
+16. Owing to the benefits of utilizing an overlapping interfacial domain in combination with SPINN discussed in the
+previous section, here we decompose the 3D domain through two sets of overlapping interfacial domains as shown in
+Figure 16.
+In the current section, we begin by comparing the different algorithms for gradient surgery, including the proposed
+Norm-PCGrad, to overcome gradient conflicts while decomposing a 3D domain into three Euclidean subdomains.
+We also include curvature-aware optimization using the Broyden family of optimizers to further mitigate gradient
+conflicts for domain decomposition of the 3D domain shown in Figure 16. Furthermore, we extend the proposed
+Norm-PCGrad for solving PDEs through domain decomposition of a 3D domain using Kolmogorov-Arnold Networks
+(KANs) [48]. We note that the literature lacks clarity on the scalability of domain decomposition using KANs to 3D
+domains, and the results in the current section provide valuable insights in this direction.
+Gradient Surgery to tackle Gradient Conflicts
+To evaluate the performance of gradient surgery in mitigating conflicting gradients while solving a PDE through 3D
+domain decomposition, we consider three distinct slices of the 3D domain as shown in Figure 16. We separately
+predict and evaluate the error incurred by each of the algorithms for gradient surgery in each of these slices as a
+representative measure of its overall performance in the entire 3D domain. Similar to previous discussions, we can
+evaluate these based on the (a) global solution field, (b) direction of propagation, (c) interface continuity and (d)
+the accuracy at the corner regions. To this end, Figure 17-20 shows the solutions to the Poisson equation in the 3D
+domain (in the Top Row) and the point-wise absolute error (in the Bottom Row).
+Compared to the the solution when no gradient surgery is applied (Figure 17), we observe a very negligible
+improvement in the accuracy when PCGrad is utilized (Figure 18). Particularly, we observe that PCGrad struggles
+with maintaining the continuity across the different interfaces which is evident from the spiking up of the point-wise
+absolute errors closer to the interface region in Figure 18. However, we observe the least error in the slice
+3 with no
+interfaces and the solution accuracy degrades only at the corner regions. It is also worth noting that, the subdomain,
+Ω3 present in slices
+1 and
+2 has the maximum error and almost all the cases struggle with their accuracy in this
+region.
+The performance ConFIG in alignment with the previous sections struggles across the whole domain including the
+interface regions as well as at the corners. While a clear reason for the struggles of these methods are unknown it is
+worth noting that domain decomposition specifically while dealing with multiple loss terms for PDE residue, boundary
+conditions and interface conditions are prone to conflicting gradients even more than a regular case that solves a
+PDE in the whole domain without any interface conditions. There is an inherent coupling across the subdomains
+within the domain decomposition problem that is facilitated by the interface loss that constitute a PDE loss and a
+data continuity (or the average) loss at the interface location. Typically, in the context of PINN, these subdomains
+are assigned with independent models that minimize the same interface loss in two different loss landscapes while
+maintaining the inherent coupling between them to ensure the interface continuity. To this end, we note that gradient
+surgery algorithms which are mostly based on gradient projections can at times tamper with the direction of the
+interface gradients for the two subdomains independently without respecting the inherent coupling between these
+gradients for the interface loss. This can decouple the gradients of the interface loss function during training, thereby
+leading to a discontinuity at the interface.
+25
+
+
+1
+3
+2
+Figure 18: 3D Poisson (3 subdomains) – PCGrad. Solution to the Poisson equation through 3D domain
+decomposition using PCGrad. Sections correspond to the slices shown in Figure 16.
+1
+3
+2
+Figure 19: 3D Poisson (3 subdomains) – ConFIG. Solution to the Poisson equation through 3D domain
+decomposition using ConFIG. Sections correspond to the slices shown in Figure 16.
+1
+3
+2
+Figure 20: 3D Poisson (3 subdomains) – Norm-PCGrad. Solution to the Poisson equation through 3D domain
+decomposition using Norm-PCGrad. Sections correspond to the slices shown in Figure 16.
+26
+
+
+Figure 21: 3D Poisson (3 subdomains) – Interface comparison. Solution comparison at the interface for 3D
+domain decomposition. The interface slice is located in the xz-plane highlighted in red. Note: The highlighted red
+region is a finite slice extracted from the overlapping interfacial domain between the subdomains - Ω1 and Ω3.
+Here, we note that Norm-PCGrad overcomes the struggle faced by the other cases and predicts a smooth and
+continuous solution across all the slices as shown in Figure 20. Furthermore, we note that the absolute error for
+Norm-PCGrad is an order of magnitude lower than PCGrad and two orders of magnitude lower than ConFIG. Similar
+to the previous sections, Norm-PCGrad attains a close-to perfect continuity at the interfaces between the subdomains
+with only minimal concentration of errors residing at the corner regions of the domain. Unlike PCGrad, we observe a
+consistent performance for Norm-PCGrad across different domains irrespective of their dimensionality, number of
+subdomains/interfaces and domain size. This further confirms the potential of Norm-PCGrad as a potential candidate
+for gradient surgery to mitigate gradient conflicts for 3D domain decomposition over the existing algorithms. Based
+on the results in Figure 17-20, we observe that the algorithms struggle the most around the subdomain, Ω3. To this
+end, we also monitor the continuity at the interface as shown by Figure 21. To this end, we note that Norm-PCGrad
+attains the least interface error which is two orders of magnitude lower than the error obtained for PCGrad and
+ConFIG. This further supports the results observed in the global solution field spanning the whole domain in Figure
+17-20.
+While solving the 3D Poisson equation using SPINN-SPINN domain decomposition for the domain shown in Figure
+16, we compare the gradient conflicts across different algorithms of gradient surgery using the cosine similarity score,
+as shown in Figure 22. Without any gradient surgery, we observe that SΩ1
+c, mean, SΩ2
+c, mean, and SΩ3
+c, mean < 0, indicating
+conflicting gradients in all three subdomains. With PCGrad, we observe negligible improvement since the gradients
+were still conflicting for the majority of training. ConFIG is clearly counterproductive, with SΩ2
+c, mean and SΩ3
+c, mean ≪0
+and SΩ1
+c, mean < 0. We note that Norm-PCGrad attains stronger gradient alignment for the majority of training, with
+SΩ1
+c, mean and SΩ2
+c, mean ≫0 and SΩ3
+c, mean > 0, substantially exceeding the baseline case without any gradient surgery.
+These observations further support the trend of relative L2 error for SPINN-SPINN domain decomposition shown in
+Table 5.
+Gradient Surgery + Curvature-Aware Optimization to tackle Gradient Conflicts
+Here, we tackle conflict for domain decomposition by leveraging the gradient surgery via gradient projections in
+combination with quasi-Newton methods which offer a middle ground between the first-order optimizers such as
+Adam and the Newton-based second-order optimizers. Specifically, we use the Norm-PCGrad for gradient surgery
+along with Adam in the first phase of training and the SSBroyden optimizer in the second phase after the warm-up to
+showcase mitigation of gradient conflicts while performing domain decomposition.
+27
+
+
+Figure 22:
+3D Poisson (3 subdomains) – Cosine Similarity.
+Density distribution of cosine similarity
+scores for the three subdomains, SΩ1
+c , SΩ2
+c
+and SΩ3
+c .
+Vertical solid lines represent the mean of each distribu-
+tion SΩ1
+c, mean, SΩ2
+c, mean and SΩ3
+c, mean, while the dashed line marks the zero-line where gradients are orthogonal. If
+(SΩ1
+c, mean/SΩ2
+c, mean/SΩ3
+c, mean) < 0, the gradients were in conflict for the majority of training in Ω1/Ω2/Ω3. On the other
+hand, if (SΩ1
+c, mean/SΩ2
+c, mean/SΩ3
+c, mean) > 0, the gradients were conflict-free for the majority of training in Ω1/Ω2/Ω3.
+The extent of gradient conflicts (or their suppression) is measured by the distance of SΩ1
+c, mean, SΩ2
+c, mean and SΩ3
+c, mean
+from the zero-line.
+Figure 23: 3D Poisson (3 subdomains) – SSBroyden convergence. Convergence of relative L2 error for 3D
+domain decomposition using double-precision training with Adam + SSBroyden and Norm-PCGrad. Note: Gradient
+surgery is applied only in the Adam phase and not in the SSBroyden phase. Also, the vertical line for Adam +
+SSBroyden case represents switching from Adam to SSBroyden during training. All cases with SSBroyden is evaluated
+in float64.
+In the context of domain decomposition of the 3D domain shown in Figure 16, the training process is integrated
+with the SSBroyden optimizer in one of the following two ways−either in combination with the Adam optimizer
+equipped with gradient surgery using Norm-PCGrad or independently as the only optimizer for training. The
+convergence of the SSBroyden optimizer using the aforementioned two ways are shown in Figure 23 separated into
+the three subdomains. We observe a clear trend for convergence in all the three subdomains where the Ω3 attains the
+least relative L2 error and Ω1 attains the largest error. It is sensible for Ω1 to have the largest error among the three
+subdomains since, it interacts with both Ω2 and Ω3 as observed in Figure 16, thereby incurring interface errors from
+both the subdomains.
+28
+
+
+Gradient Surgery
+Optimizer
+Relative L2 Error
+Time (ms/iter)
+Ω1
+Ω2
+Ω3
+None
+Adam [150000]
+0.1801 ± 0.0068
+0.0785 ± 0.0034
+0.1030 ± 0.0051
+27.29
+ConFIG
+Adam [150000]
+0.5564 ± 0.0203
+0.5209 ± 0.0582
+0.6300 ± 0.0700
+27.14
+PCGrad
+Adam [150000]
+0.1467 ± 0.0426
+0.0718 ± 0.0868
+0.1336 ± 0.0068
+28.73
+Norm-PCGrad
+Adam [150000]
+0.0749 ± 0.0127 0.0196 ± 0.0150 0.0796 ± 0.1065
+25.50
+None
+SSBroyden [150000]
+0.1182 ± 0.0285
+0.0362 ± 0.0068
+0.0686 ± 0.0016
+102.63
+Norm-PCGrad
+Adam [50000] + SSBroyden [100000] 0.1048 ± 0.0101 0.0369 ± 0.0076 0.0620 ± 0.0123
+138
+Table 5: 3D Poisson – Gradient surgery and curvature-aware optimization. Relative L2 error (mean ± std.
+devi) and computational time for gradient surgery and curvature-aware optimization using SSBroyden for 3D domain
+decomposition. Note: Gradient surgery is applied only in the Adam phase and not in the SSBroyden phase. All cases
+with SSBroyden is evaluated in float64.
+Here, Table 5 describes the comparison between various algorithms for gradient surgery in combination with the
+choice of optimizer utilized for domain decomposition of the 3D domain shown in Figure 16. As previously described,
+the curvature-aware optimization using the SSBroyden optimizer is considered as an independent pillar by itself
+to tackle gradient conflicts and therefore treated independently without any gradient surgery even when used in
+combination with the Adam optimizer.
+Based on this broad comparison shown in Table 5, we can clearly conclude that Norm-PCGrad with the Adam
+optimizer offers the best performance in terms of accuracy and computational efficiency. It is also, worth noting that
+SSBroyden when used by itself or in combination with Adam and Norm-PCGrad offer comparable performance at
+much higher computational costs. This computational bottleneck makes SSBroyden a temporary resort for mitigating
+gradient conflicts. On the other hand, PCGrad with Adam optimizer offers a reasonable performance gain comparable
+to SSBroyden for both Ω1 and Ω2, at a fraction of cost as shown in Table 5. Interestingly, we observe a similar trend
+for the 3D domain decomposition as for the 2D domains −the computational costs for all the algorithms for gradient
+surgery in combination with Adam are comparable. This is a reasonable since SSBroyden utilizes double precision
+training while Adam relies on single precision training to achieve a comparable performance.
+Kolmogorov-Arnold Networks
+Based on the results from all the previous discussions, we observe clear advantages while utilizing the Adam optimizer
+integrated with the proposed, Norm-PCGrad algorithm for mitigation of the gradient conflicts through domain
+decomposition. To this end, we leverage the aforementioned combination to solve the Poisson equation in a 3D
+domain shown in Figure 16 using the Kolmogorov-Arnold Networks. While the spline basis is an obvious choice for
+the architecture, they struggle with a computational bottleneck while scaling the architecture to high-dimensional
+PDEs. Instead, for the current study, we utilize two of most efficient formulations of basis functions which are based
+on Chebyshev polynomials [53] and the radial basis functions (RBF) [54]. In the current work, we specifically utilize
+the recently proposed Feature-Enriched KAN [59] (FEKAN) architecture that was demonstrated to showcase desirable
+characteristics such as improved stability for the Chebyshev basis, faster convergence rate and extreme parametric
+efficiency for better scalability of the architecture. Furthermore, in the context of solving PDEs, PI-FEKAN was
+demonstrated to showcase orders of magnitude improvement in the accuracy at minimal changes in the computational
+cost compared to PIKAN [55].
+Basis
+Architecture
+GS
+Relative L2 Error
+Time (ms/iter)
+Ω1
+Ω2
+Ω3
+Chebyshev [5, 13, 13, 10] × (3)
+✗
+0.1935 ± 0.0077
+0.10240 ± 0.0079
+0.0979 ± 0.0014
+67.64
+✓
+0.0855 ± 0.0529 0.0290 ± 0.0183 0.0511 ± 0.0295
+71.01
+RBF
+[5, 7, 7, 10] × (3)
+✗
+0.2010 ± 0.0063
+0.1145 ± 0.0005
+0.1013 ± 0.0046
+63.45
+✓
+0.0874 ± 0.0176 0.0367 ± 0.0189
+0.1806 ± 0.0290
+70.15
+Table 6: 3D Poisson – PI-FEKAN with gradient surgery.
+Relative L2 error (mean ± std.
+devi) and
+computational time for PI-FEKAN using Chebyshev (k = 2) and RBF (d = 5) basis functions for 3D domain
+decomposition. Note: GS denotes gradient surgery using Norm-PCGrad. The architecture uses 3-body networks with
+5 Fourier feature enrichment terms. Parameter counts are comparable: 2400 (Chebyshev) and 2454 (RBF).
+Unlike MLPs, the KAN architecture has both internal and external parameterizations which can vastly change
+across different basis functions. To this end in Table 6 we note that, although the number of knots in the architecture
+29
+
+
+changes for the Chebyshev basis function and RBF, the total number of parameters is almost comparable for their fair
+comparison of performance. Figure 24 provides the comparison between the solutions to the 3D domain decomposition
+for the different basis functions. With reference to Figure 16, slice
+1 is chosen for comparison between the two basis
+functions utilized by the PI-FEKAN architecture.
+Figure 24: 3D Poisson (3 subdomains) – PI-FEKAN comparison. Solution to the Poisson equation using 3D
+domain decomposition (Left) without gradient surgery and (Right) with Norm-PCGrad, for (Top) RBF and (Bottom)
+Chebyshev basis functions. The 2D slice is located in the yz-plane highlighted in red.
+Irrespective of the chosen basis function, we observe an order of magnitude reduction in the relative L2 error as
+shown in Table 6 at minimal increase in the computational cost and this is also evident from Figure 24. However, a
+minor exception is with respect to Ω3 for RBF where the error increases after the application of gradient surgery while
+all the other subdomains undergo substantial reduction in the relative L2 error. Similar to the previous discussions,
+we observe a concentration of the error at the corner regions of the domain and this substantially reduces when
+gradient surgery was utilized to overcome the gradient conflicts for the 3D domain decomposition. Except for the
+Chebyshev basis function equipped with Norm-PCGrad, there is a higher concentration of the error at the interface
+for all the other cases. Overall, we can conclude that the Chebyshev basis function showcases the best performance
+compared to RBF when the total number of parameters is comparable, with or without gradient surgery.
+It is also worth noting that, the performance gain in accuracy is substantial for the Chebyshev basis function,
+since the relative L2 error reduces up to 3× with Norm-PCGrad. Although not as much, the relative L2 error drops
+up to ≈2× for RBF with Norm-PCGrad. This further confirms the existence of gradient conflicts in the context of
+3D domain decomposition even while using Kolmogorov-Arnold Networks and leveraging an appropriate method for
+gradient surgery such as the proposed Norm-PCGrad can substantially lead to performance gains as shown by the set
+of current results.
+3.4
+Sine-Gordon Equation: 3D Domain →Euclidean + Euclidean
+We consider a steady-state, nonlinear sine-Gordon equation in a spatial domain Ω, given by
+−∆u(x)
+|
+{z
+}
+diffusion term
++
+sin(u(x))
+|
+{z
+}
+non-linear term
+=
+f(x)
+|{z}
+forcing term
+,
+x ∈Ω,
+(27)
+subject to appropriate boundary conditions on ∂Ω, where f is the forcing term.
+30
+
+
+Figure 25: 3D sine-Gordon – Domain setup. Decomposition of a 3D domain into Euclidean subdomains through
+an overlapping interfacial domain. The interface is highlighted in green hatches.
+For the sine-Gordon equation given in Equation (27), we prescribe the manufactured solution
+uexact(x, y, z) = (1 + 0.3 x −0.3 y) cos
+a1πx
+2
+
+cos
+a2πy
+2
+
+cos
+a3πz
+2
+
+,
+(28)
+where a1, a2, and a3 are frequency parameters controlling the rate of oscillation of the solution along the x-, y-, and
+z-directions, respectively, and the affine prefactor (1 + 0.3x −0.3y) breaks the symmetry of the solution between the
+x- and y-directions.
+Substituting uexact from Equation (28) into the left-hand side of the governing equation, Equation (27), the corre-
+sponding source term is obtained directly as
+f(x, y, z) = −∆uexact(x, y, z) + sin(uexact(x, y, z)) ,
+(29)
+where ∆uexact = ∂xxuexact + ∂yyuexact + ∂zzuexact. Owing to the transcendental nonlinearity of Equation (29), f
+is evaluated symbolically rather than expressed in closed form. By construction, uexact in Equation (28) satisfies
+Equation (27) exactly with the source term given by Equation (29), providing a closed-form benchmark with a known
+ground-truth solution for evaluating the trained network. The frequency parameters along each direction is assigned
+with a1 = 15, a2 = 15, and a3 = 5.
+Gradient Surgery to tackle Gradient Conflicts
+Gradient Surgery
+Relative L2 Error
+Time (ms/iter)
+Ω1
+Ω2
+Ω1 ∩Ω2
+None
+0.2154 ± 0.1765
+0.2543 ± 0.2947
+0.0705 ± 0.0158
+5.89
+ConFIG
+0.5092 ± 0.4421
+0.3821 ± 0.2579
+0.1045 ± 0.0733
+3.84
+PCGrad
+0.1646 ± 0.1064
+0.2199 ± 0.2659
+0.0353 ± 0.0244
+6.62
+Norm-PCGrad
+0.1585 ± 0.0576
+0.1658 ± 0.1830
+0.0296 ± 0.0111
+6.64
+Table 7: 3D sine-Gordon – Gradient surgery. Relative L2 error (mean ± std. devi) and computational time for
+gradient surgery algorithms applied to 3D domain decomposition with an overlapping interfacial domain. Ω1 ∩Ω2
+denotes the agreement between the two subdomains at the overlapping interface.
+Here, we systematically solve the sine-Gordon equation shown as Equation (27) using PINNs with the support of
+gradient surgery and compare the performance against the case without any gradient surgery. While the previous
+discussions on utilization of the SSBroyden optimizer showed performance gains in accuracy, it poses a critical
+computational bottleneck due to the strict requirement for double-precision training. We have also shown that
+gradient surgery using a suitable first-order optimizer can attain performance comparable to the quasi-Newton
+optimizer. Based on these observations, we exclusively utilize gradient surgery with the state-of-the-art algorithms
+along with the proposed Norm-PCGrad.
+31
+
+
+Figure 26: 3D sine-Gordon – Absolute error. Point-wise absolute error of the solution to the sine-Gordon
+equation through 3D domain decomposition without gradient surgery and with gradient surgery using ConFIG,
+PCGrad, and Norm-PCGrad.
+Table 7 compares the performance in terms of the relative L2 error and computational time for different algorithms
+of gradient surgery. Similar to previous sections, we observe Norm-PCGrad to surpass other algorithms in attaining a
+lower relative L2 error at a comparable computational cost. It is also worthwhile to note that the best-performing
+algorithm was determined based on the relative L2 error for the two subdomains.
+Additionally, we examine the agreement between the two subdomains at the overlapping interfacial domain
+(Ω1 ∩Ω2) as an additional criterion for comparing performance across cases. We note that both PCGrad and
+Norm-PCGrad attain an order of magnitude lower relative L2 error at the interfacial domain compared to ConFIG,
+and up to 50% reduction in relative L2 error compared to the case without gradient surgery. This difference in
+accuracy is further confirmed by the comparison of the point-wise absolute error shown in Figure 26.
+While ConFIG attains the best computational efficiency, as observed consistently across sections, it struggles
+with maintaining accuracy for solutions to PDEs in the context of domain decomposition. It is also worth noting
+that ConFIG and Norm-PCGrad attain the same two objectives, i.e., removing conflicts between the gradients and
+normalizing the resulting gradients along their new directions before aggregation, while differing in their process.
+We note that a given algorithm for gradient surgery can be distinguished based on its ability to respect the implicit
+coupling at the interface across subdomains, and ConFIG does not appear to respect this coupling. This may be a
+direction to address in future work.
+While solving the 3D sine-Gordon equation using SPINN-SPINN domain decomposition, we compare the gradient
+conflicts across different algorithms of gradient surgery using the cosine similarity score, as shown in Figure 27.
+Interestingly, in the current scenario, all cases exhibit conflict-free gradients for the majority of training. The
+cases without gradient surgery and with ConFIG have SΩ1
+c, mean and SΩ2
+c, mean > 0, indicating that gradients remain
+conflict-free but only moderately aligned. On the other hand, both PCGrad and Norm-PCGrad attain SΩ1
+c, mean and
+SΩ2
+c, mean ≫0, indicating strong gradient alignment for the majority of training. However, it is worthwhile to note that
+Norm-PCGrad remains the best case, since its distribution for both subdomains exhibits a strong left skew with the
+majority of the density concentrated in the right-half plane (Sc > 0). These observations further support the trend of
+relative L2 error for SPINN-SPINN domain decomposition shown in Table 7.
+Kolmogorov-Arnold Networks
+Having established the advantages of the Adam optimizer integrated with the proposed Norm-PCGrad algorithm
+for mitigation of gradient conflicts in domain decomposition, we leverage this combination to solve the sine-Gordon
+equation in the 3D domain shown in Figure 25 using Kolmogorov-Arnold Networks.
+Unlike MLPs, the KAN
+architecture has both internal and external parameterizations that can vary substantially across different basis
+functions. Although the number of knots in the architecture differs between the Chebyshev basis and RBF, the total
+32
+
+
+Figure 27: 3D sine-Gordon – Cosine Similarity. Density distribution of cosine similarity scores for the two
+subdomains, SΩ1
+c
+and SΩ2
+c . Vertical solid lines represent the mean of each distribution (SΩ1
+c, mean and SΩ2
+c, mean), while
+the dashed line marks the zero-line where gradients are orthogonal. If SΩ1
+c, mean and/or SΩ2
+c, mean < 0, the gradients
+were in conflict for the majority of training in Ω1 and/or Ω2. On the other hand, if SΩ1
+c, mean and/or SΩ2
+c, mean > 0, the
+gradients were conflict-free for the majority of training in Ω1 and/or Ω2. The extent of gradient conflicts (or their
+suppression) is measured by the distance of SΩ1
+c, mean and SΩ2
+c, mean from the zero-line.
+number of parameters is kept comparable for a fair comparison of performance, as noted in Table 8. Irrespective of
+the chosen basis function, we observe an order of magnitude reduction in the relative L2 error at minimal increase
+in computational cost, as evident from both Table 8 and Figure 28. For a comparable number of parameters, the
+Chebyshev basis attains better accuracy than RBF across the subdomains.
+Basis
+Architecture
+GS
+Relative L2 Error
+Time (ms/iter)
+Ω1
+Ω2
+Ω1 ∩Ω2
+Chebyshev [5, 13, 13, 10] × (2)
+✗
+0.2020 ± 0.0712
+0.1778 ± 0.0393
+0.2565 ± 0.0393
+72.45
+✓
+0.0829 ± 0.0677 0.1322 ± 0.1862 0.0466 ± 0.0128
+73.13
+RBF
+[5, 7, 7, 10] × (2)
+✗
+0.2719 ± 0.0961
+0.2628 ± 0.0245
+0.2395 ± 0.0757
+61.56
+✓
+0.1301 ± 0.0671 0.1422 ± 0.0870 0.0865 ± 0.0240
+62.34
+Table 8: 3D sine-Gordon – PI-FEKAN with gradient surgery. Relative L2 error (mean ± std. devi) and
+computational time for PI-FEKAN using Chebyshev (k = 2) and RBF (d = 5) basis functions for 3D domain
+decomposition. Note: GS denotes gradient surgery using Norm-PCGrad. The architecture uses 3-body networks with
+5 Fourier feature enrichment terms. Parameter counts are comparable: 1600 (Chebyshev) and 1636 (RBF).
+The performance gain in accuracy is substantial for both basis functions, with the relative L2 error reducing by
+up to 2× when Norm-PCGrad is applied. This further confirms the existence of gradient conflicts in the context of
+3D domain decomposition for nonlinear PDEs, even when using Kolmogorov-Arnold Networks, and demonstrates
+that leveraging an appropriate method for gradient surgery can lead to substantial performance gains. It is also
+noteworthy that Norm-PCGrad leads to an order of magnitude reduction in the relative L2 error at the common
+interfacial domain Ω1 ∩Ω2, while the reduction independently for each subdomain can be relatively modest. This
+indicates that subdomains can achieve good agreement at the interface while still exhibiting larger errors globally
+compared to the physically consistent ground truth.
+33
+
+
+Figure 28: 3D sine-Gordon – Absolute error for PI-FEKAN comparison. Point-wise absolute error of the
+solution to the sine-Gordon equation through 3D domain decomposition (Left) without gradient surgery and (Right)
+with Norm-PCGrad, for (Top) RBF and (Bottom) Chebyshev basis functions.
+Across the current and previous sections, we have demonstrated the scalability of KANs for solving both linear and
+nonlinear PDEs through 3D domain decomposition, and confirmed the benefits of gradient surgery across different
+basis functions for KAN-based architectures.
+4
+Conclusions
+This work emphasizes the importance of tackling gradient conflicts while solving PDEs through domain decomposition,
+predominantly using gradient surgery based on projection of conflicting gradients in the loss landscape. We compare
+existing algorithms for gradient surgery and propose Norm-PCGrad to tackle such conflicts in the context of domain
+decomposition when existing algorithms tend towards degraded performance. Besides gradient surgery, we also
+recognize curvature-aware optimization using the Broyden family of optimizers, specifically the SSBroyden optimizer,
+to address gradient conflicts either independently or in combination with the first-order Adam optimizer. This work
+also discusses the extension of 3D domain decomposition to Kolmogorov-Arnold Networks. We note that the existing
+literature is fairly limited to simple 2D domain decomposition using KANs with hard-constrained interfacial modeling
+using a predefined ansatz, whose selection becomes non-trivial for 3D domains. To the best of our knowledge, this is
+the first work to demonstrate the scalability of KANs for 3D domain decomposition while tackling conflicting gradients
+using the proposed Norm-PCGrad algorithm. The valuable insights from this work can be summarized as follows:
+• The current work has demonstrated that training a neural network for solving PDEs can still be performed
+with fixed or non-tuned weights for the loss terms to achieve superior accuracy and convergence if the gradient
+conflicts can be eliminated or substantially mitigated from the training process without utilization of any
+dynamic weighting strategies.
+• Our results clearly demonstrate the benefits of mitigating conflicting gradients for domain decomposition even
+while utilizing fixed, non-tuned weights for the loss terms. Specifically, the proposed Norm-PCGrad algorithm
+attains the best performance even for cases where existing state-of-the-art algorithms such as PCGrad and
+ConFIG exhibited degraded performance.
+• The explicit normalization step in Norm-PCGrad normalizes the gradients for the individual loss terms, thereby
+preventing abrupt changes to the gradient directions while still mitigating conflicts between them. Consequently,
+Norm-PCGrad respects the implicit coupling between interface gradients across any two subdomains while
+performing gradient projections. In contrast, PCGrad without normalization can undergo abrupt changes to
+gradient directions, potentially breaking this coupling and resulting in discontinuous solutions at the interface,
+as observed in our empirical studies. The performance of ConFIG was the worst among all algorithms tested for
+34
+
+
+both 2D and 3D domain decompositions. This is further supported by observations of recent works [74] on the
+degraded performance of ConFIG for solving PDEs in single domains.
+• We also establish theoretical results showing that Norm-PCGrad provides a magnitude-balanced and geometrically
+principled framework for gradient aggregation.
+• This work also discusses the potential of curvature-aware optimization using the SSBroyden optimizer for
+mitigation of gradient conflicts in the context of 2D and 3D domain decomposition. While the empirical results
+demonstrate that curvature-aware optimization indeed helps in suppressing gradient conflicts, it comes at a
+higher computational cost as observed through empirical studies. Moreover, the performance of SSBroyden
+was competitive but inferior to the Adam optimizer equipped with gradient surgery using the proposed
+Norm-PCGrad.
+• We also extended gradient surgery using Norm-PCGrad for domain decomposition of 3D domains to Kolmogorov-
+Arnold Networks. We specifically utilized the Feature-Enriched KAN [59] architecture to test performance gains
+and scalability using efficient formulations of basis functions based on Chebyshev polynomials [53] and RBF
+[54]. Our observations suggested Chebyshev polynomials with Norm-PCGrad as the best combination for 3D
+domain decomposition using KANs.
+• While modeling the interface as an overlapping interfacial domain is beneficial, it can reduce the computational
+efficiency of a vanilla PINN. To address this bottleneck, we propose SPINN-PINN domain decomposition,
+leveraging the separable SPINN architecture [62] for a faster XPINN-based domain decomposition. This is
+demonstrated empirically in Appendix C.
+• Building on this, we propose the mSPINN algorithm in the context of domain decomposition to solve the
+Euclidean subdomains using a multi-grid approach by sampling staggered collocation grids, although at a higher
+computational cost from the current serial implementation. Using mSPINN, we observe orders of magnitude
+improvement in accuracy compared to domain decomposition using the vanilla PINN or the SPINN architecture
+for the Helmholtz equation. We refrained from further comparison of its performance until mSPINN can be
+parallelized to attain computational costs comparable to SPINN or PINN architectures, which may be pursued
+as future work.
+While the hybrid domain decomposition proposed in this work showcased enhanced computational efficiency
+compared to standard PINN-PINN decomposition, it is worth noting its limitations so that they can be addressed in
+future work. The hybrid approach discussed here entails SPINN-PINN decomposition, where a domain is decomposed
+into Euclidean and non-Euclidean subdomains so that the Euclidean subdomain can be solved using a separable
+architecture at linear computational cost. We have also discussed SPINN-SPINN decomposition for several 2D and 3D
+domains, demonstrating its performance gains when combined with gradient surgery. However, in applications dealing
+with purely non-Euclidean domains, we propose the utilization of SPINN-PINN decomposition, where a non-Euclidean
+domain can be decomposed into a combination of Euclidean and non-Euclidean subdomains. For domains with
+extremely complicated topologies (e.g., a helical spring), it may be difficult to achieve such decomposition without
+drastic geometric simplifications, and in those instances the most suitable approach remains a standard PINN-PINN
+(XPINN) decomposition. It is also worth noting that all existing works, including the current work, deal with a
+manageable number of loss terms within the composite loss function. However, handling the pair-wise gradient
+projections can become a computational bottleneck for cases with a large number of loss terms, and this can pose a
+major limitation for the algorithms of gradient surgery.
+Based on our results and regardless of the underlying architecture, we emphasize the utilization of gradient surgery
+for domain decomposition in the context of PINNs (or any PDE-constrained training in general), to ensure conflict-free
+gradients that can lead to superior accuracy, both globally and across the interface, along with improved convergence
+rates, with negligible overhead in computational cost.
+Acknowledgements
+The second author received through Sandia National Laboratories Laboratory Directed Research and Development
+(LDRD) program and through the U.S. Department of Energy, Office of Science, Office of Advanced Scientific
+Computing Research, Mathematical Multifaceted Integrated Capability Centers (MMICCs) program, under Field
+Work Proposal 22025291 and the Multifaceted Mathematics for Predictive Digital Twins (M2dt) project. Sandia
+National Laboratories is a multi-mission laboratory managed and operated by National Technology and Engineering
+35
+
+
+Solutions of Sandia, LLC., a wholly owned subsidiary of Honeywell International, Inc., for the U.S. Department of
+Energy’s National Nuclear Security Administration under contract DE-NA0003525.
+A
+Theoretical Properties of Norm-PCGrad
+We establish three key theoretical properties of Norm-PCGrad for the two-loss case. First, we show that the projected
+PCGrad direction is conflict-free. Second, we quantify the gradient-magnitude bias induced by PCGrad and show
+how normalization removes the explicit projected-magnitude weighting. Finally, we establish that Norm-PCGrad is
+the max–min optimal direction in the normalized projected-gradient space. We further show that this direction is
+identical to the two-gradient ConFIG direction.
+Let g1, g2 ∈Rd denote two nonzero gradients satisfying
+g⊤
+1 g2 < 0.
+(30)
+Define the orthogonalized gradient components
+p1 = O(g1, g2) = g2 −g⊤
+1 g2
+∥g1∥2 g1,
+(31)
+p2 = O(g2, g1) = g1 −g⊤
+1 g2
+∥g2∥2 g2.
+(32)
+We assume that the gradients are non-collinear so that p1̸ = 0 and p2̸ = 0.
+Theorem 1 (Conflict-free property of two-gradient PCGrad).
+For two nonzero, non-collinear conflicting
+gradients, the PCGrad update
+gPCGrad = p1 + p2
+satisfies
+g⊤
+1 gPCGrad = ∥p2∥2 > 0,
+g⊤
+2 gPCGrad = ∥p1∥2 > 0.
+Therefore, gPCGrad is a simultaneous first-order descent direction for both loss functions.
+Proof.
+By construction,
+g⊤
+1 p1 = 0,
+g⊤
+2 p2 = 0.
+Moreover,
+g⊤
+1 p2 = ∥p2∥2,
+g⊤
+2 p1 = ∥p1∥2.
+Consequently,
+g⊤
+1 gPCGrad = g⊤
+1 (p1 + p2)
+= 0 + ∥p2∥2 = ∥p2∥2 > 0,
+and similarly,
+g⊤
+2 gPCGrad = g⊤
+2 (p1 + p2)
+= ∥p1∥2 + 0 = ∥p1∥2 > 0.
+Hence, for an update θ+ = θ −ηgPCGrad with sufficiently small η > 0, both losses decrease to first order.
+□
+36
+
+
+Theorem 2 (Magnitude bias of PCGrad and normalization).
+Let
+Sc(g1, g2) =
+g⊤
+1 g2
+∥g1∥∥g2∥
+denote the cosine similarity between the two gradients. Then the orthogonalized components satisfy
+∥p1∥= ∥g2∥
+p
+1 −c2,
+(33)
+∥p2∥= ∥g1∥
+p
+1 −c2.
+(34)
+Consequently, the relative first-order contribution of the two losses under PCGrad is
+g⊤
+1 gPCGrad
+g⊤
+2 gPCGrad
+= ∥g1∥2
+∥g2∥2 .
+(35)
+Thus, PCGrad exhibits a quadratic dependence on the relative gradient magnitudes. In contrast, define the normalized
+projected components
+u1 =
+p1
+∥p1∥,
+u2 =
+p2
+∥p2∥,
+and the Norm-PCGrad update
+gNorm = u1 + u2.
+Then
+g⊤
+1 gNorm = ∥p2∥,
+g⊤
+2 gNorm = ∥p1∥,
+and therefore
+g⊤
+1 gNorm
+g⊤
+2 gNorm
+= ∥g1∥
+∥g2∥.
+(36)
+Hence, normalization changes the quadratic magnitude dependence of PCGrad to a linear dependence and removes
+the explicit weighting of the aggregate direction by the magnitudes of the projected gradients.
+Proof.
+From Equation (31),
+∥p1∥2 =
+g2 −g⊤
+1 g2
+∥g1∥2 g1
+
+2
+= ∥g2∥2 −(g⊤
+1 g2)2
+∥g1∥2
+= ∥g2∥2(1 −c2),
+which gives Equation (33). Similarly,
+∥p2∥2 =
+g1 −g⊤
+1 g2
+∥g2∥2 g2
+
+2
+= ∥g1∥2 −(g⊤
+1 g2)2
+∥g2∥2
+= ∥g1∥2(1 −c2),
+which gives Equation (34).
+By Theorem 1
+g⊤
+1 gPCGrad = ∥p2∥2,
+g⊤
+2 gPCGrad = ∥p1∥2.
+37
+
+
+Therefore,
+g⊤
+1 gPCGrad
+g⊤
+2 gPCGrad
+= ∥p2∥2
+∥p1∥2
+= ∥g1∥2(1 −c2)
+∥g2∥2(1 −c2)
+= ∥g1∥2
+∥g2∥2 .
+For Norm-PCGrad, using g⊤
+1 p1 = 0 and g⊤
+2 p2 = 0,
+g⊤
+1 gNorm = g⊤
+1 p1
+∥p1∥+ g⊤
+1 p2
+∥p2∥
+= ∥p2∥2
+∥p2∥= ∥p2∥,
+g⊤
+2 gNorm = g⊤
+2 p1
+∥p1∥+ g⊤
+2 p2
+∥p2∥
+= ∥p1∥2
+∥p1∥= ∥p1∥.
+Substitution of Equations (33) and (34) gives
+g⊤
+1 gNorm
+g⊤
+2 gNorm
+= ∥p2∥
+∥p1∥= ∥g1∥
+∥g2∥.
+□
+Theorem 3 (Max–min optimality of Norm-PCGrad).
+Under the assumptions above, let
+u1 =
+p1
+∥p1∥,
+u2 =
+p2
+∥p2∥.
+The unit-norm Norm-PCGrad direction
+dNorm =
+u1 + u2
+∥u1 + u2∥
+solves the max–min optimization problem
+dNorm = arg max
+∥d∥=1
+min
+
+d⊤u1, d⊤u2
+	
+.
+(37)
+Therefore, Norm-PCGrad selects the unit-norm direction that maximizes the worst-case alignment with the two
+normalized orthogonalized gradient components.
+Proof.
+First, the inner product between the two projected components is
+p⊤
+1 p2 =
+
+g2 −g⊤
+1 g2
+∥g1∥2 g1
+⊤
+g1 −g⊤
+1 g2
+∥g2∥2 g2
+
+= −g⊤
+1 g2
+
+1 −
+(g⊤
+1 g2)2
+∥g1∥2∥g2∥2
+
+= −g⊤
+1 g2(1 −c2) > 0.
+Therefore,
+0 < u⊤
+1 u2 < 1,
+where the strict upper bound follows from the non-collinearity assumption. In particular, u1 + u2̸ = 0.
+For any unit vector d, define
+q(d) = min
+
+d⊤u1, d⊤u2
+	
+.
+38
+
+
+Using
+min{a, b} = a + b −|a −b|
+2
+,
+we obtain
+q(d) = d⊤(u1 + u2) −
+d⊤(u1 −u2)
+
+2
+.
+Since the second term is nonnegative,
+q(d) ≤d⊤(u1 + u2)
+2
+≤∥u1 + u2∥
+2
+,
+where the second inequality follows from the Cauchy–Schwarz inequality.
+Now choose
+d = dNorm =
+u1 + u2
+∥u1 + u2∥.
+For this choice,
+d⊤
+Normu1 = 1 + u⊤
+1 u2
+∥u1 + u2∥,
+d⊤
+Normu2 = 1 + u⊤
+1 u2
+∥u1 + u2∥.
+Thus the two projections are equal. Moreover,
+∥u1 + u2∥2 = 2(1 + u⊤
+1 u2),
+and hence
+q(dNorm) = 1 + u⊤
+1 u2
+∥u1 + u2∥= ∥u1 + u2∥
+2
+.
+This attains the upper bound above. Therefore, dNorm is a maximizer of the max–min problem.
+□
+Corollary (Equivalence of Norm-PCGrad and two-gradient ConFIG directions).
+For two nonzero,
+non-collinear conflicting gradients, the Norm-PCGrad direction is identical to the two-gradient ConFIG direction:
+dNorm = U [U(p1) + U(p2)] = gv.
+(38)
+Hence, PCGrad, Norm-PCGrad, and ConFIG have the same conflict-free direction in the two-loss case only after
+accounting for the normalization of the projected components. PCGrad differs through magnitude weighting, whereas
+Norm-PCGrad and ConFIG generate the same unit direction.
+Proof.
+By definition,
+U(p1) = u1,
+U(p2) = u2.
+Therefore,
+gv = U [u1 + u2]
+=
+u1 + u2
+∥u1 + u2∥
+= dNorm.
+□
+Taken together, our results establish Norm-PCGrad as a principled approach to balancing conflicting objectives.
+Unlike PCGrad, whose projected gradients retain a quadratic dependence on the original gradient norms, Norm-PCGrad
+reduces this dependence to linear, mitigating the dominance of large-gradient objectives. Moreover, Norm-PCGrad
+is the max–min optimal direction in normalized projected-gradient space, maximizing worst-case alignment across
+objectives. For two gradients, it is exactly equivalent to ConFIG, linking gradient normalization to an independent
+optimality principle. Thus, Norm-PCGrad provides a magnitude-balanced and geometrically principled approach to
+gradient aggregation.
+39
+
+
+Algorithm 2 Multi-grid SPINN (mSPINN)
+Require: Surrogate uθ with parameters θ; grid pool G = {G1, . . . , Gn}; batch size m ≪n; learning rate ϵ
+1: for i = 1 to EPOCHS do
+2:
+Sample a batch Gbatch ⊂G of m grids uniformly at random
+3:
+for Gj ∈Gbatch do
+4:
+Compute loss L(θi; Gj) and gradient ∇θL(θi; Gj)
+5:
+end for
+6:
+// Average the loss and gradient over the m sampled grids
+7:
+Lavg(θi; Gbatch) ←1
+m
+Pm
+j=1 L(θi; Gj)
+8:
+∇θLavg(θi; Gbatch) ←1
+m
+Pm
+j=1 ∇θL(θi; Gj)
+9:
+// Parameter update; ADAM or any other choice of optimizer can replace this plain gradient step in practice
+10:
+θi+1 ←θi −ϵ ∇θLavg(θi; Gbatch)
+11: end for
+B
+Multi-grid SPINN (mSPINN)
+The pseudo-code for the multi-grid SPINN algorithm discussed in Section 3.1. is described here.
+C
+Poisson Equation: 2D Domain →Euclidean + Euclidean
+Interface Continuity
+Figure 29: Non-overlapping interface. Comparison of continuity across the interface of subdomains for 2D domain
+decomposition using different derivative combinations in the interface loss.
+Here, we evaluate the different combinations of the gradients that can potentially ensure smooth and continuous gradients at
+the vertical interface between the two subdomains for a 2D domain decomposition problem. Specifically we apply the first and
+second order gradients along with their combinations to the interface loss function to show the optimal setup for the interface
+loss function.
+40
+
+
+Domain Decomposition
+Computational Time (ms/iter)
+Non-overlapping
+Overlapping
+PINN-PINN
+46.66
+54.33
+SPINN-SPINN
+3.50
+3.72
+Table 9: Computational cost of SPINN-SPINN vs. PINN-PINN domain decomposition (2D Poisson
+equation). Wall-clock training time per iteration (ms/iter), for non-overlapping and overlapping vertical-interface
+decomposition, with IDENTICAL collocation and boundary point counts across both architectures (verified; see
+Section 3.2). SPINN-SPINN is ∼13× faster than PINN-PINN in both cases. Introducing the overlapping interface
+increases cost by 6% (SPINN-SPINN) and 16% (PINN-PINN) relative to the non-overlapping baseline.
+We particularity compare for a non-overlapping interface (shown in Figure 29) and an overlapping interfacial domain (shown
+in Figure 30) to show that the first order gradients of the solution field included in the interface loss term attains the best
+smoothness and continuity across the interface among all the different combinations considered.
+Figure 30: Overlapping interfacial domain. Comparison of continuity across the interface of subdomains for 2D
+domain decomposition using different derivative combinations in the interface loss.
+D
+PINN Failure: Choosing the Correct Interface
+Figure 31: 2D Poisson (Horizontal Interface) – Interface failure. Comparison between solutions from ConFIG,
+PCGrad and Norm-PCGrad for horizontal interface location.
+41
+
+
+With reference to the discussion in Section 3.2 on the PINN failure mode for domain decomposition, we note that this failure is
+independent of any gradient surgery utilized for resolving potential gradient conflicts, as clearly illustrated in Figure 31.
+For a horizontal interface separating the two subdomains, one of the subdomains attains a trivial solution of zero across its
+entirety, since the information from the bottom (high-potential) boundary condition is not transmitted through the interface.
+E
+SSBroyden: General Broyden Family Derivation
+The general formulation of quasi-Newton methods in the Broyden family can be characterized as follows:
+Bk+1 = Bk −Bksks⊺
+kBk
+s⊺
+kBksk
++ yky⊺
+k
+y⊺
+ksk + θk(s⊺
+kBksk)wkw⊺
+k
+(39)
+Here, θk is a scalar parameter and Hk = B−1
+k
+is computed using the gradient information from previous iterations to approximate
+the inverse Hessian, Hk ≈(∇2fk)−1, evaluated at xk in a loss landscape denoted by f. Furthermore, sk = xk+1 −xk represents
+the change in parameters, while yk = ∇fk+1 −∇fk represents the change in their respective gradients. Once a suitable direction
+for the update is determined as,
+pk = −Hk∇fk,
+(40)
+the next step in the loss landscape is taken as follows,
+xk+1 = xk −αkpk.
+(41)
+Here, αk is computed via a line-search strategy. It is also worthwhile to note that fixing θk = 0 recovers the update rule for the
+BFGS optimizer. Since Hk = B−1
+k , it is infeasible to compute the matrix inverse at every iteration during training. The inverse
+of Equation (39) is therefore computed to obtain the following update rule,
+Hk+1 = Hk −Hkyky⊺
+kHk
+y⊺
+kHkyk
++ sks⊺
+k
+y⊺
+ksk + ϕk(y⊺
+kHkyk)vkv⊺
+k,
+(42)
+where the parameters are defined as,
+vk =
+sk
+y⊺
+ksk −
+Hkyk
+y⊺
+kHkyk ,
+ϕk =
+1 −θk
+1 + (hkbk −1)θk ,
+bk = s⊺
+kBksk
+y⊺
+ksk
+,
+hk = y⊺
+kHkyk
+y⊺
+ksk
+.
+References
+[1] M. Raissi, P. Perdikaris, G. E. Karniadakis, Physics-informed neural networks: A deep learning framework for solving
+forward and inverse problems involving nonlinear partial differential equations, Journal of Computational physics 378
+(2019) 686–707.
+[2] A. D. Jagtap, Y. Shin, K. Kawaguchi, G. E. Karniadakis, Deep Kronecker neural networks: A general framework for
+neural networks with adaptive activation functions, Neurocomputing 468 (2022) 165–180.
+[3] A. D. Jagtap, K. Kawaguchi, G. E. Karniadakis, Locally adaptive activation functions with slope recovery for deep and
+physics-informed neural networks, Proc. R. Soc. A 476 (2239) (2020) 20200334.
+[4] A. D. Jagtap, K. Kawaguchi, G. E. Karniadakis, Adaptive activation functions accelerate convergence in deep and
+physics-informed neural networks, J. Comput. Phys. 404 (2020) 109136.
+[5] J. Abbasi, B. Moseley, T. Kurotori, A. D. Jagtap, A. R. Kovscek, A. Hiorth, P. Ø. Andersen, History-matching of
+imbibition flow in fractured porous media using physics-informed neural networks (PINNs), Comput. Methods Appl. Mech.
+Eng. 437 (2025) 117784.
+[6] A. D. Jagtap, Z. Mao, N. Adams, G. E. Karniadakis, Physics-informed neural networks for inverse problems in supersonic
+flows, J. Comput. Phys. 466 (2022) 111402.
+[7] K. Shukla, A. D. Jagtap, J. L. Blackshire, D. Sparkman, G. E. Karniadakis, A physics-informed neural network for
+quantifying the microstructural properties of polycrystalline nickel using ultrasound data: A promising approach for
+solving inverse problems, IEEE Signal Process. Mag. 39 (1) (2021) 68–77.
+[8] A. D. Jagtap, D. Mitsotakis, G. E. Karniadakis, Deep learning of inverse water waves problems using multi-fidelity data:
+Application to Serre–Green–Naghdi equations, Ocean Eng. 248 (2022) 110775.
+42
+
+
+[9] A. D. Jagtap, G. E. Karniadakis, How important are activation functions in regression and classification? A survey,
+performance comparison, and future directions, J. Mach. Learn. Model. Comput. 4 (1) (2023).
+[10] H. N. Mhaskar, E. Tsoukanis, A. D. Jagtap, An approximation theory perspective on machine learning, Neural Networks
+200 (2026) 108841.
+[11] Z. Hu, A. D. Jagtap, G. E. Karniadakis, K. Kawaguchi, When do extended physics-informed neural networks (XPINNs)
+improve generalization?, SIAM J. Sci. Comput. 44 (5) (2022) A3158–A3182.
+[12] Z. Mao, A. D. Jagtap, G. E. Karniadakis, Physics-informed neural networks for high-speed flows, Comput. Methods Appl.
+Mech. Eng. 360 (2020) 112789.
+[13] J. Abbasi, A. D. Jagtap, B. Moseley, A. Hiorth, P. Ø. Andersen, Challenges and advancements in modeling shock fronts
+with physics-informed neural networks: A review and benchmarking study, Neurocomputing (2025) 131440.
+[14] S. S. Menon, T. Mondal, S. Brahmachary, A. Panda, S. M. Joshi, K. Kalyanaraman, A. D. Jagtap, On scientific foundation
+models: Rigorous definitions, key applications, and a comprehensive survey, Neural Netw. (2026) 108567.
+[15] S. S. Menon, M. Lavari, A. Kokernak, J. Mathew, C. A. Jagtap, J. Jayachandran, A. Gnanaskandan, A. D. Jagtap, Intelligent
+fluid flows: A survey of deep learning methods for turbulent flows, multiphase flows, and combustion, Neurocomputing 697
+(2026) 134117.
+[16] S. Maity, P. Das, A. Patawari, A. D. Jagtap, Enpinn: Energy-norm-guided gradient-enhanced pinns for generalized
+transport problems with sharp gradients, arXiv preprint arXiv:2608.29499 (2026).
+[17] A. D. Jagtap, G. E. Karniadakis, Extended physics-informed neural networks (xpinns): A generalized space-time domain
+decomposition based deep learning framework for nonlinear partial differential equations, Communications in Computational
+Physics 28 (5) (2020).
+[18] A. D. Jagtap, E. Kharazmi, G. E. Karniadakis, Conservative physics-informed neural networks on discrete domains for
+conservation laws: Applications to forward and inverse problems, Comput. Methods Appl. Mech. Eng. 365 (2020) 113028.
+[19] M. Penwarden, A. D. Jagtap, S. Zhe, G. E. Karniadakis, R. M. Kirby, A unified scalable framework for causal sweeping
+strategies for Physics-Informed Neural Networks (PINNs) and their temporal decompositions, J. Comput. Phys. 493 (2023)
+112464.
+[20] B. Moseley, A. Markham, T. Nissen-Meyer, Finite basis physics-informed neural networks (fbpinns): a scalable domain
+decomposition approach for solving differential equations: B. moseley et al., Advances in Computational Mathematics
+49 (4) (2023) 62.
+[21] K. Shukla, A. D. Jagtap, G. E. Karniadakis, Parallel physics-informed neural networks via domain decomposition, J.
+Comput. Phys. 447 (2021) 110683.
+[22] Z. Hu, A. D. Jagtap, G. E. Karniadakis, K. Kawaguchi, Augmented Physics-Informed Neural Networks (APINNs): A
+gating network-based soft domain decomposition methodology, Eng. Appl. Artif. Intell. 126 (2023) 107183.
+[23] T. Yu, S. Kumar, A. Gupta, S. Levine, K. Hausman, C. Finn, Gradient surgery for multi-task learning, Advances in neural
+information processing systems 33 (2020) 5824–5836.
+[24] Z. Chen, V. Badrinarayanan, C.-Y. Lee, A. Rabinovich, Gradnorm: Gradient normalization for adaptive loss balancing in
+deep multitask networks, in: International conference on machine learning, PMLR, 2018, pp. 794–803.
+[25] L. Liu, Y. Li, Z. Kuang, J.-H. Xue, Y. Chen, W. Yang, Q. Liao, W. Zhang, Towards impartial multi-task learning, in:
+International conference on learning representations, 2021, p. ND.
+[26] F. Meng, Z. Xiao, Y. Zhang, J. Wang, Ri-pcgrad: Optimizing multi-task learning with rescaling and impartial projecting
+conflict gradients: F. meng et al., Applied Intelligence 54 (22) (2024) 12009–12019.
+[27] T. Zhou, X. Zhang, E. L. Droguett, A. Mosleh, A generic physics-informed neural network-based framework for reliability
+assessment of multi-state systems, Reliability Engineering & System Safety 229 (2023) 108835.
+[28] Q. Liu, M. Chu, N. Thuerey, Config: Towards conflict-free training of physics informed neural networks, in: International
+Conference on Learning Representations, Vol. 2025, 2025, pp. 59531–59566.
+[29] S. Wang, Y. Teng, P. Perdikaris, Understanding and mitigating gradient flow pathologies in physics-informed neural
+networks, SIAM Journal on Scientific Computing 43 (5) (2021) A3055–A3081.
+[30] P. Thanasutives, M. Numao, K.-i. Fukui, Adversarial multi-task learning enhanced physics-informed neural networks for
+solving partial differential equations, in: 2021 International Joint Conference on Neural Networks (IJCNN), IEEE, 2021,
+pp. 1–9.
+[31] I. J. Goodfellow, J. Pouget-Abadie, M. Mirza, B. Xu, D. Warde-Farley, S. Ozair, A. Courville, Y. Bengio, Generative
+adversarial nets, Advances in neural information processing systems 27 (2014).
+[32] W. Snyder, I. Tezaur, C. Wentland, Domain decomposition-based coupling of physics-informed neural networks via the
+schwarz alternating method, arXiv preprint arXiv:2311.00224 (2023).
+43
+
+
+[33] X. Pan, D. Xiao, Domain decomposition for physics-data combined neural network based parametric reduced order
+modelling, Journal of Computational Physics 519 (2024) 113452.
+[34] S. W. Chung, S. T. Castonguay, S. Roy, M. S. Penwarden, Y. Fu, P. Roy, Hard-constrained physics-informed neural
+networks for interface problems, arXiv preprint arXiv:2604.08453 (2026).
+[35] Y. Xiong, H. Wei, Z. Ma, Z. Ding, Y. Peng, Dadd-pinn: Dual adaptive domain decomposition physics-informed neural
+networks, Mathematics 14 (4) (2026) 744.
+[36] H. Ye, C. Xu, Y. Zhou, X. Meng, Spatial-temporal, parallel, physics-informed neural networks for solving forward and
+inverse pde problems via overlapping domain decomposition, Aerospace Research Communications 3 (2025) 14842.
+[37] L. Gu, S. Qin, L. Xu, R. Chen, Physics-informed neural networks with domain decomposition for the incompressible
+navier–stokes equations, Physics of Fluids 36 (2) (2024).
+[38] K. Li, K. Tang, T. Wu, Q. Liao, D3m: A deep domain decomposition method for partial differential equations, Ieee Access
+8 (2019) 5283–5294.
+[39] W. Li, X. Xiang, Y. Xu, Deep domain decomposition method: Elliptic problems, in: Mathematical and Scientific Machine
+Learning, PMLR, 2020, pp. 269–286.
+[40] H. Wang, R. Planas, A. Chandramowlishwaran, R. Bostanabad, Mosaic flows: A transferable deep learning framework for
+solving pdes on unseen domains, Computer Methods in Applied Mechanics and Engineering 389 (2022) 114424.
+[41] J. Yao, C. Su, Z. Hao, S. Liu, H. Su, J. Zhu, Multiadam: Parameter-wise scale-invariant optimizer for multiscale training
+of physics-informed neural networks, in: International conference on machine learning, PMLR, 2023, pp. 39702–39721.
+[42] Y. Hwang, D.-Y. Lim, Dual cone gradient descent for training physics-informed neural networks, Advances in Neural
+Information Processing Systems 37 (2024) 98563–98595.
+[43] E. Kiyani, K. Shukla, J. F. Urb´an, J. Darbon, G. E. Karniadakis, Optimizing the optimizer for physics-informed neural
+networks and kolmogorov-arnold networks, Computer Methods in Applied Mechanics and Engineering 446 (2025) 118308.
+[44] N. Vyas, D. Morwani, R. Zhao, I. Shapira, D. Brandfonbrener, L. Janson, S. Kakade, Soap: Improving and stabilizing
+shampoo using adam for language modeling, in: International Conference on Learning Representations, Vol. 2025, 2025,
+pp. 93423–93444.
+[45] V. Gupta, T. Koren, Y. Singer, Shampoo: Preconditioned stochastic tensor optimization, in: International Conference on
+Machine Learning, PMLR, 2018, pp. 1842–1850.
+[46] S. Wang, B. Li, P. Perdikaris, et al., Gradient alignment in physics-informed neural networks: A second-order optimization
+perspective, Advances in Neural Information Processing Systems 38 (2026) 168482–168532.
+[47] D. P. Kingma, J. Ba, Adam: A method for stochastic optimization, arXiv preprint arXiv:1412.6980 (2014).
+[48] Z. Liu, Y. Wang, S. Vaidya, F. Ruehle, J. Halverson, M. Soljacic, T. Hou, M. Tegmark, Kan: Kolmogorov–arnold networks,
+in: International conference on learning representations, Vol. 2025, 2025, pp. 70367–70413.
+[49] A. N. Kolmogorov, On the representations of continuous functions of many variables by superposition of continuous
+functions of one variable and addition, in: Dokl. Akad. Nauk USSR, Vol. 114, 1957, pp. 953–956.
+[50] A. N. Kolmogorov, On the representation of continuous functions of several variables by superpositions of continuous
+functions of a smaller number of variables, American Mathematical Society, 1961.
+[51] V. I. Arnol’d, The representation of functions of several variables, Jounral (1960).
+[52] V. I. Arnold, Representation of continuous functions of three variables by the superposition of continuous functions of two
+variables, Collected works: Representations of functions, celestial mechanics and KAM theory, 1957–1965 (2009) 47–133.
+[53] S. SS, K. AR, A. KP, et al., Chebyshev polynomial-based kolmogorov-arnold networks: An efficient architecture for
+nonlinear function approximation, arXiv preprint arXiv:2405.07200 (2024).
+[54] D. W. Abueidda, P. Pantidis, M. E. Mobasher, Deepokan: Deep operator network based on kolmogorov arnold networks
+for mechanics problems, Computer Methods in Applied Mechanics and Engineering 436 (2025) 117699.
+[55] K. Shukla, J. D. Toscano, Z. Wang, Z. Zou, G. E. Karniadakis, A comprehensive and fair comparison between mlp and kan
+representations for differential equations and operator networks, Computer Methods in Applied Mechanics and Engineering
+431 (2024) 117290.
+[56] C. Guo, L. Sun, S. Li, Z. Yuan, C. Wang, Physics-informed kolmogorov–arnold network with chebyshev polynomials for
+fluid mechanics, Physics of Fluids 37 (9) (2025).
+[57] S. S. Menon, A. D. Jagtap, Anant-net: Breaking the curse of dimensionality with scalable and interpretable neural
+surrogate for high-dimensional pdes, Computer Methods in Applied Mechanics and Engineering 447 (2025) 118403.
+[58] Y. Zhang, S. S. Menon, L. Cheng, A. Gnanaskandan, A. D. Jagtap, Bubbleokan: A physics-informed interpretable neural
+operator for high-frequency bubble dynamics, Computer Methods in Applied Mechanics and Engineering 450 (2026)
+118667.
+44
+
+
+[59] S. S. Menon, A. D. Jagtap, Fekan: Feature-enriched kolmogorov–arnold networks, Computer Methods in Applied Mechanics
+and Engineering 461 (2026) 119141.
+[60] A. A. Howard, B. Jacob, S. Helfert, A. Heinlein, P. Stinis, Finite basis kolmogorov-arnold networks: domain decomposition
+for data-driven and physics-informed problems, arXiv preprint arXiv:2406.19662 (2024).
+[61] Q. Huang, X. Wang, Y. Zhao, The modified physics-informed hybrid parallel kolmogorov–arnold and multilayer perceptron
+architecture with domain decomposition, arXiv preprint arXiv:2511.11228 (2025).
+[62] J. Cho, S. Nam, H. Yang, S.-B. Yun, Y. Hong, E. Park, Separable physics-informed neural networks, Advances in Neural
+Information Processing Systems 36 (2023) 23761–23788.
+[63] S. S. Oren, D. G. Luenberger, Self-scaling variable metric (ssvm) algorithms: Part i: Criteria and sufficient conditions for
+scaling a class of algorithms, Management Science 20 (5) (1974) 845–862.
+[64] S. Wang, Y. Teng, P. Perdikaris, Understanding and mitigating gradient flow pathologies in physics-informed neural
+networks, SIAM Journal on Scientific Computing 43 (5) (2021) A3055–A3081. doi:10.1137/20M1318043.
+[65] D. Liu, Y. Wang, A dual-dimer method for training physics-constrained neural networks with minimax architecture, Neural
+Networks 136 (2021) 112–125.
+[66] R. Bischof, M. A. Kraus, Multi-objective loss balancing for physics-informed deep learning, Computer Methods in Applied
+Mechanics and Engineering 439 (2025) 117914.
+[67] J. Rader, T. Lyons, P. Kidger, Optimistix: modular optimisation in jax and equinox, arXiv:2402.09983 (2024).
+[68] I. Bioli, M. M. Abarrategi, Self-scaled broyden family of quasi-newton methods in jax (2026). arXiv:2603.10599.
+URL https://arxiv.org/abs/2603.10599
+[69] S. A. Faroughi, F. Mostajeran, A. Arzani, S. Faroughi, Symbolic–kan: Kolmogorov-arnold networks with discrete symbolic
+structure for interpretable learning, Journal of Computational Physics (2026) 115223.
+[70] Y. Wang, J. Sun, J. Bai, C. Anitescu, M. S. Eshaghi, X. Zhuang, T. Rabczuk, Y. Liu, Kolmogorov–arnold-informed neural
+network: A physics-informed deep learning framework for solving forward and inverse problems based on kolmogorov–arnold
+networks, Computer Methods in Applied Mechanics and Engineering 433 (2025) 117518.
+[71] Q. Zhao, B. Wang, J. Kang, A pikan-based model for the prediction of the temperature fields of castings, Scientific Reports
+(2025).
+[72] A. Noorizadegan, S. Wang, L. Ling, J. P. Dominguez-Morales, A practitioner’s guide to kolmogorov–arnold networks,
+Computer Science Review 62 (2026) 100991.
+[73] X. Glorot, Y. Bengio, Understanding the difficulty of training deep feedforward neural networks, in: Proceedings of the
+thirteenth international conference on artificial intelligence and statistics, JMLR Workshop and Conference Proceedings,
+2010, pp. 249–256.
+[74] B. J. Kim, G. L. R. N’guessan, Per-loss adapters for gradient conflict in physics-informed neural networks, arXiv preprint
+arXiv:2605.10136 (2026).
+45

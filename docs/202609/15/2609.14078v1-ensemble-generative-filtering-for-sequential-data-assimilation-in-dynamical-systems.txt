@@ -1,0 +1,1932 @@
+Ensemble generative filtering for sequential data assimilation in
+dynamical systems
+Xu-Hui Zhoua,b, Jiequn Hanc,∗
+aScripps Institution of Oceanography, University of California San Diego, La Jolla, 92093, CA, USA
+bComputing + Mathematical Sciences, California Institute of Technology, Pasadena, 91125, CA, USA
+cCenter for Computational Mathematics, Flatiron Institute, New York, 10010, NY, USA
+Abstract
+Sequential data assimilation (DA) faces a fundamental trade-off: particle filters capture
+non-Gaussian cycling priors but require prohibitively large ensembles, whereas the ensemble
+Kalman filter (EnKF) is computationally efficient but constrained by its Gaussian assump-
+tion.
+As machine learning enables rapid model forecasts, exploiting non-Gaussian prior
+features via moderately large ensembles has become increasingly viable. To exploit this op-
+portunity, we propose the ensemble generative filter (EnGF), a simple yet effective method
+for non-Gaussian filtering. The key idea is to fit a generative model to the forecast ensemble
+at each DA cycle and harness its defining strength, inexpensive sampling, to draw a much
+larger particle population for Bayesian analysis without any additional model forecasts; we
+adopt a Gaussian mixture model as a lightweight instance that can be fit cheaply from a
+moderate ensemble. To address practical challenges, we further extend the EnGF by intro-
+ducing (i) a tempered EnGF using likelihood tempering to prevent particle degeneracy under
+informative observations and (ii) a latent EnGF that performs prior modeling and Bayesian
+updates in a reduced latent space for high-dimensional systems.
+Across chaotic systems
+(doubling map, Lorenz-63, and Lorenz-96) and a challenging shock-tube problem, the EnGF
+delivers clear and often substantial improvements over the EnKF, in some cases even ap-
+proaching the filtering accuracy of a massive-ensemble particle filter at a small fraction of
+its cost.
+Keywords:
+sequential data assimilation, ensemble Kalman filter, non-Gaussian filtering,
+Gaussian mixture model, generative modeling
+1. Introduction
+1.1. Background and motivation
+Data assimilation (DA) provides a systematic framework for updating model predictions
+using observational information [1]. Mathematically, sequential DA can be viewed as re-
+cursively updating a probability distribution over the system state according to Bayes’ rule
+∗Corresponding author.
+Email address: jhan@flatironinstitute.org (Jiequn Han)
+1
+arXiv:2609.14078v1  [cs.CE]  12 Sep 2026
+
+
+as new observations become available. Numerical DA methods can therefore be interpreted
+as different computational approximations of this Bayesian updating process. Among these
+methods, particle filters (PFs) seek to sample the full filtering posterior without imposing
+a parametric form [2], thereby accommodating general, potentially non-Gaussian distribu-
+tions. However, PFs suffer from ensemble degeneracy in high-dimensional systems and can
+require prohibitively large ensembles [3]. This requirement is especially restrictive for com-
+plex physical systems, where the computational cost of forward simulations typically limits
+practical ensemble sizes to O(10)–O(102) members [4–7].
+Given these practical constraints, the ensemble Kalman filter (EnKF) has become a dom-
+inant approach for high-dimensional DA owing to its computational tractability [8, 9], with
+widespread applications in numerical weather prediction, physical oceanography, reservoir
+engineering, and other scientific and engineering fields (see, e.g., [10–16]). The EnKF makes
+use of an implicit Gaussian approximation of the filtering prior, enabling a closed-form anal-
+ysis update based only on the mean and covariance estimated from the forecast ensemble.
+This approximation is particularly reasonable when the ensemble size is small, as higher-order
+features of the filtering prior generally cannot be reliably characterized from a small num-
+ber of samples. However, recent advances in reduced-order modeling and machine learning,
+together with increasing computational power, are making larger forecast ensembles feasi-
+ble [17–20], potentially expanding the computationally affordable regime from historically
+small ensembles to moderately large ones (e.g., O(102)–O(103) members, or beyond) [21, 22].
+While larger ensembles can effectively reduce sampling error, their benefit to the EnKF may
+eventually plateau because the Gaussian approximation remains a limiting factor for non-
+Gaussian filtering priors [23]. This raises a natural question: Can moderately large ensembles
+be leveraged to move beyond the Gaussian approximation, thereby more faithfully representing
+the filtering prior and improving DA performance?
+1.2. Literature review and context
+The idea of relaxing the Gaussian assumption to improve EnKF performance is not
+new. A natural strategy is to combine the EnKF with PF to retain EnKF robustness while
+better accommodating non-Gaussian filtering distributions. One example is the weighted
+ensemble Kalman filter, which uses an EnKF-based update to construct an observation-
+informed proposal distribution and subsequently applies importance weighting so that the
+weighted particles represent the target posterior [24]. Another representative approach is
+the ensemble Kalman particle filter, which splits the likelihood into two parts, with the first
+assimilated using an EnKF update and the second incorporated through particle weighting
+and resampling [25]. Although the Kalman-type update helps mitigate particle degeneracy
+by guiding particles toward regions favored by the observations, the Gaussian approximation
+underlying this update can weaken non-Gaussian features of the filtering prior before the
+subsequent particle-based correction.
+Another line of research seeks to represent the filtering prior using more flexible density
+models. Kernel density estimation is one such strategy, constructing a continuous approxi-
+mation of the filtering prior by associating each particle with a local kernel. When Gaussian
+kernels are used, the resulting density takes the form of a Gaussian mixture model (GMM)
+2
+
+
+with one component centered at each particle. Based on this representation, the low-rank
+kernel particle Kalman filter assimilates observations by applying a Kalman-type update
+to each Gaussian component, adjusting its mixture weight, and resampling the resulting
+mixture to form the analysis ensemble [26]. This strategy was further extended through
+adaptive adjustment of the mixture weighting to mitigate weight degeneracy [27]. However,
+the resulting prior representation can be sensitive to the choice of kernel covariance, which
+must be appropriately specified for the forecast ensemble.
+Alternatively, GMMs can be fitted directly to the forecast ensemble, with the mixture
+components inferred from the ensemble rather than centered at individual particles. These
+approaches [28–31] typically use the expectation–maximization (EM) algorithm to fit the
+GMM, with the number of components selected using criteria such as the Akaike information
+criterion (AIC) or Bayesian information criterion (BIC). During the analysis, each Gaussian
+component is updated separately, and the resulting mixture is used to construct the analysis
+ensemble.
+However, dividing a finite forecast ensemble into multiple components leaves
+fewer samples for estimating the covariance of each component, which can lead to poorly
+conditioned covariance estimates, particularly in high-dimensional systems. Moreover, for
+nonlinear observation models, the component-wise Gaussian update is generally no longer
+available in closed form and requires additional approximations.
+More recently, generative modeling in machine learning has provided more flexible tools
+for representing the filtering prior and generating particles guided by observations [32, 33].
+A representative example is the score-based filter, which characterizes the filtering prior
+through its score function and generates analysis particles through reverse-time diffusion [34].
+However, the score model requires repeated training with large forecast ensembles across DA
+cycles, leading to substantial computational cost. To eliminate this training requirement,
+the ensemble score filter (EnSF) directly approximates the score function from the finite
+forecast ensemble using a Monte Carlo estimator [35]. Subsequent extensions of the EnSF
+introduced an iterative formulation to improve posterior score estimation [36] and a two-
+step formulation for partially observed systems [37]. Other recent generative approaches to
+sequential DA include, for example, closed-form conditional diffusion [38], flow matching [39],
+and hybrid ensemble–score methods [40]. Across these generative filters, the analysis relies
+on learned or Monte Carlo approximations whose errors are difficult to quantify and control,
+and the resulting filters generally lack theoretical guarantees [36, 41, 42].
+Another related but distinct direction is learning-based ensemble filtering, which uses
+neural operators, often motivated by a mean-field formulation, to learn an analysis map
+directly from the forecast ensemble and observations to the analysis ensemble [43, 44]. Once
+trained, the map can be reused across DA cycles without assuming an explicit parametric
+form for the filtering distribution, but it is typically tied to its training configuration and may
+require retraining when the DA setup, such as the observation operator, changes. Current
+implementations of these methods also rely on supervised learning, requiring either high-
+quality reference analysis ensembles or synthetic trajectories with known truth, which are
+rarely available or fully faithful in real applications.
+Overall, these approaches follow a
+different methodological paradigm from the present work.
+3
+
+
+1.3. Proposed approach and paper outline
+In this work, we introduce the ensemble generative filter (EnGF). The key idea is to
+exploit the defining capability of a generative model, cheap sampling, to enrich the Bayesian
+analysis: at each DA cycle, we fit a generative model to the moderately large forecast ensem-
+ble and draw from it a much larger particle population, raising the Monte Carlo resolution
+of the analysis without any additional model forecasts. The analysis is performed through
+likelihood weighting and resampling to the original ensemble size for the next DA cycle.
+Compared with PFs, the EnGF enables Bayesian analysis with a much larger parti-
+cle population without propagating the additional particles through the dynamical model,
+while, compared with the EnKF, it can exploit richer features of the filtering prior beyond
+those captured by a single Gaussian approximation. In contrast to existing mixture-based
+filters, which assimilate observations through Kalman-type updates on individual mixture
+components, and to more expressive score-based diffusion or flow-matching filters, which rely
+on a learned score or transport, the EnGF analysis requires no covariance inversion or pos-
+terior approximation, and it applies directly to nonlinear observation operators. A further
+appeal of the EnGF is its simplicity, both conceptual and practical: the core method pairs
+a lightweight generative-model fit with importance weighting and resampling, requires no
+model derivatives or expensive learning components, and is straightforward to implement on
+top of an existing ensemble forecasting system.
+More abstractly, the EnGF only requires a generative model that is (i) cheap to fit
+from a moderate ensemble of O(102)–O(103) samples, (ii) cheap to draw many samples
+from, and (iii) expressive enough to improve on a single Gaussian. We adopt the GMM as
+a lightweight instance satisfying all three: it can be fitted from finite ensembles by well-
+established EM procedures, sampled at negligible cost, and adapted at each DA cycle, a
+combination that most more expressive generative models sacrifice. Other generative models
+could be substituted as this trade-off evolves. In practice, however, the basic EnGF faces two
+challenges: particle degeneracy under informative observations and effective prior modeling
+in high-dimensional systems, which remains fundamentally difficult even with moderately
+large ensembles. We mitigate these challenges through two simple extensions, the tempered
+EnGF and the latent EnGF, while keeping the core generative filtering algorithm unchanged.
+These design choices translate into strong empirical performance. Notably, in Lorenz-63,
+the EnGF closes nearly 80% of the filtering-error gap between the EnKF and a massive-
+ensemble PF using less than 0.1% of the particles required by the PF. In the shock-tube
+problem, a challenging non-Gaussian regime with discontinuous states and sparse observa-
+tions, the latent EnGF accurately recovers sharp flow features and produces analysis states
+that closely and consistently track the true dynamics.
+The remainder of this paper is organized as follows. Section 2 introduces the preliminar-
+ies of ensemble-based filtering and briefly reviews the PF and the EnKF. Section 3 presents
+the EnGF and its tempered and latent extensions. Section 4 evaluates the proposed meth-
+ods through a series of numerical experiments.
+Finally, Section 5 summarizes the main
+conclusions.
+4
+
+
+2. Preliminaries
+2.1. Ensemble-based filtering
+We focus here on ensemble-based filtering methods for sequential DA, in which the state
+distribution is approximated by a finite ensemble of particles. As observations are assimilated
+sequentially, the ensemble is updated through a sequence of DA cycles. Fig. 1 illustrates a
+generic DA cycle, consisting of two steps: forecast and analysis. Since the same procedure
+is repeated in each DA cycle, we omit temporal indices throughout this paper.
+forecast
+analysis
+Figure 1: Schematic of a generic DA cycle consisting of a forecast step, in which each particle is propagated
+independently through the forecast operator F, and an analysis step, in which the resulting forecast
+ensemble is mapped to the analysis ensemble through the analysis operator A, conditioned on the
+observation (denoted by
+).
+In the forecast step, each particle is propagated independently through a forecast op-
+erator, denoted by F, typically by numerically integrating the governing equations. The
+resulting ensemble provides a particle approximation of the filtering prior distribution πf(z)
+and is written as
+Zf =
+
+zf
+1, zf
+2, . . . , zf
+ne
+
+∈Rnz×ne,
+(1)
+where zf
+i denotes the ith forecast particle, and nz and ne denote the state dimension and
+ensemble size, respectively.
+In the analysis step, an observation d ∈Rnd is incorporated through the observation
+model
+d = H(z) + η,
+η ∼N(0, R),
+(2)
+where H : Rnz →Rnd denotes the observation operator that maps the state to the observation
+space, and R ∈Rnd×nd denotes the observation-error covariance matrix (a symmetric positive
+semidefinite matrix). The filtering prior is then conditioned on the observation d to obtain
+the filtering posterior πa(z), which, by Bayes’ rule, satisfies
+πa(z) ∝p(d | z) πf(z),
+(3)
+where p(d | z) denotes the likelihood. For a finite ensemble, Eq. (3) is realized approximately
+through an analysis operator A, which maps the forecast ensemble to an analysis ensemble,
+Za = A(Zf; d).
+(4)
+In the following, we review two representative constructions of the analysis operator
+A, the particle filter (PF) and the ensemble Kalman filter (EnKF), whose complementary
+limitations motivate the ensemble generative filter (EnGF) introduced in Sec. 3.
+5
+
+
+2.2. Particle filter (PF)
+The PF represents the filtering posterior directly as a weighted forecast ensemble. Take
+the classical bootstrap PF [45] as an example, in which resampling at every DA cycle keeps
+the forecast particles {zf
+i}ne
+i=1 equally weighted.
+Each particle is then assigned a weight
+proportional to its observation likelihood,
+wi ∝exp
+
+−1
+2
+ d −H(zf
+i)
+⊤R−1  d −H(zf
+i)
+
+,
+i = 1, . . . , ne,
+(5)
+giving πa(z) ≈P
+i wi δ(z−zf
+i) after normalization.1 To avoid weight degeneracy, the ensemble
+is resampled into an equally weighted analysis ensemble [46].
+As the ensemble size grows, the PF converges to the true filtering distribution, making
+it a high-fidelity reference (when computationally affordable) for assessing other methods.
+However, its cost is high: avoiding weight degeneracy typically requires a large ensemble,
+and every particle must be propagated through the dynamics F, so the number of forward
+simulations per DA cycle can become prohibitive. Reducing this forward-simulation cost is
+one central motivation for the EnGF developed below.
+2.3. Ensemble Kalman filter (EnKF)
+The EnKF makes use of a Gaussian approximation of the filtering prior, with the required
+statistics estimated directly from the forecast ensemble {zf
+i}ne
+i=1.
+Specifically, the EnKF
+operates as follows. The forecast mean and normalized ensemble-anomaly matrix are given
+by
+zf = 1
+ne
+ne
+X
+i=1
+zf
+i,
+Az =
+1
+√ne −1
+
+zf
+1 −zf, . . . , zf
+ne −zf
+∈Rnz×ne.
+(6)
+Applying the observation operator to each forecast particle gives the predicted observa-
+tions
+yi = H(zf
+i),
+i = 1, . . . , ne.
+(7)
+The corresponding mean and normalized ensemble-anomaly matrix are
+y = 1
+ne
+ne
+X
+i=1
+yi,
+Ay =
+1
+√ne −1 [y1 −y, . . . , yne −y] ∈Rnd×ne.
+(8)
+Using these ensemble statistics, the stochastic EnKF updates each forecast particle ac-
+cording to
+za
+i = zf
+i + AzA⊤
+y
+ AyA⊤
+y + R
+−1 (d + ηi −yi) ,
+ηi ∼N(0, R).
+(9)
+The updated particles {za
+i }ne
+i=1 form the analysis ensemble.
+1In general wi ∝wf
+i p(d | zf
+i), reducing to Eq. (5) for uniform prior weights wf
+i.
+6
+
+
+The EnKF relies on an implicit Gaussian approximation (Fig. 2(b1)) of the filtering
+prior, which itself may be non-Gaussian (Fig. 2(a)). Under a linear observation operator,
+the EnKF can remain effective when the forecast dynamics F are (i) mildly nonlinear, so
+that the filtering prior is nearly Gaussian, or (ii) moderately nonlinear, so that the filtering
+prior may be non-Gaussian but the regularizing effect of the observations can render the
+filtering posterior nearly Gaussian [47]. For strongly nonlinear problems, however, both the
+filtering prior and posterior can become severely non-Gaussian, and the EnKF performance
+can deteriorate. This limitation can be further exacerbated by some nonlinear observation
+operators.
+(c1)
+(c2)
+(c3)
+(b1)
+(b2)
+(a)
+Figure 2: Schematic illustration of the EnKF and EnGF analysis steps. In (a), gray dots denote the
+forecast ensemble {zf
+i}ne
+i=1, and the background density illustrates the underlying filtering prior πf(z), which
+is typically unknown and may be non-Gaussian. For the EnKF, (b1) schematically illustrates the implicit
+Gaussian assumption on the filtering prior rather than an actual computational step, while (b2) applies the
+EnKF update (Eq. (9)) to obtain the analysis ensemble. The EnGF (c1) represents the filtering prior using
+a fitted GMM, (c2) generates additional particles (light gray dots) from the GMM to augment the forecast
+ensemble, and (c3) applies systematic resampling according to the likelihood-based weights to obtain the
+analysis ensemble. Both methods retain an analysis ensemble size of ne.
+3. Methodology
+3.1. Ensemble generative filter (EnGF)
+The PF and the EnKF represent two extremes. The PF makes no Gaussian approxi-
+mation and is asymptotically exact, but attaining a reliable approximation requires a large
+ensemble, and hence a large number of forward simulations of the dynamics F, which is
+typically the dominant computational cost. The EnKF, in contrast, attains low cost with a
+7
+
+
+small forecast ensemble but relies on a Gaussian approximation that degrades for strongly
+non-Gaussian problems.
+The key idea here is to fit a Gaussian mixture model to the moderate forecast ensemble
+and then generate additional particles from this fitted model without requiring additional
+model propagation. The expensive dynamical propagation is thus performed only for the
+ne forecast particles, while the resampling that realizes the Bayesian update acts on a much
+larger, cheaply generated particle set. In this way, the EnGF obtains the statistical richness
+of a large particle ensemble at the dynamical cost of a small one.
+As illustrated in Fig. 2(c1)–(c3), the generative filtering procedure of the EnGF consists of
+three main steps: (i) constructing a GMM representation of the filtering prior, (ii) generating
+additional particles from the GMM, and (iii) incorporating the observation to resample the
+particles and form the analysis ensemble, which retains the same ensemble size as the forecast
+ensemble. These steps are detailed as follows.
+Step (i): GMM representation. The EnGF represents the filtering prior πf using a
+GMM,
+πf(z) =
+K
+X
+ℓ=1
+ϕℓN (z; µℓ, Σℓ) ,
+ϕℓ≥0,
+K
+X
+ℓ=1
+ϕℓ= 1,
+(10)
+where K is the number of Gaussian components, and ϕℓ, µℓ, and Σℓdenote the weight,
+mean, and covariance of the ℓth component, respectively. The parameters {bϕℓ, bµℓ, bΣℓ}K
+ℓ=1
+are estimated from the forecast ensemble {zf
+i}ne
+i=1 using the expectation–maximization (EM)
+algorithm, and the number of components K is chosen to minimize the Bayesian information
+criterion (BIC),
+BIC(K) = −2
+ne
+X
+i=1
+log
+" K
+X
+ℓ=1
+bϕℓN
+
+zf
+i; bµℓ, bΣℓ
+#
++ nθ,K log ne,
+K = arg min
+1≤K′≤Kmax
+BIC(K′),
+(11)
+where nθ,K = (K −1) + Knz + Knz(nz + 1)/2 is the number of free parameters in the
+K-component GMM when full covariances are used.
+This procedure enables adaptive representation of the filtering prior at each DA cycle,
+allowing the GMM representation to adjust to the evolving forecast ensemble rather than
+imposing a Gaussian representation in all cases.
+Step (ii): Particle generation. Based on the fitted GMM, ng additional particles are
+independently generated according to
+bzj ∼
+K
+X
+ℓ=1
+bϕℓN
+
+z; bµℓ, bΣℓ
+
+,
+j = 1, . . . , ng.
+(12)
+The generated particles are combined with the original forecast ensemble to form an aug-
+mented particle set,
+{ezj}np
+j=1 =
+
+zf
+i
+	ne
+i=1 ∪{bzj}ng
+j=1 ,
+np = ne + ng.
+(13)
+8
+
+
+The augmented particle set enriches the representation of the filtering prior while retaining
+the original forecast ensemble. In this work, we set ng = 10ne throughout the numerical
+experiments.
+Step (iii): Resampling. For each particle in the augmented particle set, the corre-
+sponding weight satisfies
+ewj ∝exp
+
+−1
+2 (d −H(ezj))⊤R−1 (d −H(ezj))
+
+,
+j = 1, . . . , np.
+(14)
+The weights are then normalized as wj = ewj/ Pnp
+m=1 ewm. The analysis ensemble {za
+i }ne
+i=1 is
+obtained by systematic resampling from the augmented particle set according to the nor-
+malized weights {wj}np
+j=1.
+Together, steps (i)–(iii) form the core generative filtering update of the EnGF. To keep
+this update robust over repeated DA cycles, we introduce an EnKF fallback that replaces the
+generative update in two situations: when the effective sample size (ESS) of the augmented
+particle set, Neff = 1/ Pnp
+j=1 w2
+j, falls below ne, indicating too few effective particles for reliable
+resampling; and, for a linear observation operator, when the fitted GMM reduces to a single
+Gaussian (K = 1), for which the EnKF analysis is already optimal. As such, the EnGF
+has three possible operating modes for a linear observation operator: EnKF fallback for
+K = 1, EnKF fallback due to insufficient ESS, and the generative filtering update, whereas
+for a nonlinear observation operator, only the latter two modes apply. The complete EnGF
+analysis step, including the two EnKF fallback modes, is summarized in Algorithm 1.
+Algorithm 1 EnGF analysis step (one DA cycle)
+Require: forecast ensemble {zf
+i}ne
+i=1, observation d
+Ensure: analysis ensemble {za
+i }ne
+i=1
+1: Fit a GMM to the forecast ensemble, with K selected by BIC.
+▷Step (i)
+2: if K = 1 and H is linear then return the EnKF update.
+▷Gaussian–linear fallback
+3: Draw ng particles from the GMM to form the augmented set {ezj}np
+j=1.
+▷Step (ii)
+4: Weight the augmented set by the likelihood and compute Neff.
+▷Step (iii)
+5: if Neff < ne then return the EnKF update.
+▷insufficient-ESS fallback
+6: Systematically resample ne particles to obtain {za
+i }ne
+i=1.
+The basic EnGF in Algorithm 1 is most effective when generative filtering remains its
+dominant mode. Two scenarios, however, can undermine this:
+• Informative observations.
+A large observation dimension and/or small observation
+errors can cause severe concentration of the particle weights [48], leading to insufficient
+ESS and frequent EnKF fallback.
+• High-dimensional state spaces. As the state dimension increases, the BIC may increas-
+ingly favor a single Gaussian component (K = 1) [49, 50], resulting in frequent EnKF
+fallback for a linear observation operator.
+9
+
+
+To mitigate these limitations, we extend the EnGF to the tempered EnGF (Sec. 3.2) and
+latent EnGF (Sec. 3.3), respectively; both reuse the analysis step of Algorithm 1 with only
+minor modifications.
+3.2. Tempered EnGF
+The tempered EnGF addresses informative observations by incorporating the observation
+likelihood gradually over multiple stages. Specifically, the Bayesian analysis update in Eq. (3)
+is decomposed into a sequence of tempered updates,
+π(s)(z) ∝p(d | z)αsπ(s−1)(z),
+s = 1, . . . , ns,
+(15)
+where s denotes the stage index, ns is the total number of stages, π(0)(z) = πf(z), and αs > 0
+is the tempering coefficient at stage s. The tempering coefficients satisfy Pns
+s=1 αs = 1, such
+that the final-stage distribution corresponds to the filtering posterior, π(ns)(z) = πa(z). The
+number of stages ns and the tempering coefficients {αs}ns
+s=1 are treated as hyperparameters,
+with the specific values used in our experiments reported in Sec. 4.3.
+At each stage, the generative filtering procedure and EnKF fallback mechanism described
+in Sec. 3.1 (Algorithm 1) are applied using the tempered likelihood p(d | z)αs, with the
+analysis ensemble from the preceding stage serving as the input ensemble for the next stage.
+By incorporating the observation information progressively, the tempered EnGF mitigates
+particle-weight concentration and reduces the frequency of EnKF fallback due to insufficient
+ESS.
+3.3. Latent EnGF
+Direct application of the EnGF to many physical systems is challenging because spatial
+discretization can lead to high-dimensional states, in which the GMM representation of the
+filtering prior cannot be reliably fitted from a moderate forecast ensemble (Sec. 3.1). How-
+ever, many such systems admit low-dimensional latent representations that can be learned ef-
+fectively using machine-learning techniques. For example, turbulent-flow systems with state
+dimensions up to O(106) have been represented using only 10–20 latent variables [51, 52].
+This motivates performing the EnGF analysis in a low-dimensional latent space, where the
+GMM can instead be fitted reliably.
+Here, we consider a decoder-based dimensionality-reduction approach similar to those
+developed in previous studies [53–55]. Specifically, the ith forecast particle is reconstructed
+as
+bzf
+i(x) = D
+ x, ξf
+i; θ
+
+,
+i = 1, . . . , ne,
+(16)
+where D is a neural-network decoder with parameters θ shared by all forecast particles,
+x denotes the spatial coordinate, ξf
+i ∈Rnξ is the latent representation of the ith forecast
+particle, with nξ ≪nz, and bzf
+i is the corresponding reconstructed state.
+At each DA cycle, given the forecast ensemble {zf
+i}ne
+i=1, the latent representations {ξf
+i}ne
+i=1
+and the shared decoder parameters θ are jointly optimized by minimizing
+L = 1
+ne
+ne
+X
+i=1
+zf
+i −bzf
+i
+2
+2 + λξ
+ne
+ne
+X
+i=1
+ξf
+i
+2
+2 ,
+(17)
+10
+
+
+where λξ is the regularization parameter for the latent representations. The optimized latent
+representations {ξf
+i}ne
+i=1 constitute the latent forecast ensemble.
+The EnGF analysis is then performed directly on the latent forecast ensemble, exactly
+as in Sec. 3.1: the GMM is fitted to the latent forecast codes {ξf
+i}ne
+i=1, and additional latent
+particles are generated to form the augmented latent set {eξj}np
+j=1. Evaluating the weights
+requires mapping each augmented latent particle to the observation space through the de-
+coder D (with its trained parameters fixed) and the observation operator H, so that Eq. (14)
+becomes
+ewj ∝exp
+
+−1
+2
+
+d −H(D(eξj))
+⊤
+R−1 
+d −H(D(eξj))
+
+,
+j = 1, . . . , np,
+(18)
+where D(eξj) denotes the decoded state of the jth augmented latent particle. Although the
+composed operator H◦D is in general nonlinear, the latent analysis requires no modification,
+since the EnGF already assimilates observations through an arbitrary, possibly nonlinear
+observation operator (Sec. 3.1).
+Systematic resampling of the augmented set yields the
+latent analysis ensemble {ξa
+i }ne
+i=1, which is finally mapped through the decoder to recover the
+analysis ensemble {za
+i }ne
+i=1 in the physical state space.
+4. Numerical experiments
+We evaluate the proposed EnGF through four test cases, each designed to examine a
+distinct aspect of the method. The doubling map serves as a proof of concept for tracking
+strongly non-Gaussian filtering distributions. The Lorenz-63 system, a widely used bench-
+mark in DA, provides a systematic evaluation across a range of DA settings. The Lorenz-96
+system demonstrates the tempered EnGF, showing how likelihood tempering improves filter-
+ing performance as observations become increasingly informative. Finally, Toro’s shock tube
+problem demonstrates the latent EnGF, illustrating how dimensionality reduction enables
+the EnGF to handle high-dimensional physical systems with an effective low-dimensional
+representation. For the first two test cases, a PF with a sufficiently large ensemble is used to
+provide a high-fidelity reference approximation of the filtering distribution; such a reference
+becomes computationally impractical for the Lorenz-96 and shock tube problems.
+We use different metrics to assess the filtering performance. For the doubling map, where
+the filtering posterior can be strongly non-Gaussian and bimodal, we use the Wasserstein-2
+(W2) distance to quantify the discrepancy between the estimated distribution µ and reference
+distributions µ†. Since the state is one-dimensional, it takes the closed form
+W2(µ, µ†) =
+Z 1
+0
+F −1
+µ (q) −F −1
+µ† (q)
+
+2
+dq
+1/2
+,
+(19)
+where F −1
+µ
+and F −1
+µ† denote the corresponding quantile functions.
+For the remaining test cases, which are multidimensional so that the quantile-based
+W2 above is no longer directly available, we assess state-estimation accuracy and ensemble
+uncertainty using the root-mean-square error (RMSE) and ensemble spread, respectively,
+11
+
+
+the standard performance metrics in DA. At each DA cycle, the RMSE is defined using the
+Euclidean norm as
+RMSE =
+1
+√nz
+∥za −z†∥2 ,
+za = 1
+ne
+ne
+X
+i=1
+za
+i ,
+(20)
+and the ensemble spread as
+Spread =
+r
+1
+nz
+tr(Pa),
+Pa =
+1
+ne −1
+ne
+X
+i=1
+(za
+i −za) (za
+i −za)⊤,
+(21)
+where z† ∈Rnz denotes the true state and Pa is the analysis ensemble covariance. The
+RMSE-to-spread ratio is used to assess ensemble calibration. Specifically, comparable spread
+and RMSE (i.e., Spread/RMSE ≈1) indicate that the uncertainty represented by the ensem-
+ble is consistent with the actual state-estimation error, suggesting a well-calibrated ensemble.
+In contrast, a spread appreciably smaller or larger than the RMSE indicates an overconfident
+or conservative ensemble, respectively.
+4.1. Doubling map
+4.1.1. Case setup
+We first consider a noisy doubling map [44, 56], a one-dimensional chaotic dynamical
+system that provides a simple setting for studying non-Gaussian and bimodal filtering dis-
+tributions. At each DA cycle, the state z is propagated according to
+F(z) = 2z + ϵ
+(mod 1),
+ϵ ∼N(0, σ2
+z),
+(22)
+where σ2
+z = 10−4 denotes the process-noise variance, and the modulo operation maps the
+state back to [0, 1).
+We consider a nonlinear observation operator H : R →R given by H(z) = cos(2πz).
+Synthetic observations at each DA cycle are generated from the true state z† according to
+d = H(z†) + η,
+η ∼N(0, σ2
+d),
+(23)
+where σ2
+d = 0.04 is the observation-error variance. Since H(z) = H(1 −z), the observation
+operator can give rise to bimodal filtering posteriors.
+The true state is initialized as z0
+† = 0.23, while the particles in the initial ensemble are
+independently sampled as z0
+i ∼N(0.2, 0.12), i = 1, . . . , ne, and wrapped onto [0, 1). The
+experiment is performed for 180 DA cycles using an ensemble size of ne = 200. A bootstrap
+PF with ne = 104 particles is used to provide a high-fidelity reference approximation of the
+filtering posterior.
+12
+
+
+PF
+(ne = 104)
+Cycle 30
+Cycle 60
+Cycle 90
+Cycle 120
+Cycle 150
+Cycle 180
+EnGF
+(ne = 50)
+EnGF
+(ne = 200)
+EnKF
+(ne = 200)
+Figure 3: Comparison of the filtering posteriors for the doubling map at selected DA cycles across different
+ensemble filters, showing that the EnGF captures the bimodal structure and closely matches the reference
+PF using a limited ensemble size, whereas the EnKF fails to resolve the two distinct modes. The black
+stars ( ) denote the true state.
+4.1.2. Numerical results
+Fig. 3 compares empirical approximations of the filtering posterior obtained by the EnGF
+and EnKF with the reference PF at selected DA cycles. With the same ensemble size of
+ne = 200, the EnGF closely reproduces the reference filtering posterior, whereas the EnKF
+fails to resolve the two distinct modes. Even with ne = 50, the EnGF retains the bimodal
+structure, although with reduced agreement with the reference filtering posterior.
+Fig. 4 further assesses the filtering performance by comparing the W2 distance to the
+reference filtering posterior throughout the experiment. With the same ensemble size of
+ne = 200, the EnGF consistently yields lower W2 distances than the EnKF across the DA
+cycles and achieves a substantially lower time-averaged value (dashed lines). The EnGF also
+outperforms the PF with ne = 1000, at only one-fifth of the forward-simulation cost. For
+clarity, the EnGF with ne = 50 is not shown; its time-averaged W2 distance lies between
+those of the EnGF with ne = 200 and the EnKF.
+4.2. Lorenz-63 system
+4.2.1. Case setup
+We then consider the Lorenz-63 system [57], a three-dimensional chaotic dynamical sys-
+tem describing natural convection in a heated fluid and a canonical test case for sequential
+13
+
+
+Figure 4: Estimated W2 distance between the filtering posterior represented by each method and the PF
+reference (ne = 104) across DA cycles. Dashed lines denote the corresponding time-averaged W2 distances
+over all 180 DA cycles.
+filtering under nonlinear dynamics. The state z(t) = (z1(t), z2(t), z3(t)) evolves according to
+dz1
+dt = σ(z2 −z1),
+dz2
+dt = z1(ρ −z3) −z2,
+dz3
+dt = z1z2 −βz3,
+(24)
+where σ = 10, ρ = 28, and β = 8/3. Accordingly, the forecast operator F at each DA cycle
+is defined by integrating Eq. (24) over the observation interval ∆tobs. Time integration is
+performed using the fourth-order Runge–Kutta method with a time step of ∆t = 0.05.
+We first consider full observations of all three state variables, with H : R3 →R3 given
+by H(z) = z. Synthetic observations at each DA cycle are generated from the true state z†
+according to
+d = H(z†) + η,
+η ∼N(0, σ2
+dI3),
+(25)
+where σ2
+d = 4 is the observation-error variance.
+The true state is initialized as z0
+† = (1.508870, −1.531271, 25.46091), while the particles
+in the initial ensemble are independently sampled as z0
+i ∼N(0, 4I3), i = 1, . . . , ne. Each
+experiment consists of 1200 DA cycles: 200 spin-up cycles followed by 1000 cycles for eval-
+uating the filtering performance. We first consider a baseline setting with ∆tobs = 0.1 and
+ne = 1000, with Kmax = 8 for the EnGF. A bootstrap PF with ne = 106 particles is used to
+provide a high-fidelity reference for filtering performance. To give a concrete sense of com-
+putational efficiency, we report timing for this baseline setting: the EnGF analysis requires
+an average wall-clock time of less than 0.1 s per DA cycle using a CPU-based implementa-
+tion, where parallel BIC evaluations ensure that the time remains nearly unchanged as Kmax
+increases.
+4.2.2. Numerical results
+Fig. 5 shows the forecast and analysis ensembles obtained by the reference PF, EnGF, and
+EnKF at a representative DA cycle. The reference PF forecast ensemble represents a strongly
+14
+
+
+non-Gaussian filtering prior (left panel).
+The EnGF with ne = 1000 exhibits a similar
+structure and effectively incorporates the prior information into the analysis, yielding a
+filtering posterior that closely agrees with the reference PF (right panel). Even with ne = 100,
+the EnGF still captures the main features of the filtering prior and posterior represented by
+the reference PF. The EnKF provides a reasonable but more diffuse representation of the
+filtering prior; however, its analysis does not fully utilize the non-Gaussian prior features due
+to the Gaussian approximation of the prior, resulting in a posterior that differs markedly
+from the reference PF.
+-5
+0
+5
+-10
+0
+10
+(z1, z2)
+PF
+(ne = 106)
+-5
+0
+5
+EnGF
+(ne = 102)
+-5
+0
+5
+EnGF
+(ne = 103)
+-5
+0
+5
+EnKF
+(ne = 103)
+-5
+0
+5
+5
+10
+(z1, z3)
+-5
+0
+5
+-5
+0
+5
+-5
+0
+5
+-10
+0
+10
+5
+10
+(z2, z3)
+-10
+0
+10
+-10
+0
+10
+-10
+0
+10
+(a) Forecast ensemble
+-5
+0
+5
+-10
+0
+10
+(z1, z2)
+PF
+(ne = 106)
+-5
+0
+5
+EnGF
+(ne = 102)
+-5
+0
+5
+EnGF
+(ne = 103)
+-5
+0
+5
+EnKF
+(ne = 103)
+-5
+0
+5
+5
+10
+(z1, z3)
+-5
+0
+5
+-5
+0
+5
+-5
+0
+5
+-10
+0
+10
+5
+10
+(z2, z3)
+-10
+0
+10
+-10
+0
+10
+-10
+0
+10
+(b) Analysis ensemble
+Figure 5: Forecast and analysis ensembles at a representative DA cycle for the Lorenz-63 system, showing
+that the EnGF effectively incorporates the prior information into the analysis and closely agrees with the
+reference PF, whereas the EnKF analysis differs markedly from the reference filtering posterior. The black
+stars ( ) denote the true state.
+Fig. 6 further evaluates the long-term filtering performance over the 1000 post-spin-up
+DA cycles using the RMSE and ensemble spread. The EnGF achieves a markedly lower time-
+averaged RMSE than the EnKF and approaches the reference PF (left panel), as indicated
+by the horizontal dashed lines. The time-averaged RMSE-to-spread ratios remain around
+0.8 for all three methods (right panel), indicating that the improved accuracy of the EnGF
+is achieved while maintaining sufficient uncertainty, without evidence of ensemble collapse.
+We further investigate the effect of ensemble size on the long-term filtering performance at
+∆tobs = 0.1, as shown in Fig. 7 (left panel). The EnKF performance exhibits a clear plateau
+as the ensemble size increases, suggesting that, over the range considered here (ne = 100–
+1000), its error is primarily associated with the Gaussian approximation of the filtering
+prior rather than finite-ensemble sampling error. In contrast, the EnGF generally achieves
+lower time-averaged RMSE as the ensemble size increases, consistent with an improved
+representation of the filtering prior as more particles become available. Increasing Kmax
+provides additional flexibility in representing the filtering prior, generally leading to lower
+15
+
+
+Figure 6: RMSE and RMSE-to-spread ratio over 1000 post-spin-up DA cycles for the Lorenz-63 system,
+showing substantially lower RMSE for the EnGF than the EnKF and performance approaching the
+reference PF (left), while all three methods maintain sufficient uncertainty relative to the state-estimation
+error (right). Dashed lines denote the corresponding 1000-cycle averages.
+time-averaged RMSE. Notably, the best-performing EnGF configurations (ne ≥400 and
+Kmax = 8) close nearly 80% of the RMSE gap between the EnKF and the reference PF.
+100 200
+400
+600
+1000
+Ensemble size, ne
+0.25
+0.30
+0.35
+0.40
+0.45
+0.50
+Average RMSE
+EnKF
+EnGF (Kmax = 2)
+EnGF (Kmax = 4)
+EnGF (Kmax = 8)
+PF (ne = 106)
+0.1
+0.2
+0.3
+0.4
+0.5
+Observation interval, ∆tobs
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+Average RMSE
+EnKF
+EnGF (Kmax = 2)
+EnGF (Kmax = 4)
+EnGF (Kmax = 8)
+PF (ne = 106)
+Figure 7: Time-averaged RMSE of the EnKF and EnGF under varying ensemble sizes (left panel, fixed
+∆tobs = 0.1) and observation intervals (right panel, fixed ne = 1000), with the reference PF shown for
+comparison. For the EnGF, Kmax denotes the prescribed upper bound on the number of GMM
+components. All RMSE values represent averages over 1000 post-spin-up DA cycles.
+We then examine the filtering performance as the observation interval ∆tobs increases,
+with the ensemble size fixed at ne = 1000, as shown in Fig. 7 (right panel). Longer observa-
+tion intervals allow nonlinear effects to accumulate during the forecast (i.e., increasing the
+effective nonlinearity of F), generally producing more non-Gaussian filtering priors and a
+more challenging filtering problem. Accordingly, the time-averaged RMSE increases for all
+methods as ∆tobs increases. The EnGF consistently outperforms the EnKF, with its per-
+formance advantage increasing with Kmax, highlighting the benefit of greater flexibility in
+16
+
+
+representing complex filtering priors.
+To understand the algorithmic behavior underlying this performance, Fig. 8 reports the
+occurrence frequencies of the three EnGF operating modes for the observation intervals con-
+sidered above. As introduced in Sec. 3.1, the three modes consist of the standard generative
+filtering update and two EnKF fallback modes, triggered when either a single Gaussian com-
+ponent is selected (K = 1) or the ESS is insufficient. Fig. 8 shows that generative filtering
+remains dominant across all DA experiments, confirming it as the primary operating mode
+of the EnGF and providing a mechanistic explanation for its improved performance rela-
+tive to the EnKF. As ∆tobs increases, the K = 1 fallback becomes less frequent, consistent
+with increasingly non-Gaussian filtering priors, whereas the low-ESS fallback becomes more
+frequent as weight degeneracy becomes more severe. Overall, these results show that the
+EnGF appropriately switches between operating modes under different filtering conditions
+while maintaining generative filtering as the dominant mode.
+0.1
+0.2
+0.3
+0.4
+0.5
+Observation interval, ∆tobs
+0
+20
+40
+60
+80
+100
+Operating mode (%)
+Fallback (ESS)
+Fallback (K = 1)
+Generative
+Figure 8: Occurrence frequencies of the EnGF operating modes across DA experiments with different
+observation intervals, showing that generative filtering remains dominant across all cases, while the K = 1
+fallback to EnKF becomes less frequent and the low-ESS fallback to EnKF becomes more frequent as ∆tobs
+increases.
+Beyond the linear observation setting examined above, we also consider a nonlinear ob-
+servation operator H(z) = arctan(z), applied componentwise to all three state variables.
+Synthetic observations are generated following Eq. (25), with observation-error variance
+σ2
+d = 0.1, while the true initial state and initial ensemble remain unchanged.
+The comparison of the EnKF and EnGF (Kmax = 8) under the nonlinear observation
+operator is illustrated in Fig. 9. The EnGF achieves lower time-averaged RMSE than the
+EnKF across all ensemble sizes considered at fixed ∆tobs = 0.1 (left panel) and across all
+observation intervals considered at fixed ne = 1000 (right panel). The performance advantage
+of the EnGF becomes more pronounced as the observation interval increases.
+17
+
+
+100 200
+400
+600
+1000
+Ensemble size, ne
+0.8
+1.0
+1.2
+1.4
+1.6
+1.8
+2.0
+Average RMSE
+EnKF
+EnGF (Kmax = 8)
+0.1
+0.2
+0.3
+0.4
+0.5
+Observation interval, ∆tobs
+1
+2
+3
+4
+Average RMSE
+EnKF
+EnGF (Kmax = 8)
+Figure 9: Time-averaged RMSE of the EnKF and EnGF under the nonlinear observation operator for
+varying ensemble sizes (left panel, fixed ∆tobs = 0.1) and observation intervals (right panel, fixed
+ne = 1000). For the EnGF, Kmax = 8 is fixed throughout. All RMSE values represent averages over 1000
+post-spin-up DA cycles.
+4.3. Lorenz-96 system
+4.3.1. Case setup
+We next consider the Lorenz-96 system, a higher-dimensional chaotic dynamical system
+widely used as a benchmark for filtering algorithms in numerical weather prediction [58].
+In this study, we consider a 20-dimensional system with the state z(t) = (z1(t), . . . , z20(t))
+evolving according to
+dzj
+dt = (zj+1 −zj−2)zj−1 −zj + F,
+j = 1, . . . , 20,
+(26)
+with periodic boundary conditions (z−1 = z19, z0 = z20, and z21 = z1) and a constant forcing
+parameter F = 8, chosen such that the system exhibits chaotic behavior. Accordingly, the
+forecast operator F at each DA cycle is defined by integrating Eq. (26) over the observation
+interval ∆tobs. Time integration is performed using the fourth-order Runge–Kutta method
+with a time step of ∆t = 0.02.
+We consider partial observations of five equally spaced state variables, {z1, z5, z9, z13, z17},
+with H : R20 →R5 extracting these variables. Synthetic observations at each DA cycle are
+generated from the true state z† according to
+d = H(z†) + η,
+η ∼N(0, σ2
+dI5),
+(27)
+where σ2
+d = 0.5 is the observation-error variance.
+The true initial state is sampled as z0
+† ∼N(0, I20), while the particles in the initial
+ensemble are independently sampled as z0
+i ∼N(0, I20), i = 1, . . . , ne.
+Each experiment
+consists of 1200 DA cycles: 200 spin-up cycles followed by 1000 cycles for evaluating the
+filtering performance.
+The observation interval is set to ∆tobs = 0.2, corresponding to
+approximately one day under the conventional atmospheric time scaling of the Lorenz-96
+18
+
+
+model, for which 0.05 time units correspond to approximately 6 hours [58]. The ensemble
+size is set to ne = 1000. Here, we consider two-stage likelihood tempering with different
+choices of tempering factors [α1, α2]. The tempering factors [0.3, 0.7], which yield the best
+filtering performance among the choices considered, are used for the primary filtering results
+presented below. The sensitivity to the tempering factors is also examined. For the EnKF,
+neither covariance localization nor inflation is used, as both have negligible effects for the
+ensemble size ne = 1000.
+4.3.2. Numerical results
+Fig. 10 compares the ensemble-mean state estimates obtained with the EnKF and EnGF
+during the early, intermediate, and final periods of the post-spin-up DA experiment, with
+each period showing the state evolution over 50 consecutive DA cycles.
+Both methods
+reasonably track the spatiotemporal evolution of the true state throughout the three periods,
+despite the chaotic dynamics and partial observations. However, the EnGF estimates remain
+consistently closer to the truth, exhibiting smaller absolute errors than the EnKF across all
+three periods.
+The difference in filtering performance is further quantified by comparing the RMSE and
+ensemble spread of the EnKF and EnGF over the 1000 post-spin-up DA cycles, as shown
+in Fig. 11. The tempered EnGF consistently achieves lower RMSE than the EnKF (left
+panel), resulting in a substantially lower time-averaged RMSE over the entire experiment.
+Despite this improved accuracy, the RMSE and ensemble spread remain closely matched for
+the EnGF (right panel), indicating a well-calibrated estimate of the uncertainty over the
+entire experiment.
+The sensitivity of the EnGF to the choice of tempering factors is further examined in
+Fig. 12.
+Across all tested tempering choices, the tempered EnGF consistently achieves
+a lower time-averaged RMSE than both the untempered EnGF and EnKF (left panel).
+Among the tempered configurations, smaller first-stage tempering factors generally lead to
+lower RMSE. Meanwhile, the RMSE and ensemble spread remain closely matched in all
+settings (right panel), indicating reasonable estimates of the state uncertainty across the
+different tempering choices.
+The improved filtering performance observed for smaller first-stage tempering factors can
+be understood from the ESS-based fallback mechanism in the EnGF. When the first-stage
+tempering factor α1 is large, the importance weights tend to become more concentrated,
+resulting in a lower ESS. If the ESS falls below the prescribed threshold, the EnGF reverts to
+the EnKF update in the first stage, in which the filtering prior is approximated as Gaussian.
+Consequently, non-Gaussian features of the filtering prior represented by the GMM, such as
+multimodality and skewness, cannot be fully exploited in the analysis. In contrast, a smaller
+first-stage tempering factor produces a more moderate likelihood weighting, which helps
+maintain a sufficiently large ESS and therefore allows the EnGF to retain and exploit the
+distributional structure of the filtering prior. Moreover, because the intermediate ensemble
+produced by the first-stage analysis serves as the prior for the second stage, preserving this
+distributional information in the first stage can also benefit the second-stage EnGF update.
+19
+
+
+1
+10
+20
+Index, j
+Truth
+Early period
+Intermediate period
+Final period
+1
+10
+20
+Index, j
+EnKF
+estimate
+1
+10
+20
+Index, j
+EnKF
+estimate error
+1
+10
+20
+Index, j
+EnGF
+estimate
+50
+52
+54
+56
+58
+60
+Time, t
+1
+10
+20
+Index, j
+EnGF
+estimate error
+140
+142
+144
+146
+148
+150
+Time, t
+230
+232
+234
+236
+238
+240
+Time, t
+-10
+14
+-10
+14
+0
+2
+-10
+14
+0
+2
+Figure 10: Comparison of the state estimates and corresponding errors obtained with the EnKF and EnGF
+for the Lorenz-96 system during three periods selected from the 1000 post-spin-up DA cycles (t = 40–240):
+early, intermediate, and final, with each period spanning 50 cycles. The state estimates correspond to the
+ensemble means, and the errors are reported as absolute errors relative to the truth.
+4.4. Toro’s shock tube problem
+4.4.1. Case setup
+We finally consider Toro’s shock tube problem [59], a benchmark compressible-flow prob-
+lem that provides a more physically representative test for high-dimensional, PDE-based
+systems. Beyond its high dimensionality, it is a demanding filtering test because uncertainty
+in the shock location places forecast particles on opposite sides of the discontinuity, making
+the filtering prior near the shock bimodal and strongly non-Gaussian [55, 60].
+A Gaus-
+sian, linear analysis then superposes these displaced discontinuities, smearing sharp features
+20
+
+
+Figure 11: Comparison of the filtering performance of the EnKF and tempered EnGF for the Lorenz-96
+system over 1000 post-spin-up DA cycles, showing lower RMSE for the EnGF (left panel) and closer
+agreement between RMSE and ensemble spread for the EnGF (right panel). Dashed horizontal lines
+indicate the corresponding 1000-cycle averages.
+[0:1; 0:9] [0:3; 0:7] [0:5; 0:5] [0:7; 0:3] [0:9; 0:1]
+Tempering factors, [®1; ®2]
+0.50
+0.55
+0.60
+0.65
+0.70
+0.75
+0.80
+Average RMSE
+EnGF (tempered)
+EnGF (untempered)
+EnKF
+[0:1; 0:9] [0:3; 0:7] [0:5; 0:5] [0:7; 0:3] [0:9; 0:1]
+Tempering factors, [®1; ®2]
+0.7
+0.8
+0.9
+1.0
+1.1
+Average RMSE / Spread
+Figure 12: Sensitivity of the tempered EnGF to the choice of tempering factors for the Lorenz-96 system,
+showing consistently lower time-averaged RMSE than the untempered EnGF and EnKF for all tested
+tempering factors (left panel), while maintaining comparable RMSE and ensemble spread (right panel).
+Dashed horizontal lines denote the corresponding 1000-cycle averages for the untempered EnGF and EnKF.
+and generating spurious oscillations and nonphysical states, so the shock tube problem is a
+stringent non-Gaussian benchmark for the latent EnGF.
+21
+
+
+The flow dynamics are governed by the compressible Euler equations,
+∂ρ
+∂t + ∇· (ρV ) = 0,
+(28a)
+∂(ρV )
+∂t
++ ∇· (ρV ⊗V ) + ∇p = 0,
+(28b)
+∂E
+∂t + ∇· [(E + p)V ] = 0.
+(28c)
+Here, ρ, V = [u, v, w]⊤, and p denote the density, velocity, and pressure, respectively, and ⊗
+denotes the outer product. The total energy per unit volume E is given by
+E = ρ
+V · V
+2
++ e
+
+= ρ
+u2 + v2 + w2
+2
++ e
+
+,
+(29)
+where e is the specific internal energy. Assuming a perfect gas, the system is closed by the
+equation of state
+p = (γ −1)ρe,
+(30)
+where γ = 1.4 is the ratio of specific heats. In the one-dimensional setting considered here,
+V reduces to the scalar velocity u.
+The computational domain x ∈[0, 1] is discretized using a uniform grid with nx = 400
+cells. Accordingly, the state vector, formed by the flow variables ρ, u, and p evaluated on
+the grid, is given by
+z(t) =
+ ρ1(t), . . . , ρnx(t), u1(t), . . . , unx(t), p1(t), . . . , pnx(t)
+
+,
+(31)
+with state dimension nz = 3nx = 1200. Non-reflecting boundary conditions are imposed
+at both ends of the domain.
+At each DA cycle, the forecast operator F advances the
+state over the observation interval ∆tobs by numerically integrating the one-dimensional
+form of Eq. (28). The numerical integration is performed using the open-source solver M2C
+(Multiphysics Modeling and Computation) [61, 62], which employs a MUSCL scheme [63].
+Numerical fluxes are computed using a local Lax–Friedrichs approximate Riemann solver,
+and time integration is performed using an explicit second-order Runge–Kutta method with
+a time step of ∆t = 2 × 10−5.
+We consider sparse pressure observations at five spatial locations, x = 0.1, 0.3, 0.5,
+0.7, and 0.9, where H : R1200 →R5 extracts the pressure at these locations. Synthetic
+observations at each DA cycle are generated from the true state z† according to
+d = H(z†) + η,
+η ∼N(0, R),
+(32)
+where the observation-error covariance matrix R is diagonal, with entries
+Rjj = (0.05[H(z†)]j + 5.0)2 ,
+j = 1, . . . , 5.
+(33)
+22
+
+
+The initial condition consists of two constant states separated by a diaphragm located
+at x = xd,
+(ρ, u, p) =
+(
+(ρL, uL, pL),
+x < xd,
+(ρR, uR, pR),
+x ≥xd.
+(34)
+Table 1 summarizes the true values of the initial-condition parameters. The initial ensemble
+is generated by sampling these parameters from Gaussian distributions with the means and
+standard deviations also listed in the table. The resulting initial ensemble, together with the
+true initial state, is shown in the top row of Fig. 13.
+Table 1: Parameters used to define the true initial condition and generate the initial ensemble for Toro’s
+shock tube problem. (ρL, uL, pL) and (ρR, uR, pR) denote the states to the left and right of the diaphragm,
+respectively, and xd denotes the diaphragm location. Each parameter is sampled from a Gaussian with the
+mean and standard deviation listed in the table to generate the initial ensemble, with the mean coinciding
+with the true initial condition.
+ρL
+uL
+pL
+ρR
+uR
+pR
+xd
+Truth / mean
+5.99924
+19.5975
+460.894
+5.99242
+−6.19633
+46.0950
+0.4
+Standard deviation
+0.5
+0.0
+20.0
+0.0
+0.0
+2.0
+0.15
+Due to the rapid evolution and short characteristic time scale of the shock-tube dynamics,
+we use a small observation interval of ∆tobs = 7×10−3 and perform DA over five cycles using
+an ensemble of ne = 100 particles. Despite the relatively small number of DA cycles, this
+time window captures substantial evolution of the flow.
+At each DA cycle, the decoder
+is trained to represent each forecast particle zf
+i ∈R1200 through a low-dimensional latent
+representation ξf
+i ∈R6. The EnGF analysis is then performed in this latent space following
+the procedure described in Sec. 3.3, and each resulting latent analysis particle ξa
+i is mapped
+through the trained decoder to obtain the corresponding analysis particle za
+i in the physical
+space. For comparison, the EnKF is also applied in the same latent space; the standard
+EnKF update in the physical space is not considered because it can produce nonphysical
+states (i.e., negative density and pressure) and spurious oscillations, causing the subsequent
+forecast simulation to fail [60].
+4.4.2. Numerical results
+Fig. 13 compares the latent EnKF and the latent EnGF ensembles over five DA cycles,
+showing that the latent EnGF produces analysis ensembles that converge more rapidly to-
+wards the true solution. Note that the latent EnKF propagates the same set of particles
+(green) across DA cycles, whereas the particle set in the latent EnGF (purple) can change
+after each analysis step through the generation and resampling of new particles. Starting
+from the same initial ensemble (top row), both methods exhibit substantial uncertainty in
+the first forecast (second row), particularly near sharp flow features. After the first DA
+update (third row), the latent EnGF ensemble becomes markedly more concentrated around
+the true solution, while the latent EnKF retains considerably greater spread. This difference
+23
+
+
+persists over subsequent DA cycles, with the latent EnGF more closely tracking the true
+solution across all three flow variables. Notably, although observations are available only for
+pressure at five spatial locations, the latent EnGF also substantially reduces uncertainty in
+density and velocity, demonstrating that assimilation in the latent space effectively transfers
+information from sparse pressure observations to the unobserved flow variables.
+0
+10
+20
+30
+Initial
+Density, ρ
+0
+10
+20
+30
+Density, ρ
+10
+0
+10
+20
+Velocity, u
+10
+0
+10
+20
+Velocity, u
+0
+500
+1000
+1500
+2000
+Pressure, p
+0
+500
+1000
+1500
+2000
+Pressure, p
+0
+10
+20
+30
+Forecast
+1st DA
+0
+10
+20
+30
+10
+0
+10
+20
+10
+0
+10
+20
+0
+500
+1000
+1500
+2000
+0
+500
+1000
+1500
+2000
+0
+10
+20
+30
+Analysis
+1st DA
+0
+10
+20
+30
+10
+0
+10
+20
+10
+0
+10
+20
+0
+500
+1000
+1500
+2000
+0
+500
+1000
+1500
+2000
+0
+10
+20
+30
+Analysis
+2nd DA
+0
+10
+20
+30
+10
+0
+10
+20
+10
+0
+10
+20
+0
+500
+1000
+1500
+2000
+0
+500
+1000
+1500
+2000
+0
+10
+20
+30
+Analysis
+3rd DA
+0
+10
+20
+30
+10
+0
+10
+20
+10
+0
+10
+20
+0
+500
+1000
+1500
+2000
+0
+500
+1000
+1500
+2000
+0
+10
+20
+30
+Analysis
+4th DA
+0
+10
+20
+30
+10
+0
+10
+20
+10
+0
+10
+20
+0
+500
+1000
+1500
+2000
+0
+500
+1000
+1500
+2000
+0.0
+0.5
+1.0
+x
+0
+10
+20
+30
+Analysis
+5th DA
+0.0
+0.5
+1.0
+x
+0
+10
+20
+30
+0.0
+0.5
+1.0
+x
+10
+0
+10
+20
+0.0
+0.5
+1.0
+x
+10
+0
+10
+20
+0.0
+0.5
+1.0
+x
+0
+500
+1000
+1500
+2000
+0.0
+0.5
+1.0
+x
+0
+500
+1000
+1500
+2000
+Latent EnKF
+Latent EnGF
+Figure 13: Comparison of latent EnKF (left) and latent EnGF (right) for Toro’s shock tube problem,
+showing more rapid concentration of the EnGF analysis ensembles around the true solution over successive
+DA updates. The rows show the initial ensemble, the forecast ensemble before the first DA update, and the
+analysis ensembles after the first through fifth DA updates. Black curves denote the true solution, colored
+curves represent particles, and orange markers indicate the pressure sensor locations (x = 0.1, 0.3, 0.5, 0.7,
+and 0.9).
+The performance difference is further quantified by the RMSE and ensemble spread shown
+24
+
+
+in Fig. 14. Cycle 0 corresponds to the forecast ensemble immediately before the first DA
+update, while cycles 1–5 correspond to the analysis ensembles after the first through fifth
+updates. Across all five DA cycles and all three flow variables, the latent EnGF consistently
+achieves lower RMSE than the latent EnKF, demonstrating improved state-estimation accu-
+racy. The latent EnGF also exhibits closer agreement between RMSE and ensemble spread,
+indicating better consistency between the actual estimation error and the uncertainty repre-
+sented by the ensemble. Overall, these results demonstrate that the latent EnGF can effec-
+tively perform DA in high-dimensional flow systems that admit a suitable low-dimensional
+representation.
+0
+1
+2
+3
+4
+5
+DA cycle
+2
+3
+4
+5
+6
+RMSE and spread
+Density, ½
+0
+1
+2
+3
+4
+5
+DA cycle
+2
+4
+6
+Velocity, u
+Latent EnGF RMSE
+Latent EnGF spread
+Latent EnKF RMSE
+Latent EnKF spread
+0
+1
+2
+3
+4
+5
+DA cycle
+200
+250
+300
+350
+400
+Pressure, p
+Figure 14: Comparison of RMSE and ensemble spread between the latent EnKF and latent EnGF across
+DA cycles for the three flow variables (ρ, u, p) in Toro’s shock tube problem, showing consistently lower
+RMSE and closer agreement between RMSE and ensemble spread for the latent EnGF. Cycle 0
+corresponds to the forecast ensemble immediately before the first DA update, while cycles 1–5 correspond
+to the analysis ensembles after the first through fifth DA updates.
+5. Conclusion
+In this work, we introduced the EnGF, a simple yet effective generative filtering approach
+for exploiting non-Gaussian information contained in moderately large forecast ensembles.
+The EnGF adaptively models the filtering prior using a GMM as a lightweight generative
+model and generates a much larger particle population for Bayesian analysis without requir-
+ing additional expensive model forecasts.
+Across all test cases, the EnGF consistently outperforms the EnKF at the same forward-
+simulation cost, achieving lower state-estimation errors while maintaining adequate ensemble
+spread. When reference PF solutions are available, the EnGF achieves filtering accuracy close
+to that of the reference PF while requiring orders of magnitude fewer forward simulations.
+The Lorenz-63 results further show that the EnGF continues to benefit from increasing
+ensemble size after the EnKF performance largely plateaus. This behavior indicates that,
+as sampling error decreases with increasing ensemble size, a more flexible representation
+of the filtering prior can mitigate the representation error associated with the Gaussian
+approximation. The tempered and latent extensions further demonstrate that the same basic
+filtering strategy can accommodate informative observations and high-dimensional physical
+25
+
+
+systems. Taken together, these results position the EnGF as a practical intermediate between
+the EnKF and PFs for non-Gaussian filtering with moderately large ensembles.
+Important challenges remain. Prior modeling from finite ensembles becomes increasingly
+difficult as the intrinsic dimension grows, while particle degeneracy remains a fundamental
+limitation under highly informative observations. Although the tempered and latent exten-
+sions mitigate these difficulties, they do not eliminate them. Future work should therefore
+explore more scalable strategies for prior modeling and particle analysis, including adaptive
+tempering and local mixture modeling for cycling priors.
+Acknowledgments
+The authors thank Matthias Morzfeld for helpful discussions and Bohan Chen for sug-
+gesting the doubling map case. The authors also thank Xuning Zhao for assistance with the
+M2C solver. This work used computational resources provided by the Advanced Cyberinfras-
+tructure Coordination Ecosystem: Services & Support (ACCESS) program under allocation
+PHY250246 and was carried out on Anvil at Purdue University.
+Code availability
+The source code used to produce the numerical results in this study will be made publicly
+available upon publication in the GitHub repository [64].
+References
+[1] K. Law, A. Stuart, K. Zygalakis, A. Stuart, Data assimilation: a mathematical intro-
+duction, volume 62, Springer, 2015.
+[2] G. Evensen, F. C. Vossepoel, P. J. Van Leeuwen, Data assimilation fundamentals: A
+unified formulation of the state and parameter estimation problem, Springer Nature,
+2022.
+[3] C. Snyder, T. Bengtsson, P. Bickel, J. Anderson, Obstacles to high-dimensional particle
+filtering, Monthly Weather Review 136 (2008) 4629–4640.
+[4] T. Miyoshi, K. Kondo, T. Imamura, The 10,240-member ensemble Kalman filtering
+with an intermediate agcm, Geophysical Research Letters 41 (2014) 5264–5271.
+[5] A. Chattopadhyay, E. Nabizadeh, E. Bach, P. Hassanzadeh, Deep learning-enhanced
+ensemble-based data assimilation for high-dimensional nonlinear dynamical systems,
+Journal of Computational Physics 477 (2023) 111918.
+[6] M.-Y. Chan, Improving ensemble data assimilation through probit-space ensemble size
+expansion for gaussian copulas (pese-gc), Nonlinear Processes in Geophysics 31 (2024)
+287–302.
+26
+
+
+[7] M. Tsyrulnikov, A. Sotskiy, Regularization of the ensemble Kalman filter using a non-
+parametric, non-stationary spatial model, Spatial Statistics 64 (2024) 100870.
+[8] G. Evensen,
+Sequential data assimilation with a nonlinear quasi-geostrophic model
+using Monte Carlo methods to forecast error statistics, Journal of Geophysical Research:
+Oceans 99 (1994) 10143–10162.
+[9] G. Evensen, Data assimilation: the ensemble Kalman filter, Springer, 2009.
+[10] P. L. Houtekamer, F. Zhang, Review of the ensemble Kalman filter for atmospheric
+data assimilation, Monthly Weather Review 144 (2016) 4489–4532.
+[11] G. Evensen, P. J. Van Leeuwen, Assimilation of geosat altimeter data for the agulhas
+current using the ensemble Kalman filter with a quasigeostrophic model,
+Monthly
+weather review 124 (1996) 85–96.
+[12] Y. Gu, D. S. Oliver, History matching of the punq-s3 reservoir model using the ensemble
+kalman filter, SPE journal 10 (2005) 217–224.
+[13] X.-H. Zhou, H. Wang, J. McClure, C. Chen, H. Xiao, Inference of relative permeability
+curves in reservoir rocks with ensemble Kalman method, The European Physical Journal
+E 46 (2023) 44.
+[14] H. Kaveh, J. P. Avouac, A. M. Stuart, Data assimilation in machine-learned reduced-
+order model of chaotic earthquake sequences, Geophysical Journal International 244
+(2026) ggaf518.
+[15] M. I. Zafar, X.-H. Zhou, C. J. Roy, D. Stelter, H. Xiao, Data-driven turbulence modeling
+approach for cold-wall hypersonic boundary layers, Journal of Thermophysics and Heat
+Transfer 40 (2026) 379–395.
+[16] R. Jain, R. Fernandez, Y. Keskinoz, V. Raman, M. Morzfeld, T. A. Zaki, Parasitic com-
+bustion model-based data assimilation for predicting wave speeds in rotating detonation
+engines, Proceedings of the Combustion Institute 42 (2026) 106190.
+[17] K. Bi, L. Xie, H. Zhang, X. Chen, X. Gu, Q. Tian, Accurate medium-range global
+weather forecasting with 3D neural networks, Nature 619 (2023) 533–538.
+[18] T. Kurth, S. Subramanian, P. Harrington, J. Pathak, M. Mardani, D. Hall, A. Miele,
+K. Kashinath, A. Anandkumar,
+FourCastNet:
+Accelerating global high-resolution
+weather forecasting using adaptive Fourier neural operators, in: Proceedings of the
+Platform for Advanced Scientific Computing Conference, 2023, pp. 1–11.
+[19] R. Lam, A. Sanchez-Gonzalez, M. Willson, P. Wirnsberger, M. Fortunato, F. Alet,
+S. Ravuri, T. Ewalds, Z. Eaton-Rosen, W. Hu, et al., Learning skillful medium-range
+global weather forecasting, Science 382 (2023) 1416–1421.
+27
+
+
+[20] X. Lapillonne, D. Hupp, F. Gessler, A. Walser, A. Pauling, A. Lauber, B. Cumming,
+C. Osuna, C. Müller, C. Merker, et al., Operational numerical weather prediction with
+ICON on GPUs (version 2024.10), Geoscientific Model Development 19 (2026) 755–772.
+[21] F. Alet, T. R. Andersson, I. Price, S. Markou, A. El-Kadi, D. Masters, A. Li, S. Mer-
+chant, N. Williams, G. Thornton, et al., Operational tropical cyclone forecasting with
+AI, Nature (2026) 1–3.
+[22] A. R. Zeba, W. D. Collins, A. Mahesh, B. Bonev, K. Kashinath, T. Kurth, M. S.
+Pritchard, S. Subramanian, Anomalous diffusion of tropical cyclones observed in huge
+ensembles of hindcasts, arXiv preprint arXiv:2607.21954 (2026).
+[23] A. Spantini, R. Baptista, Y. Marzouk,
+Coupling techniques for nonlinear ensemble
+filtering, SIAM Review 64 (2022) 921–953.
+[24] N. Papadakis, É. Mémin, A. Cuzol, N. Gengembre, Data assimilation with the weighted
+ensemble Kalman filter, Tellus A: Dynamic Meteorology and Oceanography 62 (2010)
+673–697.
+[25] M. Frei, H. R. Künsch, Bridging the ensemble Kalman and particle filters, Biometrika
+100 (2013) 781–800.
+[26] I. Hoteit, D.-T. Pham, G. Triantafyllou, G. Korres, A new approximate solution of the
+optimal nonlinear filter for data assimilation in meteorology and oceanography, Monthly
+Weather Review 136 (2008) 317–334.
+[27] A. S. Stordal, H. A. Karlsen, G. Nævdal, H. J. Skaug, B. Vallès, Bridging the ensemble
+Kalman filter and particle filters: the adaptive Gaussian mixture filter, Computational
+Geosciences 15 (2011) 293–305.
+[28] K. W. Smith, Cluster ensemble Kalman filter, Tellus A 59 (2007) 749–757.
+[29] A. Y. Sun, A. P. Morris, S. Mohanty, Sequential updating of multimodal hydrogeologic
+parameter fields using localization and clustering techniques, Water Resources Research
+45 (2009).
+[30] T. Sondergaard, P. F. Lermusiaux, Data assimilation with Gaussian mixture models
+using the dynamically orthogonal field equations. part i: Theory and scheme, Monthly
+Weather Review 141 (2013) 1737–1760.
+[31] T. Sondergaard, P. F. Lermusiaux, Data assimilation with Gaussian mixture models us-
+ing the dynamically orthogonal field equations. part ii: Applications, Monthly Weather
+Review 141 (2013) 1761–1785.
+[32] D. Hodyss, M. Morzfeld,
+Using diffusion models to do data assimilation,
+Monthly
+Weather Review 154 (2026) 165–182.
+28
+
+
+[33] M. Morzfeld, D. Hodyss, Why we should condition denoising diffusion generative models
+on windows of past observations, arXiv preprint arXiv:2609.10924 (2026).
+[34] F. Bao, Z. Zhang, G. Zhang, A score-based filter for nonlinear data assimilation, Journal
+of Computational Physics 514 (2024) 113207.
+[35] F. Bao, Z. Zhang, G. Zhang, An ensemble score filter for tracking high-dimensional non-
+linear dynamical systems, Computer Methods in Applied Mechanics and Engineering
+432 (2024) 117447.
+[36] Z. Zhang, F. Bao, G. Zhang,
+IEnSF: Iterative ensemble score filter for reducing
+error in posterior score estimation in nonlinear data assimilation,
+arXiv preprint
+arXiv:2510.20159 (2025).
+[37] Z. Xiong, F. Bao, H. G. Chipilski, S. Liang, J. Tang, G. Zhang, A two-step ensem-
+ble score filter for data assimilation in partially observed systems,
+arXiv preprint
+arXiv:2606.28264 (2026).
+[38] B. Binder, A. Dasgupta, A. Oberai, Closed-form conditional diffusion models for data
+assimilation, arXiv preprint arXiv:2603.21291 (2026).
+[39] T. Transue, B. Chen, S. Takao, B. Wang, Flow matching for efficient and scalable data
+assimilation, arXiv preprint arXiv:2508.13313 (2025).
+[40] P. Behnoudfar, N. Chen, Ω: Operator-based mixture ensemble for generative assimila-
+tion, arXiv preprint arXiv:2606.20920 (2026).
+[41] J. Bruna, J. Han, Provable posterior sampling with denoising oracles via tilted transport,
+in: Advances in Neural Information Processing Systems (NeurIPS), volume 37, 2024,
+pp. 82863–82894.
+[42] Y. Ren, W. Gao, L. Ying, G. M. Rotskoff, J. Han, Driftlite: Lightweight drift control
+for inference-time scaling of diffusion models, in: International Conference on Learning
+Representations (ICLR), 2026.
+[43] X.-H. Zhou, Z.-R. Liu, H. Xiao, BI-EqNO: Generalized approximate Bayesian inference
+with an equivariant neural operator framework, arXiv preprint arXiv:2410.16420 (2024).
+[44] E. Bach, R. Baptista, J. Bröcker, B. Chen, A. Stuart, Learning probabilistic filters with
+strictly proper scoring rules, arXiv preprint arXiv:2606.26497 (2026).
+[45] N. J. Gordon, D. J. Salmond, A. F. Smith, Novel approach to nonlinear/non-Gaussian
+bayesian state estimation, in: IEE proceedings F (radar and signal processing), volume
+140, IET, 1993, pp. 107–113.
+[46] A. Doucet, A. M. Johansen, et al.,
+A tutorial on particle filtering and smoothing:
+Fifteen years later, Handbook of nonlinear filtering 12 (2009) 3.
+29
+
+
+[47] M. Morzfeld, D. Hodyss, Gaussian approximations in filters and smoothers for data
+assimilation, Tellus A: Dynamic Meteorology and Oceanography 71 (2019) 1600344.
+[48] Y. Lee, A. J. Majda, State estimation and prediction using clustered particle filters,
+Proceedings of the National Academy of Sciences 113 (2016) 14609–14614.
+[49] S. Bhattacharya, P. D. McNicholas, A LASSO-penalized BIC for mixture model selec-
+tion, Advances in Data Analysis and Classification 8 (2014) 45–61.
+[50] C. Bouveyron, C. Brunet-Saumard, Model-based clustering of high-dimensional data:
+A review, Computational Statistics & Data Analysis 71 (2014) 52–78.
+[51] A. Solera-Rico, C. Sanmiguel Vila, M. Gómez-López, Y. Wang, A. Almashjary, S. T.
+Dawson, R. Vinuesa, β-variational autoencoders and transformers for reduced-order
+modelling of fluid flows, Nature Communications 15 (2024) 1361.
+[52] F. Steinbrenner, B. Turan, H. Teng, H. Xiao,
+Turbulence generation and data
+assimilation in wall-bounded flows with a latent diffusion model,
+arXiv preprint
+arXiv:2603.02143 (2026).
+[53] P. Bojanowski, A. Joulin, D. Lopez-Paz, A. Szlam,
+Optimizing the latent space of
+generative networks, arXiv preprint arXiv:1707.05776 (2017).
+[54] J. J. Park, P. Florence, J. Straub, R. Newcombe, S. Lovegrove, DeepSDF: Learning
+continuous signed distance functions for shape representation,
+in: 2019 IEEE/CVF
+conference on computer vision and pattern recognition (CVPR), IEEE, 2019, pp. 165–
+174.
+[55] H. Chandravamsi, H. Hu, P. Thiagarajan, T. A. Zaki, Feature-preserving latent-EnKF
+for data assimilation of flows with shocks, arXiv preprint arXiv:2606.12559 (2026).
+[56] P. R. Halmos, Lectures on ergodic theory, Courier Dover Publications, 2017.
+[57] E. N. Lorenz, Deterministic nonperiodic flow, Journal of the Atmospheric Sciences 20
+(1963) 130–141.
+[58] E. N. Lorenz, Predictability: A problem partly solved, in: Proc. Seminar on predictabil-
+ity, volume 1, Reading, 1996, pp. 1–18.
+[59] E. F. Toro, Riemann solvers and numerical methods for fluid dynamics: a practical
+introduction, Springer Science & Business Media, 2013.
+[60] X.-H. Zhou, L. Beronilla, M. K. Sleeman, H. Hu, M. Morzfeld, A. M. Stuart, T. A. Zaki,
+Neural ensemble Kalman filter: Data assimilation for compressible flows with shocks,
+Journal of Computational Physics (2026) 115136.
+30
+
+
+[61] X. Zhao, W. Ma, S. Islam, A. Narkhede, K. Wang, M2C: An open-source software for
+multiphysics simulation of compressible multi-material flows and fluid–structure inter-
+actions, Computer Physics Communications (2026) 110023.
+[62] K. Wang, M2C: Multiphysics Modeling and Computation, https://github.com/
+kevinwgy/m2c, 2026. Accessed: 2026-08-01.
+[63] B. Van Leer, Towards the ultimate conservative difference scheme. V. A second-order
+sequel to Godunov’s method, Journal of computational Physics 32 (1979) 101–136.
+[64] X.-H.
+Zhou,
+Ensemble
+Generative
+Filter,
+https://github.com/xu-hui-zhou/
+ensemble-generative-filter, 2026.
+31
