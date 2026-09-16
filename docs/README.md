@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-15</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-16</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 12 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 2 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>5</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>1</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-15 21:55:47 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-16 22:22:31 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>2026-09-15 日报：12篇筛出5精读7速读，系外行星大气与PLATO凌星探测成今日主线。</p>
-<p>最值得看的是两篇9分精读：GJ 3090b 的强大气外流，以及模拟PLATO数据中光变曲线滤波与凌星搜索算法比较。</p>
-<p>普通读者可先读这两篇，建立“大气逃逸+探测流程”框架，再按兴趣翻速读中的PINNs冲突梯度或混沌纠缠。</p>
+<p>2026-09-16 日报精选 2 篇，精读微引力透镜发现的双木星级 M 矮星行星系统。最值得看的是 KMT-2026-BLG-0083L 这套两颗木星级行星绕 M 矮星运行的罕见构型，以及速读中无梯度神经 Hamilton-Jacobi 可达性用于可扩展安全控制。普通读者可优先读精读论文，顺带了解后者在安全关键控制中的应用思路。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">5 篇</strong>
+    <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="WINERED Detects a Strong Atmospheric Outflow on the Sub-Neptune GJ 3090b">WINERED Detects a Strong Atmospheric Outflow on the Sub-Neptune GJ 3090b</span></li><li><span class="dpr-home-dashboard-paper-title" title="Detecting transiting exoplanets in simulated PLATO data: A comparison of light curve filter and transit search algorithms">Detecting transiting exoplanets in simulated PLATO data: A comparison of light curve filter and transit search algorithms</span></li><li><span class="dpr-home-dashboard-paper-title" title="Investigating Variability in Long-lived Protoplanetary Disks (&gt;10 Myr) using NEOWISE">Investigating Variability in Long-lived Protoplanetary Disks (&gt;10 Myr) using NEOWISE</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="KMT-2026-BLG-0083L: A Two-Jovian-Planet System Orbiting an M Dwarf Discovered by Microlensing">KMT-2026-BLG-0083L: A Two-Jovian-Planet System Orbiting an M Dwarf Discovered by Microlensing</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>4</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Learning Metastable Dynamics">Learning Metastable Dynamics</span></li><li><span class="dpr-home-dashboard-paper-title" title="Tackling Failure Modes of PINNs and PIKANs Using Conflict-Free Gradients">Tackling Failure Modes of PINNs and PIKANs Using Conflict-Free Gradients</span></li><li><span class="dpr-home-dashboard-paper-title" title="Tripartite entanglement in chaotic eigenstates">Tripartite entanglement in chaotic eigenstates</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Gradient-Free Neural Hamilton-Jacobi Reachability for Scalable Safety-Critical Control">Gradient-Free Neural Hamilton-Jacobi Reachability for Scalable Safety-Critical Control</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>7</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
 </section>
 </div>
 
