@@ -1,0 +1,1294 @@
+Title: Physics Informed Random Feature Neural Networks for Solving PDEs
+
+URL Source: https://arxiv.org/pdf/2609.16406v1
+
+Published Time: Wed, 16 Sep 2026 00:23:20 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+PHYSICS-INFORMED RANDOM FEATURE NEURAL NETWORKS FOR SOLVING PDES ∗
+
+CHI-AN CHEN † , CHUNYANG LIAO ‡ , AND MING ZHONG §
+
+Abstract. Machine learning-based partial differential equations (PDEs) solvers have attracted significant attention in recent years. Most progress in this area has been driven by deep neural networks such as physics-informed neural networks (PINNs) and kernel method (such as physics-informed Gaussian Processes). We introduce a physics-informed random feature method for coun-tering part of the spectral bias which PINN-based solvers are facing for a certain class of PDEs. Random feature method was originally proposed to approximate large-scale kernel machines and can be viewed as a specialized randomized neural network. Compared to other state-of-the-art PINN-based solvers which require a large number of collocation points, our proposed method reduces the computational complexity. In this paper, we develop a rigorous approximation error analysis and derive high-probability error bounds on the H1 norm. We provide extensive numerical tests for veri-fying our theoretical guarantees on error decay rates, as well as several comparison tests to showcase our claimed capability for combating spectral bias in these deep learning based methods. 
+
+Key words. Random Feature, Partial Differential Equations, Scientific Machine Learning, Kernel Method, Physics Informed Machine Learning 
+
+MSC codes. 46E22, 65N35, 35A35 
+
+1. Introduction. Partial Differential Equations (PDEs) have been playing a crucial role in modeling natural phenomena. Accurate numerical solutions are these PDE-driven models have long been a major research interest in the science and en-gineering communities. Traditional numerical methods, including but not limited to Finite Difference, Finite Element and Spectral Methods, have been well developed for such a task for the past century [41]. Scientific Machine Learning (SciML), where machine learning techniques combined with scientific computing frameworks, have garnished increasing popularity in research communities in recent years [3]. Among these methods, Physics-Informed Neural Networks (PINNs) have emerged as one of the most influential approaches by embedding physical knowledge in terms of partial differential equations directly into the training objective [35]. Their mesh-free for-mulation, flexibility, and compatibility with automatic differentiation have enabled applications to a wide variety of forward and inverse PDE problems [1]. Despite these successes, PINNs remain challenging to train in practice due to the highly non-convex optimization over millions of network parameters, sensitivity to network architecture and hyperparameter choices, and the well-documented tendency to favor low-frequency solution components during training [44, 15]. Kernel methods provide a rigorous functional and analytic framework for func-tion approximation and possess strong theoretical guarantees through reproducing kernel Hilbert spaces (RKHS) [4]. However, classical kernel methods suffer from 
+
+> ∗
+
+Submitted to the editors DATE. 
+
+Funding: Zhong is supported by NSF-CCF-AoF grant #2225507. CL is supported by the start-up funding from University of Arkansas. 
+
+> †
+
+Department of Applied Mathematics, Mathematics, Illinois Institute of Technology, Chicago, IL, 60616 (cchen156@hawk.illinoistech.edu, https://scholar.google.com/citations?user= WdF92UgAAAAJ&hl=en). 
+
+> ‡
+
+Department of Mathematical Sciences, University of Arkansas, Fayetteville, AR, 72701 (cliao1@uark.edu, https://liaochunyang.github.io/). 
+
+> §
+
+Department of Mathematics, University of Houston, Houston, TX, 77204 (mzhong3@central.uh.edu, https://mingjzhong.github.io/). 1arXiv:2609.16406v1 [math.NA] 14 Sep 2026 2 C. CHEN, C. LIAO, M. ZHONG 
+
+poor scalability, since training requires manipulating dense kernel matrices whose computational cost grows cubically with the number of training points. Random fea-ture methods provide an elegant compromise by approximating kernel functions using finite-dimensional randomized feature maps [33]. Viewed from a deep learning per-spective, random feature models are a special type of shallow neural networks whose hidden-layer parameters are randomly sampled and fixed, while only the output-layer coefficients are optimized. Unlike other randomized neural networks, such as Extreme Learning Machine (ELM) [17], the hidden-layer weights and biases are sampled from desired probability distributions induced by the underlying kernel, thereby preserving the approximation properties of kernel methods while maintaining the computational efficiency of shallow neural networks. Motivated by these observations, we introduce Physics-Informed Random Fea-ture Networks (PIRFNs) as a mathematically motivated addition to PINNs for solving PDEs. The central idea is to replace the trainable hidden layers in PINNs with kernel-induced random features while retaining the physics-informed loss formulation. As a result, only the output-layer coefficients are optimized, leading to a substantially sim-pler optimization problem together with rigorous approximation guarantees derived from theories based on RKHS. The objective of this work is to further develop physics-informed random fea-ture networks into a more general and practical computational framework. From a theoretical perspective, we extend the approximation analysis to Sobolev spaces and establish new approximation results in the H1 norm, providing stronger error esti-mates that are more relevant to Sobolev-space based Finite Element analysis. From an algorithmic perspective, we redesign the training procedure by focusing on the auto-differentiation workflow commonly used in PINNs together with the widely adopted Adam and L-BFGS optimizers. Consequently, the method retains the user friendly implementation pipeline of PINNs while preserving the computational advantages of random feature models. Beyond the optimization framework, we also investigate how the design of ran-dom features influences approximation quality. Rather than employing a single ran-dom feature distribution for all variables, we introduce a product random feature construction that allows variables from different dimensions to be represented by different kernels and sampling distributions. This design is motivated by product kernels and provides additional flexibility for modeling evolutionary PDEs in which spatial and temporal variables possess distinct characteristic scales. Our numerical experiments demonstrate that appropriately designed random feature distributions can substantially improve approximation accuracy for several representative PDEs, including the Helmholtz equation, linear advection with relatively high wave speed, and the wave equation. These results suggest that kernel design plays a central role in the performance of random feature PDE solvers, although developing automatic kernel selection strategies remains an important direction for future research. The main contributions of this paper are as follows: (I) we employ an auto-differentiation based optimization framework using Adam and L-BFGS, making the proposed method readily applicable to a broad class of PDEs without manual Jacobian derivations; (II) we extend the theoretical analysis by establishing approximation error esti-mates in Sobolev H1 spaces, providing stronger approximation guarantees for random feature models; (III) we introduce product random feature constructions that separately model spatial and temporal variables, enabling more flexible kernel design for time-PHYSICS-INFORMED RFN FOR SOLVING PDES 3dependent PDEs; (IV) We present convergence studies together with comparisons against PINNs, self-adaptive PINNs, and Extreme Learning Machines on several represen-tative benchmark problems, demonstrating the effectiveness of the proposed framework on several different kinds of PDEs. The remainder of this paper is organized as follows. Section 2 reviews the neces-sary background on reproducing kernel Hilbert spaces, random feature methods, and physics-informed neural networks. Section 3 presents the proposed physics-informed random feature framework together with the theoretical analysis. In Section 4, we present numerical experiments including numerical verification of approximation re-sults and comparison on several benchmark PDEs. Finally, we conclude in Section 5 and discusses future research directions. 
+
+1.1. Related Work. The seminal paper [35] which introduced the basic concept of Physics-informed Neural Networks started a new era of scientific machine learning. Since then, causality PINN [43], self-adaptive PINN [27], hard-constrained PINN [15], time-marching PINN [20], PINN with curriculumn training [19], data-driven-viscosity PINN [9], domain and dimension co-decomposition PINN with MOE [38, 39], have sprung up for improving the training difficulties when using PINN to solve various stiff PDEs and hyperbolic PDEs. A few more papers, such as [40, 29, 12, 6], have been introduced to discuss the theoretical convergence and other properties of using PINN for solving PDEs. The limited numbers are partly due to the immense difficulties in merging the PDE-theories into approximations provided by deep neural networks. Kernel-based methods on the other hand can provide theoretical foundations, simple implementation, and competitive performance, which have been widely stud-ied and applied in scientific computing, particularly for solving partial differential equations; see, for example, in [14, 7, 4, 11]. Kernel method represents the target function in a RKHS, providing flexible, nonparametric approximation from scattered data. Besides the deterministic point of view, it is also equivalent to Gaussian process, which naturally enables uncertainty quantification [30, 22, 21]. Existing kernel-based methods rely on inverting a large-scale kernel matrix, which is computationally expensive and limits the use of kernel methods for large-scale datasets. This motivates the development of scalable kernel surrogate methods, such as sparse Cholesky factorization [8] and random Fourier feature approximation [33]. While the latter was originally proposed to approximate large-scale kernel machines, it can be viewed as a special case of randomized shallow neural networks where the input weights and biases are randomly sampled and fixed and only the weights in the readout layer are trainable. Randomized neural networks have also been used in scientific computing [10, 45, 25], as they provide a simple implementation and an efficient training process, but their theoretical guarantees remain largely unexplored. 
+
+1.2. Notation. In this section, we denote the notation used throughout. We let R and C be the set of real numbers and complex numbers. Denote i = √−1 the imaginary unit and x the complex conjugate of complex number x. Denote by [ m] = 1, 2, . . . , m . We denote vectors and matrices with boldface lowercase and uppercase letters, respectively. For two vectors x, y ∈ Cd, the inner product is denoted by 
+
+⟨x, y⟩ = Pdi=1 xiyi. For a vector x ∈ Rd, we denote by ∥x∥p the ℓp-norm of x. Ik
+
+is used to denote the identity matrix in Rk×k. For a domain X ⊂ Rd, we denote 
+
+∥ · ∥ L2(X) the norm of L2(X) space (We omit the domain when there is no ambiguity). Moreover, we denote W s,p (X) the Sobolev space consisting of Lp(X) functions whose mixed partial derivatives up to order s exist in the weak sense and are in Lp(X). 4 C. CHEN, C. LIAO, M. ZHONG 
+
+Its norm is denoted by ∥ · ∥ s,p . For the special case p = 2, we use Hs(X) to denote 
+
+W s, 2(X), equipped with norm ∥ · ∥ Hs and inner product ⟨· , ·⟩ Hs . We also denote 
+
+Hs
+
+> mix
+
+(X) the Sobolev space of dominating mixed smoothness s defined over domain 
+
+X.
+
+2. Background. In this section, we review the theory of reproducing kernel Hilbert space (RKHS), kernel method, and random features method. We then intro-duce the formulation of physics-informed machine learning. 
+
+2.1. Reproducing Kernel Hilbert Space and Kernel Method. We first formalize a reproducing kernel Hilbert space in the following definition. 
+
+Definition 2.1. Let H be a Hilbert space of functions defined over set X. We say that H is a reproducing kernel Hilbert space (RKHS) if, for each x ∈ X,the point evaluation is a bounded linear functional, i.e. there exists some constant 
+
+Mx ≥ 0 such that 
+
+(2.1) |f (x)| ≤ Mx∥f ∥H, for all f ∈ H .
+
+In the context of PDEs, Sobolev spaces play a central role as the fundamental function spaces in which solutions and their weak derivatives can be rigorously de-fined and analyzed. Moreover, Sobolev spaces are indeed RKHSs under some certain conditions. When s > d/ 2 ( d is the dimension of the domain), the Sobolev em-bedding theorem implies that point-evaluation functionals are continuous on Hs(X). Consequently, Hs(X) is a RKHS. A RKHS induces a function of two inputs (kernel function) with the reproducing property. Following the Riesz representation theorem, there exists a function Kx ∈ H 
+
+such that the following reproducing property holds (2.2) f (x) = ⟨f, K x⟩H, for all f ∈ H .
+
+Since every point evaluation is a bounded linear functional, then we apply Riesz representation theorem one more time showing that there exists a function Kx′ ∈ H 
+
+such that (2.3) Kx(x′) = ⟨Kx, K x′ ⟩H.
+
+Therefore, we obtain a kernel function K : X × X → R such that K(x, x′) = 
+
+⟨Kx, K x′ ⟩H, which is called a reproducing kernel of H. For convenience, we define the canonical feature map ϕ : x ∈ X 7 → Kx ∈ H satisfying (2.4) K(x, x′) = ⟨Kx, K x′ ⟩H = ⟨ϕ(x), ϕ (x′)⟩H.
+
+We define a positive (semi)definite kernel in the following definition. 
+
+Definition 2.2. The kernel K is a positive (semi)definite kernel, in the sense that, for any m ≥ 1 and any x(1) , . . . , x(m) ∈ X, the m × m matrix with entries 
+
+K(x(i), x(j)), i, j ∈ [m], is positive (semi)definite. 
+
+Above statement starts with a RKHS and then define its corresponding kernel func-tion. On the other hand, starting with a positive semidefinite kernel K, there is a unique reproducing kernel Hilbert space with K as its reproducing kernel. This results, known as the Moore-Aronszajn theorem, is stated in the following theorem. 
+
+Theorem 2.3 (Moore-Aronszajn theorem [2]). If K : X × X → R is a positive semidefinite kernel, then there exists a unique reproducing kernel Hilbert space H
+
+whose reproducing kernel coincides with K.PHYSICS-INFORMED RFN FOR SOLVING PDES 5Kernel methods have been widely used in machine learning algorithms due to their ability to model nonlinear relationship through linear operations in a feature space [37, 16]. Specifically, kernel methods first map samples to a high-dimensional, even infinite-dimensional, feature space (Hilbert space) through a feature map ϕ, and then apply linear models in the high-dimensional feature space. While the compu-tations are challenging in high-dimensional feature spaces, the corresponding kernel function K indeed computes the inner product in the high-dimensional feature space using samples in the low-dimensional samples space, which significantly simplifies the computation. We briefly introduce the formulation of kernel method in regression problems. Suppose we observe m sample pairs ( xi, y i), i ∈ [m], where xi are the inputs in a compact domain X ⊂ Rd and yi ∈ R are the responses (or labels). We assume that the responses are generated according to (2.5) yi = f ∗(xi) + ϵi, for all i ∈ [m],
+
+where f ∗ is the unknown target function and ϵi are observational errors. Suppose that the unknown target function f ∗ lies in a RKHS HK with positive definite kernel function K : X × X → R. We then define the kernel ridge estimator as ˆfλ = argmin  
+
+> f∈H K
+> m
+
+X
+
+> i=1
+
+(f (xi) − yi)2 + λ∥f ∥2
+
+> H
+
+,
+
+where λ > 0 is the regularization parameter. As λ → 0, the kernel ridge estimator ˆfα
+
+converges to the kernel ridgeless estimator, which is defined as ˆf = argmin  
+
+> f∈H K
+
+∥f ∥H subject to f (xi) = yi, for all i ∈ [m].
+
+We let K ∈ Rm×m be the kernel matrix defined element-wise as Ki,j = K(xi, xj )and y be the vectors of responses y1, . . . , y m. The kernel representer theorem [42, 36] shows that the kernel ridge(less) estimator can be written as Pmi=1 ˆciK(x, x i), where the coefficient vector ˆ c of coefficients ˆ c1, . . . , ˆcm has the following closed form: 
+
+• Kernel ridge regression: ˆ c = ( K + λIm)−1y,
+
+• Kernel ridgeless regression: ˆ c = K−1y.In practice, people usually use translation-invariant (shift-invariant) kernels, which is defined in the following definition. 
+
+Definition 2.4. A positive definite kernel K : Rd × Rd → R is translation-invariant if there exists a function ˜K : Rd → R such that 
+
+K(x, x′) = ˜K(x − x′) for all x, x′ ∈ Rd.
+
+Some commonly used translation-invariant kernels include 
+
+• Gaussian Kernel: K(x, x′) = exp 
+
+
+
+− ∥x−x′∥22
+
+> 2σ2
+
+
+
+, where σ > 0 is the scale pa-rameter. 
+
+• Mat´ ern Kernel: Kν (x, x′) = Mν,σ (|| x − x′∥2), where the Mat´ ern covariance function Mν,σ (x) : R → R with smoothness parameter ν > 0 and scale parameter σ > 0 is defined as 
+
+Mν,σ (x) = 21−ν
+
+Γ( ν)
+
+ xσ
+
+ν
+
+Bν
+
+ xσ
+
+6 C. CHEN, C. LIAO, M. ZHONG 
+
+and Bν is a modified Bessel function of the second kind of order ν.
+
+• Exponential Kernel 1: K(x, x′) = exp 
+
+
+
+− ∥x−x′∥2
+
+> σ
+
+
+
+, where σ > 0 is the scale parameter. It can be viewed as a special case of Mat´ ern kernel with ν = 1 /2. 
+
+• Laplace kernel: K(x, x′) = exp 
+
+
+
+− ∥x−x′∥1
+
+> σ
+
+
+
+, where σ > 0 is the scale param-eter. The RKHS associated with the Mat´ ern kernel Kν (x, x′) has the inner product 
+
+⟨f, g ⟩Mν,σ =
+
+Z
+
+> Rd
+
+ˆf (w)ˆ g(w)(1 + ∥w∥2)ν+d/ 2 dw 
+
+up to constants, which we recognize as the inner product of the classical Sobolev space Hν+d/ 2(Rd). For the general Mat´ ern Kernel Mν,σ (x), we have some scaling constant and the corresponding RKHS is equivalent to the classical Sobolev space 
+
+Hν+d/ 2(Rd). Therefore, the smoothness parameter in the Mat´ ern covariance function 
+
+Mν,σ (x) determines the smoothness of the resulting functions. Following the fact that the Gaussian kernel is the limits of Mat´ ern kernen as smoothness parameter ν → ∞ 
+
+[32], we can show that the RKHS of Gaussian kernel is H∞(Rd). For the Laplace kernel (with scale parameter σ = 1), the corresponding RKHS is the Sobolev space of dominating mixed smoothness H1mix (Rd). Unlike the Isotropic Sobolev space Hs(Rd), the mixed smoothness Sobolev space controls the each coordinate independently and the following embedding Hs
+
+> mix
+
+(Rd) ⊂ Hs(Rd) is continuous. 
+
+2.2. Random Feature. The major challenge of kernel method is that it scales poorly for large amount of sample pairs. It requires O(m3) training time and O(m2)storage space, which is computationally infeasible when sample size m is large. There-fore, random feature was originally proposed to approximate large-scale kernel ma-chines [33]. The random feature method provides a low-rank approximation of the kernel matrix, thereby reducing the computational cost and memory requirements as-sociated with operating on the kernel matrix. The theoretical foundation of random (Fourier) feature builds on Bochner’s Theorem [5], a classical result from harmonic analysis. 
+
+Theorem 2.5. A continuous translation-invariant kernel K : X × X → R sat-isfying K(x, x′) = ˜K(x − x′) is positive definite if and only if ˜K(ω) is the Fourier transform of a non-negative measure. 
+
+With Bochner’s Theorem at hand, one can rewrite a translation-invariant kernel as an integral form (2.6) K(x, x′) = 
+
+Z
+
+> Rd
+
+exp(i ⟨ω, x − x′⟩)dρ (ω),
+
+where ρ is a proper probability measure if the kernel is scaled properly. Approximating the above integral using Monte Carlo sampling yields the random Fourier feature approximation 
+
+K(x, x′) = 
+
+Z
+
+> Rd
+
+exp(i ⟨ω, x − x′⟩)dρ (ω) ≈ 1
+
+N
+
+> N
+
+X
+
+> j=1
+
+exp(i ⟨ωj , x − x′⟩) = ⟨ϕN (x), ϕ N (x′)⟩,   
+
+> 1In some literature, this kernel is also called Laplace kernel. To avoid the confusion with the Laplace kernel defined via the ℓ1-norm, we refer to it as the exponential kernel in this paper. PHYSICS-INFORMED RFN FOR SOLVING PDES
+
+7where ϕN (x) : X → RN is a random finite-dimensional feature map defined as 
+
+ϕN (x) = 1
+
+√N
+
+h
+
+exp(i ⟨ω1, x⟩), . . . , exp(i ⟨ωN , x⟩)
+
+i⊤
+
+∈ CN .
+
+Here {ωj }j∈[N ] are independent samples from probability measure ρ. The feature map ϕN depends on random samples {ωj }j∈[N ], while we omit the dependency in order to simplify the notation. To obtain a real-valued random feature approximation for kernel K, one can introduce a random phase b ∼ Uniform[0 , 2π], yielding the standard random cosine features representation in [33]. Specifically, one can define the feature map as 
+
+ϕN (x) = 
+
+r 2
+
+N
+
+h
+
+cos( ⟨ω1, x⟩ + b1), . . . , cos( ⟨ωN , x⟩ + bN )
+
+i⊤
+
+∈ RN ,
+
+where {ωj }j∈[N ] are independent samples from probability measure ρ and {bj }j∈[N ]
+
+are independent samples from Uniform distribution on [0 , 2π]. The random feature map induces a translation-invariant kernel 
+
+KN (x, x′) = ⟨ϕN (x), ϕ N (x′)⟩,
+
+which converges to K(x, x′) as N → ∞ . For later use, and with a slight abuse of notation, we introduce φ(x; ω) denote a generic random feature associated with 
+
+ω. Depending on the context, φ(x; ω) may refer either to a complex-valued feature exp(i ⟨ω, x⟩) or a real-valued feature cos( ⟨ω, x⟩ + b) 2.Bochner’s theorem establishes a one-to-one correspondence between continuous translation-invariant positive definite kernels and their spectral densities. Here, we summarize the commonly used kernels and their corresponding spectral densities. 
+
+• Gaussian kernel with scale parameter σ. The corresponding spectral density is Gaussian with mean 0 and variance 1 /σ 4.
+
+• Mat´ ern kernel with smoothness parameter ν and scale parameter σ. The corresponding probability distribution is general t-distribution with degree of freedom df = 2 ν, location parameter μ = 0, and scale parameter 1 /(2 πσ ). 
+
+• Laplace kernel with scale parameter σ corresponds to tensor-product Cauchy distribution with scale parameter 1 /σ , whose probability density function with scale parameter γ is 
+
+f (x; γ) = 
+
+ 2
+
+π
+
+d dY
+
+> i=1
+
+γγ2 + x2
+
+> j
+
+.
+
+A modern interpretation of random feature method is viewing it as a randomized neural network. We recall the generic real-valued random cosine feature φ(x, ω) = cos( ⟨ω, x⟩ + b) where ω is sampled from the spectral distribution ρ associated with the kernel and b ∼ Uniform[0 , 2π]. We are interested in approximating mixture of the form f (x) = R 
+
+> Rd
+
+α(ω)φ(x, ω)dρ (ω) by a finite sum of the form (2.7) ˆf (x) = 
+
+> N
+
+X
+
+> j=1
+
+ˆcj φ(x, ωj ) = 
+
+> N
+
+X
+
+> j=1
+
+ˆcj cos( ⟨ωj , x⟩ + bj ).       
+
+> 2Precisely, we consider the augmented vectors eω= [ ω, b ] and ex= [ x,1]. The generic real-valued feature is indeed φ(ex;eω). To simplify the notation, we omit the tildes when no confusion can arise.
+
+8 C. CHEN, C. LIAO, M. ZHONG 
+
+Here the parameters {ωj }j∈[N ] are randomly sampled and kept fixed. The resulting finite sum can be viewed as a single hidden layer neural network with cosine activation function. Unlike the vanilla neural networks, the hidden-layer weights ωj and bias terms bj are sampled and then fixed, whereas only the output-layer coefficients ˆ cj are learned. This randomized construction offers several advantages. First, it significantly reduces the number of trainable parameters since only the output-layer coefficients can be trained. Second, the training process involves solving a convex optimization problem, often reduced to linear regression, thereby avoiding the difficulties in solving non-convex optimization problems. Despite this simplification, randomized neural networks retain strong approximation capabilities and have been successfully applied to a variety of scientific problems, including operator learning [26, 13] and dynamical system [23, 24]. In later sections, we investigate their approximation properties. To this end, we first introduce the function space in which the approximation analysis will be carried out. Let’s fix a probability measure ρ (associated with a kernel K), we define the following function space: (2.8) F(ρ) := 
+
+
+
+f (x) = 
+
+Z
+
+> Rd
+
+α(ω)φ(x, ω)dρ (ω) : ∥f ∥2 
+
+> F(ρ)
+
+= ∥α∥2 
+
+> L2(ρ)
+
+< ∞
+
+
+
+.
+
+It is well-known that the completion of F(ρ) is a RKHS and coincides with the RKHS associated with kernel K, see [34] for a complete proof. 
+
+2.3. Physics-Informed Neural Networks (PINNs). In this section, we in-troduce Physics-Informed Neural Networks (PINNs), which are a data-driven scientific machine learning technique for solving Partial Differential Equations (PDEs). The main idea of PINN is approximating PDE solutions by training a neural network to minimize a loss function including terms reflecting initial and boundary conditions and PDE residual at a set of collocation points. Consider the following general PDE problem with both initial condition (IC) and boundary condition (BC): 
+
+P[u(x, t )] = 0 , (x, t ) ∈ D × [0 , T ](2.9a) 
+
+u(x, 0) = u0(x), x ∈ D(2.9b) 
+
+B[u(x, t )] = 0 , (x, t ) ∈ ∂D × [0 , T ],(2.9c) where u(x, t ) is unknown, D is the problem domain, x is a spatial vector variable, 
+
+t is time, P[·] is an interior differential operator, and B[·] is a boundary differential operator. Equations (2.9b) and(2.9c) provide initial and boundary conditions, re-spectively. A PINN approximates u(x, t ) by the output of a neural network u♯θ (x, t )with trainable parameters θ (weights and bias). The loss function used to train neu-ral network parameters incorporates the physics embedded in the PDE, initial, and boundary conditions : (2.10) 
+
+L(θ) = λ1
+
+MrMrX
+
+> i=1
+
+P[u♯θ (xi, t i)] 2
+
+| {z }  
+
+> LP DE :
+
+PDE redisual + λ2
+
+M0
+
+> M0
+
+X
+
+> i=1
+
+
+
+u♯θ (x, 0) − u0(x)
+
+2
+
+| {z } 
+
+> L0:
+
+IC residual + λ3
+
+MbMbX
+
+> i=1
+
+B[u♯θ (xi, t i)] 2
+
+| {z } 
+
+> Lb:
+
+BC residual 
+
+,        
+
+> 2In Eq (2.10), notation P[u♯θ(xi, t i)] means that we apply the differential operator Pto function
+> u♯θfirst and we then evaluate the function values at points ( xi, t i). The same convention is applied to B[u♯θ(xi, t i)]. PHYSICS-INFORMED RFN FOR SOLVING PDES
+
+9where {(xi, t i)}Mr 
+
+> i=1
+
+is a set of collocation points where the governing PDE (2.9a) is enforced, {xi}M0 
+
+> i=1
+
+is a set of points in the domain to enforce the initial condition (2.9b), {xi, t i}Mb 
+
+> i=1
+
+is a set of points to enforce the boundary condition (2.9c), and 
+
+λ1, λ 2, λ 3 > 0 are pre-selected regularization parameters. These collocation points are randomly sampled in the PDE, initial, and boundary conditions domains. The regularization parameters are chosen to balance PDE, IC, and BC residuals. 
+
+3. Main Results. In this section, we present our proposed physics-informed random feature networks and the associated computational framework, followed by theoretical results on their approximation properties. 
+
+3.1. Physics-informed Random Feature Network. In this section, we pres-ent our proposed physics-informed random feature network for solving PDEs. We first consider the following general PDE problem: (3.1) P[u]( x) = 0 , x ∈ D
+
+B[u]( x) = 0 , x ∈ ∂D, 
+
+where D ⊂ Rd is the domain with the boundary ∂D , P is the interior differential op-erator, and B is the boundary differential operator. For the sake of brevity, we assume that the PDE is well-defined pointwise and has a unique strong solution throughout this paper. We propose to solve the PDE problem (3.1) by using a random feature network. Specifically, we model the solution to the PDE problem as a finite sum of the form (2.7), i.e. (3.2) u♯
+
+> c
+
+(x) = 
+
+> N
+
+X
+
+> k=1
+
+c♯kϕ(x, ωk),
+
+and then impose the physics constraints using collocation points. Let {xj }j∈[M ]
+
+be a set of collocation points such that {xj }j∈[MD ] is a set of interior points and 
+
+{xj }Mj=MD +1 is a set of boundary points. We randomly draw features {ωk}k∈[N ]
+
+from a known distribution ρ(ω). We learn the output-layer coefficients by solving the following optimization problem: (3.3) minimize 
+
+> c∈RN
+
+∥c∥22
+
+s.t. P[u♯
+
+> c
+
+]( xj ) = 0 , for j = 1 , . . . , M Ω
+
+B[u♯
+
+> c
+
+]( xj ) = 0 , for j = MΩ + 1 , . . . , M 
+
+For the linear PDEs, we can write the constraints in (3.3) as a linear system Ac = y.Then the optimization problem (3.3) reduces to a constrained min-norm optimization problem, which has explicit solution c = A†y, where A† is the pseudo-inverse of matrix A. For general nonlinear PDE problems, the governing PDE and boundary conditions are incorporated into the loss function as soft constraints. Specifically, we solve the following optimization problem (3.4) minimize 
+
+> c∈RN
+
+∥c∥22 + λ1
+
+> MΩ
+
+X
+
+> j=1
+
+ P[u♯
+
+> c
+
+]( xj )2 + λ2
+
+> M
+
+X
+
+> j=MΩ+1
+
+ B[u♯
+
+> c
+
+]( xj )2 ,
+
+where λ1, λ 2 > 0 are regularization parameters. When λ1, λ 2 → 0, the solution of (3.4) converges to the solution of (3.3). 10 C. CHEN, C. LIAO, M. ZHONG 
+
+Remark 3.1. The loss function in (3.4) is slightly different from the PINN loss 
+
+(2.10) due to the term ∥c∥22. It can be viewed as a regularization term to control the model complexity. One can also remove this term in practice. 
+
+We now consider the a PDE problem with both initial and boundary conditions Eq (2.9a)-(2.9c), and discuss how we design a random feature network to approximate its solution. When dealing with PDEs involving both spatial and temporal variables, a standard approach is to concatenate them into a single input vector, i.e. ( x, t ) [35, 25]. When we use the random feature network (3.2) proposed above, it implicitly assumes that spatial and temporal variables are treated identically and the random features are sampled from the same distribution across spatial and temporal space. However, it is generally inappropriate because space and time may have fundamentally different physical nature, interpretation, and characteristic scales. To alleviate this issue, we propose the following random feature network: (3.5) u♯
+
+> c
+
+(x, t ) = 
+
+> Nt
+
+X
+
+> i=1
+> Nx
+
+X
+
+> k=1
+
+ci,k φ(x, ωk)ψ(t, ξ i),
+
+where {ωk}Nx 
+
+> k=1
+
+and {ξi}Nt 
+
+> i=1
+
+are randomly sampled from distributions ρ1 and ρ2 and kept fixed. This idea is motivated by approximating a product kernel, which allows separated treatment of spatial and temporal components while still modeling their joint interactions. Specifically, we define a product kernel via two translation-invariant positive definite kernels K1 and K2
+
+K(( x, t ), (x′, t ′)) = K1(x, x′)K2(t, t ′).
+
+Notice that the product kernel is also translation-invariant and positive definite. We apply random feature approximation for K1 and K2 separately and obtain 
+
+K1(x, x′)K2(t, t ′) ≈⟨ ϕNx (x), ϕ Nx (x′)⟩⟨ ψNt (t), ψ Nt (t′)⟩
+
+=⟨ϕNx (x) ⊗ ψNx (t), ϕ Nt (x′) ⊗ ψNt (t′)⟩,
+
+where ⊗ denote the Kronecker product. Based on this separable random feature con-struction, we directly parametrize u♯(x, t ) in Eq (3.5) as a finite sum over spatial and temporal random features. In practice, the spatial variable x and the temporal variable t may use different numbers of random features ( Nx and Nt) and differ-ent sampling distributions ( ρ1 and ρ2), which makes the random feature networks more expressive and better capable capturing spatial-temporal behaviors. A numeri-cal comparison for the product and uniform random feature models using the linear advection-diffusion equation is provided in Section 4.4. In addition, the product formulation can also be applied to the case where the PDE variables have different scales along different spatial directions. We may use different random features for different spatial variables to capture its behavior, i.e (3.6) u♯
+
+> c
+
+(x1, x2) = 
+
+> Nt
+
+X
+
+> i=1
+> Nx
+
+X
+
+> k=1
+
+ci,k φ(x1, ωk)ψ(x2, ξ i).
+
+We refer readers to Section 4.5 for a numerical example of different features for dif-ferent spatial directions. PHYSICS-INFORMED RFN FOR SOLVING PDES 11 
+
+3.2. Universal Approximation. In this section, we show that randomized neural networks are universal approximators of continuous functions. Universal ap-proximation results for this class of networks were established in [13]. We summarize the main results below. 
+
+Theorem 3.2 (Proposition 1 in [13]). Let K ⊂ Rd compact and U ⊂ C(K)
+
+compact and consider a parametric family of random activation function {φ(x, ω) : 
+
+x ∈ Rd, ω ∈ Ω}, where ω ∈ Ω is a vector of randomly chosen (hyper)parameters, and assume that ϕ are uniformly bounded in Rd × Ω. Let ρ be a probability distribution on Ω. Given any ϵ, there exists a N ∈ N and i.i.d samples {ωk}k∈[N ] from ρ, chosen independently of f , such that for every f ∈ U the random approximation 
+
+fϵ(x) = 
+
+> N
+
+X
+
+> k=1
+
+ck[f ]φ(x, ωk),
+
+approximates f in the sense that with high probability 
+
+∥f − fϵ∥L2(μ) < ϵ, 
+
+for a suitable probability measure μ over K. Moreover, if φ(x, ω) = ψ(x · ω), for a L-Lipschitz function ψ, the above approximation is uniform (i.e. in the supremum norm). Sketch of Proof. The proof in [13] follows three steps: first, it applies universal approximation results of vanilla shallow neural networks with a continuous sigmoidal (non-polynomial) activation function; second, it uses radial basis function (RBF) net-works to approximate the continuous sigmoidal activation function, and hence shows that RBF networks are universal approximators; third, it shows that randomized neu-ral networks can approximate RBF networks, and then randomized neural networks are universal approximators of continuous functions. Alternatively, we can apply universal kernels [28] to show that their corresponding RKHS is dense in C(K), and then show that randomized neural networks (random features models) can approximate any functions in the RKHS. Therefore, randomized neural networks are universal approximators of continuous functions. We mainly focus on Gaussian and Mat´ ern kernels in the numerical experiments, both of which are universal kernels. The corresponding approximation results are special cases of a more general theory for translation-invariant kernels. We refer the reader to Section 4 in [28] for more details. 
+
+3.3. Approximation Error. In this section, we study the approximation of RKHS functions using random features and establish bounds on the corresponding approximation error. Specifically, we first state the results of approximation error in 
+
+L∞ and L2 norms developed in [25]. We then derive the bounds on the approximation error in the Sobolev H1 norm. 
+
+Theorem 3.3 (Theorem 3 in [25]). Let f be a function from F(ρ). Suppose that the random feature map ϕ satisfies |φ(x, ω)| ≤ 1 for all x ∈ X and ω ∈ Rd. Then for any δ ∈ (0 , 1) , there exists c♯
+
+> 1
+
+, . . . , c ♯N so that the function 
+
+(3.7) f ♯(x) = 
+
+> N
+
+X
+
+> k=1
+
+c♯kφ(x, ωk)12 C. CHEN, C. LIAO, M. ZHONG 
+
+satisfies 
+
+f (x) − f ♯(x) ≤ 12 ∥f ∥F(ρ) log(2 /δ )
+
+√N
+
+with probability at least 1 − δ over ω1, . . . , ωN drawn i.i.d from ρ(ω).Sketch of Proof. We outline the main idea of the proof. The proof is constructive. We first construct a random feature approximation f ♯ associated with the target function f . Since the true function is generally unknown to us, this construction is used for analysis and is not intended to be implemented directly. We then apply concentration inequalities to obtain the desired results. Consequently, on any domain X of finite Lebesgue measure |X|, the above uniform error bound immediately implies an L2 error bound of the same order, i.e. 
+
+∥f − f ♯∥L2(X) ≤ 12 ∥f ∥F(ρ) log(2 /δ )p|X|√N .
+
+With the L2 error bound established, it remains to bound ∥∇ (f −f ♯)∥L2 . Combin-ing the resulting gradient estimate with the L2 error bound yields an approximation error bound in H1 norm. The main result will be summarized in Theorem 3.4. Before we state the theorem, we introduce another function space consisting of functions whose regularity is controlled by the L2 norm of the feature gradients. Specifically, let 
+
+M 2 := 
+
+Z
+
+> Rd
+
+|α(ω)|2∥∇ φ(x, ω)∥2 
+
+> L2
+
+dρ (ω),
+
+we then define the function space as 
+
+eF(ρ) = 
+
+
+
+f (x) = 
+
+Z
+
+> Rd
+
+α(ω)φ(x, ω)dρ (ω) M 2 < ∞
+
+
+
+.
+
+Theorem 3.4 (Approximation Error in H1 norm). Let f be a function from 
+
+F(ρ) ∩ eF(ρ). Suppose that the random feature map ϕ satisfies |φ(x, ω)| ≤ 1 for all 
+
+x ∈ X and ω ∈ Rd. We define a set 
+
+ϵN (δ) = 
+
+n
+
+max   
+
+> k∈[N]
+
+max  
+
+> i∈[d]
+
+sup 
+
+> x∈X
+
+∂φ (x, ωk)
+
+∂x i
+
+≤ BN (δ)
+
+o
+
+,
+
+where BN (δ) > 0 depends on N and δ. We assume that P(ϵN (δ)) ≥ 1 − δ/ 2. Then for any δ ∈ (0 , 1) , there exists c♯
+
+> 1
+
+, . . . , c ♯N so that the function 
+
+(3.8) f ♯(x) = 
+
+> N
+
+X
+
+> k=1
+
+c♯kφ(x, ωk)
+
+satisfies 
+
+∥f (x) − f ♯(x)∥H1(X) ≤ 12 ∥f ∥F(ρ) log(2 /δ )p|X|√N + 12 M B N (δ)∥f ∥F (ρ) log(2 /δ )p|X|√N
+
+with probability at least 1 − δ over ω1, . . . , ωN drawn i.i.d from ρ(ω) and over random event ϵN (δ).PHYSICS-INFORMED RFN FOR SOLVING PDES 13 
+
+Proof. We first introduce notation α≤T (ω) = α(ω)1|α(ω)|≤ T and α>T = α(ω) −
+
+α≤T (ω) for any T > 0. We draw random features {ω}Nk=1 from ρ(ω). We then define 
+
+c♯k = α≤T (ωk)/N for all k ∈ [N ] and a random feature approximation as 
+
+f ♯(x) = 1
+
+N
+
+> N
+
+X
+
+> k=1
+
+α≤T (ωk)φ(x, ω).
+
+For each component xi of x ∈ Rd, we decompose the error into two terms, i.e. 
+
+∂(f − f ♯)
+
+∂x i
+
+≤ ∂(f − g)
+
+∂x i
+
+| {z }
+
+> I1
+
++ ∂(g − f ♯)
+
+∂x i
+
+| {z }
+
+> I2
+
+,
+
+where g = Eω f ♯. Moreover, we notice that f − g = Eω α>T (ω)φ(x, ω). We first bound term I1, which can be written as 
+
+I1 = Eω α>T (ω) ∂φ (x, ω)
+
+∂x i
+
+=
+
+Z
+
+> Rd
+
+α>T (ω) ∂φ (x, ω)
+
+∂x i
+
+dρ (ω) .
+
+Then, we apply Cauchy-Schwarz inequality to obtain 
+
+I1 ≤
+
+"Z
+
+> Rd
+
+α(ω) ∂φ (x, ω)
+
+∂x i
+
+> 2
+
+dρ (ω)
+
+#1/2
+
+| {z }
+
+> Mi
+
+Z 
+
+> Rd
+
+12 
+
+> |α(ω)|≥ T
+
+dρ (ω)
+
+1/2
+
+.
+
+Finally, applying Markov’s inequality yields 
+
+I1 ≤ Mi
+
+Eω |α(ω)|2
+
+T = Mi∥f ∥2
+
+> F(ρ)
+
+T .
+
+Next, we bound term I2. By assumption, we have 
+
+P(ϵN (δ)) ≥ 1 − δ/ 2.
+
+For any x ∈ X, we define random variable Z(ω) = α≥T (ω) ∂φ (x,ω) 
+
+> ∂x i
+
+and let Z1, . . . , Z N
+
+be N i.i.d copies of Z(ω) defined by Zk = Z(ωk) for k ∈ [N ]. On the event ϵN (δ), we have, with probability at least 1 − δ/ 2, 
+
+|Zk| ≤ T B N (δ).
+
+The variance of Z is bounded above as 
+
+Eω |Z − Eω Z|2 ≤ Eω |Z|2 ≤ M 2 
+
+> i
+
+.
+
+By Lemma A.2 and Theorem A.1, it holds that, 
+
+I2 = 1
+
+N
+
+> N
+
+X
+
+> k=1
+
+Zk − Eω Z ≤ 4T B N (δ) log(2 /δ )
+
+N +
+
+r 2M 2 
+
+> i
+
+log(2 /δ )
+
+N .14 C. CHEN, C. LIAO, M. ZHONG 
+
+Choosing T = √N ∥f ∥F(ρ) and adding the bounds of I1 and I2 give 
+
+∂(f − f ♯)
+
+∂x i
+
+≤ Mi∥f ∥F(ρ)
+
+√N + 4Mi∥f ∥F(ρ)BN (δ) log(2 /δ )
+
+√N +
+
+p2 log(2 /δ )Mi
+
+√N
+
+≤ 12 MiBN (δ)∥f ∥F(ρ) log(2 /δ )
+
+√N .
+
+Then we immediately obtain the following bound since X has finite Lebesgue measure and we have the relation M 2 = Pdi=1 M 2 
+
+> i
+
+by the definitions of M and Mi, i.e. (3.9) 
+
+∥∇ (f − f ♯)∥L2(X) =
+
+vuut dX
+
+> i=1
+
+∂(f − f ♯)
+
+∂x i
+
+> 2
+> L2(X)
+
+≤ 12 M B N (δ)∥f ∥F (ρ) log(2 /δ )p|X|√N .
+
+Combining with the L2 error bound in Theorem 3.3 leads to the desired bound in H1
+
+norm. We end this section with a few remarks. 
+
+Remark 3.5. Consider the following 1D example where f (x) is represented by its Fourier transform. Then, we have 
+
+α(ω) = ˆf (ω)
+
+ρ(ω) , φ(x, ω ) = exp( ixω ), and M 2 =
+
+Z
+
+> R
+
+| ˆf (ω)|2
+
+ρ(ω) dω. 
+
+Therefore, we show that the Fourier transform is controlled by density function of random feature. If we further take Cauchy distribution with density function ρ(ω) =  
+
+> 11+ ω2
+
+, then we observe that M is equivalent to H1 norm. The norm M appearing in the definition of space eF(ρ) quantifies the regularity of functions and controls the approximation error. This approximation result has the same flavor as classical error estimates for finite element method (FEM): controlling the approximation error in H1
+
+norm requires a higher-order regularity assumption on the target function, typically the H2 norm is finite. 
+
+Remark 3.6. In the proof of Theorem 3.4, we construct a random feature ap-proximation f ♯ and select a positive constant T = √N ∥f ∥F(ρ), which are the same those used in the proof of Theorem 3.3. Therefore, we can use the results of Theorem 3.3 directly. 
+
+Remark 3.7. In the theorem statement, we define a good event ϵN (δ) such that the partial derivative of random feature is bounded with probability at least 1 − δ/ 2.Good event ϵN (δ) and quantity BN (δ) depend on the choice of random features. Here, we derive an explicit BN (δ) for Gaussian distribution N (0 , σ 2) because we mainly use Gaussian distribution in our numerical experiments. Suppose that ωi follows Gaussian distribution N (0 , σ 2), then we have the tail bound 
+
+P(|ωi| ≥ B) ≤ 2 exp 
+
+
+
+− B2
+
+2σ2
+
+
+
+.
+
+Applying the union bound gives 
+
+P( max   
+
+> k∈[N]
+
+max  
+
+> i∈[d]
+
+|ωk,i | ≤ B) ≥ 1 − 2N d exp 
+
+
+
+− B2
+
+2σ2
+
+
+
+.PHYSICS-INFORMED RFN FOR SOLVING PDES 15 
+
+Since we assume that the failure probability is at most δ/ 2, then we have 
+
+BN (δ) = σ
+
+s
+
+2 log 
+
+ 4N d δ
+
+
+
+.
+
+4. Numerical Experiments. In this section, we evaluate the performance of the proposed physics-informed random feature network (PIRFN) model on several PDE problems. First, we numerically verify the approximation error decay rates de-rived in Theorems 3.3 and 3.4. We then compare our proposed PIRFN model defined in (3.5) with the uniform random feature model proposed in [25] to demonstrate its superiority in approximating PDE solutions, especially when spatio-temporal vari-ables have different scales. Finally, we compare with some state-of-the-art methods, including Physics-informed Neural Network (PINNs), self-adaptive Physics-informed Neural Network (SA-PINN), and extreme learning machine (ELM), across several benchmark PDE problems. For all time-dependent numerical examples, we consider the random Fourier features of the form (3.5) with cosine activation function for both spatial and temporal variables. The weights for both of them are independently sam-pled form Gaussian distributions and the choice of variances will be specified for each PDE problem. All source code will be uploaded to a Github repository and available upon completion of the revision. 
+
+4.1. Measure of Accuracy. We take several metrics to measure the model accuracy. For the numerical verification of decay rate in Section 4.3, we consider L2
+
+error ∥u − ˆu∥L2 and H1 error ∥u − ˆu∥H1 between true solution u and the random feature approximation ˆ u. Since we cannot evaluate the norms exactly, we use the Monte Carlo method to estimate them on a withheld set of discrete points {xi}Mi=1 ,see formulas below 
+
+∥u − ˆu∥L2 ≈
+
+vuut 1
+
+M
+
+> M
+
+X
+
+> i=1
+
+|u(xi) − ˆu(xi)|2, and 
+
+∥u − ˆu∥H1 ≈
+
+vuut 1
+
+M
+
+> M
+
+X
+
+> i=1
+
+h
+
+|u(xi) − ˆu(xi)|2 + ∥∇ u(xi) − ∇ ˆu(xi)∥2i
+
+.
+
+For the comparison with other methods in Sections 4.4–4.7, we assess the accuracy of each method using relative L2 error and L∞ error. Similarly, we evaluated the errors using Monte Carlo method on a withheld set of test points {xi}Mi=1 . The discrete formulas are given below 
+
+∥u − ˆu∥L2
+
+∥u∥L2
+
+≈
+
+qPNi=1 (ˆ u(xi) − u(xi)) 2
+
+qPNi=1 u(xi)2
+
+, ∥u − ˆu∥L∞ ≈ max   
+
+> i∈[1: M]
+
+|u(xi) − ˆu(xi)|.
+
+4.2. Training Strategy. For our proposed random feature-based method, the trainable coefficients are optimized using the Adam and L-BFGS optimizers imple-mented in PyTorch. For the Adam optimizer, we include a regularization term involv-ing the norm of the coefficients in the loss function, as defined in (3.4). In contrast, when using the L-BFGS optimizer, we minimize only the PDE residual loss with-out the additional regularization term. Based on our numerical experiments, these 16 C. CHEN, C. LIAO, M. ZHONG 
+
+choices lead to better performance for the corresponding optimization methods. For simplicity, we set the regularization parameters λ1 and λ2 to one. For the comparison methods, including PINN, SA-PINN, and ELM, we use the same PDE residual loss and implement their respective training procedures in Py-Torch. For a fair comparison, the neural network-based methods are trained using the same two-stage optimization procedure, consisting of Adam followed by L-BFGS, with a comparable number of features to that used in our PRF method. For ELM, the hidden-layer weights ω are randomly sampled from Gaussian distribution with covariance matrix 12 I and bias term b are randomly sampled form Uniform distribu-tion U nif [−1, 1]. Then they are fixed throughout the training process, while only the output-layer coefficients are optimized. Unless otherwise specified, the same stopping criteria are used across all methods. We note that, for the numerical examples below, the smaller number of L-BFGS iterations used by some comparison methods is pri-marily due to their errors reaching a plateau at an early stage of the optimization. We report the average results over ten independent trials, with different sets of training points used in each trial. For each trial, the training points are randomly sampled, while the test points are fixed at the grid points for each problem. 
+
+4.3. Error Decay Rate. We first numerically investigate the approximation errors established in Theorems 3.3 and 3.4. We use the following nonlinear Poisson equation in different spatial dimensions: (4.1) −∇ · (a(u)∇u) = f (x), x ∈ Ω, u(x) = g(x), x ∈ ∂Ω,
+
+where the domain is the d-dimensional cube Ω = [ −1, 1] d and a(u) = u2 − u. We set 
+
+f (x) and g(x) to be 
+
+f (x) = 1
+
+d
+
+"
+
+−3 exp − 3
+
+d
+
+> d
+
+X
+
+> i=1
+
+xi
+
+!
+
++ 2 exp − 2
+
+d
+
+> d
+
+X
+
+> i=1
+
+xi
+
+!# 
+
+, g(x) = exp − 1
+
+d
+
+> d
+
+X
+
+> i=1
+
+xi
+
+!
+
+.
+
+The analytical solution is given by u(x) = exp 
+
+
+
+− 1
+
+> d
+
+Pdi=1 xi
+
+
+
+.For d = 2, we sample random weights from Gaussian distribution with variance 
+
+σ2 = 0 .1, while for dimensions d = 4 and d = 8, we sample random weights from Gaussian distributions with variance σ2 = 0 .05. For all dimensions, we sample 400 interior points and 80 boundary points as training points, and 2000 interior points and 208 boundary points as testing points. For each case, we perform 2000 Adam iterations followed by 500 L-BFGS iterations to train the model. We show the log-log plots of L2 and H1 errors versus number of features N for dimensions d = 2 , 4, and 8 in Figure 1. The estimated decay rates are also included in the legends. We observe that the estimated decay rates are consistent with those established in Theorems 3.3 and 3.4, demonstrating the potential of our proposed method for solving high-dimensional PDEs. 
+
+4.4. Linear Advection-Diffusion Equation. In this section, we compare our proposed product cosine random features with the uniform random feature proposed in [25]. We consider the following linear advection-diffusion equation (4.2) 
+
+
+
+ut + cu x = νu xx , (x, t ) ∈ (−1, 1) × (0 , 1] ,u(−1, t ) = u(1 , t ), t ∈ (0 , 1] ,u(x, 0) = sin( πx ), x ∈ (−1, 1) ,PHYSICS-INFORMED RFN FOR SOLVING PDES 17 4 16 64 256 1024                      
+
+> Number of features N
+> 10 2
+> 10 1
+> L2 error
+> d= 2 (slope = 0.49)
+> d= 4 (slope = 0.55)
+> d= 8 (slope = 0.56) 416 64 256 1024
+> Number of features N
+> 10 1
+> H1 error
+> d= 2 (slope = 0.40)
+> d= 4 (slope = 0.50)
+> d= 8 (slope = 0.53)
+
+Fig. 1 . Log-log plots of L2 error (left) and H1 error (right) versus number of features N for dimensions d = 2 , 4, and 8. The plots numerically verify the decay rates established in Theorems 3.3 and 3.4 
+
+whose exact solution is u(x, t ) = exp( −νπ 2t) sin  π(x − ct ). We set the wave speed to c = 5 and the diffusion coefficient to ν = 0 .1. The uniform random feature model concatenate the spatial and temporal variables and therefore the random weights are sampled from the same distribution. In contrast, the product random feature representation treats the spatial and temporal variables separately. In this example, we demonstrate that the product feature representation can outperform the uniform random feature representation, especially when the spatial and temporal variables have different scales. For each trial, we use the same set of training and testing points for both models. Specifically, we sample 5000 interior points, 200 boundary points (100 on each side), and 100 initial points as training points, and 10000 points as testing points. For the comparison, we use the same total number of random features for both models. For the uniform random feature model, we set the number of features to N = 3000 and the standard deviation parameter to σ = 10 .0. For the product random feature (PRF) model, we use Nx = 30 spatial features and Nt = 100 temporal features, giving a total of NxNt = 3000 product features. The corresponding variance parameters are set to 
+
+σx = 3 .0 and σt = 17 .0. Table 1 compares the performance of the uniform and product random feature models. The PRF model achieves substantially lower RMSE and L∞ errors than the uniform random feature model. This result is expected, as the spatial and temporal variables have different scales ( c = 5 and ν = 0 .1). The product random feature can effectively accommodate this difference by sampling the weights from different distributions. Method Relative L2 Error L∞ Error Product RF 1.6 × 10 −3 ± 5.7 × 10 −4 7.6 × 10 −3 ± 4.3 × 10 −3
+
+Uniform RF 1.6 × 10 −2 ± 2.1 × 10 −2 2.5 × 10 −2 ± 2.6 × 10 −2
+
+Table 1 
+
+Comparison of product and uniform random feature methods. We report average relative L2
+
+error and L∞ error accompanying with the standard deviations. Each experiment is averaged over 10 trials. 
+
+4.5. Helmholtz Equation. In this section, we consider the 2D Helmholtz equa-tion, which is a benchmark to test the ability of the method to approximate oscillatory solutions and to handle a second-order elliptic operator. The equation is given by (4.3) uxx + uyy + k2u − q(x, y ) = 0 , (x, y ) ∈ Ω, u(x, y ) = 0 , (x, y ) ∈ ∂Ω,18 C. CHEN, C. LIAO, M. ZHONG 
+
+where the domain Ω = [ −1, 1] × [−1, 1] and the function q(x, y ) is chosen as 
+
+q(x, y ) =  k2 − (a1π)2 − (a2π)2 sin( a1πx ) sin( a2πy ).
+
+The analytic solution is u(x, y ) = sin( a1πx ) sin( a2πy ). We set the parameters k = 1, 
+
+a1 = 1, and a2 = 4. In this example, we apply the product random feature because we observe the different scales of x and y. We report the number of features Nx and 
+
+Nt for spatial and temporal variables in Table 2. Weights are randomly sampled from Gaussian distributions with standard deviations σx and σt, respectively. We compare with PINN, SA-PINN, and ELM. The networks architectures, activation functions, and training settings are summarized in Table 2. For each trial, we use 4800 interior points and 400 boundary points (100 on each side) for training, and 10 ,000 points for testing. Method Model setting Optimization PIRFN Nx = 40 , N y = 160 ,σx = 2 .0, σ y = 8 .0 Adam: 2500; L-BFGS: 3000 PINN tanh, [2 , 50 , 50 , 50 , 50 , 1] Adam: 5000; L-BFGS: 5000 SA-PINN tanh, [2 , 50 , 50 , 50 , 50 , 1] Adam: 10000; L-BFGS: 500 ∗
+
+ELM tanh, D = 6400 Adam: 2500; L-BFGS: 3000 
+
+> Table 2
+> Model architectures and training settings for the 2D Helmholtz equation (numbers marked with * indicate early stopping).
+
+Figure 2 shows the analytic solution and the approximated solution obtained using the random feature method. Table 3 summarizes relative L2 error and L∞
+
+error for each method over 10 independent trials. Our proposed PIRFN method achieves substantially lower errors than the other comparison methods in both errors. These results indicate that our method can accurately capture the oscillatory solution of the two-dimensional Helmholtz equation.  
+
+> Fig. 2 .Exact solution (left) and random feature approximation (right) for the 2D Helmholtz equation.
+
+4.6. Linear Transport. In this section, we consider the following periodic linear transport equation (4.4) 
+
+
+
+ut + cu x = 0 , (x, t ) ∈ (−1, 1) × (0 , 1) ,u(0 , x ) = sin( πx ), x ∈ (−1, 1) ,u(t, −1) = u(t, 1) , t ∈ (0 , 1) ,PHYSICS-INFORMED RFN FOR SOLVING PDES 19 Method Relative L2 Error L∞ Error PIRFN 1.5 × 10 −2 ± 1.5 × 10 −2 2.8 × 10 −2 ± 1.5 × 10 −2
+
+PINN 4.8 × 10 −1 ± 7.7 × 10 −1 1.1 ± 1.8SA-PINN 1.76 ± 7.4 × 10 −1 3.00 ± 1.01 ELM 6.56 ± 5.11 8.63 ± 5.44         
+
+> Table 3
+> 2D Helmholtz Equation: We report relative L2error and L∞error for each method. Errors are averaged over 10 independent trials.
+
+whose analytic solution is u(t, x ) = sin  π(x − ct ). Following the challenging trans-port regime considered in the PINN literature [18], we set the wave speed to c = 12. Although this value is not large in an absolute sense, wave speeds beyond c = 10 have been reported to cause significant training difficulties for vanilla PINNs. Thus, this example provides a challenging test of the ability of the learning methods to ac-curately capture rapidly propagating solutions. The model architectures, activation functions, and training settings for this example are summarized in Table 4. For each trial, we use 5000 interior points, 200 boundary points (100 on each side), and 100 initial points for training, and 10 ,000 points for testing. In Figure 3, we depict the Method Model setting Optimization PIRFN Nx = 30 , N t = 120, 
+
+σx = 3 .0, σ t = 36 .0 Adam: 2500; L-BFGS: 6000 PINN tanh, [2 , 20 × 10 , 1] Adam: 6000; L-BFGS: 500 ∗
+
+SA-PINN tanh, [2 , 20 × 10 , 1] Adam: 6000; L-BFGS: 500 ∗
+
+ELM tanh, D = 3600 Adam: 2500; L-BFGS: 1500 
+
+> Table 4
+> Model architectures and training settings for the linear transport equation (numbers marked with * indicate early stopping).
+
+true solution and the random feature. We observe that the random feature approx-imation accurately captures the propagation of the wave throughout the space-time domain. Furthermore, as shown in Table 5, random feature method achieves lower errors compared with PINN and its variant, highlighting the difficulty of this problem for PINN-based approaches and the potential of random feature-based method for challenging space-time PDEs. Method Relative L2 Error L∞ Error PIRFN 5.30 × 10 −3 ± 2.97 × 10 −3 2.64 × 10 −2 ± 2.20 × 10 −2
+
+PINN 1.00 ± 1.46 × 10 −1 1.37 ± 2.68 × 10 −1
+
+SA-PINN 9.60 × 10 −1 ± 4.88 × 10 −3 1.23 ± 4.33 × 10 −1
+
+ELM 1.16 ± 6.93 × 10 −2 1.51 ± 8.84 × 10 −2    
+
+> Table 5
+> Linear Transport Equation: We report relative L2error and L∞error for each method. Errors are averaged over 10 independent trials.
+
+20 C. CHEN, C. LIAO, M. ZHONG   
+
+> Fig. 3 .Exact solution and random feature approximation for the linear transport equation with
+> c= 12 .
+
+4.7. Wave Equation. In this section, we consider the following 1D wave equa-tion (4.5) 
+
+
+
+utt − 4uxx = 0 , (x, t ) ∈ (0 , 1) × (0 , 1) ,u(x, 0) = sin( πx ) + 12 sin(4 πx ), x ∈ [0 , 1] ,u(0 , t ) = 0 , u(1 , t ) = 0 , t ∈ (0 , 1) ,ut(x, 0) = 0 , x ∈ [0 , 1] .
+
+The analytical solution is given by 
+
+u(x, t ) = sin( πx ) cos(2 πt ) + 12 sin(4 πx ) cos(8 πt ).
+
+This example involves multiple spatial and temporal frequencies and therefore pro-vides a test of the ability of the learning methods to accurately capture multi-frequency spatiotemporal dynamics. We compare our proposed method with PINN, SA-PINN, and ELM and summarize the model architectures and training settings for each method in Table 6. For the collocation point used to train the models, we uniformly sample 5000 interior points, 200 boundary points (100 on each side), and 100 initial points. We independently sample another set of 10 ,000 points uniformly from the domain for testing. Method Model setting Optimization PIRFN Nx = 70 , N t = 140 ,σx = 8 .0, σ t = 16 .0 Adam: 2500; L-BFGS: 8000 PINN tanh, [2 , 30 × 12 , 1] Adam: 3000; L-BFGS: 1500 SA-PINN tanh, [2 , 30 × 12 , 1] Adam: 5000; L-BFGS: 500 ∗
+
+ELM tanh, D = 9800 Adam: 2500; L-BFGS: 1500 
+
+> Table 6
+> Model architectures and training settings for the 1D wave equation (numbers marked with * indicate early stopping).
+
+We first compare the random feature approximation with the exact solution in Figure 4, which shows that the random feature approximation has the ability to cap-ture the spatiotemporal evolution of the wave and reproduces the solution accurately throughout the space-time domain. PHYSICS-INFORMED RFN FOR SOLVING PDES 21  
+
+> Fig. 4 .Comparison of the exact solution and the random feature approximation for the 1D wave equation.
+
+In addition, we report relative L2 error and L∞ error of each method in Table 7. As shown in the table, PIRFN achieves an L2 relative error on the order of 10 −2,whereas all other methods yield errors on the order of 10 −1, corresponding to an improvement of approximately one order of magnitude. Similarly, PIRFN achieves the smallest L∞ error among all other methods, demonstrating its effectiveness in this multi-frequency oscillatory setting. Method Relative L2 Error L∞ Error PIRFN 4.29 × 10 −2 ± 4.31 × 10 −2 1.04 × 10 −1 ± 8.91 × 10 −2
+
+PINN 9.51 × 10 −1 ± 6.51 × 10 −2 1.43 ± 6.80 × 10 −2
+
+SA-PINN 6.23 × 10 −1 ± 1.92 × 10 −1 9.50 × 10 −1 ± 3.23 × 10 −1
+
+ELM 4.57 × 10 −1 ± 5.55 × 10 −3 6.08 × 10 −1 ± 2.52 × 10 −2      
+
+> Table 7
+> 1D Wave Equation: We report relative L2error and L∞error for each method. Errors are averaged over 10 independent trials.
+
+5. Conclusions. In this work, we developed a physics-informed random feature network framework for solving partial differential equations. The framework combines kernel-induced random features with a physics-informed loss, optimizing only the output layer coefficients through automatic differentiation and Adam combined with L-BFGS training. We introduced a product random feature representation that allows separate choices of sampling distributions and feature counts for spatial and temporal variables, or for different spatial directions. This construction provides flexibility in representing solutions with distinct characteristic scales. On the theoretical side, we derived high-probability approximation error bounds in the Sobolev H1 norm under suitable assumptions on the target function and random features. Numerical experiments demonstrated the approximation capabilities of the pro-posed framework across several PDE problems. Numerical studies for a nonlinear Poisson equation in dimensions two, four, and eight exhibited error decay consistent with the theoretical estimates. For the advection–diffusion problem, the product rep-resentation improved accuracy over the uniform random feature model at the same total feature count. On the Helmholtz, linear transport, and wave equation bench-marks, the proposed method achieved lower errors than the tested PINN, self-adaptive PINN, and ELM configurations. These findings highlight the importance of matching random feature distributions to the characteristic scales of the solution and support further investigation of this approach for oscillatory and multiscale PDEs. Several directions remain for future work. Extending the approximation analy-22 C. CHEN, C. LIAO, M. ZHONG 
+
+sis to account for finite collocation sampling, optimization error, and PDE stability would provide a more complete understanding of the accuracy of the trained solver. The effect of using the minimal RKHS norm in the optimization setting (3.3) is an-other important discussion on the well-posedness of the PIRFN’s optimization prob-lem. Developing automatic or adaptive strategies for selecting kernels and sampling distributions is another important step, as these choices currently depend on the problem. Finally, localized or adaptive random feature representations may improve the treatment of localized non-smooth structures, including shocks, and broaden the applicability of the framework. 
+
+Appendix A. Some Useful Concentration Inequalities. In this section, we recall some classical concentration inequalities from [31] that estimates the difference between empirical averages and true averages of random vectors. 
+
+Theorem A.1 (Vector-valued Bernstein inequality in Hilbert space). Let Z be a H-valued random variable, where (H, ⟨· , ·⟩ , ∥ · ∥ ) is a separable Hilbert space. Suppose there exist positive numbers b > 0 and σ > 0 such that 
+
+(A.1) E∥Z − EZ∥p ≤ 12 p!σ2bp−2 for all p ≥ 2.
+
+For any δ ∈ (0 , 1) and N ∈ N, denoting by {Zn}Nn=1 a sequence of N i.i.d copies of 
+
+Z. it holds that 
+
+(A.2) P 1
+
+N
+
+> N
+
+X
+
+> n=1
+
+Zn − EZ ≤ 2b log(2 /δ )
+
+N +
+
+r 2σ2 log(2 /δ )
+
+N
+
+!
+
+≥ 1 − δ. 
+
+One of the most frequently used forms of Berstein’s inequality is the following setting for bounded random variables. 
+
+Lemma A.2. Let Z be a (potentially) uncentered random variable such that 
+
+∥Z∥ ≤ c almost surely and E∥Z − EZ∥2 ≤ v2
+
+for some c > 0 and v > 0. Then Z satisfies Bernstein’s moment condition (A.1) with 
+
+b = 2 c and σ = v. If EZ = 0 , then taking b = c suffices. 
+
+Acknowledgments. Zhong is supported by NSF-CCF-AoF grant #2225507. CL is supported by the start-up funding from University of Arkansas.                         
+
+> REFERENCES [1] N. Ahmadi, Q. Cao, J. D. Humphrey, and G. E. Karniadakis ,Physics-informed machine learning in biomedical science and engineering , Annual Review of Biomedical Engineering, 28 (2026), pp. 309 – 336, https://doi.org/10.1146/annurev-bioeng-110824-124907. [2] N. Aronszajn ,Theory of reproducing kernels , Transactions of the American Mathematical Society, 68 (1950), pp. 337–404. [3] N. Baker, F. Alexander, T. Bremer, A. Hagberg, Y. Kevrekidis, H. Najm, M. Parashar, A. Patra, J. Sethian, S. Wild, et al. ,Workshop report on basic research needs for scientific machine learning: Core technologies for artificial intelligence ,tech. re-port, USDOE Office of Science (SC), Washington, D.C. (United States), 02 2019, https: //doi.org/10.2172/1478744. [4] P. Batlle, Y. Chen, B. Hosseini, H. Owhadi, and A. M. Stuart ,Error analysis of ker-nel/GP methods for nonlinear and parametric PDEs , Journal of Computational Physics, 520 (2025), p. 113488, https://doi.org/10.1016/j.jcp.2024.113488. [5] S. Bochner ,Harmonic Analysis and the Theory of Probability , University of California Press Berkeley, 1955.
+
+PHYSICS-INFORMED RFN FOR SOLVING PDES 23 
+
+[6] A. Bonito, R. DeVore, G. Petrova, and J. W. Siegel , Convergence and error control of consistent PINNs for elliptic PDEs , arXiv:2406.09217, (2025). [7] Y. Chen, B. Hosseini, H. Owhadi, and A. M. Stuart , Solving and learning nonlinear PDEs with Gaussian processes , Journal of Computational Physics, 447 (2021), p. 110668, https: //doi.org/10.1016/j.jcp.2021.110668. [8] Y. Chen, H. Owhadi, and F. Sch¨ afer , Sparse cholesky factorization for solving nonlinear PDEs via Gaussian processes , Mathematics of Computation, 94 (2025), pp. 1235–1280. [9] E. J. R. Coutinho, M. Dall’Aqua, L. McClenny, M. Zhong, U. Braga-Neto, and E. Gildin , Physics-informed neural networks with adaptive localized artificial viscosity ,Journal of Computational Physics, 489 (2023), p. 112265, https://doi.org/10.1016/j.jcp. 2023.112265. [10] S. Dong and Z. Li , Local extreme learning machines and domain decomposition for solving lin-ear and nonlinear partial differential equations , Computer Methods in Applied Mechanics and Engineering, 387 (2021), p. 114129, https://doi.org/10.1016/j.cma.2021.114129. [11] N. Doum` eche, F. Bach, G. Biau, and C. Boyer , Physics-informed kernel learning , Journal of Machine Learning Research, 26 (2025), pp. 1–39, http://jmlr.org/papers/v26/24-1536. html. [12] N. Doum` eche, G. Biau, and C. Boyer , On the convergence of PINNs , Bernoulli, 31 (2025), pp. 2127–2151. [13] G. Fabiani, I. G. Kevrekidis, C. Siettos, and A. N. Yannacopoulos , RandONets: Shallow networks with random projections for learning linear and nonlinear operators , Journal of Computational Physics, 520 (2025), p. 113433, https://doi.org/10.1016/j.jcp.2024.113433. [14] M. Griebel and C. Rieger , Reproducing kernel Hilbert spaces for parametric partial differen-tial equations , SIAM/ASA Journal on Uncertainty Quantification, 5 (2017), pp. 111–137, https://doi.org/10.1137/15M1026870. [15] B. Hao, C. Liu, U. Braga-Neto, L. Wang, and M. Zhong , Stability in training PINNs for stiff PDEs: Why initial conditions matter , Foundations of Data Science, (2026), https: //doi.org/10.3934/fods.2026016. [16] T. Hofmann, B. Sch¨ olkopf, and A. J. Smola , Kernel methods in machine learning , The An-nals of Statistics, 36 (2008), pp. 1171 – 1220, https://doi.org/10.1214/009053607000000677. [17] G.-B. Huang, Q.-Y. Zhu, and C.-K. Siew , Extreme learning machine: a new learning scheme of feedforward neural networks , in 2004 IEEE International Joint Conference on Neural Networks, vol. 2, 2004, pp. 985–990, https://doi.org/10.1109/IJCNN.2004.1380068. [18] A. Krishnapriyan, A. Gholami, S. Zhe, R. Kirby, and M. W. Mahoney , Characterizing possible failure modes in physics-informed neural networks , Advances in neural information processing systems, 34 (2021), pp. 26548–26560. [19] A. S. Krishnapriyan, A. Gholami, S. Zhe, R. M. Kirby, and M. W. Mahoney , Charac-terizing possible failure modes in physics-informed neural networks , in Proceedings of the 35th International Conference on Neural Information Processing Systems, NIPS ’21, Red Hook, NY, USA, 2021, Curran Associates Inc. [20] C. L. Wight and J. Zhao , Solving Allen-Cahn and Cahn-Hilliard equations using the adaptive physics informed neural networks , Communications in Computational Physics, 29 (2021), pp. 930–954, https://doi.org/10.4208/cicp.OA-2020-0086. [21] J. Lee, B. Hamzi, Y. Kevrekidis, and H. Owhadi , Gaussian processes simplify differential equations , Physica D: Nonlinear Phenomena, 483 (2025), p. 134988, https://doi.org/https: //doi.org/10.1016/j.physd.2025.134988. [22] Z. Li, S. Yang, and C. F. J. Wu , Parameter inference based on Gaussian processes informed by nonlinear partial differential equations , SIAM/ASA Journal on Uncertainty Quantification, 12 (2024), pp. 964–1004, https://doi.org/10.1137/22M1514131. [23] C. Liao , LR-RaNN: Lipschitz regularized randomized neural networks for system identifica-tion , in Proceedings of the 1st Conference on Topology, Algebra, and Geometry in Data Science(TAG-DS 2025), vol. 321 of Proceedings of Machine Learning Research, PMLR, 12 2026, pp. 15–29. [24] C. Liao , On the approximation of Koopman eigenfunctions using random features , Foundations of Data Science, (2026), https://doi.org/10.3934/fods.2026010. [25] C. Liao , Solving partial differential equations with random feature models , Communications in Nonlinear Science and Numerical Simulation, 152 (2026), p. 109343, https://doi.org/10. 1016/j.cnsns.2025.109343. [26] C. Liao, D. Needell, and H. Schaeffer , Cauchy random features for operator learning in Sobolev space , arXiv: 2503.00300, (2025), https://arxiv.org/abs/2503.00300. [27] L. D. McClenny and U. M. Braga-Neto , Self-adaptive physics-informed neural networks ,Journal of Computational Physics, 474 (2023), p. 111722, https://doi.org/10.1016/j.jcp. 24 C. CHEN, C. LIAO, M. ZHONG 2022.111722. [28] C. A. Micchelli, Y. Xu, and H. Zhang , Universal kernels , Journal of Machine Learning Research, 7 (2006), pp. 2651–2667, http://jmlr.org/papers/v7/micchelli06a.html. [29] S. Mishra and R. Molinaro , Estimates on the generalization error of physics-informed neural networks for approximating PDEs , IMA Journal of Numerical Analysis, 43 (2023), pp. 1– 43, https://doi.org/10.1093/imanum/drab093. [30] M. Pf¨ ortner, I. Steinwart, P. Hennig, and J. Wenger , Physics-informed Gaussian process regression generalizes linear PDE solvers , arXiv:2212.12474, (2022). [31] I. F. Pinelis and A. I. Sakhanenko , Remarks on inequalities for large deviation probabilities ,Theory of Probability & Its Applications, 30 (1986), pp. 143–148, https://doi.org/10.1137/ 1130013. [32] E. Porcu, M. Bevilacqua, R. Schaback, and C. J. Oates , The Mat´ ern Model: A Jour-ney Through Statistics, Numerical Analysis and Machine Learning , Statistical Science, 39 (2024), pp. 469 – 492, https://doi.org/10.1214/24-STS923. [33] A. Rahimi and B. Recht , Random features for large-scale kernel machines , in Advances in Neural Information Processing Systems, vol. 20, Curran Associates, Inc., 2007. [34] A. Rahimi and B. Recht , Uniform approximation of functions with random bases , in 2008 46th Annual Allerton Conference on Communication, Control, and Computing, 2008, pp. 555– 561, https://doi.org/10.1109/ALLERTON.2008.4797607. [35] M. Raissi, P. Perdikaris, and G. Karniadakis , Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations , Journal of Computational Physics, 378 (2019), pp. 686–707, https: //doi.org/10.1016/j.jcp.2018.10.045. [36] B. Sch¨ olkopf, R. Herbrich, and A. J. Smola , A generalized representer theorem , in Com-putational Learning Theory, Berlin, Heidelberg, 2001, Springer Berlin Heidelberg, pp. 416– 426. [37] B. Sch¨ olkopf and A. J. Smola , Learning with Kernels: Support Vector Machines, Regu-larization, Optimization, and Beyond , The MIT Press, 12 2001, https://doi.org/10.7551/ mitpress/4175.001.0001. [38] S. Shang, M. Zhong, and R. Wang , 3d-PINNS: A unified framework for dimension-wise in-terpretabilty and adaptive domain decomposition , in AI&PDE: ICLR 2026 Workshop on AI and Partial Differential Equations, 2026, https://openreview.net/forum?id=oGxlZSGc2i. [39] S. Shang, M. Zhong, and R. Wang , Dimension domain co-decomposition: Solving pdes with interpretability , Transactions on Machine Learning Research, (2026), https://openreview. net/forum?id=kuzkynVyRq. [40] Y. Shin, J. Darbon, and G. E. Karniadakis , On the convergence of physics informed neural networks for linear second-order elliptic and parabolic type PDEs , Communications in Computational Physics, 28 (2020), https://doi.org/10.4208/cicp.oa-2020-0193. [41] E. Tadmor , A review of numerical methods for nonlinear partial differential equations , Bulletin of the AMS, 49 (2026), pp. 507 – 554, https://doi.org/10.3934/fods.2026016. [42] G. Wahba , Spline Models for Observational Data , Society for Industrial and Applied Mathe-matics, 1990, https://doi.org/10.1137/1.9781611970128. [43] S. Wang, S. Sankaran, and P. Perdikaris , Respecting causality for training physics-informed neural networks , Computer Methods in Applied Mechanics and Engineering, 421 (2024), p. 116813, https://doi.org/10.1016/j.cma.2024.116813. [44] S. Wang, X. Yu, and P. Perdikaris , When and why PINNs fail to train: A neural tangent kernel perspective , Journal of Computational Physics, 449 (2022), p. 110768, https://doi. org/10.1016/j.jcp.2021.110768. [45] Y. Wang and S. Dong , An extreme learning machine-based method for computational PDEs in higher dimensions , Computer Methods in Applied Mechanics and Engineering, 418 (2024), p. 116578, https://doi.org/10.1016/j.cma.2023.116578.

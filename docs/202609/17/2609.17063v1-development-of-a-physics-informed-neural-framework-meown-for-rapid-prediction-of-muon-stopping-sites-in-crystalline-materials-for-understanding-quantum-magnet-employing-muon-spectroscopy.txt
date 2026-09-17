@@ -1,0 +1,308 @@
+Title: Development of a Physics-Informed Neural Framework, MEOWN, for Rapid Prediction of Muon Stopping Sites in Crystalline Materials, for understanding Quantum Magnet employing Muon Spectroscopy
+
+URL Source: https://arxiv.org/pdf/2609.17063v1
+
+Published Time: Wed, 16 Sep 2026 01:09:32 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Development of a Physics-Informed Neural Framework, MEOWN, for Rapid Prediction of Muon Stopping Sites in Crystalline Materials, for understanding Quantum Magnet employing Muon Spectroscopy 
+
+A. Pandey, 1, ∗ K. Sharma, 1, ∗ S. Ghosh, 1, † G. Roy, 1 and T. Basu 1, ‡
+
+> 1
+
+Rajiv Gandhi Institute of Petroleum Technology, Jais, Amethi, 229304, India 
+
+Muon-spin rotation/relaxation ( μSR) is one of the most powerful microscopic probes for un-derstanding magnetic order, spin dynamics, superconductivity, and complex magnetic phases in emerging quantum materials. Quantitative interpretation of μSR experiments depends critically on the accurate identification of the muon stopping site, a problem traditionally addressed using density functional theory (DFT) based structural relaxation. However, conventional DFT approaches are computationally demanding, time-consuming, and require extensive calculations. Here, we develop MEOWN (Muon Engine for Optimized Weighted Networks), a machine-learning-based, physics-informed computational framework that combines a Polarizable Unperturbed Electrostatic Poten-tial (P-UEP) model with machine-learning-guided optimization and symmetry-driven relaxation to predict energetically favorable muon stopping sites in crystalline solids. MEOWN explicitly incor-porates electrostatic interactions, electronic screening, polarization effects, and zero-point motion into the learning workflow, providing physically interpretable predictions with substantially reduced computational cost while maintaining physical consistency and scientific rigor. To validate the framework, we investigated several well-established benchmark materials, including MnSi, CoF 2,CaF 2, LiF, and NaF. The predicted muon stopping sites and dipolar fields are in close agreement with previously reported DFT+ μ results, demonstrating the reliability and transferability of the ap-proach across chemically diverse systems. Notably, MEOWN predicts the equilibrium muon stopping site within a few minutes, offering a significant speedup over conventional DFT-based calculations. This manuscript presents the theoretical foundations, computational methodology, and validation of MEOWN as a general-purpose software for rapid and reliable muon stopping-site prediction in crystalline materials. 
+
+I. INTRODUCTION 
+
+The positive muon has become one of the most power-ful microscopic probes for investigating condensed mat-ter systems. After being implanted into a material, the muon rapidly loses its kinetic energy and comes to rest at an interstitial site within the crystal lattice. Its spin then precesses in the local magnetic field until it decays, allowing the time evolution of the spin polarization to be measured. This unique capability enables μSR to probe both static and dynamic magnetism over a wide range of timescales [1–3]. As a result, the technique has played a key role in studying magnetic ordering, spin fluctua-tions, superconducting vortex lattices, frustrated mag-nets, spin liquids, multiferroics, topological materials, and quantum critical phenomena [4–16]. Since the muon senses the magnetic field at its stopping site, μSR pro-vides highly sensitive local information that is often in-accessible through conventional bulk measurements and Neutron diffraction, making it particularly valuable for detecting weak magnetic moments, phase separation, and spatially inhomogeneous magnetic states. However, the reliability of μSR data analysis depends critically on identifying the equilibrium muon stopping site. The local magnetic field, dipolar interactions, and    
+
+> ∗These authors contributed equally to this work.
+> †sayan@rgipt.ac.in
+> ‡tathamay.basu@rgipt.ac.in
+
+hyperfine coupling extracted from μSR experiments are all evaluated at this position, that means uncertainties in the stopping site can lead to ambiguous interpretations of magnetic structure and spin dynamics [17]. Early stud-ies relied on electrostatic potential maps, chemical intu-ition, or comparisons between calculated and measured local magnetic fields. While these approaches are often adequate for simple ionic compounds, their predictive ca-pability diminishes in covalent, metallic, frustrated, or strongly correlated materials, where electronic redistri-bution, polarization, and crystal symmetry significantly influence muon localization [17]. Density functional theory (DFT) has therefore become the standard approach for muon site prediction. In the widely adopted DFT+ framework, the implanted muon is treated as an interstitial defect, and the crystal struc-ture is relaxed from multiple trial positions to identify stable equilibrium sites [17]. This methodology has suc-cessfully reproduced inferred muon sites across a wide range of materials experimentally and enabled quantita-tive calculations of local magnetic fields and hyperfine in-teractions. However, the repeated structural relaxations required for each candidate site make DFT calculations computationally demanding, particularly for large super-cells, low-symmetry crystals, magnetic systems, or ma-terials with strong electron correlations. These limita-tions restrict its application in rapid μSR data analy-sis and high-throughput materials screening. Moreover, this DFT approach is highly time-consuming and re-quires specific expertise in DFT analysis. With these arXiv:2609.17063v1 [cond-mat.mtrl-sci] 15 Sep 2026 2limitations, there is some software previously available. As examples, the Python-based Atomic Simulation En-vironment (ASE) offers robust tools for modifying, ex-amining, and rendering atomic configurations, serving as a foundation for more niche toolsets [18]. Key exam-ples of these extensions include Soprano, which manages groups of structural datasets [19]; MuESR, which deter-mines local magnetic fields at implanted muon locations [20]; and muFinder, which locates and assesses poten-tial muon stopping sites [21]. The availability of these dedicated toolkits, alongside Python’s rich ecosystem of general-purpose libraries, made it the standout choice of programming language for building our software. But all these options are high computational cost and time consuming. Recent advances in scientific machine learning provide an opportunity to accelerate this process while preserv-ing the underlying physics. Unlike conventional black-box models, physics-informed machine learning incorpo-rates established physical principles directly into the op-timization procedure, leading to improved interpretabil-ity, robustness, and generalization. For muon site pre-diction, the dominant interactions governing localization including electrostatic attraction, electronic screening, ion-induced polarization, crystal symmetry, and quan-tum zero-point motion are already well understood and can therefore be embedded explicitly within the compu-tational framework instead of being inferred solely from data. Moreover, machine-learning based ready-to-use software often easy to operate without extensive prior knowledge in specific field and can run smoothly in a short-time, comparative to other conventional methods [22]. Motivated by this approach, we introduce MEOWN, a physics-guided neural network framework for predicting equilibrium muon stopping sites efficiently while main-taining physical transparency and scientific rigor. The method combines a Polarizable Unperturbed Electro-static Potential (P-UEP) description with a physics-informed 3D convolutional neural model for efficient gradient-based search, symmetry-constrained optimiza-tion, and automated validation. Rather than replacing first-principles calculations, MEOWN serves as a compu-tationally efficient intermediate framework that rapidly identifies physically plausible muon sites before more ex-pensive DFT calculations are performed.   
+
+> II. THEORY & ALGORITHMS A. Crystallographic Symmetry Framework
+
+Crystallographic symmetry plays a fundamental role in the prediction of muon stopping sites because physically equivalent positions related by the space-group symme-try of the host crystal must possess identical energies and local magnetic environments. MEOWN explicitly ex-ploits this symmetry throughout the prediction workflow to reduce the configurational search space and improve computational efficiency without sacrificing physical ac-curacy. The crystal symmetry is first identified directly from the input crystallographic information file (CIF) using the spglib library through the pymatgen frame-work, preserving the original conventional unit cell while extracting the complete set of space-group operations [23, 24]. These symmetry operations, consisting of ro-tation matrices and translation vectors, are then used to generate all symmetry-equivalent positions from an ini-tial candidate site, ensuring that only symmetry-distinct muon positions are considered during the optimization process. The corresponding Wyckoff multiplicity of each predicted stopping site is determined by identifying the number of unique symmetry-equivalent positions within a prescribed numerical tolerance, allowing direct compar-ison with experimentally observed μSR site occupancies.  
+
+> FIG. 1. Workflow of the MEOWN framework. Starting from an input CIF file, MEOWN identifies crystal symmetry, con-structs physics-based field tensors, generates candidate muon sites using a physics-informed CNN and seeding strategies, and refines them through optimization to predict equilibrium muon stopping sites, energies, and local dipolar fields.
+
+To further preserve the crystallographic constraints during structural optimization, both the energy gra-dient and the Hessian matrix are projected onto the symmetry-allowed subspace associated with the site-symmetry group. This projection removes numerical de-viations that could otherwise drive the optimizer away from symmetry-required positions and ensures that the relaxed muon site remains fully consistent with the crys-tal symmetry. The symmetry-projected gradient and Hessian are given by 3˜g = 1
+
+|Gsite |
+
+X
+
+> Ri∈Gsite
+
+Ri g, (1) and ˜H = 1
+
+|Gsite |
+
+X
+
+> Ri∈Gsite
+
+Ri H R Ti , (2) where Gsite denotes the site-symmetry group, Ri are the corresponding Cartesian rotation matrices, g is the energy gradient, and H is the Hessian matrix [25]. 
+
+B. Physical Basis of Muon Stopping in Crystalline Solids 
+
+The predictive capability of the MEOWN is based on the microscopic interactions governing the localization of positive muons ( μ+) in crystalline solids. After implanta-tion, the energetic muon rapidly loses its kinetic energy through electronic excitations and lattice collisions be-fore thermalizing within a few picoseconds. The muon subsequently occupies an energetically favorable inter-stitial site where the total interaction energy with the host crystal is minimized. Owing to its positive charge and small mass, the equilibrium stopping site is deter-mined not only by the electrostatic potential of the lattice but also by electronic screening, ion polarization, short-range electron-cloud repulsion, and quantum zero-point motion. Within the Born-Oppenheimer approximation, the host lattice is treated as stationary while the electrons re-spond instantaneously to the implanted muon [26]. The effective potential experienced by the muon is expressed as 
+
+Vμ(r) = VHxc (r)+ VTF (r)+ VPol (r)+ VOverlap (r)+ VZPE (r),
+
+(3) where each term represents a distinct physical inter-action governing muon localization. The Hartree and exchange-correlation contribution [27], 
+
+VHxc (r) = VHartree (r) + VXC (r), (4) is obtained from the DFT electrostatic potential to-gether with the PBE exchange-correlation functional and corrected using a distance-dependent dielectric screening [28], 
+
+εμ(r) = 1 + ( ε0 − 1) 
+
+
+
+1 − e−dmin /1.5
+
+. (5) For conducting materials, additional electronic screen-ing is described by the Thomas-Fermi approximation [29]. The local screening wavevector, 
+
+kTF = 12
+
+ 6nπ
+
+1/6
+
+Sfactor , (6) produces the screened Yukawa potential [30] 
+
+VTF (r) = X
+
+> i
+
+Zie2
+
+ri
+
+· e−kTF ri
+
+k2TF /(4 π) , (7) where Sfactor is close to 0 for insulators. The positively charged muon also induces dipoles in neighboring ions, giving rise to an attractive polarization energy, 
+
+VPol (r) = X
+
+> i
+
+−αie2
+
+2r4
+
+> i
+
+D(ri), (8) where D(r) is the Tang–Toennies damping func-tion [31]: 
+
+D(r) = 1 − e−Br 4 (9) where is the Tang-Toennies damping function [31]. At short distances, the overlap between the muon and host electron clouds generates a strong Pauli repulsion that is described by the Born-Mayer potential [32], 
+
+VOverlap (r) = X
+
+> i
+
+Ai exp 
+
+ rcontact ,i − ri
+
+σi
+
+
+
+. (10) Finally, the quantum nature of the light muon is incor-porated through the zero-point energy correction [33], 
+
+VZPE = 0 .03233 mμ
+
+mp
+
+X
+
+> i
+
+|λ+ 
+
+> i
+
+|, (11) where λ+ 
+
+> i
+
+are the positive eigenvalues of the Hessian matrix at the relaxed muon site. After determining the equilibrium stopping site, the local magnetic field experienced by the muon is evaluated as 
+
+Blocal =
+
+q
+
+B2elec + B2nuc ,RMS , (12) where the electronic dipolar field is calculated using the classical point-dipole expression [34], 
+
+Belec = μ0
+
+4π
+
+X
+
+> j
+
+3rj (mj · rj ) − mj r3
+
+> j
+
+r5
+
+> j
+
+, (13) and Bnuc ,RMS accounts for the randomly oriented nu-clear magnetic moments. 
+
+ωμ = γμ Blocal , (14) providing a direct comparison between the predicted stopping site and μSR experiments. 4 
+
+> C. Physics-Informed MEOWN Framework
+
+The MEOWN predicts equilibrium muon stopping sites directly from crystallographic information by com-bining first-principles physics with deep learning. Start-ing from the crystal structure, including atomic positions, lattice vectors, atomic species, and space-group symme-try, the framework constructs a three-dimensional repre-sentation of the local environment while fully account-ing for periodic boundary conditions. Instead of rely-ing solely on geometric descriptors, MEOWN embeds the fundamental physical interactions governing muon local-ization into the input representation, enabling the net-work to learn the underlying potential-energy landscape of the host crystal. The core of the framework is a lightweight three-dimensional convolutional neural network (3D-CNN) that operates on a 48 x 48 x 48 voxel grid with four physics-based input channels [35], 
+
+X(r) = 
+
+
+
+−VTotal (r), 1
+
+qiri + 0 .01 , V Pol (r), d min (r)
+
+
+
+,
+
+(15) where −VTotal (r) is the negative total interaction en-ergy from the P-UEP framework, 1 
+
+> qiri+0 .01
+
+describes the Coulomb potential from ionic core charges, VPol (r) is the polarization potential, and dmin (r) is the minimum-distance field. The neural network consists of four successive 3D con-volutional layers with a channel progression of 4 → 16 → 32 → 16 → 1, (16) where each convolutional layer is followed by batch normalization and ReLU activation. Despite contain-ing fewer than 5,000 trainable parameters, the architec-ture efficiently captures the spatial correlations within the three-dimensional potential landscape. Since the es-sential physical interactions are already embedded in the input tensor, a compact network is sufficient to achieve rapid convergence during training while maintaining effi-cient inference for high-throughput muon-site prediction. Rather than directly predicting the final muon coordi-nates, the CNN produces a three-dimensional probabil-ity map highlighting regions that are most likely to host stable muon stopping sites. Candidate sites are subse-quently generated using a multi-stage seeding strategy, in which the highest-probability CNN voxels are combined with several complementary physics-based seed gener-ators. High-symmetry interstitial positions, including body-center, face-center, edge-center, and body-diagonal sites, are introduced as geometry-independent seeds fol-lowing the philosophy of AIRSS and universal electro-static potential approaches. Additional chemically in-formed seeds are generated near electronegative anions by treating the positive muon as a light isotope of hydro-gen, while material-specific configurations, such as the linear F–F bridge in fluorides and interlayer S–S sites in layered dichalcogenides, are incorporated whenever applicable. This hierarchical seeding strategy ensures that both generic interstitial positions and material-dependent stopping sites are efficiently sampled before local refinement. All candidate seeds are subsequently filtered using minimum-distance and crystallographic symmetry crite-ria before undergoing local optimization on the P-UEP potential-energy surface. The initial refinement is per-formed using the L-BFGS-B algorithm under periodic boundary conditions, allowing each candidate to relax toward the nearest local minimum. To ensure physi-cally consistent predictions, crystallographic symmetry is explicitly enforced throughout the workflow so that symmetry-equivalent environments yield identical ener-gies and redundant candidate sites are removed before the final optimization. This combination of physics-informed descriptors, multi-stage seeding, symmetry con-straints, and gradient-based relaxation enables MEOWN to rapidly identify energetically favorable muon stopping sites while faithfully preserving the microscopic physics governing muon localization in crystalline materials.  
+
+> D. Composite Loss Function
+
+The MEOWN model is trained by minimizing the dis-crepancy between the potential-energy landscape pre-dicted by the neural network and that computed directly from the underlying physics engine. The training objec-tive is defined using the mean squared error (MSE) loss [36], 
+
+L = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+[VCNN (ri) − Vphysics (ri)] 2 , (17) where VCNN (ri) is the potential predicted by the CNN, 
+
+Vphysics (ri) is the corresponding potential from the P-UEP physics engine, and N = 48 3 = 110 ,592 is the total number of voxels. Model parameters are optimized using the Adam op-timizer with a learning rate of 10-3 and a weight decay of 10-5 [37]. Training is typically performed for 50-200 iterations, with early stopping applied once the valida-tion loss reaches saturation to prevent overfitting. A key advantage of MEOWN is that the training process is self-supervised; the target potential is generated directly by the physics engine from the crystal structure, eliminat-ing the need for manually labelled muon-site datasets. Consequently, the network learns to approximate the un-derlying physical energy landscape while retaining the predictive accuracy of the physics-based model at a sub-stantially lower computational cost. We have shown the whole workflow of the MEOWN framework in Fig. 1. 5 
+
+> E. Computational Implementation
+
+MEOWN is implemented as a physics-informed neu-ral acceleration framework that combines first-principles physical modeling with a lightweight three-dimensional convolutional neural network (3D-CNN) to enable rapid prediction of equilibrium muon stopping sites. The framework is developed in Python, with the neural network implemented in PyTorch, allowing automatic differentiation and efficient GPU-accelerated training [38]. The underlying physics engine, including the Fourier-Poisson solver for electrostatic potential evalu-ation, PBE exchange-correlation corrections, Thomas-Fermi electronic screening, Tang-Toennies polarization, Born-Mayer overlap repulsion, and zero-point energy calculations, is implemented using NumPy and SciPy, while crystallographic symmetry operations are handled through the spglib library. The complete prediction workflow is fully automated, beginning with the input crystal structure and proceed-ing through the generation of physics-based fields, CNN training, multi-stage candidate-site seeding, symmetry reduction, and gradient-based structural relaxation to obtain the equilibrium muon stopping sites. The frame-work supports execution on both multi-core CPUs and CUDA-enabled GPUs, providing efficient performance across different computing platforms [39]. Since the three-dimensional input tensor has a fixed resolution of 48 x 48 x 48, the computational cost associated with CNN training remains essentially constant for a given material, whereas the subsequent site-search stage scales approxi-mately linearly with the number of candidate seeds. The final candidate muon sites are ranked according to their total energy, 
+
+Etotal = E + EZPE , (18) where E is the relaxed interaction energy from the P-UEP framework and EZPE is the corresponding zero-point energy correction.  
+
+> III. USAGE
+
+To demonstrate the practical workflow of MEOWN, CoF2 was selected as a representative benchmark because its equilibrium muon stopping site and local magnetic field have been extensively investigated using both μSR experiments and DFT-based calculations. The software requires only a crystallographic information file (CIF) as input and automatically predicts the most probable muon stopping sites without requiring any user-defined initial positions. The same workflow can be applied to any crystalline material, while the remaining benchmark compounds are discussed separately in the Results and Discussion section.  
+
+> A. Loading the Crystal Structure
+
+The prediction process begins by importing the CoF 2
+
+CIF file into the software [40]. After loading the struc-ture, MEOWN automatically identifies the crystal sym-metry, lattice parameters, atomic positions, and chemical species, and constructs the required supercell for the cal-culation. No manual intervention is needed during this stage, making the workflow straightforward even for users without prior experience in muon-site calculations.  
+
+> B. Muon Site Prediction
+
+After clicking the Run Inference button, MEOWN au-tomatically executes the complete prediction pipeline. First, the P-UEP physics engine generates the electro-static, polarization, overlap-repulsion, and screening po-tential fields throughout the crystal. These physics-based fields are then supplied to the three-dimensional convo-lutional neural network (3D-CNN), which predicts the most probable regions for muon localization. Candidate stopping sites are generated by combining CNN proba-bility maxima with physics-guided seeds, including high-symmetry interstitial positions, anion-directed seeds, and the F–F bridge seeds specifically designed for fluoride compounds such as CoF 2. All candidate sites are sub-sequently refined using L-BFGS-B optimization followed by an ultra-precision trust-region relaxation, and the fi-nal sites are ranked according to their total energy after including the zero-point energy correction [41]. The en-tire prediction process is completed in less than a few minutes on a standard computer.  
+
+> C. Output Information
+
+After the optimization is completed, the software dis-plays all predicted muon stopping sites in the three-dimensional crystal viewer together with the correspond-ing potential-energy landscape. For each candidate site, MEOWN reports the fractional coordinates, total energy, zero-point energy correction, nearest-neighbour atom and distance, crystallographic multiplicity, confi-dence score, and the calculated electronic, nuclear, and total dipolar magnetic fields. These outputs enable di-rect comparison with experimental μSR measurements without requiring additional calculations. The computa-tional performance of the MEOWN framework may vary depending on the hardware configuration used for the calculations. For the results reported in this work, all computations were performed on a system equipped with an AMD Ryzen 5 3550H processor (4 cores, 8 threads), 16 GB RAM. Since MEOWN is designed to be oper-ated on CPU, we tested on two types of CPU, one is AMD and the second is Intel, and we have found that the AMD-equipped desktop’s performance is much closer to DFT+ μ results. So, small variations in execution time 6 
+
+> FIG. 2. Graphical user interface (GUI) of MEOWN. The interface displays the crystal structure, predicted muon stopping sites, energy landscape, and the optimized site information, including fractional coordinates, energies, multiplicities, dipolar fields, and confidence scores.
+
+and floating-point computations may occur across differ-ent computational hardware. However, these differences have a negligible impact on the final results. We suggest using AMD CPU hardware, which can significantly re-duce computation time and provide better performance with accurate results. Fig. 2 shows the graphical user interface (GUI) of MEOWN.  
+
+> D. Example: CoF 2
+
+CoF 2 was used to demonstrate the practical capability of the software because it is a well-established bench-mark material for muon stopping-site studies. MEOWN successfully identified the expected low-energy fluorine-associated stopping site, consistent with the well-known tendency of positive muons to form nearly linear F–F configurations in ionic fluorides. The predicted local dipolar field at the optimized muon site was 0.277 T, which is in excellent agreement with the previously re-ported DFT+ μ value of 0.265 T and compares closely with the experimentally measured value of 0.228 T[21, 42, 43]. The deviation from the experimental value is approximately 20%, while the difference between the MEOWN and DFT+ μ predictions is only 3.5%, demon-strating that the proposed framework reproduces the lo-cal magnetic environment with an accuracy comparable to first-principles calculations. Importantly, this level of agreement is achieved while requiring less than a few min-utes of computation, representing a substantial reduction in computational cost compared with conventional DFT-based muon-site searches.  
+
+> IV. RESULTS & DISCUSSION
+
+To evaluate the predictive capability of the MEOWN, the framework was benchmarked against a diverse set of materials for which experimentally and theoretically established muon stopping sites are available. We have tasted our software with various different kind of sys-tems. Here, we are presenting some selected systems, in-cluding the metallic helimagnet MnSi and the ionic fluo-rides CoF 2, CaF 2, LiF, and NaF, representing chemically distinct environments with different electrostatic land-scapes and magnetic characteristics [40, 44–46]. For each material, MEOWN predicts the equilibrium muon stop-ping site, determines the corresponding Wyckoff position and multiplicity from the crystallographic symmetry, and calculates the local dipolar magnetic field. Unlike con-ventional DFT-based approaches that require multiple structural relaxations from different trial positions, the entire MEOWN workflow from loading the crystal struc-ture to obtaining the final ranked muon stopping sites is completed in less than a few minutes, while maintain-ing excellent agreement with published experimental and MuFinder/DFT results. 7 
+
+> A. MnSi
+
+MnSi crystallizes in the non-centrosymmetric cubic P213 structure (Space Group 198) and is one of the most extensively studied benchmark materials for μSR stopping-site calculations. MEOWN predicts the lowest-energy muon stopping site at fractional coordinates (0.55, 0.55, 0.55), corresponding to the 4a Wyckoff position with a multiplicity of four. The calculated local dipo-lar field at this site is 0.123 T. This predicted stopping site agrees well with the experimentally established muon position and previous MuFinder/DFT studies, indicat-ing that the physics-informed energy landscape success-fully captures the combined effects of electrostatic inter-actions, metallic screening, and crystal symmetry [47]. The close agreement demonstrates that MEOWN can reliably predict muon stopping sites in metallic systems while significantly reducing the computational effort.          
+
+> Site Coordinate (Frac.) ZPE (eV) Multiplicity Total B(G) 1[0 .55 ,0.55 ,0.55] ∼04a 1232.4 TABLE I. Predicted muon stopping site for MnSi.
+> B. CoF 2
+
+CoF 2 provides a particularly stringent validation be-cause its muon stopping site and local magnetic field have been accurately determined by both μSR exper-iments and DFT+calculations. MEOWN predicts the equilibrium muon position at (0.767, 0.758, 0.646), cor-responding to the 16k Wyckoff position in the tetragonal P42/mnm structure (Space Group 136). The calculated local dipolar field is 0.277 T, which agrees remarkably well with the previously reported MuFinder+DFT value of 0.265 T and compares closely with the experimental value of 0.228 T [21, 42, 43]. The difference between the MEOWN and DFT prediction is only about 3.7%, demonstrating that the proposed framework achieves first-principles-level accuracy while requiring less than a few minutes of computation instead of the significantly longer computational time associated with conventional DFT-based structural relaxation.          
+
+> Site Coordinate (Frac.) ZPE (eV) Multiplicity Total B(G) 1[0 .767 ,0.758 ,0.646] 1.1451 16k 2771.0 TABLE II. Predicted muon stopping site for CoF 2.
+> C. CaF 2
+
+CaF 2 is a classical benchmark for muon stopping-site prediction because the implanted muon forms the well-known F–F complex. MEOWN predicts the lowest-energy stopping site at (0.627, 0.625, 0.618), correspond-ing to the 192l Wyckoff position of the cubic fluorite structure (Space Group 225). The calculated local dipo-lar field is 0.0516 T. The successful identification of the fluorine-associated stopping configuration confirms that the combination of electrostatic interactions, polarization effects, and chemically informed seeding naturally re-produces the experimentally established equilibrium site without performing computationally expensive DFT re-laxation [42].          
+
+> Site Coordinate (Frac.) ZPE (eV) Multiplicity Total B(G) 1[0 .627 ,0.625 ,0.618] 0.9146 192l 516.5 TABLE III. Predicted muon stopping site for CaF 2.
+> D. LiF
+
+LiF is one of the standard benchmark materials for val-idating muon stopping-site prediction methods because of its simple rock-salt crystal structure and experimen-tally verified F–F configuration. MEOWN predicts the equilibrium stopping site at (0.67, 0.67, 0.67), corre-sponding to the 32f Wyckoff position in the cubic Fmm structure (Space Group 225). The calculated local dipo-lar field is 0.0462 T. The agreement with previously re-ported DFT and μSR studies demonstrates that the em-bedded physics within MEOWN successfully captures the dominant interactions responsible for muon localization in highly ionic materials [42].          
+
+> Site Coordinate (Frac.) ZPE (eV) Multiplicity Total B(G) 1[0 .67 ,0.67 ,0.67] 1.2468 32f 461.9 TABLE IV. Predicted muon stopping site for LiF.
+> E. NaF
+
+NaF provides an additional assessment of the trans-ferability of the framework within the fluoride family. Although NaF shares the same cubic crystal symmetry (Space Group 225) as LiF, its larger lattice parameter produces a different electrostatic environment around the implanted muon. MEOWN predicts the lowest-energy stopping site at (0.654, 0.688, 0.562), corresponding to the 192l Wyckoff position, with a calculated local dipolar field of 0.0697 T. The predicted stopping site is consistent with previously reported DFT calculations, demonstrat-ing that the model successfully generalizes across related crystal structures without relying on material-specific fit-ting parameters [42]. Across all benchmark materials, MEOWN consistently reproduces the experimentally and theoretically estab-8        
+
+> Site Coordinate (Frac.) ZPE (eV) Multiplicity Total B(G) 1[0 .654 ,0.688 ,0.562] 1.0078 192l 697.2 TABLE V. Predicted muon stopping site for NaF.
+
+lished muon stopping sites while providing reliable esti-mates of the corresponding local dipolar magnetic fields. The agreement obtained for MnSi demonstrates that the framework accurately captures the interplay between electrostatic interactions and metallic screening in mag-netic systems, whereas the results for CoF 2, CaF 2, LiF, and NaF confirm its ability to recover the characteristic fluorine-associated stopping configurations in ionic com-pounds. In particular, the CoF 2 benchmark provides a direct quantitative validation, where the predicted dipo-lar field of 0.277 T closely matches the MuFinder+DFT value of 0.265 T and remains in good agreement with the experimental value of 0.228 T. These results demonstrate that MEOWN achieves prediction accuracy comparable to first-principles methods while reducing the computa-tional time to a few minutes, making it a practical and efficient tool for rapid μSR stopping-site prediction and high-throughput materials discovery.  
+
+> V. CONCLUSION
+
+In this work, we developed MEOWN, a physics-informed machine-learning framework for rapid predic-tion of equilibrium muon stopping sites in crystalline materials. Unlike conventional data-driven models, ME-OWN integrates the underlying physics governing muon localization, including electrostatic interactions, elec-tronic screening, ionic polarization, overlap repulsion, crystallographic symmetry, quantum zero-point motion, and dipolar field calculations directly into the learning process. By combining these physically motivated de-scriptors with a lightweight three-dimensional convolu-tional neural network and a multi-stage seeding strat-egy, the framework efficiently identifies energetically fa-vorable muon stopping sites while preserving physical in-terpretability. The predictive capability of MEOWN was demon-strated using representative benchmark materials span-ning both metallic and ionic systems. For MnSi, CoF 2,CaF 2, LiF, and NaF, the predicted stopping sites, Wyck-off positions, and local dipolar magnetic fields are in ex-cellent agreement with previously reported experimen-tal and MuFinder/DFT results. In particular, for CoF2, the calculated dipolar field of 0.277 T closely reproduces the reported MuFinder+DFT value of 0.267 T and re-mains in good agreement with the experimental value of 0.22 T, demonstrating that the proposed framework can achieve first-principles-level predictive accuracy without performing computationally expensive DFT structural relaxations. A major advantage of MEOWN is its computational efficiency. The complete workflow, including generation of the physics-informed potential, neural-network infer-ence, candidate-site generation, structural optimization, and dipolar field calculation, is completed in less than a few minutes on a standard desktop computer. This repre-sents a substantial reduction in computational cost com-pared with conventional DFT-based muon-site searches, making the framework particularly attractive for rapid 
+
+μSR data analysis, exploratory studies of newly synthe-sized materials, and high-throughput screening of large materials databases. Although MEOWN is not intended to replace fully self-consistent first-principles calculations, it provides a fast and physically reliable alternative for identifying candi-date muon stopping sites prior to detailed DFT refine-ment. The modular design of the framework also allows straightforward incorporation of future developments, in-cluding explicit host-lattice relaxation, direct integration with DFT charge-density calculations, uncertainty quan-tification, graph neural network representations for com-plex crystal structures, and automated interfaces with electronic-structure packages. These developments will further improve the predictive capability of the frame-work and broaden its applicability to increasingly com-plex quantum materials. This study demonstrates that embedding established physical principles into a machine-learning framework provides an effective route for accurate, interpretable, and computationally efficient prediction of muon stop-ping sites. The combination of physical rigor, computa-tional speed, and ease of use makes the framework a valu-able tool for the μSR community and an efficient platform for accelerating microscopic investigations of magnetic, superconducting, and other quantum materials.  
+
+> VI. DATA AVAILABILITY
+
+All data supporting the findings of this study are avail-able from the corresponding author upon reasonable re-quest. To use the MEOWN software, send an email to the author(s). 
+
+> COMPETING INTERESTS
+
+The code and software are protected by a copyright agreement (SW-2026023675, Copyright Office, Govt. of India)  
+
+> VII. ACKNOWLEDGMENTS
+
+T. B. greatly acknowledges the Science and En-gineering Research Board (SERB), now Anusandhan National Research Foundation (ANRF) (Project No. SRG/2022/000044), Government of India, for research funding. 9
+
+[1] A. D. Hillier, S. J. Blundell, I. McKenzie, I. Umegaki, L. Shu, J. A. Wright, T. Prokscha, F. Bert, K. Shimo-mura, A. Berlie, et al. , Nature Reviews Methods Primers 
+
+2, 4 (2022). [2] A. Le Yaouanc and P. D. De Reotier, Muon spin ro-tation, relaxation, and resonance: applications to con-densed matter , 147 (OUP Oxford, 2011). [3] S. Blundell, R. De Renzi, T. Lancaster, and F. L. Pratt, 
+
+Muon spectroscopy: an introduction (Oxford University Press, 2021). [4] D. Khalyavin, A. Hillier, D. Adroja, A. Strydom, P. Manuel, L. Chapon, P. Peratheepan, K. Knight, P. Deen, C. Ritter, et al. , Physical Review B—Condensed Matter and Materials Physics 82 , 100405 (2010). [5] S. Dunsiger, R. Kiefl, K. Chow, B. Gaulin, M. Gingras, J. Greedan, A. Keren, K. Kojima, G. Luke, W. MacFar-lane, et al. , Physical Review B 54 , 9019 (1996). [6] Y. Uemura, A. Keren, K. Kojima, L. Le, G. Luke, W. Wu, Y. Ajiro, T. Asano, Y. Kuriyama, M. Mekata, 
+
+et al. , Physical review letters 73 , 3306 (1994). [7] G. Luke, A. Keren, L. Le, W. Wu, Y. Uemura, D. Bonn, L. Taillefer, and J. Garrett, Physical review letters 71 ,1466 (1993). [8] R. Heffner, K. Ohishi, M. Fluss, G. Morris, D. MacLaughlin, L. Shu, B. Chung, S. McCall, E. Bauer, J. Sarrao, et al. , Journal of alloys and compounds 444 ,80 (2007). [9] A. Amato, R. Khasanov, H. Luetkens, and H.-H. Klauss, Physica C: Superconductivity 469 , 606 (2009). [10] Y. Uemura, Physica B: Condensed Matter 374 , 1 (2006). [11] Y. Li, D. Adroja, P. K. Biswas, P. J. Baker, Q. Zhang, J. Liu, A. A. Tsirlin, P. Gegenwart, and Q. Zhang, Phys-ical review letters 117 , 097201 (2016). [12] J. M¨ oller, T. Lancaster, S. Blundell, F. Pratt, P. Baker, F. Xiao, R. Williams, W. Hayes, M. Turnbull, and C. Landee, Physical Review B 95 , 020402 (2017). [13] J. Rodriguez, S. Dunsiger, J. Kycia, G. MacDougall, J. Quilliam, P. Russo, A. Savici, Y. Uemura, C. Wiebe, and G. Luke, Physica B: Condensed Matter 374 , 13 (2006). [14] N. Marcano, G. Kalvius, D. Noakes, J. Espeso, J. G. Sal, C. Baines, and A. Amato, Physica B: Condensed Matter 
+
+374 , 17 (2006). [15] E. Kushwaha, S. Ghosh, J. Sannigrahi, G. Roy, M. Ku-mar, S. Cottrell, M. Stone, Y. Fang, D. Adroja, X. Ke, 
+
+et al. , Physical Review B 112 , 094410 (2025). [16] J. Lord, S. Cottrell, and W. Williams, Physica B: Con-densed Matter 289 , 495 (2000). [17] S. Blundell and T. Lancaster, Applied Physics Reviews 
+
+10 , https://doi.org/10.1063/5.0149080 (2023). [18] A. Hjorth Larsen, J. Jørgen Mortensen, J. Blomqvist, I. E. Castelli, R. Christensen, M. Dulak, J. Friis, M. N. Groves, B. Hammer, C. Hargus, et al. , Journal of Physics: Condensed Matter 29 , 273002 (2017). [19] S. Sturniolo, URL https://ccp-nc. github. io/soprano. [20] P. Bonf` a, I. J. Onuorah, and R. De Renzi, in Proceedings of the 14th International Conference on Muon Spin Ro-tation, Relaxation and Resonance ( μSR2017) (2018) p. 011052. [21] B. M. Huddart, A. Hern´ andez-Meli´ an, T. J. Hicken, M. Gomilˇ sek, Z. Hawkhead, S. Clark, F. Pratt, and T. Lancaster, Computer Physics Communications 280 ,108488 (2022). [22] F. A. Rodrigues, Europhysics Letters 144 , 22001 (2023). [23] A. Togo, K. Shinohara, and I. Tanaka, Science and Technology of Advanced Materials: Methods 4, 2384822 (2024). [24] S. P. Ong, W. D. Richards, A. Jain, G. Hautier, M. Kocher, S. Cholia, D. Gunter, V. L. Chevrier, K. A. Persson, and G. Ceder, Computational Materials Science 
+
+68 , 314 (2013). [25] L. Li, Y. Hu, and X. Wang, Mechanical Systems and Signal Processing 43 , 272 (2014). [26] M. Born, Ann. Phys 84 , 457 (1927). [27] L. Bernasconi, M. Sprik, and J. Hutter, Chemical physics letters 394 , 141 (2004). [28] J. P. Perdew, K. Burke, and M. Ernzerhof, Physical re-view letters 77 , 3865 (1996). [29] N. March, Advances in Physics 6, 1 (1957). [30] J. Del Valle and D. Nader, Journal of Mathematical Physics 59 , https://doi.org/10.1063/1.5050621 (2018). [31] K. Tang and J. P. Toennies, Surface science 279 , L203 (1992). [32] A. A. Abrahamson, Physical Review 178 , 76 (1969). [33] M. Girod and B. Grammaticos, Nuclear Physics A 330 ,40 (1979). [34] H. J. Bhabha and H. C. Corben, Proceedings of the Royal Society of London. Series A. Mathematical and Physical Sciences 178 , 273 (1941). [35] C. Wang, in 2023 IEEE 3rd International Confer-ence on Power, Electronics and Computer Applications (ICPECA) (IEEE, 2023) pp. 1204–1208. [36] Z. Wang and A. C. Bovik, IEEE signal processing mag-azine 26 , 98 (2009). [37] I. K. M. Jais and A. R. Ismail, Knowledge Engineering and Data Science 2, 10 (2019). [38] A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan, T. Killeen, Z. Lin, N. Gimelshein, L. Antiga, 
+
+et al. , Advances in neural information processing systems 
+
+32 (2019). [39] J. Sanders and E. Kandrot, CUDA by example: an intro-duction to general-purpose GPU programming (Addison-Wesley Professional, 2010). [40] M. Costa, J. Paixao, M. De Almeida, and L. Andrade, Structural Science 49 , 591 (1993). [41] C. Zhu, R. H. Byrd, P. Lu, and J. Nocedal, ACM Transac-tions on mathematical software (TOMS) 23 , 550 (1997). [42] J. M¨ oller, D. Ceresoli, T. Lancaster, N. Marzari, and S. Blundell, Physical Review B—Condensed Matter and Materials Physics 87 , 121108 (2013). [43] R. De Renzi, G. Guidi, P. Podini, R. Tedeschi, C. Bucci, and S. Cox, Physical Review B 30 , 186 (1984). [44] B. Bor´ en, Roentgenuntersuchung der legierungen von sili-cium mit chrom, mangan, kobalt und nickel (Almqvist & Wiksell, 1933). [45] A. Cheetham, B. Fender, and M. Cooper, Journal of Physics C: Solid State Physics 4, 3107 (1971). [46] P. Groth and E. Kaiser, Zeitschrift F¨ ur Kristallographie, Kristallgeometrie, Kristallphysik, Kristallchemie , Vol. 9 (Akademische verlagsgesellschaft mbh, 1884). [47] A. Amato, P. Dalmas de R´ eotier, D. Andreica, A. Yaouanc, A. Suter, G. Lapertot, I. Pop, E. Moren-10 
+
+zoni, P. Bonfa, F. Bernardini, et al. , Physical Review B 
+
+89 , 184425 (2014).
