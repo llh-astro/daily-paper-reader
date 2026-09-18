@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-17</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-18</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 21 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 19 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>8</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>13</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>11</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-17 22:22:52 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-18 21:32:15 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今天扫完21篇天文文献，精读8篇、速读13篇，头条聚焦热木星NGTS-10 Ab的云层与三合星KOI-1623的潜在宜居行星。</p>
-<p>最值得看两篇9.0精读：NGTS-10 Ab光学到红外相位曲线给出不均匀云覆盖和高度依赖热传输；KOI-1623在三星系统中可能是宜居带行星。</p>
-<p>普通读者可先读这两篇摘要，再通过速读了解原行星盘水雪线/水发射与土星质量—半径关系。</p>
+<p>9月18日日报：完成19篇文献梳理，精读8篇、速读11篇，重点聚焦系外行星大气、轨道与热演化。</p>
+<p>最值得看的是两篇9分精读——WASP-12 b的扩展氢逃逸证据，以及图神经网络用于系外行星大气；速读中HD 3167垂直轨道、熔岩行星热演化和单粒子混沌本征态热化也值得跟进。</p>
+<p>普通读者可先读这两篇精读，建立“观测证据+AI建模”的认知框架，再按兴趣追速读里的轨道与熔岩行星方向。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -76,9 +76,9 @@
     <strong class="dpr-home-dashboard-count">8 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Inhomogeneous Cloud Coverage and Altitude-Dependent Heat Transport on the Hot-Jupiter NGTS-10 Ab from its Optical-to-Infrared Phase Curve">Inhomogeneous Cloud Coverage and Altitude-Dependent Heat Transport on the Hot-Jupiter NGTS-10 Ab from its Optical-to-Infrared Phase Curve</span></li><li><span class="dpr-home-dashboard-paper-title" title="Rescuing Kepler&#x27;s False Positives: A Possible Habitable Zone Exoplanet in the Triple Star System KOI-1623">Rescuing Kepler&#x27;s False Positives: A Possible Habitable Zone Exoplanet in the Triple Star System KOI-1623</span></li><li><span class="dpr-home-dashboard-paper-title" title="The asymmetric limbs of HD 209458 b observed with JWST NIRCam F322W2/F444W">The asymmetric limbs of HD 209458 b observed with JWST NIRCam F322W2/F444W</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Evidence for an Extended Hydrogen Outflow on WASP-12 b">Evidence for an Extended Hydrogen Outflow on WASP-12 b</span></li><li><span class="dpr-home-dashboard-paper-title" title="Graph neural networks for exoplanet atmospheres">Graph neural networks for exoplanet atmospheres</span></li><li><span class="dpr-home-dashboard-paper-title" title="Coupled Orbital and Interior Evolution of Sub-Neptunes">Coupled Orbital and Interior Evolution of Sub-Neptunes</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>7</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>5</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>2</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">13 篇</strong>
+    <strong class="dpr-home-dashboard-count">11 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="H$_2$O emission as tracer of pebble drift: insights from coupling transport and thermochemical models">H$_2$O emission as tracer of pebble drift: insights from coupling transport and thermochemical models</span></li><li><span class="dpr-home-dashboard-paper-title" title="Around the water snowline: I. Effects of dynamical and chemical interplay on mid-infrared water spectra of protoplanetary discs">Around the water snowline: I. Effects of dynamical and chemical interplay on mid-infrared water spectra of protoplanetary discs</span></li><li><span class="dpr-home-dashboard-paper-title" title="Saturns Are Not Large Neptunes: The effect of removing inflated giants from empirical mass-radius relations">Saturns Are Not Large Neptunes: The effect of removing inflated giants from empirical mass-radius relations</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Does HD 3167 Have Planets with Perpendicular Orbits?">Does HD 3167 Have Planets with Perpendicular Orbits?</span></li><li><span class="dpr-home-dashboard-paper-title" title="Semiclassical scaling of eigenstate thermalization in single-particle chaotic systems">Semiclassical scaling of eigenstate thermalization in single-particle chaotic systems</span></li><li><span class="dpr-home-dashboard-paper-title" title="Thermal Evolution of Lava Planets Across System Ages: Predictions for Hell of a Survey">Thermal Evolution of Lava Planets Across System Ages: Predictions for Hell of a Survey</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>6</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>6</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>9</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>2</strong></span></div>
 </section>
 </div>
 
