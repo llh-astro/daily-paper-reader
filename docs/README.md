@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-20</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-21</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 4 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 12 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>7</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-20 21:47:00 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-21 22:46:35 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日速读 4 篇论文，无一精读，最高分落在行星质量—半径关系研究上。</p>
-<p>最值得看的是《Saturns Are Not Large Neptunes》（7.0/10）——去掉&quot;膨胀巨行星&quot;后，土星型行星与海王星型并不能混为一谈；另两篇分别讲连续时间机器学习的统一数学框架、以及直接成像褐矮星伴星的宿主星金属丰度与运动学（均 6.0/10）。</p>
-<p>普通读者可先读那篇土星/海王星分类的文章，理解系外行星统计为何要剔除&quot;虚胖&quot;样本，再决定是否跟进机器学习或褐矮星方向。</p>
+<p>2026-09-21日报：12篇中精读7篇、速读5篇，焦点落在JWST系外行星大气探测。</p>
+<p>最值得看的是10分的WASP-52b热土星NIRSpec G395H中检出CO2和H2O，以及9分的WASP-94Ab从边缘平均透射谱恢复晨昏边缘。</p>
+<p>普通读者可先追JWST热土星大气与晨昏差异这两条线，后续关注更多系外行星大气成分对比。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">0 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="JWST MEP - A World Under Spotty Starlight: Detection of CO2 and H2O in the Hot Saturn WASP-52b with JWST NIRSpec G395H">JWST MEP - A World Under Spotty Starlight: Detection of CO2 and H2O in the Hot Saturn WASP-52b with JWST NIRSpec G395H</span></li><li><span class="dpr-home-dashboard-paper-title" title="Recovering the Morning and Evening Limbs of WASP-94Ab from Its Limb-Averaged JWST Transmission Spectrum">Recovering the Morning and Evening Limbs of WASP-94Ab from Its Limb-Averaged JWST Transmission Spectrum</span></li><li><span class="dpr-home-dashboard-paper-title" title="A fifth companion in the HR 8799 system revealed by Gaia">A fifth companion in the HR 8799 system revealed by Gaia</span></li></ul>
   </div>
-
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>6</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">4 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Saturns Are Not Large Neptunes: The effect of removing inflated giants from empirical mass-radius relations">Saturns Are Not Large Neptunes: The effect of removing inflated giants from empirical mass-radius relations</span></li><li><span class="dpr-home-dashboard-paper-title" title="Continuous-Time Machine Learning: A Unified Mathematical Perspective">Continuous-Time Machine Learning: A Unified Mathematical Perspective</span></li><li><span class="dpr-home-dashboard-paper-title" title="Host-star metallicities and kinematics of directly imaged brown-dwarf companions">Host-star metallicities and kinematics of directly imaged brown-dwarf companions</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Hankel-Koopman Finite-Horizon Energy Decomposition of Coupled Experimental Data: A Three-Phase Data-Driven Twin Forecasting Framework">Hankel-Koopman Finite-Horizon Energy Decomposition of Coupled Experimental Data: A Three-Phase Data-Driven Twin Forecasting Framework</span></li><li><span class="dpr-home-dashboard-paper-title" title="Rotational Mapping and Regional Atmospheric Retrievals of Variable Brown Dwarfs: Application to Luhman 16B and SIMP 0136">Rotational Mapping and Regional Atmospheric Retrievals of Variable Brown Dwarfs: Application to Luhman 16B and SIMP 0136</span></li><li><span class="dpr-home-dashboard-paper-title" title="Searching for Massive Remnant Planetary System Hosts with White Dwarf Gaia XP Spectra">Searching for Massive Remnant Planetary System Hosts with White Dwarf Gaia XP Spectra</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>2</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>4</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
 </section>
 </div>
 
