@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-21</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-22</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 12 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 21 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>7</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>8</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>13</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-21 22:46:35 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-22 21:59:40 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>2026-09-21日报：12篇中精读7篇、速读5篇，焦点落在JWST系外行星大气探测。</p>
-<p>最值得看的是10分的WASP-52b热土星NIRSpec G395H中检出CO2和H2O，以及9分的WASP-94Ab从边缘平均透射谱恢复晨昏边缘。</p>
-<p>普通读者可先追JWST热土星大气与晨昏差异这两条线，后续关注更多系外行星大气成分对比。</p>
+<p>今日筛选21篇天文论文，精读8篇、速读13篇，重点聚焦系外行星大气与宜居世界观测。最值得看的是PICASO光谱敏感性分析（9.0分）和HWO表征气态巨行星的科学潜力（9.0分），均指向未来系外行星大气探测。普通读者可先关注系外行星大气如何被“读出”，再跟进HWO任务对气态巨行星的观测规划。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">8 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="JWST MEP - A World Under Spotty Starlight: Detection of CO2 and H2O in the Hot Saturn WASP-52b with JWST NIRSpec G395H">JWST MEP - A World Under Spotty Starlight: Detection of CO2 and H2O in the Hot Saturn WASP-52b with JWST NIRSpec G395H</span></li><li><span class="dpr-home-dashboard-paper-title" title="Recovering the Morning and Evening Limbs of WASP-94Ab from Its Limb-Averaged JWST Transmission Spectrum">Recovering the Morning and Evening Limbs of WASP-94Ab from Its Limb-Averaged JWST Transmission Spectrum</span></li><li><span class="dpr-home-dashboard-paper-title" title="A fifth companion in the HR 8799 system revealed by Gaia">A fifth companion in the HR 8799 system revealed by Gaia</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Exoplanet Atmosphere Spectral Sensitivity Analysis with PICASO: Jacobians, Linear-Gaussian Approximations, and Information Content">Exoplanet Atmosphere Spectral Sensitivity Analysis with PICASO: Jacobians, Linear-Gaussian Approximations, and Information Content</span></li><li><span class="dpr-home-dashboard-paper-title" title="The Science Potential of Characterizing Gas Giant Exoplanets with HWO">The Science Potential of Characterizing Gas Giant Exoplanets with HWO</span></li><li><span class="dpr-home-dashboard-paper-title" title="Characterization of the Compact Multi-planet System TOI-789: Validation of Three Terrestrial Planets, Dynamical Characterization, and Detection of a Fourth Temperate Candidate">Characterization of the Compact Multi-planet System TOI-789: Validation of Three Terrestrial Planets, Dynamical Characterization, and Detection of a Fourth Temperate Candidate</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>6</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>7</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">5 篇</strong>
+    <strong class="dpr-home-dashboard-count">13 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Hankel-Koopman Finite-Horizon Energy Decomposition of Coupled Experimental Data: A Three-Phase Data-Driven Twin Forecasting Framework">Hankel-Koopman Finite-Horizon Energy Decomposition of Coupled Experimental Data: A Three-Phase Data-Driven Twin Forecasting Framework</span></li><li><span class="dpr-home-dashboard-paper-title" title="Rotational Mapping and Regional Atmospheric Retrievals of Variable Brown Dwarfs: Application to Luhman 16B and SIMP 0136">Rotational Mapping and Regional Atmospheric Retrievals of Variable Brown Dwarfs: Application to Luhman 16B and SIMP 0136</span></li><li><span class="dpr-home-dashboard-paper-title" title="Searching for Massive Remnant Planetary System Hosts with White Dwarf Gaia XP Spectra">Searching for Massive Remnant Planetary System Hosts with White Dwarf Gaia XP Spectra</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Elemental Abundances of Cool Stars: A Spectroscopic Framework Applied to Five Planet-Host Stars">Elemental Abundances of Cool Stars: A Spectroscopic Framework Applied to Five Planet-Host Stars</span></li><li><span class="dpr-home-dashboard-paper-title" title="Large time nonlinear dynamics close to inhomogeneous stationary states of the Vlasov-HMF model">Large time nonlinear dynamics close to inhomogeneous stationary states of the Vlasov-HMF model</span></li><li><span class="dpr-home-dashboard-paper-title" title="An Open Cluster Origin for Most Solar-Type Binaries in the Solar Neighborhood and Implications for Primordial Planet Stability">An Open Cluster Origin for Most Solar-Type Binaries in the Solar Neighborhood and Implications for Primordial Planet Stability</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>4</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>7</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>5</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 </div>
 

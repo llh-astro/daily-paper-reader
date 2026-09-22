@@ -1,0 +1,678 @@
+Title: Diff-NekRS: A Scalable Differentiable Framework for Multi-Timestep Solver-in-the-Loop Training
+
+URL Source: https://arxiv.org/pdf/2609.23208v1
+
+Published Time: Tue, 22 Sep 2026 01:05:50 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# Diff-NekRS: A Scalable Differentiable Framework for Multi-Timestep Solver-in-the-Loop Training 
+
+Junoh Jung ∗1, Riccardo Balin 2, Bethany Lusch 2, Emil Constantinescu 1
+
+> 1
+
+Mathematics and Computer Science Division, Argonne National Laboratory, Lemont, IL 60439, USA 
+
+> 2
+
+Argonne Leadership Computing Facility, Argonne National Laboratory, Lemont, IL 60439, USA 
+
+Abstract. 
+
+Hybrid physics–machine-learning solvers improve under-resolved simulations by embedding trainable corrections into the time integration. During autoregressive inference, repeated solver– model interactions can amplify small errors, motivating multi-timestep solver-in-the-loop training. However, production solvers rarely expose the derivatives needed to backpropagate through such rollouts. We introduce Diff-NekRS, a scalable differentiable framework that embeds neural corrections directly in the GPU-accelerated NekRS incompressible-flow solver. NekRS computes the authoritative forward trajectory, a manually implemented exact discrete adjoint differentiates the supported fully discrete timestep, and LibTorch supplies neural vector–Jacobian products and parameter gradients. End-to-end Taylor and centered finite-difference tests verify the assembled gradient for two-dimensional cylinder flow (2Dcyl) and the three-dimensional Taylor–Green vortex (3DTGV) across five horizons and 12–1,020 MPI ranks. At 1,020 ranks, optimizer-enabled post-setup training updates retain 54.5%–78.0% and 80.7%–81.9% weak-scaling efficiency for 2Dcyl and 3DTGV, respectively. In 200-step autoregressive inference, the 𝑀 = 50 model reduces the three-seed median terminal relative 𝐿 2 velocity error by 59.2% for 2Dcyl and 12.1% for 3DTGV relative to the uncorrected coarse-grid 𝑃 = 2 baseline, and retains wall-clock speedups of 5 .38 × and 2 .49 ×, respectively, relative to the corresponding 𝑃 = 7 configurations for equal simulated-time intervals. These results establish a verified and scalable path for multi-timestep solver-in-the-loop training that improves coarse-grid trajectory accuracy while retaining a speed advantage over the high-order reference. 
+
+Keywords: scientific machine learning, solver-in-the-loop training, NekRS, LibTorch, discrete adjoint, weak scaling, high-performance computing 
+
+# 1 Introduction 
+
+Hybrid physics–machine learning (ML) models augment established numerical solvers with trainable closures, source terms, or discretization corrections that approximate unresolved dynamics or model-form error. In under-resolved computational fluid dynamics (CFD), this strategy can improve coarse-grid predictions without  
+
+> ∗Corresponding author: jjung@anl.gov .
+
+1arXiv:2609.23208v1 [physics.comp-ph] 19 Sep 2026 High-order simulations Differentiable hybrid solver-in-the-loop multi-timestep training        
+
+> Low-order state
+> Neural correction
+> Time integration
+> RHS
+> Forward solve (rollout) Training rollout loss
+> Training data (projected)
+> backpropagation through M-step rollout
+> Model validation Hybrid CFD+ML inference
+> prediction on new inputs accuracy generalization robustness
+> project train test deploy
+> high polynomial order low polynomial order low polynomial order low polynomial order Neural correction
+> RHS Time integration
+> Step 1 Step 2 Step M
+> Neural correction
+> RHS Time integration
+
+Figure 1: Multi-timestep solver-in-the-loop training in Diff-NekRS. 
+
+replacing the governing-equation solve or the core numerical machinery of the host solver [1, 2]. One common approach is to evaluate the neural component within the time-advancement loop, so that its output influences the state passed to subsequent solver and model evaluations. Many such models are nevertheless trained with one-step targets formed from paired under-resolved and high-fidelity states. In training, the neural model is evaluated on states extracted from a prescribed data trajectory, whereas at inference it receives states produced by preceding corrected steps. This mismatch creates a rollout distribution shift, such that small errors can alter later model inputs, accumulate along the trajectory, and degrade long-horizon accuracy or stability. Solver-in-the-loop training reduces this mismatch by unrolling the corrected solver for multiple timesteps and optimizing a trajectory-level objective. The learned component is thereby trained under the autoregressive conditions in which it will be used [3, 4]. A central challenge in this setting is gradient computation for multi-timestep objectives, which requires propagating sensitivities through the full coupled solver-model trajectory. For large-scale CFD solvers, imple-menting this reverse pass efficiently and correctly is difficult because the forward timestepper contains many interacting, state-dependent operations distributed across accelerators and MPI ranks. These requirements make scalable exact-gradient training in production solvers nontrivial. We present Diff-NekRS, a NekRS-based framework for scalable differentiable multi-timestep solver-in-the-loop training that embeds a neural model in the GPU-accelerated NekRS incompressible-flow solver [5]. This work extends our earlier hybrid NekRS formulation [6] in two principal ways. First, it reformulates the learned correction from a post-step velocity increment as a neural momentum source integrated into the native timestep. Second, for the supported timestep configuration, it replaces the surrogate-gradient path with an exact discrete adjoint. Although the implemented solver-step vector–Jacobian product (VJP) is specific to the supported NekRS timestep, the separation of the solver-step VJP, neural-source VJP, and distributed gradient assembly provides a reusable integration pattern for other production finite- and spectral-element solvers. We therefore evaluate the assembled gradient end-to-end across distributed MPI allocations and characterize the weak scaling of optimizer-enabled multi-horizon training updates on Aurora through 1,020 MPI ranks. We assess numerical correctness, training behavior, autoregressive accuracy, inference cost, and weak-scaling performance in two examples: two-dimensional flow past a cylinder (2Dcyl) and the three-dimensional Taylor–Green vortex (3DTGV). The main contributions of this work are the following: 
+
+• We develop an exact discrete adjoint for the supported NekRS timestep configuration and couple it to 2LibTorch neural-model VJPs for multi-timestep training. 
+
+• We verify the full solver–model parameter gradient for two examples (2Dcyl and 3DTGV) at rollout horizons 
+
+𝑀 ∈ { 1, 5, 10 , 20 , 50 } across MPI allocations 𝑁 𝑟 ∈ { 12 , 24 , 48 , 96 , 252 , 516 , 1020 }.
+
+• We evaluate multi-horizon exact-adjoint training with fixed held-out validation, quantify 200-step autore-gressive accuracy relative to the uncorrected 𝑃 = 2 baseline, measure wall-clock speedups relative to the corresponding 𝑃 = 7 configurations, and characterize optimizer-enabled 𝐵 = 4 training updates on Aurora through 1,020 MPI ranks. Fig. 1 illustrates the multi-timestep training process within a hybrid physics–ML solver. High-order trajectories are first projected onto the coarse grid to generate training targets. The NekRS solver then advances the state using neural source corrections, while the exact discrete adjoint propagates the trajectory-level loss backward through the LibTorch model. During training, the model is also validated before being deployed for inference. 
+
+# 2 Related Work 
+
+Differentiable scientific computing frameworks differentiate through numerical time integration or embed learned terms in partially known dynamics [7–10]. Automatic-differentiation-native CFD solvers have also been developed across several software ecosystems. For example, JAX-Fluids 2.0 [11] supports differentiable, accelerator-based compressible flow simulation, PICT [12] provides a GPU-accelerated differentiable multiblock PISO solver in PyTorch, and WaterLily.jl [13] offers a backend-agnostic differentiable Julia solver for incompressible immersed-boundary flows. In CFD, data-driven corrections include Reynolds stress discrepancies, subgrid forcing, and closures evaluated both a priori and a posteriori [1, 14, 15]. Solver-in-the-loop methods further optimize the learned term through repeated interaction with the numerical solver, reducing rollout-distribution mismatch and improving a posteriori behavior [3, 4, 16–18]. Our previous work on hybrid physics–ML methods spans differentiable discontinuous-Galerkin source corrections [19, 20], weak-form correction [21], and NekRS-based models, including offline and surrogate-gradient multistep training [6, 22]. The Firedrake framework provides related continuous Galerkin and automatic-differentiation infrastructure through pyadjoint/dolfin-adjoint [23, 24]. In contrast to automatic-differentiation-native solver stacks, Diff-NekRS retains the established distributed C++/OCCA NekRS forward solver and retrofits a manually implemented discrete timestep VJP for the supported time-advancement configuration. The solver VJP is coupled to LibTorch model VJPs and verified across rollout horizons and MPI allocations before evaluating training, inference, and weak scaling. 
+
+# 3 Methods 
+
+This section presents the hybrid physics–machine learning formulation, along with the differentiable learning strategy and implementation for the multi-timestep solver-in-the-loop training workflow. We first define the neural momentum-source coupling and the rollout objective. We then derive the discrete reverse recurrence for the implemented NekRS timestep and describe the distributed NekRS–LibTorch execution, including taped forward states, model vector–Jacobian products, global loss normalization, MPI gradient synchronization, and synchronized optimizer updates. 
+
+3.1 Hybrid Physics–Machine Learning Model 
+
+We start with the spatially coarse-grid discretization of the incompressible Navier–Stokes operator, F𝐿 ,3High-order ( P= 7) Low-order ( P= 2) Scalable training on Aurora Training restart states 
+
+> (restart, reference) Low-order rollout Embedded neural correction local multi-step loss local gradient MPI rank 0 Low-order rollout Embedded neural correction local multi-step loss local gradient
+
+Distributed solver-in-the-loop training in CFD (Low-order) Low-order rollout Embedded neural correction local multi-step loss local gradient 
+
+> Gradient synchronization (all-reduce)
+> Global gradient assembly across spatial MPI ranks
+> Optimizer update
+> update
+
+Data generation CFD (High-order) High-order ( P= 7) reference trajectories Projected P= 7 targets MPI rank 1 MPI rank N -1 rFigure 2: Distributed solver-in-the-loop training workflow on Aurora. 
+
+𝜕𝑢 𝐿 
+
+𝜕𝑡 = F𝐿 (𝑢 𝐿 , 𝑝 𝐿 ; 𝜉 ) , (3.1) where 𝑢 𝐿 (𝑡 ) and 𝑝 𝐿 (𝑡 ) denote the low-fidelity coarse-grid velocity and pressure fields, respectively, and 𝜉 
+
+represents non-trainable solver parameters such as viscosity, boundary conditions, and discretization settings. We augment the coarse-grid model with a neural source term, 
+
+𝜕𝑢 𝐿 
+
+𝜕𝑡 = F𝐿 (𝑢 𝐿 , 𝑝 𝐿 ; 𝜉 ) + 𝑠 𝜃 (𝑢 𝐿 ) , (3.2) where 𝑠 𝜃 is a trainable, source-like correction. In strong form, the corrected incompressible momentum equations are 
+
+𝜕𝑢 𝐿 
+
+𝜕𝑡 + ( 𝑢 𝐿 · ∇) 𝑢 𝐿 = −∇ 𝑝 𝐿 + 𝜈 ∇2𝑢 𝐿 + 𝑓 𝐿 + 𝑠 𝜃 (𝑢 𝐿 ) , (3.3) 
+
+∇ · 𝑢 𝐿 = 0, (3.4) where 𝑓 𝐿 denotes any prescribed physical forcing. Thus, the neural model does not directly overwrite the velocity solution. Instead, it predicts an additional forcing or unresolved-physics term that is integrated by the native NekRS timestepper. For each spectral element 𝑒 , a local stencil operator 𝑆 𝑒 gathers the velocity field from the target element and its face-adjacent neighbors. At timestep 𝑛 , each MPI rank constructs the neural input for every locally owned element 𝑒 from its element-centered velocity stencil: 
+
+𝑞 𝑛 𝑒 = 𝑆 𝑒 
+
+ 𝑢 𝑛 𝐿 
+
+ , (3.5) 
+
+e𝑞 𝑛 𝑒 = N  𝑞 𝑛 𝑒 
+
+ , (3.6) 
+
+b𝑠 𝑛 𝜃 ,𝑒 = tanh  𝑁 𝜃 
+
+ e𝑞 𝑛 𝑒 
+
+ , (3.7) where 𝑆 𝑒 gathers the velocity values from element 𝑒 and its face-adjacent neighbors and N denotes the componentwise input normalization, followed by clipping to [− 10 , 10 ]. Neighbor slots that fall outside the physical domain are set to zero after normalization, so the padding corresponds to zero in the normalized coordinates. The LibTorch model 𝑁 𝜃 is a multilayer perceptron with two 256-unit GELU hidden layers and a linear output layer. The subsequent elementwise tanh activation bounds each dimensionless output 4component to [− 1, 1]. Accordingly, b𝑠 𝑛 𝜃 ,𝑒 is the bounded, element-local neural source prediction, and it is subsequently projected to have zero global componentwise mean. The resulting element-local predictions are inserted into the native spectral-element momentum right-hand side, 
+
+𝑠 𝑛 𝜃 = 𝐵 RHS 
+
+
+
+Π0
+
+b𝑠 𝑛 𝜃 ,𝑒 𝑒 ∈ E 
+
+
+
+, (3.8) where Π0 is the distributed componentwise zero-mean projection and 𝐵 RHS denotes insertion into the native NekRS element-local right-hand-side storage together with the solver’s standard assembly and boundary-constraint operations. Unlike the post-step velocity corrections used previously [6, 22], the transformed predictions b𝑠 𝑛 𝜃 ,𝑒 are zero-mean projected and assembled according to Eq. (3.8) to form 𝑠 𝑛 𝜃 , which enters the momentum right-hand side and is integrated by the solver. The per-step influence of 𝑠 𝑛 𝜃 is therefore mediated by the discrete time-advancement and pressure-projection operators and typically scales with Δ𝑡 . The source-based formulation can thus produce smaller immediate changes in the velocity field, leading to more gradual one-step loss reduction than with a direct velocity update. The resulting fully discrete solver–model step is 
+
+𝑢 𝑛 +1 
+
+> 𝐿
+
+= 𝐹 𝑛 (𝑢 𝑛 𝐿 , 𝜃 ) ≡ Φℎ
+
+> Δ𝑡 𝑛
+
+ 𝑢 𝑛 𝐿 ; 𝑠 𝑛 𝜃 
+
+ , 𝑠 𝑛 𝜃 = 𝑠 𝜃 (𝑢 𝑛 𝐿 ). (3.9) Here, 𝑠 𝑛 𝜃 denotes the assembled neural right-hand-side contribution defined in Eq. (3.8). For a given run, ℎ
+
+collectively denotes the spatial discretization, including the element mesh, polynomial order, quadrature, and discrete boundary treatment. The map Φℎ 
+
+> Δ𝑡 𝑛
+
+(𝑢 ; 𝑠 ) denotes one NekRS timestep with the prescribed assembled source contribution 𝑠 , and it includes the remaining time-advancement operations, pressure projection, velocity boundary enforcement, and the algebraic elliptic solution operators at the configured tolerances. The composite map 𝐹 𝑛 additionally includes evaluation and assembly of the neural source from 𝑢 𝑛 𝐿 . The implementation does not invoke a separate learned-correction shared-node averaging operator. For a rollout beginning at timestep 𝑘 , the composite solver–model step is applied autoregressively for 𝑀 
+
+timesteps, 
+
+𝑢 𝑘 + 𝑗 𝐿 = Φ ℎ  
+
+> Δ𝑡 𝑘 +𝑗 −1
+
+
+
+𝑢 𝑘 + 𝑗 −1 
+
+> 𝐿
+
+; 𝑠 𝑘 + 𝑗 −1
+
+> 𝜃
+
+
+
+, 𝑗 = 1, . . . , 𝑀. (3.10) Let P denote the projection operator from the high-fidelity space onto the coarse-grid space. The corresponding coarse-grid reference state at timestep 𝑘 + 𝑗 is defined as 
+
+𝑢 𝑘 + 𝑗  
+
+> ref
+
+= P𝑢 𝑘 + 𝑗 𝐻 , (3.11) where 𝑢 𝐻 (𝑡 ) denotes the high-fidelity velocity field on the fine grid. The multi-timestep training objective is 
+
+L𝑀 (𝜃 ) = 12
+
+> 𝑀
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑤 𝑗 
+
+N𝜔 
+
+𝐷 𝜔 
+
+
+
+𝑢 𝑘 + 𝑗 𝐿 − 𝑢 𝑘 + 𝑗 
+
+> ref
+
+ 2
+
+> 𝑀 𝐿
+
+, (3.12) where 𝑤 𝑗 denotes the weight assigned to rollout step 𝑗 and ∥𝑣 ∥2 
+
+> 𝑀 𝐿
+
+= 𝑣 𝑇 𝑀 𝐿 𝑣 , where 𝑀 𝐿 is the coarse-grid mass matrix. The fixed binary diagonal mask 𝐷 𝜔 selects the spatial region used for training, and N𝜔 is the globally reduced sum of the corresponding masked mass weights. This normalization makes the objective a distributed, mass-weighted squared-error objective. The parameter gradient can therefore be written as 
+
+𝑑 L𝑀 
+
+𝑑𝜃 = 
+
+> 𝑘 +𝑀 −1
+
+∑︁ 
+
+> 𝑛 =𝑘
+
+ 𝜕𝑠 𝑛 𝜃 
+
+𝜕𝜃 
+
+⊤
+
+𝑔 𝑛 𝑠 , 𝑔 𝑛 𝑠 = 𝜕 L𝑀 
+
+𝜕𝑠 𝑛 𝜃 
+
+. (3.13) For the production runs in this paper, 𝑔 𝑛 𝑠 is supplied by the exact discrete adjoint of the supported NekRS timestep. 53.2 Differentiable Learning 
+
+Training requires the gradient of the multi-timestep rollout loss with respect to the neural-network parameters. A manually implemented algebraic discrete adjoint of the fully discrete NekRS timestep computes the loss sensitivity with respect to the source ( 𝑔 𝑛 𝑠 ) at each rollout step, and LibTorch applies the chain rule through the neural model—the interface between NekRS and the learning system—to obtain the parameter gradient. The coupled forward and reverse dependencies are Forward: 𝜃 −→ 𝑠 𝑛 𝜃 −→ 𝑢 𝑛 +1 
+
+> 𝐿
+
+−→ L 𝑀 ,
+
+Reverse: L𝑀 
+
+> NekRS adjoint
+
+−−−−−−−−−−→ 𝑔 𝑛 𝑠 ,𝑔 𝑛 𝑠 
+
+> LibTorch VJP
+
+−−−−−−−−−−→ ∇ 𝜃 L𝑀 .
+
+(3.14) We now describe the discrete adjoint of the composite solver–model step 𝐹 𝑛 defined in Eq. (3.9). Writing the rollout objective as L𝑀 = Í𝑀 𝑗 =1 ℓ𝑘 + 𝑗 (𝑢 𝑘 + 𝑗 𝐿 ) and defining ℓ𝑘 ≡ 0, reverse accumulation starts with 
+
+𝜆 𝑘 +𝑀 = ∇𝑢 ℓ𝑘 +𝑀 (𝑢 𝑘 +𝑀 𝐿 ) (3.15) and proceeds backward for 𝑛 = 𝑘 + 𝑀 − 1, . . . , 𝑘 according to 
+
+𝜆 𝑛 =
+
+ 𝜕𝐹 𝑛 
+
+𝜕𝑢 𝑛 𝐿 
+
+𝑇 
+
+𝜆 𝑛 +1 + ∇ 𝑢 ℓ𝑛 (𝑢 𝑛 𝐿 ). (3.16) The source and parameter gradients are 
+
+𝑔 𝑛 𝑠 = 𝜕 Φℎ
+
+> Δ𝑡 𝑛
+
+𝜕𝑠 𝑛 𝜃 
+
+!𝑇 
+
+𝜆 𝑛 +1,
+
+∇𝜃 L𝑀 = 
+
+> 𝑘 +𝑀 −1
+
+∑︁ 
+
+> 𝑛 =𝑘
+
+ 𝜕𝑠 𝑛 𝜃 
+
+𝜕𝜃 
+
+𝑇 
+
+𝑔 𝑛 𝑠 .
+
+(3.17) The state contribution (𝜕𝑠 𝑛 𝜃 /𝜕𝑢 𝑛 𝐿 )𝑇 𝑔 𝑛 𝑠 is included in Eq. (3.16). The NekRS–LibTorch interface applies the transpose actions associated with source assembly, the zero-mean projection, normalization, clipping, and stencil/halo construction, while LibTorch computes the model-input and parameter VJPs through tanh  𝑁 𝜃 (e𝑞 𝑛 𝑒 ).Although the reverse recurrence applies the linearization of the nonlinear composite timestep, this does not make the resulting gradient approximate. Every first-order adjoint of a nonlinear map applies a Jacobian transpose evaluated along the nonlinear primal trajectory. Here, the recurrence is linear in 𝜆 𝑛 , while its coefficients depend on 𝑢 𝑛 𝐿 [25, 26]. Reverse-mode automatic differentiation of the same nonlinear timestep would construct this same linear transpose-Jacobian recurrence rather than a nonlinear equation in the adjoint variable. 
+
+3.3 Implementation of Distributed NekRS–LibTorch Training 
+
+This section describes the end-to-end implementation of the distributed solver-in-the-loop training workflow. As summarized in Fig. 2, the workflow consists of four stages: fine-grid reference data generation and projection, source-corrected coarse-grid rollouts, reverse differentiation, and synchronized model updates. High-order 𝑃 = 7 reference trajectories are first generated using NekRS and projected onto the 𝑃 = 2 space. The projected fields provide timestep-aligned training targets and restart states for the coarse-grid rollouts. Table 1 summarizes the division of responsibility among NekRS, LibTorch, and MPI. The forward rollout is executed inside the NekRS timestep loop. At timestep 𝑛 , the LibTorch model evaluates b𝑠 𝜃 (𝑢 𝑛 𝐿 ) from 6Table 1: Responsibilities in the distributed forward-reverse training path. Stage Implementation Responsibility          
+
+> Forward rollout NekRS + LibTorch Evaluate the neural source, advance the authoritative state, accumulate the loss, and retain 𝑢 𝑛 𝐿 and Δ𝑡 𝑛 .
+> Reverse sweep NekRS adjoint + LibTorch Propagate the state adjoint, form the neural-source seed, and accumulate model-input and parameter VJPs.
+> Global update MPI + Adam Sum rank-local parameter-gradient contributions, clip the resulting global gradient, apply the identical Adam update on every rank, and checkpoint on rank 0.
+
+a normalized face-neighbor stencil, and NekRS advances the authoritative coarse-grid solution using the supported NekRS timestep. The corresponding loss contribution is accumulated, and the resulting forward state 𝑢 𝑛 +1 
+
+> 𝐿
+
+and the actual timestep size Δ𝑡 𝑛 used for the update are recorded for the reverse sweep. The corrected state 𝑢 𝑛 +1 
+
+> 𝐿
+
+is then used as the input to the next solver and neural-model evaluations. The training rollout therefore follows the same autoregressive coupling used during inference. After the 𝑀 -step forward rollout, an explicit reverse sweep traverses the recorded timestep intervals in reverse order. The complete NekRS trajectory is not represented by a global LibTorch computation graph, meaning that the backward pass does not differentiate the solver through a single loss.backward() call. At each reverse step, the exact discrete solver-step vector–Jacobian product propagates the state adjoint and produces the neural-source sensitivity 𝑔 𝑛 𝑠 = 𝜕 L𝑀 
+
+> 𝜕𝑠 𝑛 𝜃
+
+. This sensitivity is passed to the LibTorch model VJP, which accumulates the corresponding parameter gradient contribution and returns the model input contribution to the adjoint of 𝑢 𝑛 𝐿 . Direct loss-gradient seeds are added at every loss-bearing rollout state. Consequently, the final parameter gradient includes both the direct contribution of every one of the 𝑀 loss terms and their indirect dependence through all subsequent corrected timesteps. For each sampled trajectory–start pair, all MPI ranks jointly advance one domain-decomposed rollout with identical model parameters. The ranks are therefore spatially parallel rather than independent data-parallel replicas. MPI reductions assemble the globally normalized, masked mass-weighted objective and the global parameter gradient for each rollout. Each optimizer update averages the MPI-assembled gradients from 𝐵 = 4sequential, domain-parallel rollouts, where 𝐵 denotes the batch size, clips the result to unit norm, and applies one synchronized Adam update on every rank. 
+
+# 4 Results 
+
+We evaluate Diff-NekRS on two canonical incompressible-flow benchmarks: a nominally two-dimensional circular-cylinder wake (2Dcyl) at 𝑅𝑒 𝐷 = 100, in the periodic vortex-shedding regime below the first three-dimensional wake instability [27, 28], and the triply periodic three-dimensional Taylor–Green vortex (3DTGV) at 𝑅𝑒 = 1600, which represents vortex stretching, transition to turbulence, and decay [29, 30]. For 3DTGV training, coordinate-wise phase shifts generate ten training initial conditions and one disjoint held-out phase while preserving periodicity and the divergence-free initial velocity, and verification and weak scaling use the canonical zero-phase case. Following a correctness-before-performance order, we first verify the assembled solver–ML gradient using Taylor remainder and centered finite-difference tests. We then evaluate multi-horizon training with fixed held-out validation, optimizer-enabled training-update weak scaling on Aurora, 200-step autoregressive accuracy relative to the uncorrected coarse-grid 𝑃 = 2 solver, and separate 12-rank inference wall-clock speedup relative to the corresponding 𝑃 = 7 configurations. Complete numerical and evaluation protocols are given in the Appendix. 7Minimum centered-FD relative error (%) 
+
+2Dcyl 
+
+> Rpair
+> Rpair
+> 
+
+10 -2 10 -1 10 010 -2 10 -1 10 -3 
+
+2Dcyl 2Dcyl 3DTGV 3DTGV 3DTGV 
+
+> Minimum centered-FD relative error (%)
+
+10 010 -2 10 -1 10 -3 
+
+> Minimum centered-FD relative error (%) Minimum centered-FD relative error (%)
+
+10 -2 10 -1 10 012 24 48 96 252 516 1020 
+
+MPI ranks      
+
+> M= 1 ( q= 2.35)
+> M= 5 ( q= 2.01)
+> M= 10 ( q= 1.97)
+> M= 20 ( q= 2.22)
+> M= 50 ( q= 2.48)
+> (ε2)
+
+12 24 48 96 252 516 1020 
+
+Perturbation magnitude, ε2× 10 -1 10 -1 
+
+6× 10 -2 
+
+Perturbation magnitude, ε
+
+10 -1 10 -2     
+
+> M=1 M=5 M=10 M=20 M=50
+
+5% criterion 5% criterion 5% criterion 5% criterion     
+
+> M=1 M=5 M=10 M=20 M=50
+
+MPI ranks Rollout horizon Rollout horizon (c)(d) (e) (f)(a) (b)
+
+10 -2 10 -1 10 010 -3 10 -2 10 -1 10 010 -3      
+
+> M= 1 ( q= 1.90)
+> M= 5 ( q= 1.90)
+> M= 10 ( q= 2.00)
+> M= 20 ( q= 2.01)
+> M= 50 ( q= 2.04)
+> (ε2)
+
+Figure 3: End-to-end exact-adjoint verification at rollout horizons 𝑀 ∈ { 1, 5, 10 , 20 , 50 }. The top and bottom rows show 2Dcyl and 3DTGV, respectively: ( a,d) paired Taylor consistency, ( b,e) the minimum centered-FD directional error across seven weak-scaling allocations, and ( c,f ) 15-direction robustness at 12 MPI ranks. In ( c,f ), markers are individual directions, colored vertical bars span the interquartile range, and black horizontal bars denote the median. 
+
+4.1 End-to-End Gradient Verification 
+
+For each problem–horizon–allocation verification test, let 𝑝 be a fixed unit direction in the complete neural-parameter space. The direction is constructed as described in Appendix A.1 and held fixed over the perturbation sweep. For the assembled adjoint gradient 𝑔 adj , we define the directional derivative 𝑑 adj = 𝑔 T 
+
+> adj
+
+𝑝 
+
+and the paired Taylor remainder 
+
+𝑅 pair (𝜖 ) = max  
+
+> ±
+
+L𝑀 (𝜃 ± 𝜖 𝑝 ) − L 𝑀 (𝜃 ) ∓ 𝜖 𝑑 adj . (4.1) We report the normalized remainder 
+
+b𝑅 pair (𝜖 ) = 𝑅 pair (𝜖 )|𝑑 adj | . (4.2) The normalization removes differences in directional-gradient scale without changing the convergence order. If 𝑑 adj is correct, subtracting the linear term cancels the O( 𝜖 ) objective variation and leaves b𝑅 pair = O( 𝜖 2). An incorrect directional derivative generally leaves an O( 𝜖 ) remainder. The Taylor test therefore checks whether the implemented adjoint correctly captures the first-order variation of the full rollout objective [26, 31]. We adopt a prespecified 5% engineering tolerance, consistent with the scale of adjoint–finite-difference discrepancies reported in prior CFD adjoint verification studies [32, 33]. 8We additionally compare 𝑑 adj with the forward-only centered finite-difference estimate 
+
+𝑑 FD (𝜖 ) = L𝑀 (𝜃 + 𝜖 𝑝 ) − L 𝑀 (𝜃 − 𝜖 𝑝 )
+
+2𝜖 , (4.3) using 
+
+𝑒 FD (𝜖 ) = 𝑑 FD (𝜖 ) − 𝑑 adj 
+
+max  |𝑑 FD (𝜖 )| , |𝑑 adj |, 𝛿  , (4.4) where 𝛿 is a small numerical floor. The Taylor test checks first-order cancellation and convergence order, whereas the centered finite difference checks the numerical magnitude and sign of the directional derivative. Every perturbed objective evaluation reruns the full authoritative NekRS rollout at the specified horizon, and no fitted gradient scale is applied. Fig. 3( a) and ( d) show near-quadratic Taylor convergence. The horizontal separation in panel ( d) reflects the prescribed 3DTGV perturbation ranges 𝜖 ∈ { 0.2, 0.1, 0.05 } for 𝑀 = 1, 5 and 𝜖 ∈ { 0.02 , 0.01 , 0.005 }
+
+for 𝑀 = 10 , 20 , 50. The smaller range keeps the longer rollouts within the locally linear Taylor regime, while the larger short-horizon range maintains an objective signal above numerical noise. The fitted orders are 𝑞 = 1.97–2 .48 for 2Dcyl and 𝑞 = 1.90–2 .04 for 3DTGV. This behavior persists through 𝑀 = 50, indicating correct first-order cancellation across the full multi-timestep reverse recurrence. Fig. 3( b) and ( e)show the minimum centered finite-difference error over the perturbation magnitudes considered, and that all 70 problem–horizon–allocation (2 × 5 × 7 = 70) combinations satisfy the prespecified 5% centered finite-difference criterion. Fig. 3( c) and ( f ) extend the representative 12-rank test to 15 directions at every rollout horizon. All 150 problem–horizon–direction (2 × 5 × 15 = 150) records satisfy the prespecified 5% criterion, all accepted centered-FD signs match the adjoint signs, and the largest minimum-over-𝜖 relative error is 4 .56%. These checks broaden both the sampled state windows and parameter-space directions, but do not constitute a proof over the full parameter space. Additionally, Appendix A.1 reports a controlled 𝑀 = 5 2Dcyl comparison with the two surrogate-gradient paths used in our earlier formulation [6]. The exact adjoint passes all 15 held-out directional checks and recovers near-quadratic Taylor behavior, whereas neither calibrated surrogate passes the 5% gate. Overall, these tests provide end-to-end numerical verification that the implemented adjoint computes the directional derivative of the fully discrete rollout objective for the tested flows, horizons, parameter directions, and MPI allocations. The verification covers the assembled hybrid solver-ML gradient, rather than only individual transpose kernels. 
+
+4.2 Multi-timestep Training Behavior 
+
+Fig. 4 reports three-seed geometric means and minimum–maximum seed bands for the training and fixed held-out validation objectives. Each curve is normalized to its corresponding value at update 1 because the rollout horizon 𝑀 defines a different trajectory-level objective and therefore a different absolute loss scale. The curves consequently compare relative optimization progress within each run, meaning that their vertical positions should not be interpreted as absolute loss comparisons across horizons. The horizon dependence differs between the two flows. For 2Dcyl, the 𝑀 = 50 objective decreases rapidly during approximately the first 50 updates and then remains near a 90% reduction for both training and held-out validation. The 𝑀 = 20 case produces a more moderate reduction of approximately 25–30%, whereas the 𝑀 ≤ 10 objectives change only modestly. For 3DTGV, the horizon dependence is more gradual and nearly ordered by 𝑀 . The 𝑀 = 1 training curve exhibits the largest fluctuations and seed-to-seed range, while longer horizons produce progressively larger and more consistent reductions. Validation on the held-out phase preserves this ordering, with most of the improvement occurring within the first 50–100 updates and no systematic late-iteration rebound. 9(c)(a) (b)2Dcyl training 3DTGV training 3DTGV validation 2Dcyl validation                   
+
+> Optimizer update Optimizer update Loss change (%) (d)
+> 0-20 -40 -60 -80 25 0-25 -50 -75 50 150 100 150 200 250 300 150 100 150 200 250 300 0-20 -40 -60 -80 0-20 -40 -60 -80
+> Loss change (%)
+> 75
+> M= 1
+> M= 5
+> M= 10
+> M= 20
+> M= 50
+
+Figure 4: Multi-timestep training for ( a,b) 2Dcyl and ( c,d) phase-shifted 3DTGV. Curves show three-seed geometric means, and shaded regions span the seedwise minimum–maximum range. Training and fixed held-out validation objectives are normalized within each run to the first optimizer update. 
+
+All reported runs completed 300 optimizer updates with a batch size of 𝐵 = 4, and at every reported validation checkpoint after update 1, the fixed validation objective remained below its update-1 value. These results demonstrate that the verified exact gradients support optimization through 𝑀 = 50 and transfer to fixed validation windows. The inferences deployed from these models are compared in Section 4.4. Detailed sampling, optimizer, validation, and completion controls are provided in Appendix A.2. 
+
+4.3 Weak Scaling of Optimizer-Enabled Training Updates 
+
+We next characterize the weak scaling of the optimizer-enabled training path. One optimizer update comprises 
+
+𝐵 = 4 sequential domain-parallel rollouts, averaging of the four MPI-assembled parameter gradients, unit-norm clipping, and one synchronized Adam update while retaining the updated model and optimizer state. We test all rollout horizons 𝑀 ∈ { 1, 5, 10 , 20 , 50 } at all seven weak-scaling allocations. For each configuration, one complete 𝐵 = 4 update is discarded as a warm-up, and the next five complete updates are retained. To isolate the coupled training path developed in this work, we exclude the solver-reported NekRS launch and setup intervals and report the remaining wall time per rollout. Weak-scaling efficiency is normalized by the corresponding 12-rank median. The complete timing and accounting protocol is provided in Appendix A.4. Fig. 5 covers all 70 problem–horizon–allocation configurations. At 1,020 MPI ranks, 3DTGV retains 80 .7%–81 .9% weak-scaling efficiency across the five rollout horizons. The five 3DTGV efficiency curves remain closely grouped, indicating that increasing the rollout horizon does not substantially alter the scaling behavior of this larger rank-local workload. The 2Dcyl efficiency is more horizon-dependent, decreasing from 78 .0% at 𝑀 = 1 to 54 .5% at 𝑀 = 50. This stronger degradation is consistent with the substantially 10 MPI ranks MPI ranks      
+
+> M= 1
+> M= 5
+> M= 10
+> M= 20
+> M= 50
+
+(b)(c) (d)(a)Weak-scaling efficiency (%)       
+
+> 12 24 48 96 252 516 1020
+
+2Dcyl 3DTGV 2Dcyl 3DTGV                   
+
+> 12 24 48 96 252 516 1020 45 40 35 30 25 20 15 10 50100 90 80 70 60 50 40 12 24 48 96 252 516 1020 12 24 48 96 252 516 1020
+> Weak-scaling efficiency (%)
+> 250 200 150 100 50 0100 90 80 70 60 50 40
+> Post-setup time per rollout (s) Post-setup time per rollout (s)
+
+Figure 5: Optimizer-enabled training-update weak scaling on Aurora for ( a,b) 2Dcyl and ( c,d) 3DTGV at 𝑀 ∈{1, 5, 10 , 20 , 50 }. Each marker is the median over five retained post-warm-up complete 𝐵 = 4 optimizer updates. Panels ( a,c) show the post-setup time per rollout, and panels ( b,d) show weak-scaling efficiency relative to the corresponding 12-rank median. 
+
+smaller rank-local workload. In this work, the weak-scaling meshes contain 261 elements per rank for 2Dcyl, compared with 3,888 elements per rank for 3DTGV. The smaller 2Dcyl configuration provides less computation over which to amortize the distributed solver, adjoint, communication, and synchronization costs. We also confirmed that gradient averaging, unit-norm clipping, the Adam update, and the in-memory model and optimizer-state update require 0 .420–1 .078 s per rollout and account for 0 .368%–6 .151% of the reported time ( 𝐵 = 4) across all 70 configurations. The largest fractions occur for the 𝑀 = 1 rollouts because the nearly horizon-independent update cost is compared with only a one-step forward–reverse trajectory. For the longest rollout at 𝑀 = 50 and 1,020 ranks, the median post-setup time per rollout is 37 .695 s for 2Dcyl and 225 .457 s for 3DTGV, corresponding to weak-scaling efficiencies of 54 .5% and 80 .7%, respectively. All 350 retained post-warm-up complete 𝐵 = 4 observations produced finite, nonzero applied updates. As the weak-scaling mesh changes with allocation, these experiments assess the systems execution of optimizer-enabled training updates rather than convergence of a common learning problem across allocations. The corresponding optimizer-free exact-gradient scaling baseline is reported in Appendix A.4. 11 (a) (b)2Dcyl inference 3DTGV inference 
+
+Rollout step 
+
+> 1
+
+Rollout step               
+
+> 150 125 75 100 50 25 175 200 1150 125 75 100 50 25 175 200
+> Relative  L error 210 -2 10 -1 10 010 -2 10 -3
+> M= 1
+> M= 5
+> M= 10
+> M= 20
+> M= 50 Baseline ( P= 2) Figure 6: Relative 𝐿 2velocity error over 200 fully autoregressive inference steps for ( a) the temporally held-out 2Dcyl wake and ( b) a held-out 3DTGV trajectory.
+
+4.4 Autoregressive Inference 
+
+We next test behavior beyond the training horizons in Section 4.2. Starting from a projected high-fidelity state, each frozen hybrid model advances for 200 consecutive timesteps and feeds its predicted state into the next solver and neural-source evaluation. The uncorrected NekRS coarse-grid 𝑃 = 2 baseline uses the same solver configuration with 𝑠 𝜃 ≡ 0. The projected high-fidelity trajectory is used only to evaluate the error after each completed inference step. We compute the mass-weighted relative velocity error 
+
+𝜀 𝑟 = 𝑢 𝑘 +𝑟 𝐿 − 𝑢 𝑘 +𝑟  
+
+> ref 𝑀 𝐿
+
+𝑢 𝑘 +𝑟  
+
+> ref 𝑀 𝐿
+
+, ∥𝑣 ∥2 
+
+> 𝑀 𝐿
+
+= 𝑣 T 𝑀 𝐿 𝑣, (4.5) where 𝑀 𝐿 is the coarse-grid spectral-element mass matrix. Here, 𝑀 denotes the training rollout horizon and 
+
+𝑟 the inference step. For each training horizon 𝑀 and inference step 𝑟 , we compute 𝜀 𝑟 for three independently trained optimizer seeds. We report the median of the three seedwise errors at each step, and the shaded band spans their minimum and maximum values. We present the 2Dcyl results first, followed by the 3DTGV results. Fig. 6 shows that for 2Dcyl the error oscillations are consistent with accumulated phase error in the periodic vortex street. The entire 𝑀 = 50 seed band becomes more accurate than the 𝑃 = 2 baseline at step 29 and remains so through step 200. At inference steps 50, 100, and 200, its median errors are 0.0334, 0.0976, and 0.240, compared with 0.137, 0.353, and 0.588 for the baseline—reductions of 75.7%, 72.4%, and 59.2%, respectively. This advantage is not monotone in 𝑀 . At step 200, the 𝑀 = 20 median is only modestly below the baseline (0.544 versus 0.588), while the 𝑀 = 1, 5, and 10 medians are larger. Thus, exposure to a long training rollout is important for this wake, but horizon length alone does not guarantee improvement. Fig. 7 clarifies how the scalar error in Fig. 6( a) develops spatially. At step 1, the baseline and hybrid fields are both close to the projected reference, with 𝜀 1 = 1.17 × 10 −2. By step 50, the baseline error has spread along the alternating near-wake structures and reaches 0.137, consistent with a growing phase and amplitude mismatch. The 𝑀 = 50 prediction remains more closely aligned with the reference vortex street and limits the error to 0.0334. At step 200, both trajectories have accumulated error, but the baseline exhibits a broad wake mismatch with 𝜀 200 = 0.588, whereas the hybrid model retains more of the reference wake organization and reduces the error to 0.240. The field comparison therefore indicates that long-horizon training delays the accumulation of wake phase and amplitude errors. Fig. 7 is a representative spatial realization. In Fig. 6( b), the 3DTGV errors are smaller in magnitude and grow more smoothly. All three 𝑀 = 50 runs remain below the 𝑃 = 2 baseline at every inference step. Their step-200 median is 3 .56 × 10 −3, with a seed 12 0 53 421 0 53 421 0 53 4210.0 0.4 0.8 1.2              
+
+> xxx
+> 0.00 1.25 -1.25 0.00 1.25 -1.25 0.00 1.25 -1.25 0.00 1.25 -1.25 0.00 1.25 -1.25
+> Inference step ( r= 1) Reference Baseline ( P= 2) (no correction) Baseline ( P= 2) error field Hybrid model (M=50) Hybrid model error field ( M=50) Streamwise velocity u
+> 0.15 0.30 0.00 0.45 0.60 0.75
+> Pointwise error || u-u|| pred ref 2
+> ε=1.17e-02 ε=1.17e-02 ε=3.34e-02 ε=1.37e-01 ε=2.40e-01 ε=5.88e-01
+> Inference step ( r= 50) Inference step ( r= 200)
+
+Figure 7: Spatial fields of the 2Dcyl inference and the corresponding errors at inference steps 𝑟 = 1, 50, and 200. Top to bottom: the projected high-order reference streamwise velocity 𝑢 ; the 𝑃 = 2 baseline and its pointwise error magnitude; and a representative 𝑀 = 50 prediction and its pointwise error magnitude. 
+
+range of [3.54 , 3.57 ] × 10 −3, compared with 4 .05 × 10 −3 for the baseline, so the median reduction is 12.1%. Moreover, the step-200 median error decreases monotonically from 1 .16 × 10 −2 for 𝑀 = 1 to 3 .56 × 10 −3 for 
+
+𝑀 = 50. The present 3DTGV evaluation focuses on seed-aggregated trajectory error, so long-time physical statistics are outside the scope of this study. Across both flows, the 𝑀 = 50 model best limits autoregressive drift, with narrow three-seed bands, although the magnitude and monotonicity of the accuracy benefit remain flow-dependent. Separate 12-rank timing using the frozen seed-1 𝑀 = 50 model for each benchmark yields wall-clock speedups of 5 .379 × for 2Dcyl and 2 .492 × for 3DTGV relative to the corresponding 𝑃 = 7 configurations for equal simulated-time intervals (Appendix A.3). Since the configurations differ in polynomial order, BDF/EXT scheme, and, for 2Dcyl, timestep sequence, these values compare complete executed configurations rather than polynomial order alone. 13 5 Conclusion 
+
+We present Diff-NekRS, a scalable differentiable framework for multi-timestep neural-source training in the GPU-accelerated NekRS solver. The assembled solver–model gradient was verified through 𝑀 = 50 for 2Dcyl and 3DTGV across 12–1,020 MPI ranks. The Taylor remainders were approximately quadratic, and all 70 problem–horizon–allocation checks and all 150 problem–horizon–direction checks met the prescribed 5% centered finite-difference criterion. Across the tested rollout horizons, exact-adjoint training reduced every fixed held-out validation objective relative to update 1. At 1,020 MPI ranks, training with the optimizer retained a weak-scaling efficiency of 54.5%–78.0% for 2Dcyl and 80.7%–81.9% for 3DTGV. These results establish the numerical correctness and operational scalability of the Diff-NekRS training workflow for the supported fully discrete time-advancement configuration. In 200-step autoregressive inference, the 𝑀 = 50 model reduced the three-seed median terminal relative 
+
+𝐿 2 velocity error by 59.2% for 2Dcyl and 12.1% for 3DTGV relative to uncorrected 𝑃 = 2, and retained wall-clock speedups of 5 .38 × and 2 .49 ×, respectively, relative to the corresponding 𝑃 = 7 configurations for equal simulated-time intervals. Thus, long-horizon training improves coarse-grid trajectory accuracy while retaining a configuration-level wall-clock advantage over the high-order reference, although the trade-off remains flow-dependent. Future work will improve model efficiency and assess longer-time physical statistics, broader initial conditions, and additional NekRS time-advancement configurations. 
+
+# Acknowledgment 
+
+This work was supported by the U.S. Department of Energy Office of Science, Advanced Scientific Computing Research (ASCR), Applied Mathematics program through the Competitive Portfolios Project; the Scientific Discovery through Advanced Computing (SciDAC) FASTMath Institute; the Argonne Leadership Computing Facility, a U.S. DOE Office of Science user facility; and the Argonne Laboratory Directed Research and Development (LDRD) program, under Contract No. DE-AC02-06CH11357. 
+
+# Author ORCIDs 
+
+Junoh Jung https://orcid.org/0000-0003-0962-3127; Riccardo Balin https://orcid.org/0000-0002-1906-902X; Bethany Lusch https://orcid.org/0000-0002-9521-9990; Emil Constantinescu https://orcid.org/0000-0002-7003-6899. 14 Appendix A Verification, Evaluation, and Reproducibility Details 
+
+This appendix documents the benchmark configurations, exact-adjoint scope, gradient-verification proce-dures, training and inference controls, scaling methodology, and distributed communication and memory measurements supporting the main results. Table 2 summarizes the common benchmark, discretization, solver, and neural-model settings. 
+
+Table 2: Benchmark, discretization, solver, and neural model settings.                                                                             
+
+> Item 2Dcyl 3DTGV Flow/domain 𝑅𝑒 𝐷 =100; [0,20 𝐷 ] × [− 5𝐷, 5𝐷 ] × [ 0,0.1𝐷 ];cylinder at (2.5𝐷, 0)
+> 𝑅𝑒 =1600; triply periodic [− 𝜋, 𝜋 ]3
+> Boundary/initial data Uniform inflow; no-slip cylinder; open outlet; free-slip lateral/spanwise faces
+> u0=(sin 𝑥 cos 𝑦 cos 𝑧,
+> −cos 𝑥 sin 𝑦 cos 𝑧, 0)
+> Element mesh 3,132 hexes: 1 ,044 cross-sectional elements ×three layers 36 3=46 ,656 regular hexes Element-local GLL points
+> 𝑃 =7: 1 ,603 ,584; 𝑃 =2: 84 ,564 𝑃 =7: 23 ,887 ,872; 𝑃 =2: 1 ,259 ,712 Reference / differentiated step BDF2/EXT2 / BDF1/EXT1; target CFL 2;
+> Δ𝑡 ≤2×10 −2
+> BDF3/EXT3 / BDF1/EXT1; Δ𝑡 =1.5×10 −3for verification/scaling Linear-solver tolerance 10 −10 relative residual tolerance for velocity and pressure in verification/scaling Neural source model 5-element in-plane stencil; 270 →256 →256 →54; 149 ,046 parameters 7-element periodic stencil; 567 →256 →256 →81; 232 ,017 parameters Executed transform Componentwise input normalization, clipping to [− 10 ,10 ], two GELU hidden layers, bounded tanh output, and distributed componentwise zero-mean projection Machine precision NekRS state/adjoint: FP64; LibTorch model and projected targets: FP32 Within each benchmark, 𝑃 =7 reference and 𝑃 =2 differentiated runs use the same element topology; GLL totals are element-local and duplicate interface points. Benchmark choices follow Refs. [6, 27, 29, 34, 35].
+
+A.1 Exact-Adjoint Scope and Gradient Verification 
+
+The exactness claim is restricted to the executed BDF1/EXT1 map with cubature advection and no subcycling. The reverse path includes the neural source and zero-mean projection, boundary constraints, pressure projection, nonlinear advection, and the configured elliptic solves. Here, “exact” denotes algebraic transpose-Jacobian actions of this map up to Krylov-solver and floating-point tolerances. Adaptive time-stepping logic, higher-order BDF/EXT schemes, subcycling, and other NekRS configurations are outside the scope of the present claim and will be considered in future work. For each problem–horizon–allocation, the unperturbed objective is repeated and accepted only when 
+
+|L 𝑀 − L repeat  
+
+> 𝑀
+
+| ≤ max 
+
+
+
+10 −10 , 10 −7 max (|L 𝑀 |, |L repeat  
+
+> 𝑀
+
+|) 
+
+
+
+. (A.1) Here, Lrepeat  
+
+> 𝑀
+
+denotes an independently repeated evaluation of the unperturbed 𝑀 -step rollout objective using the same parameter vector, restart state, rollout horizon, and MPI allocation as L𝑀 . A deterministic unit direction is generated from a seeded random vector and the normalized adjoint, with 𝑔 𝑇  
+
+> adj
+
+𝑝 /∥ 𝑔 adj ∥2 = 1/√2, to avoid a numerically unresolved near-orthogonal direction. Every perturbed objective is a fresh authoritative rollout. The prescribed perturbations are 𝜖 ∈ { 0.2, 0.1, 0.05 } for all 2Dcyl tests and for 3DTGV at 𝑀 = 1, 5, and 
+
+𝜖 ∈ { 0.02 , 0.01 , 0.005 } for 3DTGV at 𝑀 = 10 , 20 , 50. The Taylor plots show the median and interquartile range over seven allocations, and the fitted order is the least-squares slope through the three median remainders. 15 Table 3: Controlled exact-versus-surrogate gradient comparison. Error is relative to centered finite differences. Gradient path Median error Within 5% Taylor 𝑞 Time (s) Exact adjoint 0.103% 15/15 2.072 38.26 Block-Oseen 22 .9% 0/15 1.107 38.99 Global linearized NS 52 .0% 0/15 1.054 107.39 Table 4: Training and validation controls used for Fig. 4. Control 2Dcyl 3DTGV Training population 500 starts from one developed trajectory after reserving five temporal validation intervals 1,000 starts distributed across 10 phase-shifted initial conditions Sampling Four temporal strata; deterministic stream shared across horizons within each seed Four temporal strata and four distinct phases per update Seeds / budget Three optimizer seeds; 300 completed updates per displayed horizon Three optimizer seeds; 300 completed updates per displayed horizon Learning rate Cosine 10 −3 → 10 −6 Cosine 10 −3 → 10 −6     
+
+> Validation Five same-trajectory temporal holdouts; update 1 and every 25 updates Held-out phase at starts 0 ,250 ,500 ,750 ,999; prescribed checkpoints through update 300
+
+A configuration passes when min 𝜖 𝑒 FD (𝜖 ) ≤ 5%. This threshold is a numerical gate rather than a confidence interval. As noted in the main text, we use a prespecified 5% engineering tolerance, consistent with the scale of adjoint–finite-difference discrepancies reported in prior CFD adjoint verification studies [32, 33]. For each flow and 𝑀 ∈ { 1, 5, 10 , 20 }, the 15-direction robustness study evaluates three independently seeded gradient-informed directions at each of five fixed restart windows using a common problem- and horizon-specific perturbation set. For 𝑀 = 50, it evaluates one gradient-informed direction and 14 independent unit-normalized standard-Gaussian directions (seeds 202608081–202608094) at a single representative restart window. All tests use prespecified local-regime perturbation grids and a deterministic noise-floor re-evaluation rule. Thus, the 𝑀 ≤ 20 tests vary both restart window and direction, whereas the 𝑀 = 50 tests vary direction at a fixed window. We recomputed the complete 𝑀 = 5 2Dcyl parameter gradient from the same checkpoint using the exact adjoint and two frozen-state surrogate paths [6]. The global linearized Navier-Stokes operator is a frozen-state, pressure-coupled linearized Navier-Stokes adjoint over the full distributed domain. Signed scalar calibration used 45 restart windows (135 directions) and was frozen before testing on five held-out windows (15 directions). All paths used the same six perturbation magnitudes. Times are medians of five retained one-node, 12-rank launcher-to-completion measurements after one discarded warm-up and include NekRS launch/setup. In Table 3, the exact path is within 1 .9% of the block-Oseen cost and 2 .81 × faster than the global linearized NS path. This is a controlled gradient-fidelity ablation with an evaluation-cost comparison, not an attribution of the historical end-to-end training difference solely to the gradient method. 
+
+A.2 Training and Validation Protocol 
+
+Table 4 summarizes the training and validation controls. All displayed training runs use one Aurora node and 12 MPI ranks. Four sequential, domain-parallel rollout gradients form one effective batch. Their MPI-reduced parameter gradients are averaged, clipped to unit norm, and used for one Adam update. Uniform rollout weights 𝑤 𝑗 = 1/𝑀 remove the trivial factor associated with summing 𝑀 loss terms. Adam uses 
+
+𝜀 Adam = 10 −10 and no weight decay. 16 Table 5: Twelve-rank forward-inference performance relative to the corresponding 𝑃 = 7 configurations. Values are medians over three retained post-warm-up runs. Case Method Median                                            
+
+> Δ𝑡 CFL max
+> Tphys
+> (sim. time/s)
+> 𝑆 wall ,𝑃 7
+> (×)2Dcyl Plain low-order ( 𝑃 =2) 0.0200 0.898 1.6175 6.471 Hybrid model ( 𝑃 =2+ML) 0.0200 0.899 1.3448 5.379 High-order ( 𝑃 =7) 0.0060 2.090 0.2500 1.000 3DTGV Plain low-order ( 𝑃 =2) 0.0030 0.035 0.5005 5.233 Hybrid model ( 𝑃 =2+ML) 0.0030 0.035 0.2383 2.492 High-order ( 𝑃 =7) 0.0030 0.269 0.0957 1.000
+
+The 2Dcyl loss includes all GLL points belonging to elements whose centroids lie within 𝑥 /𝐷 ∈ ( 2, 8) and 
+
+𝑦 /𝐷 ∈ (− 2, 2) and is normalized by active volume. 3DTGV uses the whole-domain loss and Δ𝑡 = 3 × 10 −3
+
+for the phase-family training campaign. Validation freezes the model and optimizer and performs no reverse sweep. The 2Dcyl holdouts are disjoint in time but belong to the same trajectory. The 3DTGV holds out an independently sampled phase. Fig. 4 therefore reports optimization progress and loss reduction on fixed held-out validation sets, rather than an a posteriori physical-accuracy comparison with the coarse-grid 𝑃 = 2baseline. 
+
+A.3 Inference Timing and Wall-Clock Speedup 
+
+To complement the trajectory-accuracy evaluation in Section 4.4, we measured forward inference on one Aurora node using 12 MPI ranks. Initialization, model loading and JIT compilation, diagnostic I/O, and field output were excluded, whereas all solver operations and neural-source evaluations were included. Hybrid timings use the frozen 𝑀 = 50 checkpoint obtained from the training campaign described in Section 4.2. For each retained run, we define 
+
+Tphys =
+
+Í𝑛 Δ𝑡 𝑛 
+
+Í𝑛 𝑡 wall ,𝑛 
+
+, 𝑆 wall ,𝑃 7 = Tphys ,method 
+
+Tphys ,𝑃 =7
+
+, (A.2) where Tphys is the simulated physical time advanced per wall-clock second and 𝑆 wall ,𝑃 7 is the wall-clock speedup for advancing an equal simulated-time interval. The plain 𝑃 = 2 and hybrid 𝑃 = 2 + ML runs use BDF1/EXT1, whereas the 𝑃 = 7 references use BDF2/EXT2 for 2Dcyl and BDF3/EXT3 for 3DTGV. The 2Dcyl speedups account for the different timestep sequences, whereas all 3DTGV runs use Δ𝑡 = 0.003. Table 5 shows that the hybrid retains wall-clock speedups of 5 .379 × for 2Dcyl and 2 .492 × for 3DTGV relative to the corresponding 𝑃 = 7 configurations. The larger relative ML cost for 3DTGV is consistent with its larger rank-local workload, seven-element (3D) rather than five-element (2D) stencil, and larger neural and halo-communication workloads. As the configurations differ in polynomial order, BDF/EXT scheme, and, for 2Dcyl, timestep sequence, the reported values compare complete executed configurations rather than polynomial order alone. The adaptive-timestep 2Dcyl measurements are forward-only diagnostics. Together with Section 4.4, these results show that the hybrid improves the plain 𝑃 = 2 trajectory while retaining a wall-clock advantage over the corresponding 𝑃 = 7 run. 
+
+A.4 Weak-Scaling and Timing Protocol 
+
+An Aurora compute node contains two Intel Xeon CPU Max Series processors and six Intel Data Center GPU Max 1550 accelerators. Each physical GPU package comprises two independently addressable GPU tiles, 17 giving 12 GPU tiles per node [36, 37]. We expose the tiles as accelerator devices and launch 12 MPI ranks per node, binding one rank to each tile. Thus, two MPI ranks are assigned to each physical GPU package, but each rank operates on a distinct GPU tile. The weak-scaling campaign uses 𝑁 𝑟 ∈ { 12 , 24 , 48 , 96 , 252 , 516 , 1020 } MPI ranks on {1, 2, 4, 8, 21 , 43 , 85 }
+
+nodes, respectively. The rank-to-tile mapping is held fixed across the campaign. 3DTGV uses fixed-domain 
+
+ℎ-refinement from 36 3 to 153 × 160 × 162 elements, maintaining 3,888 elements per rank. 2Dcyl fixes the 1,044-element cross-section and increases the spanwise extrusion from 3 to 255 layers, maintaining 261 elements per rank. For the optimizer-enabled study in Fig. 5, each configuration discards one complete 𝐵 = 4 warm-up update and retains the next five complete updates. Each update contains four sequential domain-parallel forward–reverse rollouts, averaging of the four MPI-assembled parameter gradients, unit-norm clipping, and one synchronized Adam update, including the in-memory model and optimizer state update. To isolate the coupled training path developed in this work, the four solver-reported NekRS launch and setup intervals are excluded from each retained update, and the remaining wall time is divided by 𝐵 = 4 to obtain the post-setup time per rollout. The reported value is the median over the five retained updates. At 𝑀 = 50 and 
+
+𝑁 𝑟 = 1020, the excluded launch/setup interval accounted for approximately 52% and 23% of the complete (𝐵 = 4) iteration time for 2Dcyl and 3DTGV, respectively. The excluded solver launch and initialization path is outside the coupled training implementation evaluated here; reducing this overhead is left to future work. Each case–horizon pair uses its corresponding 12-rank median as the weak-scaling baseline. These values are derived from complete 𝐵 = 4 updates and are not separately executed 𝐵 = 1 timings. For comparison, we separately measure one full, unperturbed forward–reverse exact-gradient evaluation with the optimizer disabled. These measurements include the forward rollout, reverse replay, distributed halo operations, neural-model VJPs, and global parameter-gradient assembly. For each problem–horizon– allocation configuration, three repeated trials are retained after warm-up under the same rank-to-tile binding, and Fig. 8 reports their median. Each problem-horizon pair uses its 12-rank median as its baseline. We define the aggregate element throughput and weak-scaling efficiency as 
+
+𝑄 (𝑁 𝑟 ) = 𝑁 elem (𝑁 𝑟 )
+
+𝑇 (𝑁 𝑟 ) , (A.3) 
+
+𝜂 weak (𝑁 𝑟 ; 𝑁 𝑟 , 0) = 𝑇 (𝑁 𝑟 , 0)
+
+𝑇 (𝑁 𝑟 ) × 100% , (A.4) where 𝑇 (𝑁 𝑟 ) denotes the selected post-warm-up wall time on 𝑁 𝑟 MPI ranks, and 𝑁 𝑟 , 0 = 12 denotes the baseline allocation. Here, 𝑁 elem (𝑁 𝑟 ) is the global low-order ( 𝑃 = 2) element count. The aggregate-throughput increases are 58 .1–62 .8× for 2Dcyl and 56 .3–64 .9× for 3DTGV. At 1,020 ranks, the corresponding optimizer-free exact-gradient efficiencies are 68 .3%–73 .9% for 2Dcyl and 66 .3%–76 .4% for 3DTGV, with median wall times of 61 .2–78 .1 s and 74 .3–283 .7 s, respectively. Since it uses the full exact-gradient-evaluation timing boundary, whereas Fig. 5 reports setup-excluded time per rollout derived from complete 𝐵 = 4 updates, the two timing sets are complementary rather than directly subtractable. 
+
+A.5 Halo-Transpose Verification and Tape Storage 
+
+Let 𝐻 denote the forward halo gather that maps owned element data to the off-rank rows required by the neural stencil, and let 𝐻 T denote the corresponding reverse scatter-add. For deterministic test vectors 𝑢 and 𝑧 ,where 𝑢 has the same distributed layout as the rank-owned element data supplied to the forward gather and 𝑧 
+
+has the same layout as the gathered off-rank halo rows, we define the relative dot-product error 
+
+𝑒 𝐻 = ⟨𝐻𝑢, 𝑧 ⟩ − ⟨ 𝑢, 𝐻 T 𝑧 ⟩
+
+max  |⟨ 𝐻𝑢, 𝑧 ⟩| , |⟨ 𝑢, 𝐻 T 𝑧 ⟩| , 𝛿  , (A.5) 18 Weak-scaling efficiency (%) Throughput  ( elements/s) 10 3     
+
+> 100 95 90 85 80 75 70 65 100 95 90 85 80 75 70 65 10 010 -1 10 110 012 24 48 96 252 516 1020
+
+MPI ranks      
+
+> 12 24 48 96 252 516 1020
+
+MPI ranks      
+
+> 12 24 48 96 252 516 1020
+
+MPI ranks      
+
+> M= 1
+> M= 5
+> M= 10
+> M= 20
+> M= 50
+
+(c)(d) (e) (f)(a) (b)Execution time  (s) Execution time  (s) 
+
+> 80 70 60 50 40 30 20 10 300 250 200 150 100 50 0
+> Throughput  ( elements/s) 10 3
+> Weak-scaling efficiency (%)
+
+3DTGV      
+
+> 12 24 48 96 252 516 1020
+
+MPI ranks      
+
+> 12 24 48 96 252 516 1020
+
+MPI ranks      
+
+> 12 24 48 96 252 516 1020
+
+MPI ranks 
+
+2Dcyl 3DTGV 2Dcyl 2Dcyl 3DTGV Figure 8: Optimizer-free weak scaling of one full forward–reverse exact-gradient evaluation on Aurora for ( a–c) 2Dcyl and ( d–f ) 3DTGV. Markers denote medians over three post-warm-up trials. Throughput and weak-scaling efficiency are computed from the median times and normalized by the corresponding 12-rank result. Table 6: Distributed halo-transpose dot-product error across the weak-scaling allocations. Nodes Ranks 2Dcyl 𝑒 𝐻 3DTGV 𝑒 𝐻 
+
+1 12 1.64 × 10 −6 6.67 × 10 −9
+
+2 24 7.95 × 10 −7 1.56 × 10 −8
+
+4 48 3.95 × 10 −7 2.69 × 10 −8
+
+8 96 2.25 × 10 −7 3.37 × 10 −8
+
+21 252 6.45 × 10 −8 2.69 × 10 −8
+
+43 516 5.34 × 10 −8 2.18 × 10 −8
+
+85 1020 1.34 × 10 −8 3.24 × 10 −8
+
+where 𝛿 > 0 is a small numerical floor. This test verifies that the reverse communication applies the transpose of the forward halo mapping, including accumulation of received sensitivities into their owning elements. Table 6 reports the resulting errors. Overall, every allocation satisfies the prescribed transpose-consistency test. At 1,020 ranks, one halo action carries 30.23 MB and 511.02 MB of aggregate application data for 2Dcyl and 3DTGV, respectively. An 𝑀 -step exact-gradient evaluation performs 2 𝑀 forward gathers and 𝑀 
+
+transpose scatters. Each rank stores 𝑀 + 1 model-facing and solver-velocity states together with 𝑀 timestep values, giving an explicit tape-storage complexity of O( 𝑀 𝑁 local ). At 𝑀 = 50, the rank-local XPU tape requires 4.11 MiB/rank for 2Dcyl and 61.27 MiB/rank for 3DTGV, well below the nominal 64-GB tile-local HBM capacity. These memory measurements are limited to one node. 19 References 
+
+[1] Jonathan F. MacArt, Justin A. Sirignano, and Jonathan B. Freund. Embedded training of neural-network subgrid-scale turbulence models. Physical Review Fluids , 6(5):050502, 2021. doi: 10.1103/ PhysRevFluids.6.050502. [2] Dmitrii Kochkov, Jamie A. Smith, Ayya Alieva, Qing Wang, Michael P. Brenner, and Stephan Hoyer. Machine learning–accelerated computational fluid dynamics. Proceedings of the National Academy of Sciences , 118(21):e2101784118, 2021. doi: 10.1073/pnas.2101784118. [3] Kiwon Um, Robert Brand, Yun Raymond Fei, Philipp Holl, and Nils Thuerey. Solver-in-the-loop: Learning from differentiable physics to interact with iterative PDE-solvers. In Advances in Neural Information Processing Systems , volume 33, pages 6111–6122. Curran Associates, Inc., 2020. [4] Björn List, Li-Wei Chen, and Nils Thuerey. Learned turbulence modelling with differentiable fluid solvers: Physics-based loss functions and optimisation horizons. Journal of Fluid Mechanics , 949:A25, 2022. doi: 10.1017/jfm.2022.738. [5] Paul Fischer, Stefan Kerkemeier, Misun Min, Yu-Hsiang Lan, Malachi Phillips, Thilina Rathnayake, Elia Merzari, Ananias Tomboulides, Ali Karakus, Noel Chalmers, and Tim Warburton. NekRS, a GPU-accelerated spectral element Navier–Stokes solver. Parallel Computing , 114:102982, 2022. doi: 10.1016/j.parco.2022.102982. [6] Junoh Jung, Emil M. Constantinescu, Riccardo Balin, and Bethany Lusch. A hybrid physics–machine-learning framework for enhancing coarse-grid spectral element simulations for large-scale computing. In 
+
+AIAA AVIATION 2026 Forum , San Diego, CA, 2026. American Institute of Aeronautics and Astronautics. doi: 10.2514/6.2026-4474. AIAA Paper 2026-4474. [7] Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David Duvenaud. Neural ordinary differential equations. In Advances in Neural Information Processing Systems , volume 31, 2018. [8] Christopher Rackauckas, Mike Innes, Yingbo Ma, Jesse Bettencourt, Lyndon White, and Vaibhav Dixit. DiffEqFlux.jl: A Julia library for neural differential equations. arXiv preprint arXiv:1902.02376 , 2019. doi: 10.48550/arXiv.1902.02376. [9] Christopher Rackauckas, Yingbo Ma, Julius Martensen, Collin Warner, Kirill Zubov, Rohit Supekar, Dominic Skinner, Ali Ramadhan, and Alan Edelman. Universal differential equations for scientific machine learning. arXiv preprint arXiv:2001.04385 , 2020. doi: 10.48550/arXiv.2001.04385. [10] Yuanming Hu, Luke Anderson, Tzu-Mao Li, Qi Sun, Nathan Carr, Jonathan Ragan-Kelley, and Frédo Durand. DiffTaichi: Differentiable programming for physical simulation. In International Conference on Learning Representations , 2020. [11] Deniz A. Bezgin, Aaron B. Buhendwa, and Nikolaus A. Adams. JAX-Fluids 2.0: Towards HPC for differentiable CFD of compressible two-phase flows. Computer Physics Communications , 308:109433, 2025. doi: 10.1016/j.cpc.2024.109433. [12] Aleksandra Franz, Hao Wei, Luca Guastoni, and Nils Thuerey. PICT–a differentiable, GPU-accelerated multi-block PISO solver for simulation-coupled learning tasks in fluid dynamics. Journal of Computa-tional Physics , 544:114433, 2026. doi: 10.1016/j.jcp.2025.114433. [13] Gabriel D. Weymouth and Bernat Font. WaterLily.jl: A differentiable and backend-agnostic Julia solver for incompressible viscous flow around dynamic bodies. Computer Physics Communications , 315: 109748, 2025. doi: 10.1016/j.cpc.2025.109748. [14] Jian-Xun Wang, Jin-Long Wu, and Heng Xiao. Physics-informed machine learning approach for reconstructing Reynolds stress modeling discrepancies based on DNS data. Physical Review Fluids , 2 (3):034603, 2017. doi: 10.1103/PhysRevFluids.2.034603. 20 [15] Romit Maulik, Omer San, Adil Rasheed, and Prakash Vedula. Subgrid modelling for two-dimensional turbulence using neural networks. Journal of Fluid Mechanics , 858:122–144, 2019. doi: 10.1017/jfm. 2018.770. [16] Xiantao Fan, Deepak Akhare, and Jian-Xun Wang. Neural differentiable modeling with diffusion-based super-resolution for two-dimensional spatiotemporal turbulence. Computer Methods in Applied Mechanics and Engineering , 433:117478, 2025. doi: 10.1016/j.cma.2024.117478. [17] Varun Shankar, Dibyajyoti Chakraborty, Venkatasubramanian Viswanathan, and Romit Maulik. Differ-entiable turbulence: Closure as a partial differential equation constrained optimization. Physical Review Fluids , 10(2):024605, 2025. doi: 10.1103/PhysRevFluids.10.024605. [18] Xiantao Fan, Yi Liu, Meng Wang, and Jian-Xun Wang. Differentiable hybrid neural–CFD modelling of wall-bounded turbulence: Coupled learning of subgrid-scale and wall closures. arXiv preprint arXiv:2607.17357 , 2026. doi: 10.48550/arXiv.2607.17357. [19] Shinhoo Kang and Emil M. Constantinescu. Learning subgrid-scale models with neural ordinary differential equations. Computers & Fluids , 261:105919, 2023. doi: 10.1016/j.compfluid.2023.105919. [20] Shinhoo Kang and Emil M. Constantinescu. Differentiable DG with neural operator source term correction. arXiv preprint arXiv:2310.18897 , 2023. doi: 10.48550/arXiv.2310.18897. Revised version, 2025. [21] Junoh Jung and Emil M. Constantinescu. Learning differentiable weak-form corrections to accelerate finite element simulations. arXiv preprint arXiv:2601.20019 , 2026. doi: 10.48550/arXiv.2601.20019. [22] Junoh Jung and Emil M. Constantinescu. Hybrid physics–machine learning framework toward efficient simulation of turbulent flows on an exascale platform. In 78th Annual Meeting of the APS Division of Fluid Dynamics , Houston, TX, USA, November 2025. URL https://meetings-archive.aps. org/dfd/2025/c12/13/ . Abstract C12.13, oral presentation. [23] Florian Rathgeber, David A. Ham, Lawrence Mitchell, Michael Lange, Fabio Luporini, Andrew T. T. McRae, Gheorghe-Teodor Bercea, Graham R. Markall, and Paul H. J. Kelly. Firedrake: Automating the finite element method by composing abstractions. ACM Transactions on Mathematical Software , 43(3): 24:1–24:27, 2017. doi: 10.1145/2998441. [24] Sebastian K. Mitusch, Simon W. Funke, and Jørgen S. Dokken. dolfin-adjoint 2018.1: automated adjoints for FEniCS and Firedrake. Journal of Open Source Software , 4(38):1292, 2019. doi: 10.21105/joss.01292. URL https://doi.org/10.21105/joss.01292 .[25] Michael B. Giles and Niles A. Pierce. An introduction to the adjoint approach to design. Flow, Turbulence and Combustion , 65(3–4):393–415, 2000. doi: 10.1023/A:1011430410075. [26] Patrick E. Farrell, David A. Ham, Simon W. Funke, and Marie E. Rognes. Automated derivation of the adjoint of high-level transient finite element programs. SIAM Journal on Scientific Computing , 35(4): C369–C393, 2013. doi: 10.1137/120873558. [27] Oliver Posdziech and Roger Grundmann. A systematic approach to the numerical calculation of fundamental quantities of the two-dimensional flow over a circular cylinder. Journal of Fluids and Structures , 23(3):479–499, 2007. doi: 10.1016/j.jfluidstructs.2006.09.004. [28] Dwight Barkley and Ronald D. Henderson. Three-dimensional floquet stability analysis of the wake of a circular cylinder. Journal of Fluid Mechanics , 322:215–241, 1996. doi: 10.1017/S0022112096002777. [29] Marc E. Brachet, Daniel I. Meiron, Steven A. Orszag, B. G. Nickel, Rudolf H. Morf, and Uriel Frisch. Small-scale structure of the Taylor–Green vortex. Journal of Fluid Mechanics , 130:411–452, 1983. doi: 10.1017/S0022112083001159. [30] Wim M. van Rees, Anthony Leonard, D. I. Pullin, and Petros Koumoutsakos. A comparison of vortex 21 and pseudo-spectral methods for the simulation of periodic vortical flows at high Reynolds numbers. 
+
+Journal of Computational Physics , 230(8):2794–2805, 2011. doi: 10.1016/j.jcp.2010.11.031. [31] Andreas Griewank and Andrea Walther. Evaluating Derivatives: Principles and Techniques of Algorithmic Differentiation . Society for Industrial and Applied Mathematics, Philadelphia, PA, USA, 2 edition, 2008. doi: 10.1137/1.9780898717761. [32] W. Kyle Anderson and V. Venkatakrishnan. Aerodynamic design optimization on unstructured grids with a continuous adjoint formulation. Computers & Fluids , 28(4–5):443–480, 1999. doi: 10.1016/S0045-7930(98)00041-3. [33] D. X. Wang and L. He. Adjoint aerodynamic design optimization for blades in multistage turbomachines— Part I: Methodology and verification. Journal of Turbomachinery , 132(2):021011, 2010. doi: 10.1115/ 1.3072498. [34] C. H. K. Williamson. Vortex dynamics in the cylinder wake. Annual Review of Fluid Mechanics , 28: 477–539, 1996. doi: 10.1146/annurev.fl.28.010196.002401. [35] Shivam Barwey, Pinaki Pal, Saumil Patel, Riccardo Balin, Bethany Lusch, Venkatram Vishwanath, Romit Maulik, and Ramesh Balakrishnan. Mesh-based super-resolution of fluid flows with multiscale graph neural networks. Computer Methods in Applied Mechanics and Engineering , 443:118072, 2025. doi: 10.1016/j.cma.2025.118072. [36] William E. Allcock, Benjamin S. Allen, James Anchell, Victor Anisimov, et al. Aurora: Archi-tecting Argonne’s first exascale supercomputer for accelerated scientific discovery. arXiv preprint arXiv:2509.08207 , 2025. doi: 10.48550/arXiv.2509.08207. [37] Argonne Leadership Computing Facility. Aurora machine overview. https://docs.alcf.anl.gov/ aurora/ , 2026. Accessed: Aug. 8, 2026. 
+
+> Government License (will be removed at publication): The submitted manuscript has been created by UChicago Argonne, LLC, Operator of Argonne National Laboratory (“Argonne"). Argonne, a U.S. Department of Energy Office of Science laboratory, is operated under Contract No. DE-AC02-06CH11357. The U.S. Government retains for itself, and others acting on its behalf, a paid-up nonexclusive, irrevocable worldwide license in said article to reproduce, prepare derivative works, distribute copies to the public, and perform publicly and display publicly, by or on behalf of the Government. The Department of Energy will provide public access to these results of federally sponsored research in accordance with the DOE Public Access Plan. http://energy.gov/downloads/doe-public-access-plan.
+
+22
