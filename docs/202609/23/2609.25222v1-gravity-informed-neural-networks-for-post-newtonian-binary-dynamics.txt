@@ -1,0 +1,953 @@
+Title: Gravity-Informed Neural Networks for Post-Newtonian Binary Dynamics
+
+URL Source: https://arxiv.org/pdf/2609.25222v1
+
+Published Time: Wed, 23 Sep 2026 00:26:24 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# Gravity-Informed Neural Networks for Post-Newtonian Binary Dynamics 
+
+G. Barbagallo 1, ∗ and J. Matulich 1, †
+
+> 1
+
+Instituto de F´ ısica Te´ orica UAM/CSIC C/ Nicol´ as Cabrera, 13–15, C.U. Cantoblanco, E-28049 Madrid, Spain 
+
+(Dated: September 23, 2026) We introduce a gravity-informed neural-network (GravINNs) framework for learning post-Newtonian binary orbital dynamics. The method incorporates the equations of motion directly into the training phase and is developed at three complementary levels. First, we construct single-orbit surrogates for conservative post-Newtonian dynamics and assess their accuracy across dif-ferent orbital configurations. We then extend the approach to a parametric model spanning a four-dimensional parameter space defined by the initial separation, radial and tangential momenta, and symmetric mass ratio, allowing a single trained network to represent entire families of orbits and replace repeated numerical integrations. Finally, we consider dissipative dynamics by including the leading radiation-reaction contribution at 2 .5PN order. In this regime, the network accurately reproduces both the orbital evolution and the associated secular energy loss without using dissipa-tive reference trajectories in the training. These results show that physics-informed neural-networks (PINNs) can provide accurate and flexible representations of both conservative and dissipative post-Newtonian dynamics. The complete implementation and the models used in this work are publicly available through the GravINNs repository. 
+
+I. INTRODUCTION 
+
+Since the first detection of gravitational waves from a merging binary black hole [1], extracting astrophysical in-formation from a signal has required comparing it against theoretical waveforms across a high-dimensional space of orbital parameters – masses, spins, eccentricity, orien-tation. Every such waveform rests on a solution of the relativistic two-body problem, obtained from numerical relativity [2], effective-one-body resummation [3], post-Newtonian (PN) expansions [4], post-Minkowskian meth-ods [5], or gravitational self-force theory [6]. Produc-ing enough such solutions to cover the parameter space densely is a central computational bottleneck, and has driven an extensive effort on phenomenological waveform families [7] and on reduced-order and surrogate mod-els [8, 9]. Physics-informed neural networks (PINNs) [10–12] were developed for exactly this kind of nonlinear prob-lem: instead of fitting precomputed solutions, a network is trained so that its output satisfies the governing dif-ferential equation directly, with data entering only as a sparse anchor. The method has been applied to fluid dynamics, elasticity, and reaction-diffusion systems. Re-cent work has also begun to explore physics-informed and neural approaches in relativistic gravity, including PINN solutions of the Hamiltonian constraint and the vacuum Einstein equations, neural representations of spacetimes, and physics-informed learning of PN corrections from simulation data. [13–16]. To our knowledge, this Letter presents the first physics-informed neural surrogate that solves the post-  
+
+> ∗gabriele.barbagallo@estudiante.uam.es
+> †jmatulichfabres@gmail.com
+
+Newtonian two-body dynamics directly across a contin-uous parameter space. The comparison with existing tools should be stated plainly, since the problem is al-ready solved for a single trajectory: an adaptive Runge-Kutta (RK) integrator returns one orbit faster, and to far higher accuracy, than any network we could train. What a network offers instead is coverage of the fam-ily of orbits. Conditioned on the physical parameters, a single trained network represents a continuous region of parameter space and returns any member of it at the cost of a forward pass, without retraining; and because the network is trained against the equations of motion themselves, they act as a regularizer everywhere in that space, not only near the sparse points where a reference orbit was computed. We develop this approach on the conservative 2PN two-body problem, a setting in which the exact solu-tion is known everywhere and every design choice can be checked against it, and then extend it to the dissipa-tive, radiation-reaction sector. Writing the dynamics as an autonomous system in the orbital angle, in place of time, lets us build much of the physics directly into the network rather than into the loss: the initial data are en-forced exactly, angular momentum conservation is exact by construction, and the radial periodicity of the orbit is represented by a bank of harmonic features whose fre-quency is itself learned instead of being fixed by hand. This formulation also exposes a limitation of physics-only training that is not specific to gravity: because the equa-tions are autonomous, their residual is exactly invariant under a rigid rotation of the solution, and can therefore never determine which member of that one-parameter family of rotated orbits is the physical one. The differen-tial equations fix the shape of the orbit; only sparse data – or, more efficiently, a warm start transferred from the analogous lower-order (1PN) solution – can fix its phase. This transfer does not make the network more accurate; arXiv:2609.25222v1 [gr-qc] 21 Sep 2026 2it changes, in a controlled region of the parameter space, whether the correct solution is found at all. Building on this formulation, we train a single net-work conditioned on four physical parameters (initial sep-aration, radial and tangential momenta, and symmetric mass ratio) that reproduces the conservative 2PN dy-namics, reaching a median relative orbit error of 3 .7 ×
+
+10 −4 against Runge-Kutta numerical integration, with 95% of held-out orbits below 10 −3. Analyzing these er-rors across the parameter space shows that they are not uniform: the surrogate is accurate throughout the re-gion where the PN expansion is reliable, and its failures concentrate at the two extremes of the orbit—close pe-riapsis passages in the strong field, where the physics residual is also most poorly conditioned, and the dis-tant apoapsis of strongly eccentric orbits. A comparison with a purely supervised model shows that the strong-field failure depends on the anchor density, and so is not set by the expansion alone. The same architecture ex-tends to the radiation-reaction inspiral at 2.5PN order without ever being shown a dissipative reference trajec-tory. In this regime, the pointwise residual is too small relative to the conservative dynamics to resolve the sec-ular energy loss on its own, so we supplement it with an integrated energy-balance constraint that makes the radiation-reaction signal visible to the loss. We regard the conservative two-body problem treated here as a deliberately chosen first stage of a longer pro-gram, not as an attempt to replace established numeri-cal methods for a problem they already solve well. The problem is rich enough to expose the main difficulties of physics-informed learning in gravitational dynamics, in-cluding a residual blind to a physical degree of freedom and a loss unable to resolve a small secular effect, while still remaining simple enough that these limitations can be identified clearly and the results checked against exact solutions. These are, in our view, the necessary lessons before extending physics-informed networks to settings where no such reference exists, up to and including the field equations of general relativity. The paper is organized as follows. In Sec. II we in-troduce the PN two-body dynamics in the angle domain and discuss the phase degeneracy of the autonomous for-mulation. Sec. III presents the single-orbit surrogate, in-cluding its extension to long integrations. In Sec. IV we construct the parametric surrogate. Sec. V extends the framework to dissipative dynamics at 2.5PN order for a set of specific points in parameter space. Finally, Sec. VI summarizes the main findings and discusses possible out-looks. The complete Python implementation GravINNs used in this work is publicly available here. It is worth men-tioning that all neural network models presented in this manuscript were trained locally using a mobile NVIDIA GeForce RTX 4090 GPU with 16 GB of VRAM.   
+
+> II. POST-NEWTONIAN DYNAMICS IN THE ANGLE DOMAIN A. Reduced Hamiltonian
+
+We work with the center-of-mass ADM Hamilto-nian of the two-body problem in isotropic-type coordi-nates, in the reduced form of Damour, Jaranowski and Sch¨ afer [17–19]. With total mass M = m1 + m2, re-duced mass μ = m1m2/M and symmetric mass ratio 
+
+ν = μ/M ∈ (0 , 1/4]. The motion is confined to a plane with polar coordinates (˜ r, φ ) and conjugate momenta 
+
+˜p = (˜ pr , ˜pφ). We denote by ˜ p⊥ ≡ ˜pφ/˜r the tangential component of the momentum. It is convenient to rescale the dimensionful radial coordinate ˜ r using a dimensionful 
+
+reference separation , R0, and introducing the dimension-less variable r ≡ ˜r/R 0. Introducing the characteristic velocity , v∗ ≡ pGM/R 0, we can define the dimension-less canonical momenta p ≡ ˜p/(μv ∗). Similarly, if ˜ c is the speed of light in m/s , we define the dimensionless speed of light as c ≡ ˜c/v ∗. The reduced Hamiltonian through 2PN order expressed in normalized variables is then ˆH = HN + 1
+
+c2 H1PN + 1
+
+c4 H2PN , (1) with p2 ≡ p2 = p2 
+
+> r
+
++ p2 
+
+> ⊥
+
+= p2 
+
+> r
+
++ p2
+
+> φ
+
+/r 2 and 
+
+HN = p2
+
+2 − 1
+
+r , (2) 
+
+H1PN = 18 (3 ν − 1) p4 − 12r
+
+h
+
+(3 + ν)p2 + νp 2
+
+> r
+
+i
+
++ 12r2 ,
+
+(3) 
+
+H2PN = 116 
+
+ 1 − 5ν + 5 ν2p6
+
++ 18r
+
+h
+
+(5 − 20 ν − 3ν2)p4 − 2ν2p2p2 
+
+> r
+
+− 3ν2p4
+
+> r
+
+i
+
++ 12r2
+
+h
+
+(5 + 8 ν)p2 + 3 νp 2
+
+> r
+
+i
+
+− 14r3
+
+ 1 + 3 ν. (4) The truncation (1) carries its own domain of validity, which will prove relevant to the results reported below. Defining ˜ rg = GM/ ˜c2, we adopt ˜ rbd = 20˜ rg as the thresh-old below which the 2PN approximation is expected to break down [4]. The periapsis can be estimated from 
+
+R0, and the dimensionless parameter γ ≡ v0/v ∗, which measures the initial tangential velocity v0 as a fraction of the characteristic velocity. For γ < 1, the orbit is sub-circular, and the periapsis is estimated at Newtonian or-der as ˜ rp = R0γ2/(2 − γ2). For 1 ≤ γ < √2, it reduces to the reference separation, ˜ rp = R0; whereas γ ≥ √2corresponds to an unbound orbit. The resulting periap-sis is then compared with ˜ rbd : only configurations with ˜rp > ˜rbd are considered to lie within the 2PN validity regime. As Section IV A 3 will show, errors concentrate at close periapsis passages below ∼ 10 ˜ rg and at the dis-tant apoapsis of highly eccentric orbits, but the surro-gate still succeeds on most orbits between 10 and 20 ˜ rg ,3so this baseline criterion is conservative, and the com-parison with a purely supervised model in Sec. IV A 4 shows that the strong-field failure is not attributable to the expansion alone.  
+
+> B. Hamilton’s equations in the angle-domain
+
+The Hamiltonian (1) is independent of φ, so pφ ≡ L is exactly conserved, and independent of time, so ˆH ≡ E
+
+is exactly conserved. For an orbit with L > 0, φ(t) is strictly monotonic ( ˙ φ = ∂ ˆH/∂L = L/r 2 + O(c−2) > 0), and can replace time as the evolution variable. Although time would appear to be the natural evolution parame-ter, we choose to use φ as it offers computational advan-tages for the problem considered here. The correspond-ing time-domain formulation is currently under study [20] and represents a natural extension of the present ap-proach towards full GR. Writing u ≡ 1/r , Hamilton’s equations reduce to the first-order autonomous system 
+
+du dφ = −u2 ∂ ˆH/∂p r
+
+∂ ˆH/∂L , dp r
+
+dφ = − ∂ ˆH/∂r ∂ ˆH/∂L , (5) with L entering as a constant fixed by the initial data. At Newtonian order Eq. (5) reduces to the classical Bi-net equation governing Keplerian conic sections; while the PN corrections lead to a non-closed orbit with a secular periapsis advance, producing the characteristic precessing-rosette structure. Three properties of this for-mulation are particularly relevant for what follows: (i) the domain φ ∈ [0 , φ max ] is compact and can be chosen identically for all bound orbits, independently of their po-tentially different orbital periods; (ii) u(φ) and pr (φ) are smooth, bounded, and nearly periodic functions, making them well suited to spectral representations; and (iii) the right-hand sides of Eq. (5) contain no explicit dependence on φ, so that the resulting system is autonomous . As we will see in Sec. II D, the last property has important con-sequences for the physics-informed training.  
+
+> C. The four-parameter family
+
+We parametrize the initial data at φ = 0 by 
+
+θ ≡ (ν, r (0) , p r (0) , p ⊥(0)) ≡ (ν, r 0, p r, 0, γ ) ,
+
+where we setted p⊥(0) = γ. The conserved angular mo-mentum is given by 
+
+L = pφ = rp ⊥ = r(0) p⊥(0) = r0γ. (6) The Newtonian energy (1) and eccentricity associated with these initial data are 
+
+EN, 0 = 12
+
+
+
+p2 
+
+> r, 0
+
++ L2
+
+r20
+
+
+
+− 1
+
+r0
+
+, eN, 0 = p1 + 2 E0L2.
+
+(7)                                      
+
+> δ[rad] ℓPDE EL2(δ)06.7×10 −800.01 6.6×10 −81.4×10 −3
+> 0.02 6.9×10 −85.5×10 −3
+> 0.05 6.0×10 −81.4×10 −2
+> 0.16.6×10 −82.7×10 −2
+> TABLE I. Phase blindness of the angle-domain residual, mea-sured on an Runge-Kutta 2PN orbit (three revolutions with initial parameters θ= (0 .24 ,1.27 ,0.81 ,0.18).
+
+These quantities are used as a priori validity filters, with 
+
+EN, 0 < 0 corresponding to bound Newtonian motion, and, in Sec. IV, to bound the network output range on an orbit-by-orbit basis. Throughout this section we will use m1 = m2 =1.4 M⊙, ν = 1/4, r0 = 1, pr, 0 = 0, γ = 0.8 and 
+
+R0 = 200 km, unless explicitly specified.  
+
+> D. Phase blindness of the autonomous residual
+
+Before introducing any network we record the property (iii) of the system (5), because it determines the design of everything that follows. The system has the form y′(φ) = 
+
+F (y(φ)) with y = ( u, p r ) and F explicitly independent of φ. It is therefore invariant under translations of φ:if y(φ) is a solution, so is yδ (φ) ≡ y(φ + δ) for every constant δ, since y′ 
+
+> δ
+
+(φ) = y′(φ + δ) = F (y(φ + δ)) = 
+
+F (yδ (φ)). Therefore, the dynamics do not know where 
+
+φ = 0 is; only the initial data select a member of the one-parameter family of rigidly rotated orbits. This has important consequences for residual-based training. A loss ℓPDE built from the equations of motion—however it is weighted, sampled, or optimized— 
+
+cannot distinguish a solution from any of its phase trans-lates , because every translate has identically zero resid-ual. In contrast, a trajectory error, such as the relative 
+
+L2 error, compares the predicted solution with a specific reference trajectory and is therefore sensitive to their rel-ative phase. For two trajectories y(φ) and yδ (φ), we define the relative L2 error as 
+
+EL2 (δ) ≡
+
+hR φmax  
+
+> 0
+
+∥yδ (φ) − y(φ)∥2 dφ 
+
+i1/2
+
+hR φmax  
+
+> 0
+
+∥y(φ)∥2 dφ 
+
+i1/2 . (8) Table I illustrates this effect using a numerical Runge– Kutta solution of the 2PN system: for instance, a rigid shift of 0 .1 rad leaves the residual unchanged at the 10 −8
+
+order while the relative L2 error reaches 2 .7 × 10 −2. If the network prediction shifts along the orbit by chang-ing its phase, ℓPDE does not change significantly. Con-sequently, the gradient of the physics loss provides no signal that would drive the prediction back towards the 4correct phase. In other words, the differential equations alone do not determine the phase. It must therefore be determined by additional informa-tion, which can come from the initial condition, super-vised data, or from the architecture used to propagate the initial-condition information along the solution. The initial condition fixes the phase at φ = 0, while super-vised data fix the phase at the locations where they are provided. If this information is not sufficiently propa-gated along the trajectory, the prediction can drift in phase without being penalized by the physics residual. The failure modes discussed in Secs. III and III E will be understood in this way. We notice also that this phase degeneracy is a conse-quence of the conservative and autonomous nature of the dynamics. It is absent in explicitly non-autonomous sys-tems, such as the radiation-reaction-driven inspiral con-sidered in Sec. V, where the secular evolution of the or-bit provides a natural reference for the system’s position along the trajectory. The conservative problem is there-fore the more challenging case for physics-only training.  
+
+> III. THE SINGLE-ORBIT SURROGATE
+
+We first introduce the method in its most fundamen-tal setting: employing a neural network to represent a 
+
+single bound orbit of the system (5) at a fixed parame-ter point θ. Sections III E and IV then extend this set-ting in two directions, first to long-time integrations of individual orbits and then to the representation of the four-parameter family of bound orbits parametrized by 
+
+θ = ( ν, r 0, p r, 0, γ ). Beyond being the natural starting point, the single-orbit problem is a controlled laboratory. Since the ref-erence orbit can be computed numerically to high accu-racy, the error of the network can be evaluated without significant contribution from numerical one. This allows us to address two questions that are central to the sub-sequent developments: when does the physics-informed residual alone determine the orbit, and when does it re-quire supervised data to supply the phase that Sec. II D shows the residual cannot see? The answer, developed in Sec. III D, is that data are inessential to achieve accu-rate predictions across almost the entire physically valid domain but become decisive for reliability in the near-circular limit, where the degeneracy is most severe.  
+
+> A. Network and output composition
+
+We represent the solution of Eqs. (5) with a neural net-work N that takes the orbital angle φ as its only physical input. Before being passed to the network, φ is mapped to a fixed Fourier-feature embedding, F(φ), to provide the network with a representation better suited to the oscillatory character of the orbital dynamics, as we will describe in details below. The network itself consists of 5 fully connected layers of width 128 and tanh activa-tion functions. Its two outputs,  Nu(φ), Npr (φ), are not used directly as predictions for u and pr , while are passed through a composition function, 
+
+φ → F(φ) N
+
+7−→  Nu(φ), Npr (φ) 7 −→  u(φ), p r (φ),
+
+that fixes, by construction, three essential properties that a free network output cannot guarantee: that u and pr
+
+remain within the physical range of the orbit at every 
+
+φ, that the initial condition holds exactly, and that no optimization gradients are expended enforcing either con-straint. The angular momentum L is not predicted by the network: it is fixed by the initial data through Eq. (6), and its conservation is therefore imposed exactly. The composition that guarantees all of these conditions are satisfied is 
+
+u(φ) = umin + ( umax − umin ) σ
+
+h
+
+a0 + g(φ) Nu(φ)
+
+i
+
+, (9) 
+
+pr (φ) = pmax  
+
+> r
+
+tanh 
+
+h
+
+b0 + g(φ) Npr (φ)
+
+i
+
+, (10) with σ the logistic function and 
+
+g(φ) ≡ 1 − e−φ/τ , τ ≡ 0.02 φmax . (11) In the following, we outline the structure and motivations of this transformation. 
+
+a. Squashing onto a physical range. Early in train-ing, when loss gradients are large, unconstrained network outputs can easily wander into unphysical regimes (such as negative values for u or extreme values for the mo-mentum pr ). To prevent this, we transform the raw net-work outputs and rescale them to the physically allowed ranges of u and pr . For u, we use a logistic sigmoid to restrict the output to the interval [ umin , u max ], while for the signed radial momentum pr we use a tanh function to restrict it to [ −pmax  
+
+> r
+
+, p max  
+
+> r
+
+]. The determination of these intervals—derived from measured orbital excursions—is detailed in Sec. III E. 
+
+b. Enforcing the initial condition exactly. At φ = 0 the composition must reduce to the known initial data u0
+
+and pr, 0, for every value of the network weights, since this is the only local information available to break the phase degeneracy of Sec. II D. This is achieved by choosing the offsets a0 and b0 inside the nonlinear functions so that 
+
+u(0) = u0 and pr (0) = pr, 0: inverting Eq. (9) and (10) at φ = 0 gives 
+
+a0 = log u0 − umin 
+
+umax − u0
+
+, (12) 
+
+b0 = artanh 
+
+ pr, 0
+
+pmax 
+
+> r
+
+
+
+. (13) Both are computed once, from the known initial data, and they are not trained. In this way, the initial condi-tion never appears as a term competing with the physics residual in the loss. 5
+
+c. Releasing the initial condition away from φ = 0 .
+
+The initial condition is imposed exactly at φ = 0, but the network must be free to modify the output for φ > 0. We therefore introduce the gate g(φ) in Eq. (11), which mul-tiplies the network output before it enters the nonlinear transformation. Since g(0) = 0, the network contribu-tion vanishes at the initial point, independently of its value, and the offsets a0 and b0 are sufficient to impose the initial condition. As φ increases, g(φ) approaches unity and the network contribution gradually becomes dominant. With τ = 0 .02 , φ max , this transition takes place over a small fraction of the angular domain. The same value of τ is used for all orbits and is chosen only to release the initial-condition constraint over a short in-terval while keeping the output smooth. Taken together, Eqs. (9)–(11) incorporate the known initial conditions and physical bounds directly into the network output. The network therefore only needs to represent the evolu-tion of the unknown trajectory between φ = 0 and φmax .
+
+d. Fourier input embedding. While the preceding operations constrain the network’s output, we must also modify its input representation. Specifically, we map φ
+
+into a fixed random Fourier-feature embedding before en-tering the network. We emphasize that this a fixed archi-tectural coordinate transformation designed to address a well-known optimization pathology. A network fed the bare angle φ learns slowly-varying structure readily but struggles with rapid oscillation, a well-documented pathology of networks with smooth activations [21]. The fix is to hand the network oscillatory building blocks di-rectly: rather than φ itself, the first layer receives 
+
+F(φ) = 
+
+h
+
+ˆφ, sin( bL 
+
+> j
+
+ˆφ), cos( bL 
+
+> j
+
+ˆφ), sin( bH 
+
+> k
+
+ˆφ), cos( bH 
+
+> k
+
+ˆφ)
+
+i
+
+,
+
+(14) where ˆ φ ≡ φ/φ max is the normalized angle and the fre-quencies bL 
+
+> j
+
+and bH 
+
+> k
+
+are sampled from Gaussian distribu-tions according to 
+
+bL 
+
+> j
+
+∼ G (0 , σ 2L), bH 
+
+> k
+
+∼ G (0 , σ 2H), σH > σ L, (15) where G(μ, σ 2) denotes a Gaussian distribution with mean μ and variance σ2. The index ranges are j =1, . . . , N L and k = 1 , . . . , N H, where we use NL = 10, 
+
+NH = 16, σL = 3 and σH = 8 throughout. The embed-ding (14) therefore has dimension 1 + 2 NL + 2 NH = 53, which sets the width of the input layer. The two fre-quency bands provide oscillatory features over different frequency ranges: the lower-frequency band helps repre-sent the broader variation of the orbital variables, while the higher-frequency band allows for faster variations. These frequencies are randomly sampled once at initial-ization and kept fixed during training, thus they encode no information about the particular orbit. The purpose of this transformation is to provide the network with os-cillatory functions of different frequencies, which makes it easier to represent the oscillatory dependence of u and 
+
+pr on φ rather than using the angle alone. This construction is effective for integrations covering a few radial periods, but becomes less suitable as the integration interval increases. If the domain contains 
+
+N = φmax /Φr radial periods, the radial motion under-goes N repetitions over the normalized input interval. The random Fourier features do not contain the radial frequency Φ −1 
+
+> r
+
+as a prescribed scale, so the network must infer the corresponding recurrence from the available fea-tures. A small error in this frequency produces a phase error that grows with the number of radial periods. In-creasing σH does not solve this problem, since adding higher-frequency random features does not ensure that the orbital frequency or its harmonics are represented accurately. To resolve this problem, Sec. III E introduces a third feature bank built from harmonics of the orbit’s 
+
+own radial frequency (learned during training), demon-strating that supplying this physical recurrence scale is what makes long integrations tractable.  
+
+> B. The physics loss
+
+The equations of motion (5) can be written as two residual equations by bringing all terms to the left-hand side, 
+
+Ru(φ) = du dφ + u2 ∂ ˆH/∂p r
+
+∂ ˆH/∂L , (16) 
+
+Rpr (φ) = dp r
+
+dφ + ∂ ˆH/∂r ∂ ˆH/∂L . (17) An exact solution of the equations of motion satisfies 
+
+Ru = Rpr = 0 at every value of φ. In the RHS of Eqs. (16)–(17), the derivatives du/dφ and dp r /dφ are computed by automatic differentiation of the network’s own output through Eqs. (9)–(10). The remaining terms of the RHS are evaluated analytically from the Hamil-tonian at the phase-space point ( u, p r , L ) predicted by the network. The residual therefore measures whether the trajectory generated by the network satisfies the 2PN equations of motion, without requiring a reference numerical solution. This is what makes the training physics-informed rather than supervised. We enforce these equations at collocation points sampled uniformly across the angular domain, φi ∼U[0 , φ max ]. At each training step, Nc = 4000 points are newly sampled, allowing the equations to be enforced at different locations along the orbit. The physics loss is defined as 
+
+ℓPDE = 1
+
+NcNcX
+
+> i=1
+
+R2
+
+> u
+
+(φi) + R2 
+
+> pr
+
+(φi) , (18) and minimizing it drives the network toward a function that satisfies the equations of motion throughout the in-terval [0 , φ max ]. Energy conservation provides an additional constraint that can be used during training. The energy residual is defined as 
+
+RE (φ) = ˆH(u(φ), p r (φ), L ) − E, (19) 6where ˆH(u(φ), p r (φ), L ) is evaluated analytically at the phase-space point ( u, p r , L ) predicted by the network and 
+
+E, being conserved, is computed exactly using the Hamil-tonian evaluated at the initial condition. We quantify deviations from this energy shell with 
+
+ℓE = 1
+
+NcNcX
+
+> i=1
+
+R2 
+
+> E
+
+(φi). (20) In principle, this constraint is redundant because an ex-act solution of Hamilton’s equations with the correct ini-tial condition conserves the Hamiltonian automatically. In practice, however, the network does not satisfy the equations exactly during the early stages of training. In-cluding ℓE with a small weight provides an additional constraint that helps keep the prediction close to the cor-rect energy shell while the physics residual is being re-duced. The energy term is therefore used as a numerical aid to the optimization.  
+
+> C. Training Regimes: Pure Physics-Informed vs. Transfer Learning
+
+We consider two training strategies for the single-orbit problem. Both use the physics loss introduced above, while they differ in whether supervised information from a reference orbit is used during training. As an optional data-driven term, we introduce the loss 
+
+ℓanchor = 1
+
+NcNcX
+
+> i=1
+
+h u(φi) − uref (φi)2
+
++  pr (φi) − pref  
+
+> r
+
+(φi)2i
+
+,
+
+(21) which measures the deviation of the network prediction from a single reference trajectory. The total loss is there-fore 
+
+ℓ = αℓ anchor + β ℓPDE + ℓE
+
+ + 12 ℓE . (22) We use two limiting training modes to study the role of the anchor: 
+
+• Physics-only (“cold”). We set α = 0 and train the network from a random initialization using only the physics and energy losses. The only information about the desired trajectory is therefore the initial condition, which is enforced exactly by the network architecture. 
+
+• Transfer (“warm”). Training is divided into three stages. In stage 1, the network is fitted to a reference orbit that we choose to be the 1PN so-lution for the same initial data, with β = 0. In stage 2, the physics loss is introduced gradually: β
+
+is increased to one while α is decreased linearly to zero. In stage 3, the network is trained using the physics loss alone, with α = 0 and β = 1. The reference trajectory used for transfer is deliberately computed at 1PN order, using a Runge–Kutta integra-tion, and therefore it is not a solution of the 2PN equa-tions enforced during training. The purpose of the 1PN reference is not to provide the final solution, but rather to serve as a useful initial guess for the optimizer. Since it closely follows the 2PN orbit in both orbital struc-ture and phase, it helps place the optimizer near the de-sired solution. The reference is then gradually removed during training rather than instantaneously, since, as we will see in Sec. III E, an abrupt transition to the physics loss can lead to a loss of accuracy. The transfer proce-dure should therefore be viewed as an initialization strat-egy: the lower-order solution provides a starting point, while the final solution is determined entirely by the tar-get 2PN dynamics. Optimization is performed using the Adam optimizer with a cosine learning rate schedule de-caying from 3 × 10 −3 to 3 × 10 −6. We find that cosine annealing is important for reaching low final losses: with a constant learning rate, optimization can get trapped in sub-optimal local minima, with final losses several orders of magnitude larger than those obtained with the cosine schedule.  
+
+> D. Reliability and the near-circular degeneracy
+
+We now focus on the reliability of physics-only train-ing rather than only on its final accuracy. The two turn out to be different, and the difference is a direct evidence we can offer for the relevance of this study to numerical relativity. Across the PN-valid regime, a single orbit can generally be reproduced with an L2 error of order 10 −5
+
+using the physics residual alone. The warm start gives only a modest improvement in accuracy, particularly for more eccentric orbits. However, accuracy alone does not reveal whether the training consistently finds the correct solution. As discussed in Sec. II D, the physics residual is invariant under shifts of the orbital phase. This be-comes particularly relevant for nearly circular orbits, for which a small phase shift produces only a small change in the trajectory. The loss therefore develops an almost degenerate direction, making it possible for physics-only training to converge to a phase-shifted solution. The ef-fect is small over a few radial periods but becomes more visible over longer integrations, so we use 10 radial peri-ods throughout this subsection. 
+
+a. Protocol. We consider orbits with different initial eccentricities, spanning the near-circular to moderately eccentric case, keeping the periapsis well inside the 2PN-valid regime (˜ rp > ˜rbd ), so that difficulty is controlled only by degeneracy. For each orbit, both physics-only and warm-started training are performed from several random initializations. We define a failure as a converged run with EL2 > 10 −3.
+
+b. Results. The results are summarized in Table II. Evaluated across 50 different orbits in each eccentricity stratum, physics-only training fails in 38% of the runs 7                                                                       
+
+> Physics-only (cold) Transfer (warm)
+> e0Fail Med ℓPDE Med EL2Fail Med ℓPDE Med EL2
+> 0.02 38 2.9×10 −81.3×10 −401.6×10 −93.2×10 −5
+> 0.11 10 2.9×10 −85.7×10 −505.7×10 −98.8×10 −5
+> 0.26 61.2×10 −78.8×10 −502.3×10 −83.7×10 −5
+> 0.54 23.1×10 −71.5×10 −408.0×10 −81.4×10 −4
+> TABLE II. Reliability of physics-only versus warm-started training over ten radial periods at 2PN. “Fail” is the frac-tion of random initializations reaching EL2>10 −3. Med ℓPDE
+> and Med EL2are medians over the converged runs. The failing runs reach residuals within a factor of a few of the converged ones in the same stratum, so failure does not indicate a lack of convergence.
+
+for the most circular orbits ( e0 ≃ 0.02), while no fail-ures are observed with the warm start. The failure rate falls steeply and monotonically with eccentricity: 10%, 6%, and 2% at e0 ≃ 0.11, 0 .26, and 0 .54, respectively. The loss of reliability is therefore strongly eccentricity-dependent, as expected from the phase degeneracy, but it is not strictly confined to the near-circular regime. Warm-started training did not fail in any of the 200 runs performed. A representative comparison is shown in Fig. 1, where a failed cold start, a successful cold start, and a successful transfer-learning run are compared through their training loss and EL2 convergence. For the runs that do converge, the two approaches gen-erally achieve comparable accuracy. In the most circular case, however, the warm start improves both reliability and accuracy, with median errors of 3 .2 × 10 −5 compared with 1 .3 × 10 −4 for physics-only training. The fact that different random seeds fail for different orbits indicates that the effect is associated with the loss landscape rather than with a particular initialization. The residual reached by the failing runs makes this fact explicit. Failure does not mean that training failed to converge: these runs converge, and they converge to configurations that satisfy the equations of motion while describing the wrong orbit. This is the phase degeneracy of Sec. II D. 
+
+c. Relevance to the fully relativistic problem. This example is also relevant to more general physics-informed models. In numerical relativity, for example, minimizing only the evolution-equation residual does not necessar-ily guarantee that the Hamiltonian and momentum con-straints are numerically satisfied [24]. Similarly, gauge conditions introduce additional freedom that is not fixed by the evolution equations alone. Although these cases are not identical to the phase degeneracy considered here, they illustrate the same practical issue: a small physics residual does not always guarantee that the optimizer has found the desired physical solution. In the present two-body problem the degeneracy is simple and appears mainly near circular orbits. More complex relativistic systems can contain many additional directions that are weakly constrained by the loss. This suggests that the transfer strategy may become increasingly important as the dimensionality of the problem grows. Work in this direction is currently under way [20].  
+
+> E. Long orbits: phase accumulation and the radial-harmonic representation
+
+In this section we ask whether the architecture intro-duced in Sec. III A can represent the solution accurately over long integration intervals. In this case the main problem arises from the accumulation of small phase er-rors in the network representation. The limitation becomes apparent when the architec-ture of Secs. III A–III C is applied to longer orbits. With this setup, the network reaches EL2 ∼ 10 −5 over 10 ra-dial periods, but its performance gets worse substantially when the integration interval is increased. For integra-tions covering about 50 revolutions, using 5 initial condi-tions with e0 in the range [0 .06 , 0.64] and safe periapses (˜ rp > ˜rbd ), the network fails to reach the target accu-racy, namely EL2 ∼ 10 −3, in 4 of the 5 cases and stalls at 
+
+EL2 ∼ 10 −2, while the loss reaches a plateau. Increasing the training time does not remove this plateau, indicat-ing that the limitation is not simply due to insufficient optimization. The origin of this degradation can be understood from the periodic structure of the radial motion. For a bound conservative orbit, the radial variables repeat after an angular interval Φ r corresponding to two consecutive pe-riapsis passages. A network that represents the orbit over many revolutions must therefore reproduce the same ra-dial pattern repeatedly and with a very small phase error. If the frequency represented by the network differs from the true radial frequency by a fractional amount ϵ, the re-sulting phase error grows approximately as ∆ φ ∼ ϵφ max .An error that is negligible over a few revolutions can therefore become significant over tens of revolutions. The problem is particularly relevant for the random Fourier features used in the architecture, since their frequen-cies are sampled independently of the orbital frequency. Therefore, the network must construct the true periodic-ity from features that do not explicitly contain the phys-ical radial frequency. For long integrations, this becomes a limitation of the representation itself. 
+
+a. Four modifications. We introduce four changes to the architecture and training procedure to extend the surrogate to long orbits. 
+
+(i) Radial-harmonic features. The radial motion of a conservative bound orbit is periodic in the angular do-main, u(φ + Φ r ) = u(φ), where Φ r is the angular sep-aration between successive periapsides. The relativistic periapsis advance changes Φ r from its Newtonian value 2π, but does not introduce a secular drift in the radial variables. This known periodicity can therefore be in-corporated directly into the input representation. We 8
+
+FIG. 1. Comparison of single-orbit training outcomes for different initialization strategies. The left column shows the training loss, while the right column reports the corresponding convergence of EL2 . From top to bottom, the rows correspond to a failed cold start, a successful cold start, and a successful transfer-learning run. The final errors are EL2 = 8 .01 × 10 −3, 8 .23 × 10 −4,and 5 .92 × 10 −5, respectively. The dotted line marks the target accuracy EL2 = 10 −3.
+
+supplement the random Fourier features of Eq. (14) with 
+
+F(φ) = {cos( nωφ ), sin( nωφ )}Nh 
+
+> n=1
+
+, ω = 2π
+
+Φr
+
+, (23) where ω is a learnable scalar 1 initialized from the mea-sured periapsis spacing of the reference orbit. The same set of harmonics is then used at every radial cycle, so the representation does not have to learn a new oscillatory pattern at each revolution. We use Nh = 10, which is suf-ficient for the orbits considered here. This construction does not remove phase accumulation completely, since a small error in the learned ω still produces a phase er-ror that grows with φmax . It does, however, make the       
+
+> 1For a single orbit this is just a number: ωis stored directly as a trainable parameter of the network, with no auxiliary struc-ture, since Φ rcan be measured from that orbit’s own reference. Section IV replaces it by a small auxiliary network once ωmust become a function of the orbital parameters.
+
+relevant frequency an explicit parameter of the represen-tation rather than something that must be reconstructed from a set of unrelated random frequencies. 
+
+(ii) Output ranges from the measured orbital excursion. 
+
+The output ranges in Eqs. (9)–(10) were initially chosen using padded Newtonian estimates. These ranges can be much larger than the actual deviation of a nearly circular orbit. As a result, the physical trajectory occupies only a small fraction of the available output interval, particu-larly for pr . This degrades the conditioning of the output transformation. For example, from pr = pmax  
+
+> r
+
+tanh( z), a perturbation in the network output gives approximately 
+
+δp r ≃ pmax  
+
+> r
+
+δz , when z is small. Thus a large value of 
+
+pmax  
+
+> r
+
+maps small errors in the raw network output, δz ,into larger errors in the physical momentum. We in-stead determine the output ranges from the measured variation of the reference orbit and add a fixed relative padding. This keeps the trajectory within a compara-ble fraction of the available range, with an occupancy of roughly 70–80% for the cases considered. The effect is 9particularly large near circularity. For the most circular orbit tested, the original ranges left the residual unable to fall below 2 × 10 −4—four orders of magnitude above its value in well-conditioned runs—with a trajectory er-ror of 6 .8 × 10 −2. With the ranges rescaled, the same configuration reaches EL2 = 3 .6 × 10 −5.
+
+(iii) Causal weighting with gradual removal. For long integrations, we introduce a causal weighting of the physics residual, w(φ) = exp[ −ϵ Σ( φ)] , where Σ( φ) is the normalized cumulative residual up to φ:Σ( φ) ≡
+
+Z φ
+
+> 0
+
+R2
+
+> u
+
+(φ′) + R2 
+
+> pr
+
+(φ′) dφ ′
+
+Z φmax 
+
+> 0
+
+R2
+
+> u
+
+(φ′) + R2 
+
+> pr
+
+(φ′) dφ ′
+
+. (24) In practice Σ is evaluated as a cumulative sum over col-location points sorted in φ, normalized by the total over the batch so that Σ ∈ [0 , 1] and ϵ is independent of φmax 
+
+and of the overall residual scale. The weight is largest near the initial condition and decreases as the cumu-lative residual grows. The network is therefore forced to first satisfy the equations close to φ = 0 and then progressively extend the solution to larger values of φ.This helps propagate the phase fixed by the initial con-dition along the orbit. The weighting is particularly use-ful for near-circular orbits, for which the physics residual provides only weak information about the orbital phase. However, removing the weighting abruptly can cause the network to move to a different phase trajectory. We therefore decrease ϵ gradually during training, so that the weighted residual continuously approaches the stan-dard unweighted residual. The final stage is performed with ϵ = 0. For eccentric orbits, the effect is less pro-nounced because the sharp periapsis passages provide a stronger phase reference. 
+
+(iv) Two-stage optimization. Finally, the training is di-vided into a search stage and a refinement stage, both us-ing the Adam optimizer. The first stage uses the cosine-annealed learning-rate schedule described in Sec. III C. At the end of this schedule, the learning rate reaches its lower bound, so simply continuing the schedule does not provide efficient refinement. We therefore restart the Adam optimizer from the state reached at the end of the search stage, using a smaller fixed learning rate for the second refinement stage. The restart rate is chosen be-tween two extremes: rates that are too small give little additional improvement, whereas rates that are too large disturb the solution found during the first stage. 
+
+b. Result. With these four modifications, the surro-gate reproduces all five test orbits over approximately 50 revolutions with EL2 < 10 −3 and a 2 .3 × 10 −4 median error, as shown in Table III and Fig. 2. The first-stage search already reaches the target in all five cases, while the refinement stage reduces the final error by factors of 1.1–4.5. Thus, the refinement improves the solution but is not responsible for making the long integrations possible. The final errors also show no clear dependence on eccentricity: they span a factor of about 17 across the five orbits, with the most circular case giving the smallest error. This is in contrast with the baseline con-figuration, for which the error increased strongly towards the circular limit. The comparison shows that part of the apparent difficulty of near-circular orbits was caused by the output parametrization rather than by the dynam-ics themselves. However, this result does not remove the phase degeneracy discussed in Sec. III D. That experi-ment was repeated using the corrected output ranges, and the failure rate in the most circular eccentricity bin remained unchanged. The two effects should therefore be distinguished: the output parametrization and radial-harmonic representation determine how accurately a con-verged solution can be represented, whereas the phase degeneracy determines whether optimization reaches the correct branch in the first place.                                                 
+
+> e0˜rp/˜rgRevs Search EL2Refine EL2
+> 0.06 56 53 .53.9×10 −53.6×10 −5
+> 0.19 54 52 .59.3×10 −46.3×10 −4
+> 0.36 24 54 .03.1×10 −42.3×10 −4
+> 0.51 24 53 .25.9×10 −44.8×10 −4
+> 0.64 23 53 .59.3×10 −42.1×10 −4
+> TABLE III. Long-orbit test results over approximately 50 rev-olutions, showing the L2error after the search and refinement stages.
+
+c. Beyond 50 revolutions. The four modifications extend the surrogate’s range to roughly 50 revolutions, but accuracy degrades smoothly over longer intervals. For the e0 = 0 .64 case, the error increases from 3 .1×10 −4
+
+at 50 revolutions to 3 .9 × 10 −2 at 100 revolutions. Extensive testing confirms this is a structural limita-tion: drastically increasing collocation density, adding refinement cycles, or refining the Φ r measurement fails to eliminate this error floor. Doubling the network ca-pacity reduces the terminal residual by a factor of seven but improves L2 by only 12%. This points directly to the phase degeneracy discussed in Sec. II D. A larger network satisfies the autonomous equations more accurately, but this does not prevent small phase mismatches from accumulating over many radial cycles. Consequently, 50 revolutions represents the practical limit of the current architecture. Extending this range will likely require hard-coding radial periodic-ity directly into the harmonic representation, providing a stronger global constraint than the localized initial-condition gate of Eq. (11).  
+
+> IV. THE PARAMETRIC SURROGATE
+
+The single-orbit surrogate introduced in Sec. III rep-resents the solution corresponding to one fixed point in the parameter space θ = ( ν, r 0, p r, 0, γ ). We now extend this approach, training a single parametric surrogate to 10        
+
+> FIG. 2. Long-orbit surrogate for a representative conservative 2PN configuration. Left: orbital trajectory predicted by the PINN compared with the 0PN and 2PN Runge–Kutta solutions. Center: evolution of the training loss, with the raw history shown in light gray and a smoothed trend in blue. Right: convergence of the relative phase-space error EL2during training; the dotted line marks the target accuracy EL2= 10 −3.
+
+solve the entire continuous family simultaneously across a prescribed parameter domain Θ = Q
+
+> i
+
+[θmin  
+
+> i
+
+, θ max  
+
+> i
+
+]. The main construction of Secs. III A and III B is unchanged. In particular, the angular momentum is not predicted by the network. Since it is conserved, it is fixed by the initial data as L(θ) = r0γ for every parameter value. However, the parameters θ are treated as additional inputs to the network, which is therefore represented by the map (φ; θ) → F(φ; θ) N
+
+7−→  Nu(φ; θ), Npr (φ; θ)
+
+7−→  u(φ; θ), p r (φ; θ), (25) where F is given in Eq.(23). In the following, we state only what changes with respect to the previous sections. 
+
+a. Parameters as network inputs. The parameters 
+
+θ are appended to the feature vector, so that the net-work sees ( φ, θ ). The output composition (9)–(13) is un-changed in form, but every quantity in it, such as u0(θ), 
+
+pr, 0(θ), umin (θ), umax (θ), pmax  
+
+> r
+
+(θ), now are evaluated per parameter point from that orbit. The initial data are therefore enforced exactly for every θ.
+
+b. The radial frequency becomes a learned map. The harmonic bank of Sec. III E was built on a single num-ber, ω = 2 π/ Φr . Over a family this number becomes a function of the parameters, ω(θ) = 2 π/ Φr (θ), and the harmonic features F(φ, θ ) are now evaluated per collo-cation point. We represent ω(θ) by a small auxiliary network, 4 → 32 → 32 → 1, where its four inputs are the components of θ, and its output is the correspond-ing radial frequency. The auxiliary network is first fitted to the frequencies measured from a set of anchor orbits, 
+
+ωref  
+
+> k
+
+= 2 π/ Φr (θk). The corresponding supervised loss is 
+
+ℓω = 1
+
+Nanc 
+
+> Nanc
+
+X
+
+> k=1
+
+ω(θk) − ωref 
+
+> k
+
+2 , (26) where Nanc is the number of anchor orbits. After this pre-fit, the auxiliary network is used to provide ω(θ) during the training of the main surrogate. The pre-fit is useful because, as we explained in the previous section, an er-ror in the radial frequency produces a phase error that grows with the integration interval. Fitting ω(θ) to the anchor frequencies therefore provides the network with the correct radial scale before it is used to represent the orbital dynamics. After the pre-fit, the main network is trained with the same physics and energy losses introduced for the single-orbit problem. The only difference is that the network now receives θ as an additional input and that the har-monic features use the parameter-dependent frequency 
+
+ω(θ). The resulting surrogate can therefore be evaluated at different parameter values without retraining a sepa-rate network for each orbit .
+
+c. From one anchor orbit to an anchor set. For the parametric problem, the data-driven loss in Eq. (21) is evaluated using a set of K anchor orbits . Each anchor is a RK numerical solution of the Hamiltonian at a pa-rameter point θk ∈ Θ. The points θk are selected using a Latin hypercube design and include the boundaries of the parameter domain. We also check explicitly that ev-ery selected point corresponds to a bound orbit below the prescribed threshold described in II A. The reason for using multiple anchors is different from the single-orbit case. For one orbit, the initial condition fixes the phase at φ = 0, and the anchor mainly helps the optimizer reach the correct solution. For a paramet-ric family, the phase has to be fixed for every value of 
+
+θ. Between anchor points, the network has to interpo-late this phase information from the nearby anchors. If the anchors are too sparse, the phase in those regions is determined mainly by the smoothness of the network rather than by reference data. For this reason, we expect the distribution of the anchors across Θ to be more im-portant than the accuracy of any individual anchor orbit. In the following, we therefore study how the accuracy of the surrogate changes with the density of anchor points 11 in the parameter domain (Sec. IV A 1). 
+
+d. The weight α depends on the PN order. The three-stage schedule for ( α, β ) in Eq. (22) is retained, but the final value of α depends on whether the anchor orbits satisfy the same equations as those enforced by the PDE loss. In this case, the anchor orbits are solutions of the same equations enforced during training. Therefore, the anchor loss and the physics loss have the same solu-tion, and there is no reason to remove the anchor. We therefore keep α = 1 throughout training 2.
+
+e. The loss becomes a five-dimensional integral. The physics loss of Eq. (18) is an integral of the squared resid-ual over the training domain. For a single orbit that domain is the interval [0 , φ max ]; for the parametric sur-rogate it is the product D = [0 , φ max ] × Θ, 
+
+ℓPDE = 1
+
+|D| 
+
+Z
+
+> Θ
+
+Z φmax 
+
+> 0
+
+h
+
+R2 
+
+> u
+
++ R2
+
+> pr
+
+i
+
+dφ d4θ, (27) a five-dimensional integral that must be re-evaluated at every gradient step. Evaluating it on a tensor-product grid is not viable. A grid with n points per axis costs n5 evaluations, so even n = 10 requires 10 5 points per step while resolving nothing in φ, where the orbit oscillates tens of times over the domain. We therefore estimate Eq. (27) by Monte-Carlo integration, drawing Nc = 8000 points ( φj , θ (j))uniformly at random from D and averaging, 
+
+ℓPDE ≃ 1
+
+NcNcX
+
+> j=1
+
+h
+
+Ru(φj ; θ(j))2 + Rpr (φj ; θ(j))2i
+
+. (28) Here, θ(j) ∈ Θ is the j-th point choosen with Monte Carlo in the 4-dimensional space Θ. We use the nota-tion θ(j) 
+
+> i
+
+with ( i = 1 , ..., 4; j = 1 , ..., N c) to refer to the 
+
+i-th component of the 4-dimensional j-th vector θ(j), e.g. 
+
+θ(10) 1 = ν(10) . The statistical error of such an estimate falls as N −1/2 
+
+> c
+
+independently of dimension , which is what makes the cost of the parametric problem comparable to that of the single-orbit one despite the four extra inte-gration variables.  
+
+> A. Results
+
+We evaluate the surrogate against independent RK in-tegrations of the same Hamiltonian and at the same pa-rameter point θ. Unless a parameter point is part of the anchor set used for training, its reference trajectory is never provided to the network.       
+
+> 2Repeating the trainnig with α= 0 .1 after the curriculum, lowers the physics residual by a factor of four—the intended effect—but
+> raises the trajectory error: the fraction of the benchmark below 10 −3falls from 90 .5% to 68 .8%.
+> 1. Parameter box and training set
+
+Recalling that θ = ( ν, r 0, p r, 0, γ ), we consider the four-dimensional parameter domain Θ = [0 .001 , 0.25] × [0 .5, 2] × [−0.35 , 0.35] × [0 .6, 1.2] .
+
+(29) This range includes both initially infalling and outgoing orbits and extends to the test-mass limit ν → 0. The cor-responding Newtonian eccentricities span approximately 
+
+e0 ∈ [0 .02 , 0.74]. Two aspects of the training set are important: the number of anchor orbits and how often each anchor is sampled during training. Increasing the number of an-chors improves the coverage of the parameter space, but, for a fixed minibatch size and training budget, each an-chor is then sampled less often. We therefore scale the anchor count and the supervised minibatch together. We use K = 5 × 10 2 anchors orbits with a minibatch of 8000 point, K = 5 × 10 3 and 2 × 10 4 anchors with a minibatch of 16000 points, and a trunk of width 384 and depth 6 for all of them.  
+
+> 2. Accuracy over the parameter box
+
+Over the full parameter box the surrogate achieves a median L2 error of 3 .7 × 10 −4, with 94 .9% of the orbits below 10 −3. Since the evaluation of a single orbit requires only O(ms), the surrogate provides a single representa-tion of a broad family of orbits across the entire param-eter space that can be obtained almost instantaneously. This makes the surrogate particularly useful when a large number of orbits must be explored or evaluated, for which conventional numerical integrations would require a sep-arate and comparatively expensive computation for each parameter choice. We also examine how the error depends on the distance from the training data. The 2 ×10 4 test points are divided into quartiles according to their distance from the nearest anchor in normalized parameter space. Each component of θ is mapped affinely using its range in Eq. (29), and distances are Euclidean in this normalized space, so that all four parameters contribute comparably regardless of their physical units. The quartile closest to an anchor has a median L2 error of 3 .6 × 10 −4, with 96% of the orbits below 10 −3. For the quartile farthest from the anchors, the corresponding values are 4 .0 × 10 −4 and 93%. Thus, even across the full range of distances from the training set, the change in median L2 error is only about 11%. This relatively small variation indicates that the surro-gate is not simply reproducing the anchor trajectories. Once the anchor set is sufficiently dense, it interpolates the orbital family throughout the parameter box. This global behavior is illustrated in Figs. 3 and 4. Figure 3 shows representative anchor and held-out tra-jectories together with the corresponding training losses, while Fig. 4 presents pairwise heat maps of the median 12 
+
+L2 error across the parameter box. The error remains low throughout the domain, with only a mild degrada-tion toward the edges of the sampled region.  
+
+> 3. Where and why the surrogate loses accuracy
+
+The errors are not distributed uniformly across the pa-rameter box. A first indication comes from sorting the benchmark of 10 5 test orbits according to the Newtonian eccentricity. As shown in Table IV, the success rate de-creases as e0 increases, from 98 .9% for e0 < 0.3 to 77% for 0 .65 < e 0 < 0.8.                               
+
+> e0nMed EL2<10 −3
+> (0 ,0.3) 32276 3.5×10 −498 .9% (0 .3,0.5) 42961 3.7×10 −497 .2% (0 .5,0.65) 23453 4.1×10 −486 .4% (0 .65 ,0.8) 1310 6.1×10 −477% TABLE IV. Benchmark of 10 5test orbits, stratified by New-tonian eccentricity.
+
+However, eccentricity is not the most useful variable for understanding this trend. The relevant quantity for the validity of the PN expansion is the periapsis distance. When the same 10 5 test orbits are instead grouped by ˜rp/˜rg (Table V), a clearer pattern emerges. Averaged over eccentricity, the success rate exceeds 96% in every bin above 10 ˜ rg , reaching 99 .1% for 20 < ˜rp/˜rg < 40, and drops to 30 .5% below 10 ˜ rg .                               
+
+> ˜rp/˜rgnMed EL2<10 −3
+> (0 ,10) 3717 4.5×10 −330 .5% (10 ,20) 18292 3.7×10 −496 .1% (20 ,40) 38450 3.4×10 −499 .1% (40 ,∞)39541 3.9×10 −496 .5% TABLE V. Evaluation of 10 5test orbits, stratified by periapsis distance (˜ rp/˜rg).
+
+The two classifications differ because eccentricity and periapsis are correlated in this box: large eccentricity can drive the periapsis into the strong-field region, so a one-dimensional table cannot tell which of the two controls the error. This is particularly clear for the most difficult test cases. For example, the worst orbit in the benchmark has θ = (0 .62 , 0.51 , 0.08 , 0.25), with a Newtonian eccen-tricity e0 = 0 .62 but a periapsis of approximately 9 .5 ˜ rg .The large error is therefore not due to an exceptionally eccentric orbit, but rather to the strong-field periapsis it reaches. There is a second reason accuracy drops at small pe-riapsis, separate from the PN expansion breaking down: the physics loss itself gets much harder to minimize there. The residual ℓPDE is nearly one hundred times larger for ˜ rp < 10 ˜ rg than for ˜ rp > 40 ˜ rg (3 .5 × 10 −5 versus 3.6 × 10 −7), while EL2 changes by less than a factor of seven over the same range. So part of the strong-field degradation comes from the loss being harder to opti-mize there. The physics residual has a different scale at different points of the orbit. From Eq. (16), the residual contains the factor u2, with u = 1 /r . As r decreases near peri-apsis, u2 increases. At the same time, the derivatives of the Hamiltonian become larger in this region. As a re-sult, an error in the predicted trajectory can produce a much larger residual near periapsis, where the errors are therefore weighted more strongly.                                      
+
+> ˜rp/˜rg
+> e0(0 ,10) (10 ,20) (20 ,40) (40 ,∞)(0 ,0.3) —95 /80 99 /96 99 /99 (0 .3,0.5) 5/792 /93 99 /100 98 /95 (0 .5,0.65) 33 /46 99 /99 99 /99 73 /62 (0 .65 ,0.8) 30 /49 94 /92 83 /89 7/0TABLE VI. Percentage of the 10 5test orbits with EL2<10 −3,stratified jointly by Newtonian eccentricity and periapsis dis-tance, for the physics-informed and supervised models at
+> K= 2 ×10 4(PINN / supervised). The empty cell contains no bound orbits.
+
+Table VI shows that the dependence on eccentricity is largely secondary once periapsis is taken into account. For 0 .5 < e 0 < 0.65, the fraction of successful orbits rises from 33% in the innermost periapsis bin to 99% at larger separations. Conversely, for 20 < ˜rp/˜rg < 40, the success rate remains close to 100% for all eccentricities below 0 .65. This indicates that the loss of accuracy is primarily associated with small periapsis distance, while eccentricity mainly modulates the difficulty within that regime. The two remaining low-success regions are dis-cussed separately below. In the strong-field region (˜ rp < 10 ˜ rg ), the loss of accu-racy is not only related to the physical breakdown of the 2PN expansion, but also to the increasing stiffness of the dynamics near periapsis, degrading the physics-informed model’s conditioning. The supervised model is unaffected by this stiffness and relies solely on anchor density. The second region consists of highly eccentric orbits with large periapsis. Here both models degrade—to 7% and 0% for e0 > 0.65 and ˜ rp > 40 ˜ rg —so the cause is not the loss. It lies in the output variable: the network predicts u = 1 /r , and although its error in u is smallest in these orbits, the conversion δr = δu/u 2 amplifies it as the orbit widens. In summary, the surrogate is accurate over most of the region where the 2PN description is trustworthy. Its failures lie at close periapsis, where the equations be-come stiff and the physics residual poorly conditioned, and at distant apoapsis, where the parametrisation am-13 
+
+FIG. 3. Training behavior and representative predictions of the parametric surrogate after 1 .5 × 10 6 training epochs over ten radial periods. The left panel shows the evolution of the total loss and of the physics contribution ℓPDE . The center panel compares the PINN prediction with the 2PN RK solution for the anchor configuration θ = (0 .07 , 1.07 , 0.3, 1.19), for which EL2 =3.05 × 10 −4. The right panel shows the corresponding comparison for the held-out configuration θ = (0 .23 , 1.93 , −0.25 , 0.91), with EL2 = 6 .53 × 10 −4.
+
+FIG. 4. Pairwise heat maps of EL2 across the four-dimensional parameter space, evaluated on 10 5 uniformly sampled test points. Each panel shows the median value of log 10 EL2 in 12 × 12 bins for one pair of parameters, after marginalizing over the remaining two. Across the full test set, the median error is EL2 = 3 .7 × 10 −4, with 94 .9% of the orbits satisfying EL2 < 10 −3.
+
+plifies small errors. Both are numerical rather than phys-ical limitations. The fact that the first of these occurs in the same strong-field region where the 2PN expansion loses physical validity does not imply that one causes the other. Both arise in the same regime, but they affect different aspects of the problem: the PN breakdown lim-its the physical validity of the target model, while the numerical difficulty limits how accurately the surrogate reproduces that target. 
+
+4. Is the physics loss doing the work? 
+
+The anchor orbits are used throughout training, so we test how much the physics loss contributes to the final accuracy. We compare two models with the same ar-chitecture, anchors, optimizer, and training budget of 1.5 × 10 6 iterations. The only difference is that the su-pervised model is trained without the physics term ℓPDE .The effect of the physics loss depends strongly on the 14 number of anchors (see Table VII), with the transition from physics-dominated to data-dominated performance occurring between K = 5 × 10 3 and K = 2 × 10 4. With 
+
+K = 500, the physics-informed model has a median L2
+
+error of 9 .9 × 10 −4, compared with 1 .7 × 10 −2 for the supervised model. The fraction of test orbits with EL2 <
+
+10 −3 is 50 .9% for the physics-informed model and 0% for the supervised one. Thus, with a sparse anchor set, the physics loss provides a substantial improvement. With 
+
+K = 2 × 10 4, the difference is much smaller. The median 
+
+L2 errors are 3 .7 × 10 −4 and 4 .8 × 10 −4, and the fractions below 10 −3 are 94 .9% and 93 .9%, respectively. With this many anchors, the supervised model already has enough reference orbits to reproduce the solution accurately over most of the parameter space. The improvement from the physics loss is therefore limited. At the intermediate density K = 5 × 10 3, the physics loss already provides a substantial advantage. The PINN reaches a median EL2 = 4 .0 × 10 −4, with 92 .4% of the orbits below 10 −3, compared with 46 .9% for the purely supervised model. Increasing the anchor set to 2 × 10 4
+
+changes the PINN success rate only marginally, from 92 .4% to 94 .9%, while the supervised model improves from 46 .9% to 93 .9%. This shows that, in this regime, the physics residual substitutes for well over a factor of four in anchor density. The orbit-by-orbit comparison shows that for K =2 × 10 4 the physics-informed model is more accurate on 82 .0% of the test orbits, with a median ratio of the two errors of 1 .30. This means that the PINN model is a 30% more accurate than the supervised one. For K = 500, the difference is much larger: the physics-informed model is more accurate on 98 .4% of the orbits, with a median error ratio of 17 .4. No orbit satisfies the threshold with the su-pervised model while failing it with the physics-informed model. We further compare the dependence of the error on the distance from the training anchors in parameter space by separating the benchmark into the nearest and farthest quartiles. For K = 500, the physics-informed and super-vised models show a similar degradation with distance: the ratio between the median error in the farthest and nearest quartiles is 1 .38 for the physics-informed model and 1 .31 for the supervised baseline. At this density the anchor set is too sparse to constrain even the local neigh-                                               
+
+> PINN Supervised
+> KMed EL2<10 −3Med EL2<10 −3
+> 500 9.9×10 −450 .9% 1.7×10 −20% 5×10 34.0×10 −492 .4% 1.0×10 −346 .9% 2×10 43.7×10 −494 .9% 4.8×10 −493 .9% TABLE VII. Physics-informed against purely supervised training, for three anchor densities. All six configurations use the identical architecture, 1 .5×10 6iterations, and the same held-out benchmark of 10 5orbits.
+
+bourhoods well, so the physics residual improves the so-lution across the parameter space without a clear advan-tage in the regions between anchors. At K = 5 × 10 3,the difference becomes more evident. For the physics-informed model, the fraction of orbits with error below 10 −3 decreases from 94% in the nearest quartile to 89% in the farthest one. For the supervised model, the same fraction drops from 52% to 37%. At this intermediate anchor density, the training data constrain the regions close to the anchors, while the physics residual improves the interpolation in the regions farther from them. For 
+
+K = 2 × 10 4, the two models again show a similar degra-dation of about 4% between the nearest and farthest quartiles. In this regime the anchor set is sufficiently dense that supervised interpolation alone is already ef-fective, and the additional benefit of the physics residual becomes small. Physics-informed training takes about six times longer than supervised training in our setup, so its benefit is small when a large number of reference orbits is avail-able. For the PN problem, generating 2 × 10 4 refer-ence orbits takes less than two hours at about 0 .25s per orbit, making the dense-anchor regime feasible. For the numerical-relativity problem considered as the long-term target, however, a single reference orbit costs about 
+
+O(10 5) CPU-hours. Generating K ∼ 10 4 reference orbits is therefore impractical, making the sparse-anchor regime the relevant one.  
+
+> V. DISSIPATIVE DYNAMICS AT 2.5PN ORDER
+
+The conservative dynamics in Sec. II D present the hardest challenge for physics-only training. Because Eq. (5) is autonomous, the physics loss is completely blind to the orbital phase—making sparse supervised data the only source of phase information. Radiation reaction changes this situation. The secular evolution of the orbit provides an intrinsic reference along the trajec-tory, so the phase is no longer independent of the dy-namics in the same way. We find that the 2 .5PN inspi-ral can indeed be recovered without including a dissipa-tive reference solution in the training loss and the equa-tions themselves provide sufficient information. There is, however, an important numerical issue: the radiation-reaction force is much smaller than the conservative force, and its effect is therefore not well resolved by a standard pointwise residual. The formulation and loss have to be modified accordingly. We describe these changes below.  
+
+> A. Dissipative dynamics in the angle domain
+
+At 2 .5PN order, we combine the conservative Hamilto-nian truncated at 2PN order with the standard radiation-reaction acceleration [25, 26] 15 
+
+aRR = 85
+
+νc5r3
+
+h 3v2 + 17 31
+
+> r
+
+ ˙rn −  v2 + 3 1
+
+> r
+
+v
+
+i
+
+, (30) where n = r/r , v2 = |v|2, and ˙ r = v · n. In this case, the angular momentum is no longer conserved since the radiation-reaction force applies a torque, so L must now be evolved together with u and pr . Now the system in Eq. (5) must also include the equation 
+
+dL dφ = (r × aRR )z
+
+˙φ . (31) Unlike the conservative case, the solution is not periodic: as the binary radiates energy, the orbit contracts, and the inverse radial coordinate u undergoes a sustained secular drift to larger values.  
+
+> B. Architecture: differences from the conservative case
+
+The basic network architecture of Sec. IV is retained. The trunk, the random Fourier-feature banks, the exact enforcement of the initial conditions through the gate 
+
+g(φ), and the orbit-adapted output range for u are un-changed. Three modifications are needed for the dissipa-tive problem. 
+
+Angular momentum becomes a trainable output. In the conservative problem, L is a constant fixed by the initial data, and its conservation is imposed exactly by the network’s construction. This is no longer true once radiation reaction is included, as the angular momentum decays. We therefore promote L to a third network out-put, L(φ). To impose its initial value L0 exactly while guaranteeing that it remains strictly positive during or-bital decay, we apply an initial-data gate via the ansatz 
+
+L(φ) = L0 softplus(1+ g(φ)NL(φ)) softplus(1) , where g(0) = 0. Its sub-sequent evolution is then determined by the residual of Eq. (31). 
+
+The radial-harmonic bank is disabled. The most con-sequential architectural change is the removal of the radial-harmonic features introduced for the long con-servative orbits in Sec. III E. Those features presup-pose a fixed radial frequency and a fixed oscillation am-plitude, represented by harmonics {cos( nωφ ), sin( nωφ )}
+
+with constant coefficients. This is exactly right for a closed, precessing conservative orbit and wrong for an inspiral, whose amplitude decreases from one radial pe-riod to the next: a fixed-amplitude basis cannot represent a decaying oscillation, and in practice the network min-imises the residual by collapsing towards a near-constant radius. We therefore set Nh = 0 and retain only the ran-dom Fourier-feature banks of Eq. (14), which carry the secular evolution directly. 
+
+The energy anchor is removed. In the conservative case, the optional energy penalty ℓE provides an addi-tional constraint during training. However, because or-bital energy is no longer conserved in the dissipative case, this penalty is omitted. 
+
+Warm start. We initialize the dissipative training us-ing a supervised fit to the conservative 2PN orbit. This does not introduce radiation-reaction information into the training objective: the reference is a solution of the conservative dynamics only. Its role is to provide a rea-sonable initial representation of the orbital shape and phase before the dissipative equations are introduced.  
+
+> C. The obstruction: radiation reaction is not resolved by a pointwise residual
+
+A direct extension of the physics-informed loss used for the conservative problem is not sufficient for the inspiral. The reason is the relative size of the radiation-reaction force. Along the inspirals considered here, |aRR |/|acons |
+
+is between 2 .6 × 10 −5 at the beginning and 2 .6 × 10 −4 at the end of the evolution, with a maximum of 2 .1 × 10 −3
+
+near periapsis. Therefore, the reactive contribution is much smaller than the conservative one at most points of the orbit. This creates a problem for a loss based only on the pointwise equations of motion. In our runs, the PDE residual can be reduced to ∼3 × 10 −3 without re-solving the radiation-reaction term. In other words, the conservative dynamics is already satisfied to good accu-racy, while the dissipative contribution remains below the scale of the residual. The optimizer can therefore reduce the loss without learning the inspiral: the loss decreases to ∼10 −5, but the relative orbit error remains close to 2 × 10 −1 and the resulting trajectory is a bounded, non-decaying rosette rather than an inspiral. Adding causal weighting [27], curriculum scheduling, or domain marching does not remove this behavior. These methods change the way in which the pointwise residual is optimized, but they do not add information about the small secular effect that distinguishes the in-spiral from the conservative solution. The relevant infor-mation is therefore not only the instantaneous size of the radiation-reaction force, but its accumulated effect over many orbital cycles. Although the reactive force is only of order 3 × 10 −4 of the conservative force over most of the orbit, its effect accumulates coherently and removes approximately 15% of the binding energy over the rev-olutions considered here. We therefore supplement the pointwise equations with an energy-balance constraint, as we are going to see in the following section.  
+
+> D. The secular balance-law loss
+
+The energy balance provides a direct way of constrain-ing the cumulative effect of radiation reaction. The en-ergy change along the dissipative trajectory satisfies 
+
+d ˆHdφ = aRR · v
+
+˙φ , (32) 16 which gives the additional residual 
+
+R(2 .5PN)  
+
+> E
+
+= 1Λ
+
+ ddφ ˆH u, p r , L  − aRR · v
+
+˙φ
+
+
+
+. (33) Here, d ˆH/dφ is evaluated by automatic differentiation of the network output, while the second term is computed directly from the analytic radiation-reaction force. Both sides are built from the 2PN Hamiltonian and the ana-lytic force (30); no dissipative trajectory is involved. The complete loss is then 
+
+ℓ = αℓ (2PN) anchor + β
+
+
+
+ℓPDE + wLℓL + wsec ℓ(2 .5PN) 
+
+> E
+
+
+
+, (34) where ℓL is the residual associated with the angular-momentum equation in Eq. (31) and ℓ(2 .5PN)  
+
+> E
+
+the one associated with Eq. (33). The coefficient α is gradu-ally reduced to zero during the curriculum, so that the 2PN anchor is used only to initialize the dissipative solu-tion. We use a fixed normalization for the energy resid-ual, Λ = 1 .7 × 10 −3, chosen as the RMS of d ˆH/dφ eval-uated on the conservative 2PN warm-start orbit. This normalization makes R(2 .5PN)  
+
+> E
+
+dimensionless and keeps the energy-balance term on a comparable scale to the pointwise PDE residual throughout training. With this choice, the two contributions to the loss are of similar magnitude. The pointwise residual alone admits a solution close to the conservative 2PN orbit, because the radiation-reaction term is small at any given point along the trajec-tory. The energy balance is what distinguishes the two. To see this, we evaluate Eq. (33) directly on each of the two known trajectories—the exact 2 .5PN inspiral and the conservative 2PN orbit—as a diagnostic, independently of training. The inspiral satisfies the balance law by con-struction and gives a residual smaller by roughly three orders of magnitude than the conservative orbit, which violates it systematically along the entire trajectory. The energy residual therefore supplies information that is lo-cally weak in the pointwise equations but accumulates over the orbit, and it is this accumulated signal that ex-cludes the conservative branch during training.  
+
+> E. Input data and training protocol
+
+We do not use any dissipative trajectory to train the network. The only inputs are the 2PN Hamiltonian, the analytic radiation-reaction force (30), and the conserva-tive 2PN orbit used for the warm start. We do compute a 2 .5PN reference orbit, but only to evaluate the final error and for the diagnostics in Sec. V F. This leads to an important difference from the conservative case. In Sec. IV, keeping a small anchor weight α > 0 (the min-imum weight of the supervised anchor loss) is harmless because the anchors solve the same equations enforced during training. Here, that would be a mistake: the             
+
+> 246810 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> EL2= 10 −3
+> e0Nrev
+> EL2
+> 6 radial periods 10 radial periods Outliers
+> FIG. 5. Accuracy of the dissipative surrogate as a function of e0Nrev . All runs use the same training configuration. The two outliers correspond to the weak-dissipation case and the run truncated by the 2PN validity cut-off; these are excluded from the fit. The dashed line shows the least-squares relation log 10 EL2=−5.65 + 0 .53 e0Nrev for the twenty-two standard configurations.
+
+warm-start anchor is a non-radiating orbit. Any resid-ual pull toward it would compete with the physics loss trying to drive the inspiral. We therefore set α = 0. The subsequent evolution is then determined entirely by the dissipative physics loss. For the longer inspirals, we train the network by progressively extending the angle domain. Starting from a shorter interval, the domain is increased in stages, [0 , φ 1] → [0 , φ 2] → · · · → [0 , φ max ],
+
+using the solution from each stage to initialize the next one. This domain marching provides a simple continua-tion procedure and, for the cases studied here, gives the largest improvement in the final accuracy (Sec. V F).  
+
+> F. Results
+
+We assess the dissipative surrogate using the relative 
+
+L2 error and the orbital energy ˆH(φ). Since ˆH(φ) is not included in the training, it provides an independent physical diagnostic of the reconstructed inspiral. For a representative configuration, θ =(0 .24 , 1.25 , 0.17 , 0.72) , evolved over six radial peri-ods, Fig. 6 shows the corresponding orbital trajectory, energy evolution, training loss, and convergence of the 
+
+L2 error. The surrogate reaches 
+
+EL2 = 2 .14 × 10 −4, E2−2.5 
+
+> L2
+
+= 5 .1 × 10 −2, (35) where, E2−2.5 
+
+> L2
+
+is the separation between the conservative 2PN and dissipative 2 .5PN trajectories, measured with Eq. (8). The network therefore recovers 1 −E L2 /E2−2.5 
+
+> L2
+
+=17                
+
+> FIG. 6. Representative dissipative 2.5PN solution for θ= (0 .24 ,1.25 ,0.17 ,0.72), corresponding to an eccentricity e≃0.5over six radial periods. The upper panels show the orbital trajectory and energy evolution, while the lower panels report the training loss and the convergence of the L2error. The final error is EL2= 2 .14 ×10 −4, below the target accuracy of 10 −3.
+
+99 .4% of the dissipative correction. Over the same in-terval, the predicted orbital energy decreases by 14 .7% relative to | ˆH0|.The full sample comprises twenty-four configurations evolved over six or ten radial periods; Table VIII lists a representative subset of nine, chosen to span the range of the sample and to illustrate the points made be-low, while Fig. 5 plots all twenty-four dissipative-sector configurations. The sample spans initial eccentricities 
+
+e0 ∈ [0 .1, 0.75], and periapsis distances ˜ rp/˜rg ∈ [9 , 37 .4]. All runs use the same training setup; only the initial conditions and evolution length are changed. Two con-figurations are discussed separately below because they do not provide standard tests of the dissipative sector. Across the remaining twenty-two cases, the median L2
+
+error is 4 .6 × 10 −4, twelve runs satisfy EL2 < 10 −3, and the median recovered fraction of the 2PN–2 .5PN correc-tion is 99 .2%. All configurations show a net decrease in orbital energy. The dominant trend in the error is associated with the combination e0Nrev . Its correlation with log 10 EL2
+
+is ρ = 0 .93, compared with 0 .75 for e0, 0 .50 for Nrev , and 0.34 for E2−2.5 
+
+> L2
+
+. A least-squares fit over the twenty-two standard configurations gives log 10 EL2 ≃ − 5.65 + 0 .53 e0Nrev , (36) with a coefficient of determination R2 = 0 .87 (see Fig. 5). Adding log 10 E2−2.5 
+
+> L2
+
+as an additional regressor increases 
+
+R2 only to 0 .93. The combination e0Nrev captures two aspects of the problem: the sharpness of each periapsis passage and the number of times that structure must be represented. At 
+
+e0 = 0 .75, the orbital radius varies by about a factor of seven over one radial cycle, producing a pronounced max-imum in u = 1 /r near periapsis. Since |aRR | ∝ r−3, the radiation-reaction force also changes strongly along the orbit. As the number of revolutions increases, these local-ized features must be reproduced repeatedly over a fixed representation. Indeed, the number of Fourier modes re-quired to capture 99% of the signal’s spectral power rises from 7 for near-circular cases to 50 for the most demand-ing ones, exceeding the network’s fixed budget of 32 ran-18 dom Fourier features. The training schedule also affects the final accuracy. In particular, it is important to leave a sufficient fraction of the optimization budget after the full angular domain has been introduced. All runs reported here use the same fixed epoch budget, and training stops while the error is still decreasing. The values in Table VIII should therefore be interpreted as the accuracy obtained at fixed computa-tional cost. The two configurations highlighted in Table VIII require separate comment. In one case, the 2PN and 2.5PN trajectories are separated by only 1 .4 × 10 −3 and the total energy change is below 0 .3%. This case there-fore provides only a weak test of the dissipative correc-tion. In another configuration, the post-Newtonian va-lidity cut-off is reached before six radial periods are com-pleted, so the reported error is evaluated only over the portion of the trajectory that remains within the valid regime.  
+
+> VI. DISCUSSION AND OUTLOOK
+
+In this work we introduced GravINNs , a gravity-informed neural-network framework for post-Newtonian binary dynamics. We considered conservative single-orbit solutions, long integrations, a four-dimensional parametric surrogate, and dissipative inspirals including the leading 2 .5PN radiation-reaction contribution. The approach works when the physics is embedded where it belongs: conservation laws and initial data in the archi-tecture, radial periodicity in the features, and the equa-tions of motion in the loss. Where the post-Newtonian expansion is itself reliable, the parametric surrogate re-produces 98% of held-out orbits to better than 10 −3 at millisecond cost. The different regimes exposed two limitations of physics-informed training, and they are opposites. In the conservative problem the autonomous angle-domain residual is invariant under rigid rotations (Sec. II D), so the equations of motion fix the orbit only up to a phase: the residual is degenerate , and no reweighting of it can help. The main effect is on reliability rather than accu-racy. For near-circular orbits, physics-only training con-verges to the wrong phase in 38% of random initializa-tions, even though the residuals are comparable to those of successful runs. The same phase degeneracy also mo-tivates the use of a representation adapted to the radial periodicity in long integrations. Under radiation reaction the secular drift breaks that invariance and the equations fix the orbit completely, but through a term four orders of magnitude below the con-servative dynamics pointwise: the residual is now non-degenerate but ill-conditioned , and the pointwise loss is minimized by a non-decaying rosette. The solutions are equally opposite. The conservative case needs external information, supplied by sparse data or by transfer from a lower PN order; the dissipative case requires no additional trajectory data, but it does require the right global constraint: an energy-balance relation that makes the secular radiation-reaction effect visible to the loss. The recipe in both is the same: determine what the residual cannot see, and supply it explicitly. These results also help place physics-informed surrogates in relation to standard numerical methods. For a sin-gle post-Newtonian orbit, direct numerical integration remains faster and more accurate. The advantage ap-pears when many solutions are required across a param-eter space: once trained, a single network approximates an entire family of trajectories without a new integration for each parameter choice, and the physics loss reduces the reference data needed to cover that space. Its value is concentrated where reference solutions are expensive, which is the regime of the long-term target, since a sin-gle numerical-relativity orbit costs O(10 5) CPU-hours. The surrogate is accurate throughout the region where the 2PN description is trustworthy, and its failures con-centrate at close periapsis passages and at the distant apoapsis of strongly eccentric orbits (Sec. IV A 3). The first coincides with the region where the expansion itself becomes questionable, but it is also where the physics residual is most poorly conditioned, and its severity de-pends on the anchor density; we therefore do not at-tribute it to the target dynamics alone. The post-Newtonian two-body problem therefore serves not only as an application, but also as a controlled setting in which the main challenges of physics-informed learning can be isolated and tested against accurate nu-merical solutions. The route ahead is to scale these principles to higher-dimensional parameter spaces (spins, higher PN orders) and to operator-valued targets [22, 23]; to carry the dissipative surrogate from orbital dynam-ics to radiated multipoles; and to extend the surrogate into the strong field, both by substituting effective-one-body dynamics for the truncated Hamiltonian and by improving the conditioning of the physics residual near periapsis (Sec. IV A 3). This is a natural starting point for moving toward the field equations of general relativ-ity, where constraint preservation, gauge freedom, and a much larger solution space become unavoidable. There the analogue of the phase degeneracy is already famil-iar: a small evolution-equation residual does not guar-antee that the Hamiltonian and momentum constraints are satisfied [24]. As the system becomes more complex, the number of weakly constrained directions is expected to grow, making transfer strategies increasingly impor-tant for realistic targets. We are currently pursuing this extension toward physics-informed solutions of the Ein-stein equations, with GravINNs providing the controlled foundation for this broader program. 
+
+> ACKNOWLEDGMENTS
+
+We thank Romina Ballesteros, Miriam Patricolo, Francesco Sacco and Matteo Zatti for interesting re-marks and discussions. JM thanks Paola Castillo for her 19 
+
+e0 Nrev ˜rp/˜rg EL2 E2−2.5 
+
+> L2
+
+1 − E L2 /E2−2.5 
+
+> L2
+
+(%) ∆ ˆH (%) 
+
+6 radial periods 
+
+0.23 6.36 37 .4 8.2 × 10 −6 5.5 × 10 −3 99 .9% −1% 0.28 7.38 15 9.9 × 10 −6 6.6 × 10 −2 100% −14 .4% 0.5 6.97 13 .9 2.1 × 10 −4 5.1 × 10 −2 99 .4% −14 .7% 0.7 6.6 15 .2 2.7 × 10 −4 3.7 × 10 −2 99 .3% −9.9% 0.58 4.12 a 9 9.5 × 10 −5 5.6 × 10 −2 99 .8% −24 .6% 0.57 7.7 29 .5 1.3 × 10 −5 1.4 × 10 −3b 99 .1% −0.3% 
+
+10 radial periods 
+
+0.1 12 .23 25 .4 4.5 × 10 −5 5.7 × 10 −2 99 .9% −10 .7% 0.44 10 .93 21 .1 1 × 10 −3 2.9 × 10 −2 96 .4% −6.2% 0.7 11 .95 15 .2 2.5 × 10 −2 6.5 × 10 −2 62 .1% −17 .4%   
+
+> aPost-Newtonian validity cut-off reached before the sixth radial period; error quoted over the shortened domain.
+> bWeak-dissipation regime: the radius increases over the window and the energy changes by only 0 .3%. Not a test of the dissipative sector.
+
+TABLE VIII. Physics-only 2 .5PN inspirals: a representative subset of nine configurations out of the full sample of twenty-four described in the text. EL2 is the relative phase-space error with respect to the 2 .5PN RK solution, while E2−2.5 
+
+> L2
+
+denotes the corresponding 2PN–2 .5PN separation. The captured fraction is 1 − E L2 /E2−2.5 
+
+> L2
+
+. ∆ ˆH is the total energy change relative to | ˆH0|.
+
+constant and unconditional support. The work of GB and JM has been supported in part by the MCI, AEI, FEDER (UE) grant PID2024-155685NB-C21 “Gravity, Supergravity and Superstrings” (GRASS) and “IFT Cen-tro de Excelencia Severo Ochoa” CEX2020-001007-S. The work of GB has been supported by the fellowship CEX2020-001007-S-20-5. AI tools were used to assist with manuscript editing and code development. All AI-assisted content was reviewed and verified by the authors. 
+
+[1] B. P. Abbott et al. (LIGO Scientific and Virgo Collab-orations), “Observation of Gravitational Waves from a Binary Black Hole Merger,” Phys. Rev. Lett. 116 ,061102 (2016). doi:10.1103/PhysRevLett.116.061102; arXiv:1602.03837. [2] F. Pretorius, “Evolution of Binary Black-Hole Spacetimes,” Phys. Rev. Lett. 95 , 121101 (2005). doi:10.1103/PhysRevLett.95.121101; arXiv:gr-qc/0507014. [3] A. Buonanno and T. Damour, “Effective one-body approach to general relativistic two-body dynamics,” Phys. Rev. D 59 , 084006 (1999). doi:10.1103/PhysRevD.59.084006; arXiv:gr-qc/9811091. [4] L. Blanchet, “Gravitational Radiation from Post-Newtonian Sources and Inspiralling Compact Binaries,” Living Rev. Relativ. 17 , 2 (2014). doi:10.12942/lrr-2014-2; arXiv:gr-qc/0202016. [5] Z. Bern, C. Cheung, R. Roiban, C.-H. Shen, M. P. Solon, and M. Zeng, “Scattering Amplitudes and the Con-servative Hamiltonian for Binary Systems at Third Post-Minkowskian Order,” Phys. Rev. Lett. 122 ,201603 (2019). doi:10.1103/PhysRevLett.122.201603; arXiv:1901.04424. [6] L. Barack and A. Pound, “Self-force and radiation reac-tion in general relativity,” Rep. Prog. Phys. 82 , 016904 (2019). doi:10.1088/1361-6633/aaef91; arXiv:1805.10385. [7] G. Pratten, et al. , “Computationally efficient models for the dominant and subdominant harmonic modes of precessing binary black holes,” Phys. Rev. D
+
+103 , 104056 (2021). doi:10.1103/PhysRevD.103.104056; arXiv:2004.06503. [8] S. E. Field, C. R. Galley, J. S. Hesthaven, J. Kaye, and M. Tiglio, “Fast Prediction and Evaluation of Gravita-tional Waveforms Using Surrogate Models,” Phys. Rev. X 4, 031006 (2014). doi:10.1103/PhysRevX.4.031006; arXiv:1308.3565. [9] J. Blackman et al. , “Numerical relativity waveform sur-rogate model for generically precessing binary black hole mergers,” Phys. Rev. D 96 , 024058 (2017). doi:10.1103/PhysRevD.96.024058; arXiv:1705.07089. [10] M. Raissi, P. Perdikaris, and G. E. Karniadakis, “Physics-informed neural networks: A deep learn-ing framework for solving forward and inverse problems involving nonlinear partial differential equations,” J. Comput. Phys. 378 , 686 (2019). doi:10.1016/j.jcp.2018.10.045; arXiv:1711.10561. [11] S. Greydanus, M. Dzamba, and J. Yosinski, “Hamil-tonian neural networks,” arXiv:1906.01563 (2019). arXiv:1906.01563. [12] G. E. Karniadakis, I. G. Kevrekidis, L. Lu, P. Perdikaris, S. Wang, and L. Yang, “Physics-informed machine learn-ing,” Nat. Rev. Phys. 3, 422 (2021). doi:10.1038/s42254-021-00314-5. [13] Y. C. Zhou, H. Ma, Z. Cao, T. Wu, H. B. Jin, X. Feng, S. Huang, Z. C. Zhao and Y. L. Wu, “Solving Hamiltonian constraint equation with physics-informed neural networks,” Phys. Rev. D 114 , 023032 (2026). doi:10.1103/619s-p6md; arXiv:2607.06002. 20 
+
+[14] E. Bayona and H. Quevedo, “Solving Einstein’s Vac-uum Equations with Physics-Informed Neural Net-works: Boundary Conditions and Domain Decomposi-tion,” arXiv:2608.08846 (2026). arXiv:2608.08846. [15] S. S. Cranganore, A. Bodnar, A. Berzins and J. Brand-stetter, “Einstein Fields: A Neural Perspective To Com-putational General Relativity,” arXiv:2507.11589 (2025). arXiv:2507.11589. [16] J. Yoo, M. Boyle and N. Deppe, “Learning post-Newtonian corrections from numerical relativity,” Phys. Rev. D 113 , 084008 (2026). doi:10.1103/8tnr-mtb7; arXiv:2511.10522. [17] A. Buonanno and T. Damour, “Effective one-body approach to general relativistic two-body dynamics,” Phys. Rev. D 59 , 084006 (1999). doi:10.1103/PhysRevD.59.084006; arXiv:gr-qc/9811091. [18] T. Damour, P. Jaranowski, and G. Sch¨ afer, “Dynamical invariants for general relativistic two-body systems at the third post-Newtonian approximation,” Phys. Rev. D 62 ,044024 (2000). doi:10.1103/PhysRevD.62.044024. [19] T. Damour, P. Jaranowski, and G. Sch¨ afer, “Dimen-sional regularization of the gravitational interaction of point masses,” Phys. Lett. B 513 , 147 (2001). doi:10.1016/S0370-2693(01)00642-6. [20] G. Barbagallo and J. Matulich, work in progress. [21] M. Tancik et al. , “Fourier features let networks learn high frequency functions in low dimensional domains,” Advances in Neural Information Processing Systems 33 
+
+(2020). arXiv:2006.10739. [22] L. Lu, P. Jin, G. Pang, Z. Zhang, and G. E. Karniadakis, “Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators,” Nat. Mach. Intell. 3, 218 (2021). doi:10.1038/s42256-021-00302-5; arXiv:1910.03193. [23] Z. Li et al. , “Fourier neural operator for para-metric partial differential equations,” ICLR (2021). arXiv:2010.08895. [24] C. Gundlach, G. Calabrese, I. Hinder, and J. M. Mart´ ın-Garc´ ıa, “Constraint damping in the Z4 formulation and harmonic gauge,” Class. Quantum Grav. 22 , 3767 (2005). doi:10.1088/0264-9381/22/17/025; arXiv:gr-qc/0504114. [25] C. W. Lincoln and C. M. Will, “Coalescing Binary Systems of Compact Objects to (Post)5/2 Newtonian Order: Late Time Evolution and Gravitational Ra-diation Emission,” Phys. Rev. D 42 , 1123 (1990). doi:10.1103/PhysRevD.42.1123. [26] B. R. Iyer and C. M. Will, “Post-Newtonian gravita-tional radiation reaction for two-body systems: Non-spinning bodies,” Phys. Rev. D 52 , 6882 (1995). doi:10.1103/PhysRevD.52.6882. [27] S. Wang, S. Sankaran, and P. Perdikaris, “Respect-ing causality is all you need for training physics-informed neural networks,” arXiv:2203.07404 (2022). arXiv:2203.07404.
