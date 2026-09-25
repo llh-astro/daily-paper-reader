@@ -1,0 +1,2089 @@
+Title: PINNForge: Execution-Grounded Evolutionary Design of Physics-Informed Neural Networks for PDE Solving via Large Language Models
+
+URL Source: https://arxiv.org/pdf/2609.23023v1
+
+Published Time: Tue, 22 Sep 2026 00:53:30 GMT
+
+Number of Pages: 45
+
+Markdown Content:
+# PINNForge: Execution-Grounded Evolutionary Design of Physics-Informed Neural Networks for PDE Solving via Large Language Models 
+
+## Mingyang Yu 1, Xu Yang 2, Jun Zhang 3, Xiaolong Wang 2, Jing Xu 1, Keqian Li 21Nankai University 
+
+> 2
+
+## East China Normal University 
+
+> 3
+
+## Hanyang University 
+
+Abstract 
+
+Physics-informed neural networks (PINNs) require coordinated choices over network representation, sampling, loss construction, and optimization, while effective configurations often vary substantially across partial differential equa-tions (PDEs). Existing automated PINN design methods can search candidate configurations, but information revealed during actual training is still used mainly for evaluation rather than to improve subsequent design, leading to repeated trial-and-error and inefficient use of training budget. We propose PINNsForge, an LLM-driven evolutionary framework for execution-feedback-based automated PINN design. PINNsForge generates diverse candidate configurations from PDE-related prior knowledge, evaluates them through actual training, and feeds high-performing designs together with accumulated execution evidence back to the LLM. Guided by observed optimization behavior, the LLM then refines, recombines, and explores coupled PINN design components, forming a continual cycle of generation, execution, feedback, and evolution. Unlike one-shot search or evaluation-only feedback, PINNsForge progressively converts training experience into improved design decisions for the target PDE. Across 25 PDE benchmarks, PINNsForge achieves the lowest mean MSE on 24 tasks compared with RoPINN, PINNsFormer, and PINNsAgent. Ablation studies further confirm the importance of the PDE knowledge base, execution feedback, and evolutionary search: removing these components increases the mean MSE to 3.74 ×, 12.10 ×, and 10.10 × that of the full PINNsForge, respectively. 
+
+# 1 Introduction 
+
+Physics-informed neural networks (PINNs) provide a unified neural numerical paradigm for complex physical systems by directly embedding partial differential equations (PDEs), together with their initial and boundary conditions, into neural network training [Raissi et al., 2019, Toscano et al., 2025, Bai et al., 2025, Michaloglou et al., 2026]. However, 
+
+reliably solving a PDE with a PINN is often substantially more difficult than constructing the PINN itself 
+
+[Krishnapriyan et al., 2021, Rathore et al., 2024]. PINN performance is jointly affected by input representation, network architecture, collocation-point sampling, physical-constraint handling, loss construction and weighting, optimizers, and the training procedure, with strong interactions among these factors [Toscano et al., 2025, Michaloglou et al., 2026, Gao et al., 2025, Zhang and Ding, 2025, Cao et al., 2025, Zhang and Deng, 2025]. Prior studies further show that PINNs can suffer from gradient imbalance [Wang et al., 2021a], inconsistent convergence rates across loss components [Wang et al., 2022], insufficient local sampling [Luo et al., 2025], and long-horizon error propagation [Lin and Chen, 2025]. More importantly, the dominant training bottlenecks differ across PDEs. Multiscale problems may be limited primarily by the ability to represent high-frequency components, complex geometries may depend more strongly on boundary sampling and constraint handling, long-time dynamical systems may be limited by temporal causality and optimization stability, while high-dimensional PDEs and inverse problems may exhibit entirely different training behavior [Toscano et al., 2025, Bai et al., 2025, Thawon et al., 2026, Michaloglou et al., 2026, Wang and Hu, 2025, Francis et al., 2025, 2026, Yang et al., 2026, Liu et al., 2025, Ren et al., 2026]. Consequently, a network architecture or training technique that is effective for one class of PDEs cannot be assumed to transfer directly to another. An unsuitable configuration may not only reduce accuracy, but can also lead to persistent PDE-residual stagnation, inadequate satisfaction of initial or boundary conditions, severe imbalance among loss terms, or even failure of the overall solution process to converge. The central challenge across heterogeneous PDEs is therefore not the absence of a single stronger 1arXiv:2609.23023v1 [cs.AI] 19 Sep 2026 PINN method, but rather how to identify an effective combination of coupled design choices spanning network representation, sampling, physical constraints, loss construction, and optimization strategies. A large body of work has proposed effective techniques for specific training difficulties, including adaptive loss balancing, residual-driven sampling, causal training, and new network representations [Gao et al., 2025, Cao et al., 2025, Luo et al., 2025, Wang and Hu, 2025, Lin and Chen, 2025, Zhang and Ding, 2025, Zhang and Deng, 2025, Yang et al., 2026]. However, these methods typically assume in advance which problem should be addressed. For a new PDE, it is generally unknown whether representation capacity, sampling, physical constraints, or optimization will become the dominant bottleneck, and it is even harder to determine beforehand whether multiple interdependent components must be adjusted jointly. Thus, continually adding new PINN techniques does not resolve a more fundamental question: who determines which mechanisms are needed for the current PDE, and how should these mechanisms be combined? 
+
+This challenge has motivated the development of automated PINN design [Zhou et al., 2025, Liu et al., 2025, Ren et al., 2026]. Auto-PINN uses neural architecture search and hyperparameter optimization to automatically select configurations such as network depth, width, and activation functions [Wang et al., 2023]. PINNsAgent further combines LLMs, Physics-Guided Knowledge Replay, and Memory Tree Reasoning to search for PINN architectures and training configurations across different PDEs [Wuwu et al., 2025]. Work such as Lang-PINN also shows that LLMs can participate in PDE understanding, code generation, and diagnosis of execution results [He et al., 2026]. These methods substantially reduce the reliance of PINN design on manual trial and error and indicate that LLMs are increasingly capable of handling complex PINN design tasks. However, we argue that a key gap remains in current automated PINN design: the rich information produced during real PINN training has not yet been fully exploited to guide subsequent algorithm design and search. Acandidate training run provides far more than a final performance score. Signals such as the PDE residual, initial- and boundary-condition errors, the evolution of different loss components, convergence stagnation, and numerical stability can reveal why a configuration works, where its limitations arise, and what specific design requirements the current PDE imposes. Existing automated methods, however, tend to focus more on candidate generation and performance ranking, with limited use of the specific problems and their causes exposed during training. The problem is therefore not merely how to automatically generate and evaluate more PINN configurations, but how to extract information from real training that can influence the next design round, allowing the search to actively change direction according to the difficulties actually exhibited by the current PDE. 
+
+This challenge is further amplified by the strong coupling among components in the PINN design space. Performance bottlenecks observed during real training often cannot be resolved by modifying a single hyperparameter; they may jointly involve network architecture, activation functions, loss design, sampling strategy, and optimization. Consequently, independent parameter adjustments or predefined local search operations are often insufficient to capture interactions among components or to produce coordinated modifications in response to the observed training behavior. 
+
+An automated design system therefore needs more than the ability to search additional candidates: it must understand the relationships among candidate configurations, training behavior, and failure causes, and use them to decide which mechanisms should be inherited, which components should be adjusted jointly, which existing designs should be combined, and when the search should shift toward new directions. 
+
+This observation naturally connects to recent work on LLM-driven automated algorithm discovery. Studies such as Evolution of Heuristics (EoH), FunSearch, ReEvo, and LLaMEA show that LLMs can be embedded in a “generate— execute—evaluate—evolve” loop, where algorithms are iteratively modified and recombined at a semantic level based on existing candidates and their real execution results [Liu et al., 2024, Romera-Paredes et al., 2024, Ye et al., 2024, van Stein and Bäck, 2025, Wu et al., 2025, Yao et al., 2025, Zhong et al., 2025, Yin et al., 2025, Yu and Liu, 2025, Liu et al., 2026a,b, Yu and Liu, 2026, Qin et al., 2026, Wang et al., 2026]. In contrast, the limited prior work applying evolutionary computation to automated PINN design mainly relies on predefined selection, crossover, and mutation operators, using final performance as fitness to search network architectures or hyperparameters [Kaplarevi´ c-Mališi´ cet al., 2023, Zhang and Yang, 2024, Carrillo et al., 2024]. This suggests a largely unexplored direction: can EoH-style LLM-driven evolutionary search be introduced into PINN design so that training behavior exposed during real PDE solving directly participates in designing the next generation of solvers? Building on this idea, we propose PINNsForge , an execution-feedback-driven evolutionary search framework 
+
+over a unified PINN design space. PINNsForge turns each PINN training run from a mere candidate evaluation into part of the subsequent algorithm-design process. The system first generates candidates with different design preferences based on PDE characteristics and relevant PINN knowledge. After real training, it extracts execution information including performance, PDE residuals, physical-constraint satisfaction, and optimization behavior, and feeds this information back to the LLM together with high-performing candidates from the search history. The LLM then performs 2cross-component modification and recombination over representation, network architecture, sampling, constraints, loss design, and optimization through complementary strategies including conservative refinement, physics- and constraint-guided correction, architecture and optimization adjustment, multi-parent synthesis, and novelty exploration. PINNsForge therefore does not aim to propose another fixed PINN architecture or training technique, but instead addresses a higher-level automated algorithm-design question: Can an automated PINN designer learn from the actual performance of previous solvers and continually evolve solvers that are better suited to the target PDE? PINNsForge unifies algorithm design, real PDE solving, training-behavior analysis, and subsequent search within a continuously iterated closed loop. Real training results are used not only to answer “which candidate is better?” but also to determine “how should the next round change?” As a result, the LLM is no longer merely a one-shot configuration generator, but becomes a search module continually driven by real PDE-solution outcomes, extending automated PINN design from static generate-and-evaluate toward a closed-loop design-execute-diagnose-evolve process for algorithm discovery. The main contributions of this work are as follows: 1. We introduce an automated PINN algorithm-design framework driven by real execution feedback. PINNs-Forge extends automated PINN design from one-shot architecture or hyperparameter selection to multi-generation closed-loop search, jointly considering input representation, network architecture, sampling, physical constraints, loss construction, optimization strategy, and training control within a unified structured design space. Unlike methods that generate candidates primarily from static PDE descriptions, PINNsForge grounds subsequent search continually in the candidates’ actual PDE-solving behavior. 2. We introduce EoH-style LLM-driven evolutionary search into automated PINN design. PINNsForge is the first work to apply the Evolution of Heuristics paradigm to complete PINN design. Unlike conventional evolutionary search based on predefined mutation and crossover operations, PINNsForge jointly provides the LLM with PDE priors, high-performing historical candidates, and performance, physical-constraint, and optimization information obtained from real training. This enables conditional inheritance, modification, and recombination of multiple coupled PINN components according to actual candidate behavior, while allowing the search to explore new solution strategies when existing designs are insufficient. 3. We systematically evaluate execution-feedback-driven evolutionary search on a large and heterogeneous PDE suite. We evaluate on 25 PDEs spanning nonlinear, multiscale, high-dimensional, complex-geometry, long-time dynamical, fluid-system, and inverse problems. PINNsForge achieves the lowest mean MSE on 24 tasks in a unified comparison with RoPINN, PINNsFormer, and PINNsAgent. In addition, component ablations on 12 representative PDEs, a budget-matched non-evolutionary search control, multi-generation search trajectories, and low-/high-fidelity ranking analyses provide complementary evidence for the roles of PDE knowledge, real execution feedback, parent-driven joint evolution, and multi-fidelity validation in final performance. 
+
+# 2 Related Work 
+
+## 2.1 PINN Optimization and Failure Modes 
+
+Physics-informed neural networks incorporate the PDE residual together with physical constraints such as initial and boundary conditions into the training objective, enabling neural networks to approximate PDE solutions without requiring large amounts of supervised data. PINN training, however, is not a simple supervised-learning problem. Different physical constraints and loss components can have substantially different scales and optimization dynamics, leading to gradient imbalance, inconsistent convergence rates, and training stiffness. Wang et al. [2021a] analyzed pathological behavior in PINN training from the perspective of gradient flow, showing that gradient imbalance across loss components can substantially affect optimization and motivating an adaptive weighting strategy. Wang et al. [2022] further analyzed the differing convergence rates of PINN loss components through the Neural Tangent Kernel (NTK), providing theoretical insight into understanding and balancing multi-objective physics losses. Beyond loss balancing, the distribution of collocation points directly determines the physical supervision received by a PINN in different regions. Wu et al. [2023] systematically studied non-adaptive and residual-driven adaptive sampling and proposed methods such as RAD and RAR-D, which allocate more collocation points to difficult regions 3according to the current PDE residual. For time-dependent PDEs, Wang et al. [2024] further showed that ignoring temporal causality in the physical system can cause errors to propagate and accumulate over long horizons, and used causal training to alleviate optimization difficulties in complex dynamical systems. Beyond gradients and sampling, prior work has characterized PINN training difficulties from broader perspectives. Krishnapriyan et al. [2021] systematically analyzed failure modes in convection, reaction, and diffusion problems and showed that PDE regularization terms can induce severe optimization pathologies. Rathore et al. [2024] further studied ill-conditioning induced by differential operators and the effect of optimizer choice from a loss-landscape perspective. At the level of individual design components, Jagtap et al. [2020] studied adaptive activation functions; Wang et al. [2021b] improved multiscale representation using Fourier features and spectral-bias considerations; McClenny and Braga-Neto [2023] introduced adaptive loss balancing through trainable weights; Sukumar and Srivastava [2022] studied exact imposition of boundary conditions; Yu et al. [2022] incorporated gradient information from the PDE residual into training; and XPINNs and hp-VPINNs extended PINN designs through space–time domain decomposition and variational formulations [Jagtap and Karniadakis, 2020, Kharazmi et al., 2021]. Together, these studies show that PINN performance can be jointly affected by network representation, sampling, physical constraints, loss balancing, and optimization. However, these improvements are typically designed for specific training difficulties, whereas the dominant failure modes differ across PDEs. Multiscale problems may be limited primarily by representation capacity, complex-boundary problems may depend more strongly on constraint handling and sampling, and long-time dynamical problems may be affected by temporal causality and optimization stability. This motivates a natural question: rather than fixing a particular improvement strategy in advance, can a more suitable combination of designs be automatically discovered from the characteristics of the target PDE and its actual training behavior? 
+
+## 2.2 Automated PINN Design 
+
+As the number of tunable PINN design factors has increased, automated network design and hyperparameter search have been used to reduce the cost of manual experimentation. Auto-PINN introduces neural architecture search and automated hyperparameter optimization into PINNs, automatically exploring architectural choices such as network depth, width, and activation functions [Wang et al., 2023], showing that PINN architectures can be determined through systematic search rather than relying entirely on manual experience. Meanwhile, PINNacle provides a large-scale benchmark covering diverse PDE types and typical PINN failure scenarios, establishing a systematic foundation for unified comparison and cross-problem evaluation of PINN methods [Hao et al., 2024]. Beyond Auto-PINN, prior work has explored automated PINN design through neural architecture search and evolutionary computation. NAS-PINN uses differentiable neural architecture search to automatically select the number of hidden layers, neurons per layer, and residual connections [Wang and Zhong, 2024]. Kaplarevi´ c-Mališi´ c et al. [2023] proposed PINN/GA, which jointly searches network architectures and hyperparameters using a genetic algorithm. Zhang and Yang [2024] further used evolutionary computation to jointly explore network topology, shortcut connections, and parameterized activation functions, while MOPINNs applies evolutionary multi-objective optimization to loss weights and network hyperparameters [Carrillo et al., 2024]. These studies demonstrate the feasibility of automated search and evolutionary computation for PINN design, but their optimization targets are concentrated primarily on network topology, activation functions, hyperparameters, or loss trade-offs, and their search operations mainly rely on predefined encodings and evolutionary operators. In contrast, PINNsForge focuses on using performance, physical, and optimization diagnostics produced by real training as context, allowing an LLM to semantically inherit, modify, and recombine multiple design components over multiple search generations. Recent studies have also begun to use large language models (LLMs) for automated PINN design. PINNsAgent combines Physics-Guided Knowledge Replay with Memory Tree Reasoning to retrieve prior PDE-solving experience and search candidate configurations, enabling automated exploration of PINN architectures and hyperparameters across different PDEs [Wuwu et al., 2025]. Compared with conventional numerical hyperparameter optimization, such approaches allow LLMs to use PDE descriptions and prior knowledge in design decisions. Lang-PINN further adopts a multi-agent framework that assigns PDE understanding, PINN architecture design, code generation, and execution feedback to different agents, while a Feedback Agent analyzes execution results and performs iterative corrections [He et al., 2026]. These studies show that LLMs can not only understand PDE descriptions and propose PINN configurations, but can also use external execution results to further adjust generated outputs. However, real PINN training provides substantially richer information than the final performance score alone. In 4addition to solution error, PDE residuals, boundary- and initial-condition errors, changes in different loss components, and optimization stability reveal the detailed behavior of a candidate configuration. PINNsForge therefore focuses not merely on expanding the range of configurations that can be automated, but on how to continually incorporate such real training evidence into multi-generation search so that the LLM can adapt subsequent designs according to successes and failures already observed on the current PDE. 
+
+## 2.3 LLM-Guided Evolutionary Algorithm Discovery 
+
+The role of LLMs in automated algorithm design has recently expanded from one-shot program generation to iterative search. FunSearch combines a pretrained LLM with an automated evaluator and evolutionary program search. By repeatedly executing and selecting candidate programs, high-quality programs are reused as context to guide subsequent generation [Romera-Paredes et al., 2024]. This work demonstrates that real program execution results can provide an important signal for continual LLM-driven design improvement. Evolution of Heuristics (EoH) further makes this idea explicit as an automated algorithm-discovery framework that combines LLMs with evolutionary computation [Liu et al., 2024, Yao et al., 2025, Liu et al., 2026b]. Its core idea is to embed the LLM in a “generate—execute—evaluate—evolve” loop, such that the model not only generates candidates but also continually proposes new algorithm designs based on high-performing individuals and actual evaluation results. ReEvo uses performance differences among candidates and LLM reflection to produce language-based search feedback that guides subsequent heuristic improvement [Ye et al., 2024], while LLaMEA uses runtime evaluation, selection, and iterative modification to continually generate and optimize candidate metaheuristics [van Stein and Bäck, 2025, van Stein et al., 2025]. Together, these methods suggest that, compared with random mutation or fixed numerical perturbations, an LLM can perform a more semantic form of evolutionary operation: it can understand the structure of existing candidates and their execution behavior, and use this information to decide which mechanisms should be inherited, modified, combined, or re-explored. This capability is particularly well suited to automated PINN design because executing a PINN candidate produces not only a scalar performance value but also training evidence with explicit physical meaning. PINNsForge further applies this “execute—feedback—evolve” principle to PINN configuration search. Rather than determining the next search direction solely from final error, PINNsForge jointly uses PDE-related priors, execution experience accumulated during the current search, and performance-, physics-, and optimization-level diagnostics to provide the LLM with richer design evidence. During evolution, different search strategies perform conservative modifications, physics- and constraint-guided corrections, network and optimization adjustments, multi-parent synthesis, and novelty exploration, allowing configuration changes to coordinate around different problems exposed by actual training rather than being restricted to random perturbations of independent parameters. 
+
+# 3 Method 
+
+PINNsForge applies the “generate—execute—evaluate—evolve” principle of Evolution of Heuristics (EoH) to au-tomated PINN design. Rather than having an LLM produce a network architecture or training configuration only once, PINNsForge executes candidate configurations on the PDE and continually feeds performance, physical, and optimization evidence from real training back into subsequent search, so that new designs are grounded in observed solution behavior. Given a PDE, PINNsForge first combines equation characteristics with relevant PINN priors to generate an initial set of candidates with different design preferences. After real PINN training, the system accumulates solution errors, PDE residuals, constraint satisfaction, and optimization behavior, and maintains the best-performing Global Top-3 over the entire search history. The LLM then jointly modifies and recombines multiple coupled PINN design components based on high-performing parents, execution feedback, and PDE knowledge through five complementary search strategies: Refine, Physics-Guided, Architecture-Guided, Synthesis, and Novelty. The overall search process can be summarized as PDE Prior → Candidate Design → Real PINN Training → Execution Evidence → Joint Evolution This closed loop continues until the search terminates. The Global Top-3 obtained from low-fidelity search are then independently trained at high fidelity using new random initializations, and the best result is selected. Figure 1 provides 51. Problem Understanding 
+
+Target PDE 
+
+PDE Prior Knowledge 
+
+> Physical laws and properties Problem-specific characteristics PINN design principles Related empirical experience
+
+2. Generation 0 
+
+Knowledge-guided initial population (8 roles)     
+
+> Robust Baseline Physics Causality Local Adaptation Feature Design Residual Design Stable Optimization Model Capacity Novel Synthesis
+
+Diversified initial designs to promote exploration in the configuration space. 
+
+3. Execution-Grounded Evolutionary Search (Low-fidelity) 
+
+Generate candidates, execute real training, collect evidence, and evolve better designs. 
+
+Execution-Grounded Evolutionary Search 
+
+Real training feedback drives better designs. 
+
+Global Top-3 
+
+(from all evaluated candidates) 
+
+#1 #2 #3 
+
+Best and diverse configurations maintained across generations. 
+
+Candidate Design (LLM)      
+
+> Jointly design multiple components
+> Representation Loss Architecture Optimization Sampling Training Control Constraints ⋯⋯
+
+Real PINN Training 
+
+Execution Evidence  
+
+> Solution error (proxy MSE) PDE residual IC/BC satisfaction Loss dynamics Stagnation / convergence Numerical stability
+> ⋯⋯
+
+Runtime Posterior Memory 
+
+> Problem-specific execution history in the current search round
+
+Evaluated configurations Training trajectories and metrics Failure cases and diagnostics Insights for future evolution 
+
+LLM Joint Evolution      
+
+> Generate new candidates using five complementary strategies
+> Refine Local improvement
+> Physics Address physical errors
+> Architecture Improve representation
+> Synthesis Combine good designs
+> Novelty Explore combinations
+
+Guided by PDE prior and execution experience Instantiate and train Collect training evidence Update memory with new observations Provide context and useful experience 
+
+Repeat for multiple generations (≤ 9) with 1K-step training per candidate 
+
+4. High-Fidelity Evaluation (Final Verification) 
+
+Independently train the Global Top-3 with a larger budget. 
+
+Global Top-3 
+
+(from low-fidelity search) 
+
+Keep design fixed and reinitialize 
+
+(use a new random initialization) 
+
+Independent training (10K steps) 
+
+Train each candidate for 10,000 steps 
+
+Re-rank by high-fidelity MSE 
+
+Compare the three candidates by high-fidelity MSE 
+
+Output the best configuration 
+
+Final PINN design for the target PDE 
+
+𝐀[𝐀](𝐀) = 0 𝐀 𝐀 [𝐀](𝐀) = 𝐀 𝐀 (𝐀) 
+
+Training steps     
+
+> 1.E-03 1.E-02 1.E-01 1.E+00 0250 500 750 1000 Total loss PDE loss IC/BC loss
+
+Figure 1: Overview of the PINNsForge framework. an overview of PINNsForge. 
+
+## 3.1 Problem Definition 
+
+Let z denote the input coordinates of a PDE, and let u(z) ∈ Rdu denote the physical field to be solved over domain D,where du = 1 corresponds to a scalar field and du > 1 to a vector field containing multiple state variables. The target PDE can be written uniformly as 
+
+N [u]( z) = 0 , z ∈ D ,
+
+where N denotes the differential operator defined by the specific PDE. In addition to the governing equation, the problem typically includes initial conditions, boundary conditions, or other physical constraints, which can be written uniformly as 
+
+Ck[u]( z) = gk(z), z ∈ Γk,
+
+where Ck denotes the k-th constraint operator and Γk denotes the corresponding region or boundary on which the constraint is imposed. A PINN uses a neural network uθ (z) to approximate the true physical field u(z), and optimizes the network parameters θ by minimizing a training objective composed of the PDE residual and physical constraints: 
+
+L(θ) = λr Lr + X
+
+k
+
+λkLk,
+
+where Lr denotes the PDE residual loss, Lk denotes the loss term corresponding to an initial condition, boundary condition, or other physical constraint, and λr and λk are the associated weights. To evaluate the accuracy with which a PINN approximates the true physical field, we use mean squared error (MSE) over fixed evaluation points ziNe
+
+i=1 as the primary evaluation metric: 6MSE = 1
+
+NeNeX
+
+> i=1
+
+∥uθ (zi) − u⋆(zi)∥22 ,
+
+where u⋆(zi) denotes the reference solution and uθ (zi) denotes the prediction of the trained PINN. A lower MSE indicates a smaller discrepancy between the predicted and reference solutions. 
+
+## 3.2 From PDE Priors to Real Execution Experience 
+
+PINNsForge jointly uses PDE-related prior knowledge and candidate execution experience during search. The former describes general physical principles and PINN design guidelines, providing directional guidance for candidate design; the latter comes from the actual training results of candidate configurations on the current PDE and is used to evaluate the effectiveness of different designs and analyze their performance bottlenecks. As the search progresses, candidate generation gradually shifts from initial knowledge-guided candidate generation toward execution-grounded adaptation supported by real execution evidence. 
+
+3.2.1 PDE-Related Prior Knowledge 
+
+For a target PDE P, PINNsForge first analyzes its basic problem characteristics, including time dependence, periodicity, multiscale structure, geometric complexity, locally steep regions, and types of physical constraints, and retrieves relevant PINN design knowledge accordingly. This knowledge does not directly prescribe a specific PINN configuration. Instead, it provides the relevant physical and numerical rationale to help the LLM understand the relationship between PDE characteristics and PINN design and formulate corresponding design hypotheses for the current problem. Prior knowledge therefore does not restrict the search to a predefined set of configurations; rather, it is used throughout the search together with the accumulating execution evidence to guide candidate generation and adjustment in every round. 
+
+3.2.2 Building Execution Experience from Real Training 
+
+Prior knowledge captures general design principles, while the real training results of candidates provide empirical evidence specific to the current PDE. After each candidate finishes training, PINNsForge extracts execution evidence from three perspectives: performance evidence, including the candidate’s final solution accuracy and its performance relative to other candidates; physical evidence, including satisfaction of the PDE residual, initial conditions, boundary conditions, and other physical constraints; and optimization evidence, including loss reduction, training stagnation, gradient or loss imbalance, and numerical stability. Together, these signals characterize the candidate’s actual training behavior and are used to analyze the main factors limiting its performance. PINNsForge organizes the execution evidence accumulated throughout the search into a run-scoped posterior memory. Unlike generally applicable PDE priors, this memory summarizes only the designs and execution outcomes actually observed for the current PDE within the current independent search run, providing problem-specific empirical evidence for subsequent candidate generation and adjustment. Accordingly, as the search progresses, the information available to the LLM gradually expands to [ PDE Prior + Observed Execution Experience,] where PDE priors continue to provide general physical and design rationale, while execution experience continually adds evidence actually observed on the current PDE. Subsequent candidate design can therefore follow general design principles while increasingly adapting to the actual training results obtained for the current PDE. 
+
+## 3.3 LLM-Driven Configuration Generation and Evolutionary Search 
+
+PINNsForge uses an LLM to generate complete PINN configurations rather than selecting candidates from a finite, pre-enumerated configuration set. For each generation, the LLM jointly receives relevant PDE prior knowledge, real training feedback from candidates, posterior experience accumulated during the run, and the current search role, and generates a new candidate configuration accordingly. Candidates are represented as structured AlgorithmSpecs rather than arbitrary executable code; generated outputs are mapped to existing PINN implementations only after validity, compatibility, and budget checks. We define an AlgorithmSpec as a structured representation of a complete PINN 7design that uniformly describes its representation, network architecture, sampling strategy, constraint handling, loss construction, optimization strategy, and training control. Design Dimension Representative Design Choices Representation Coordinate transforms, Fourier/periodic features, multiscale representations Architecture Network depth, width, activation functions, residual connections Sampling Collocation-point allocation, sampling distributions, adaptive resampling Constraints Soft constraints, exact constraints, periodic or interface handling Loss PDE residual construction, loss weighting, normalization, causal weighting Optimization Optimizer, learning rate, gradient handling, staged optimization Training Control Resampling, curriculum, checkpointing, and other training controls 
+
+3.3.1 Knowledge-Guided Initial Candidate Generation 
+
+At Generation 0, no candidate execution history exists for the current PDE, so the initial population is generated primarily from the PDE description and its relevant prior knowledge. To increase the design coverage of the initial population, PINNsForge defines eight initialization roles focusing on: 1. Robust reference design; 2. Physical constraints and temporal causality; 3. Local structure and adaptive sampling; 4. Network representation; 5. PDE residual and loss construction; 6. Optimization and numerical stability; 7. Model capacity and network topology; 8. Novel cross-component combinations. These roles specify only the design focus during candidate generation and do not correspond to fixed algorithm templates. Each role receives the same PDE description and prior knowledge and independently generates a complete configuration. The resulting Generation 0 forms an initial population with diverse design preferences and serves as the starting point for subsequent evolutionary search. 
+
+3.3.2 Candidate Execution and Feedback 
+
+Each generated candidate is evaluated through actual PINN training. For candidate configuration ai and target PDE P,we denote the execution process as 
+
+Execute( ai; P) → (yi, E i),
+
+where yi denotes the primary performance metric used for candidate comparison, and Ei denotes the execution evidence obtained during training, including MSE, PDE residual, initial- and boundary-condition errors, loss evolution, optimization stagnation, and numerical stability. Candidate evaluation therefore produces not only a scalar performance metric for ranking, but also diagnostic information associated with training behavior. The former is used for candidate selection, while the latter is used during subsequent candidate generation to identify which design components in the current configuration may need adjustment. 
+
+3.3.3 Global Historical Elite Selection 
+
+Let Hg denote all candidates evaluated up to generation g. PINNsForge selects the three best distinct candidates from the entire search history rather than only from the previous generation: 
+
+Pg+1 = GlobalDistinctTop3 ( Hg ) .
+
+where Pg+1 serves as the parent set for generating candidates in the next generation. With global historical selection, high-quality configurations found early in the search can continue to participate in subsequent evolution as long as they remain competitive, preventing them from being discarded solely through generational replacement. 8The Global Top-3 simultaneously retains multiple validated high-quality designs, providing a parent pool for subsequent local refinement and cross-candidate synthesis. 
+
+3.3.4 Execution-Feedback-Driven Joint Evolution 
+
+Starting from Generation 1, next-generation candidates are generated from the Global Top-3, their associated execution evidence, PDE priors, and different evolutionary strategies. Conventional parameter-level mutation typically changes only a small number of independent variables, whereas representation, network architecture, sampling, constraints, loss design, and optimization are strongly coupled in PINNs. For example, insufficient representation capacity may be jointly related to network capacity, loss balancing, and optimization, so adjusting a single hyperparameter may not improve training. PINNsForge therefore allows the LLM to modify multiple related components simultaneously according to execution evidence. To cover different search directions, each generation uses five evolutionary strategies: Search Strategy Primary Evolution Direction 
+
+Refine Use the current best candidate as the primary parent, preserve effective existing designs, and make limited adjustments targeting its main shortcomings 
+
+Physics-Guided Adjust sampling-, constraint-, and loss-related designs based primarily on the PDE residual and initial/boundary-condition errors 
+
+Architecture-Guided Adjust network representation, architecture, and related training configurations based on representation capacity, model capacity, and optimization behavior 
+
+Synthesis Combine well-performing design mechanisms from multiple candidates into a new unified configuration 
+
+Novelty Explore design combinations not yet covered by the current high-performing candidates or existing search trajectory The strategies above define different search preferences. Which parent designs are preserved, which components are modified, and the magnitude of each modification are determined by the LLM based on PDE characteristics, parent configurations, and execution evidence. The next-generation candidate generation process can be written as 
+
+ag+1 = LLMGenerate  Pg+1 , E Pg+1 , K P , s  ,
+
+where Pg+1 denotes the Global Top-3 parents, EPg+1 denotes the associated execution evidence, KP denotes relevant prior knowledge for the target PDE, and s denotes the evolutionary strategy used. Different strategies emphasize different forms of parent utilization and search directions. Refine focuses on local improvement around the current best configuration; Physics-Guided and Architecture-Guided target issues related to physical constraints and model representation/optimization, respectively; Synthesis exploits complementary designs across multiple high-performing candidates; and Novelty expands the coverage of the current search trajectory. Through these mechanisms, PINNsForge extends candidate search from independent parameter adjustment to cross-component configuration updates grounded in execution evidence. New evidence produced by real training in each generation is added back to the posterior memory and, together with the global historical elites, forms the context for the next round of candidate generation, yielding a continual “generate—execute—evaluate—evolve” loop. 
+
+## 3.4 Multi-Fidelity Search 
+
+Execution-feedback-driven evolutionary search requires evaluating many candidates, while fully training every candidate would incur substantial computational cost. Inspired by prior multi-fidelity neural architecture search work, MF-NAS [Phan and Luong, 2024], we adopt a two-stage strategy that combines low-fidelity search with high-fidelity evaluation. Multi-fidelity optimization typically allocates a small initial budget to many candidates and reserves larger computational budgets for a small number of promising candidates, balancing search efficiency and evaluation reliability [Won et al., 2025]. 9At the same time, candidate rankings obtained under limited budgets do not necessarily reflect final performance after full training. Prior NAS studies have shown that proxy evaluations used during search can produce rankings that are inconsistent with the true performance of independently trained candidates [Yu et al., 2020]. PINNsForge therefore does not directly take the best low-fidelity candidate as the final result, but instead divides the overall procedure into two stages: Uniform 1K-step Evolutionary Search 
+
+| {z }
+
+> Low-fidelity Search
+
+→ Independent 10K-step Evaluation of Global Top-3 
+
+| {z }
+
+> High-fidelity Evaluation
+
+The low-fidelity stage rapidly advances evolutionary search under a uniform (1{,}000)-step budget while continually updating the Global Top-3. In the high-fidelity stage, each candidate in the final Global Top-3 is reinitialized and independently trained for (10{,}000) optimizer steps. 
+
+3.4.1 Low-Fidelity Search 
+
+In the low-fidelity search stage, every valid candidate is trained using a uniform budget of (1{,}000) optimizer steps. For each candidate, the system records the PDE residual, boundary/initial-condition errors, and convergence and stability information from optimization, and feeds these execution results into subsequent candidate generation. The goal of the low-fidelity stage is not to accurately predict a candidate’s final performance after full training, but to rapidly compare different PINN designs under a fixed computational budget, continually eliminate weaker designs, and retain more promising configurations for subsequent evolution. Generation 0 contains 8 initial candidates, followed by at most 9 generations with 5 new candidates per generation. Throughout the search, the system continually maintains the Global Top-3 over the entire search history and uses them as an important reference for subsequent candidate generation. As evolution proceeds, new candidates continually compete with the best historical configurations, enabling the search to explore and improve PINN designs under a limited budget. When little improvement is observed for several consecutive generations, the system increases the intensity of novelty exploration; if further search still fails to produce effective improvement, low-fidelity search terminates early and the final Global Top-3 is passed to high-fidelity evaluation. 
+
+3.4.2 High-Fidelity Evaluation 
+
+Low-fidelity search continually explores and improves PINN designs over multiple generations while retaining the best-performing Global Top-3 from the entire search history. The high-fidelity stage fully trains these high-quality candidates selected through evolution and determines the final best configuration for the current PDE. For each selected candidate, the system keeps the PINN design identified during low-fidelity search unchanged and reruns only the training process: 1. Keep the candidate configuration unchanged and reconstruct the corresponding PINN; 2. Use a new random initialization; 3. Independently train from scratch for (10{,}000) optimizer steps; 4. Select the candidate with the lowest MSE under high-fidelity evaluation as the final output. 
+
+# 4 Experiments 
+
+In this section, we evaluate PINNsForge on a large and heterogeneous set of PDEs and focus on four questions: 1. Overall performance: Can PINNsForge automatically discover PINN configurations with higher solution accuracy across different types of PDEs? 2. Search cost: Can these performance gains be achieved under controlled search and training budgets? 3. Mechanistic contributions: What roles are played by PDE-related knowledge, real execution feedback, and parent-driven evolution? 4. Search process: Does the final performance genuinely arise from continual multi-generation improvement driven by execution feedback, rather than from an accidentally strong configuration generated in Generation 0? 
+
+## 4.1 Experimental Setup 
+
+LLM backbone. Across all PINNsForge experiments, we use Qwen3.6-27B as the fixed LLM backbone for candidate PINN configuration generation, feedback analysis, and subsequent evolutionary search, without any additional PDE-10 specific fine-tuning. Candidate generation uses a fixed role-conditioned temperature schedule, with different sampling temperatures for different search roles; complete settings are provided in Appendix C.2. 
+
+Benchmark. The experiments include 25 PDE problems, 21 of which are drawn from the PINNacle benchmark [Hao et al., 2024], spanning nonlinear transport, reaction–diffusion, multiscale and long-time dynamics, complex geometries, high-dimensional PDEs, inverse problems, and fluid systems. Beyond the PINNacle problems, we additionally include four classical PDEs—Allen–Cahn, variable-coefficient Darcy flow, the shallow-water system, and Kovasznay flow [Allen and Cahn, 1979, Darcy, 1856, de Saint-Venant, 1871, Kovasznay, 1948]—to broaden the range of equation structures. Definitions of all 25 PDEs are provided in Appendix A. 
+
+Baselines. We select RoPINN, PINNsFormer, and PINNsAgent [Wu et al., 2024, Zhao et al., 2024, Wuwu et al., 2025] as the unified comparison baselines, representing PINN optimization, architectural design, and LLM-driven automated configuration, respectively. We additionally report PINNacle Best as an oracle-style reference. Because it combines the best method across different tasks, it is excluded from average-rank calculations and statistical significance tests. 
+
+Evaluation Metrics. For each PDE, before the experiments begin, we fix a partition of the evaluation points associated with the reference solution into two non-overlapping sets: 30% as the search-validation reference set and 70% as the final-test reference set. The search-validation reference set is used only for candidate comparison, Global Top-3 updates, and stagnation and escape decisions during PINNsForge search. The final-test reference set remains unseen throughout search and model selection and is used only for performance evaluation after the final candidate has been determined. We use solution MSE on the final-test set as the primary reported metric and report the mean ± standard deviation over 10 independent runs. 
+
+Training Protocol. RoPINN, PINNsFormer, and PINNsAgent are trained according to their respective unified experimental settings, and final performance is evaluated on the same final-test reference set. PINNsForge uses multi-fidelity search. During the low-fidelity stage, each candidate is trained for 1K optimizer steps, and the Global Top-3 over the full search history are continually maintained according to search-validation MSE. After search, the Top-3 candidate configurations are kept unchanged and each is trained for 10K optimizer steps from a new random initialization to obtain the final result. The complete PINNsForge search protocol is provided in Appendix C.1. 
+
+Implementation Details. All experiments are run on a Linux server with an NVIDIA GeForce RTX 4090 GPU, Python 3.12, PyTorch 2.6.0+cu124, and CUDA 12.4. Each PDE search uses a single GPU and FP32 training. Random seeds control network initialization and training sampling; complete evaluation and randomness settings are provided in Appendix C.3. 
+
+## 4.2 Main Results 
+
+Table 1 summarizes the main experimental results on 25 PDE problems. All results are obtained from 10 independent runs and report the mean ± standard deviation of the final selected result. Boldface denotes the lowest mean MSE among the four unified comparison methods: RoPINN, PINNsFormer, PINNsAgent, and PINNsForge. Rank denotes the per-task rank of PINNsForge among these four methods. PINNacle Best reports the best result provided by the PINNacle benchmark for each PDE and is included only as a reference; it is excluded from rankings and statistical tests among the unified methods. 
+
+Table 1: MSE on 25 PDE problems. 
+
+PDE Problem RoPINN PINNsFormer PINNsAgent PINNsForge Rank PINNacle Best burgers_1d 7.31E-04 ±
+
+6.13E-05 1.08E-03 ±
+
+8.21E-06 6.52E-05 ±
+
+1.55E-05 
+
+6.50E-05 ±
+
+4.42E-07 1 7.90E-05 burgers_2d 2.40E-01 ±
+
+3.12E-02 2.65E-01 ±
+
+6.83E-02 1.98E-01 ±
+
+1.66E-02 
+
+1.95E-01 ±
+
+1.31E-02 1 1.09E-01 11 PDE Problem RoPINN PINNsFormer PINNsAgent PINNsForge Rank PINNacle Best gray_scott_2d 8.64E-03 ±
+
+4.53E-05 1.57E-02 ±
+
+1.32E-03 4.36E-03 ±
+
+3.08E-05 
+
+3.60E-03 ±
+
+2.65E-04 1 4.32E-03 heat_2d_complex_geometry 4.00E-04 ±
+
+9.10E-05 
+
+2.78E-03 ±
+
+5.77E-05 1.84E-03 ±
+
+9.95E-04 4.45E-04 ±
+
+9.72E-05 
+
+2 8.53E-04 heat_2d_long_time 2.56E+00 ±
+
+4.53E-01 3.83E+00 ±
+
+1.64E-01 4.32E+00 ±
+
+2.78E+00 
+
+1.13E+00 ±
+
+4.21E-02 1 1.13E+00 heat_2d_multiscale 2.75E-05 ±
+
+7.52E-06 5.57E-05 ±
+
+9.93E-06 3.51E-05 ±
+
+2.20E-05 
+
+1.19E-05 ±
+
+2.16E-06 1 5.27E-05 heat_2d_varying_coefficient 6.24E-01 ±
+
+4.53E-03 1.19E-02 ±
+
+3.42E-03 5.34E-03 ±
+
+3.85E-03 
+
+1.59E-03 ±
+
+4.77E-04 1 1.76E-03 heat_5d 5.39E-07 ±
+
+1.31E-07 1.87E-07 ±
+
+1.91E-08 3.34E-07 ±
+
+7.65E-08 
+
+3.21E-08 ±
+
+3.26E-08 1 8.52E+00 heat_inverse_2d 4.31E-02 ±
+
+7.31E-03 8.89E-02 ±
+
+4.22E-02 6.32E-02 ±
+
+8.63E-02 
+
+7.15E-03 ±
+
+4.91E-03 1 5.66E-03 kuramoto_sivashinsky_1d 6.54E+00 ±
+
+5.14E-01 5.13E+00 ±
+
+4.51E-03 1.09E+00 ±
+
+3.18E-02 
+
+1.03E+00 ±
+
+8.40E-02 1 1.04E+00 navier_stokes_2d_backstep 9.64E-03 ±
+
+5.13E-03 6.02E-04 ±
+
+4.33E-05 4.96E-03 ±
+
+1.45E-03 
+
+2.63E-04 ±
+
+4.71E-05 1 3.37E-04 navier_stokes_2d_classic 2.88E-05 ±
+
+3.61E-06 1.49E-05 ±
+
+1.26E-05 8.48E-06 ±
+
+6.90E-06 
+
+2.48E-06 ±
+
+2.31E-06 1 2.33E-05 navier_stokes_2d_long_time 5.43E+02 ±
+
+5.63E+00 7.43E+02 ±
+
+1.31E+02 5.75E+02 ±
+
+7.63E+00 
+
+5.04E+02 ±
+
+4.95E+00 1 5.05E+02 poisson_2d_classic 8.57E-02 ±
+
+6.74E-02 2.17E-01 ±
+
+7.65E-02 6.34E-01 ±
+
+1.43E-01 
+
+1.61E-02 ±
+
+3.95E-04 1 5.00E-05 poisson_boltzmann_2d 7.91E-01 ±
+
+7.14E-01 1.34E-02 ±
+
+4.31E-03 6.97E-02 ±
+
+7.43E-02 
+
+5.38E-03 ±
+
+9.13E-04 1 6.99E-05 poisson_2d_many_area 2.89E+00 ±
+
+3.51E-01 5.36E+00 ±
+
+3.79E+00 3.00E+00 ±
+
+1.01E+00 
+
+2.21E+00 ±
+
+3.56E-01 1 1.83E+00 poisson_3d_complex_geometry 2.16E-01 ±
+
+1.53E-02 8.16E-03 ±
+
+5.58E-04 1.60E-02 ±
+
+1.08E-02 
+
+1.04E-03 ±
+
+2.34E-04 1 9.51E-04 poisson_5d 4.09E-07 ±
+
+7.43E-08 2.92E-07 ±
+
+1.99E-07 2.01E-06 ±
+
+1.09E-06 
+
+5.64E-08 ±
+
+3.95E-08 1 2.09E-06 poisson_inverse_2d 5.32E-03 ±
+
+3.46E-03 1.51E-03 ±
+
+8.65E-04 2.41E-02 ±
+
+4.73E-02 
+
+2.57E-04 ±
+
+1.29E-04 1 1.23E-04 wave_1d 4.19E-02 ±
+
+4.38E-03 3.61E-02 ±
+
+6.65E-03 3.25E-02 ±
+
+3.45E-02 
+
+3.18E-02 ±
+
+5.73E-03 1 3.01E-03 wave_2d_heterogeneous 4.63E-02 ±
+
+6.73E-03 8.37E-02 ±
+
+1.18E-02 5.17E-02 ±
+
+8.03E-03 
+
+2.84E-02 ±
+
+7.69E-04 1 2.99E-02 allen_cahn_1d 7.45E-08 ±
+
+4.61E-08 6.02E-09 ±
+
+1.08E-09 1.44E-08 ±
+
+3.50E-09 
+
+1.13E-09 ±
+
+2.26E-10 1 –darcy_flow_2d 3.48E-09 ±
+
+1.63E-09 1.35E-10 ±
+
+2.90E-11 5.33E-07 ±
+
+2.65E-07 
+
+1.64E-11 ±
+
+3.28E-12 1 –shallow_water_2d 5.78E-07 ±
+
+7.13E-07 2.24E-07 ±
+
+8.44E-08 6.81E-07 ±
+
+1.25E-07 
+
+7.15E-08 ±
+
+2.86E-08 1 –kovasznay_flow_2d 6.13E-07 ±
+
+4.31E-07 3.80E-08 ±
+
+9.63E-09 3.82E-07 ±
+
+3.66E-07 
+
+1.77E-09 ±
+
+4.43E-10 1 –
+
+Friedman Avg. Rank 
+
+3.04 2.96 2.96 1.04 – –
+
+Wilcoxon vs. PINNsForge + + + – – –12 +, =, and - indicate that PINNsForge is significantly better than, statistically indistinguishable from, or significantly worse than the corresponding method according to the Wilcoxon signed-rank test with Holm correction at α = 0 .05 .
+
+4.2.1 Overall Performance 
+
+PINNsForge achieves the lowest mean MSE among the four unified comparison methods on 24 of 25 PDEs, ranking second only on heat_2d_complex_geometry . Using the best-performing baseline on each PDE as the reference, PINNsForge yields a median MSE reduction of 59.85% , while the geometric mean of the best-baseline-to-PINNsForge MSE ratio reaches 2.78 ×. Its overall advantage therefore does not arise from extreme gains on a small number of tasks, but from relatively consistent improvements across tasks. These gains span PDEs with diverse structures and solution characteristics. PINNsForge reduces MSE by 95.34%, 87.85%, and 87.25% on Kovasznay flow, variable-coefficient Darcy flow, and 3D complex-geometry Poisson, respec-tively, and by 83.41%, 82.98%, and 82.83% on inverse heat, inverse Poisson, and 5D heat. Moreover, PINNsForge achieves the lowest mean MSE among the unified methods on all four additional PDEs outside PINNacle. These results indicate that the performance gains are not limited to a particular equation family, but appear across fluid systems, variable-coefficient problems, complex geometries, inverse problems, and high-dimensional PDEs. 
+
+4.2.2 Stability and Statistical Significance 
+
+In terms of relative variation across repeated runs, PINNsForge achieves lower MSE without an obvious loss of run-to-run stability. Measured by the coefficient of variation (CV; standard deviation / mean), PINNsForge has a median CV of 0.182 across the 25 problems, comparable to 0.177 for RoPINN and 0.184 for PINNsFormer, and notably lower than 0.497 for PINNsAgent. We further apply a Friedman test to the overall rankings of the four unified methods across the 25 PDEs, which indicates a significant difference among the methods: 
+
+χ2 
+
+> F
+
+= 42 .696 , p = 2 .86 × 10 −9.
+
+PINNsForge has an average rank of 1.04 , compared with 3.04, 2.96, and 2.96 for RoPINN, PINNsFormer, and PINNsAgent, respectively. Given the significant Friedman test, we further conduct paired Wilcoxon signed-rank tests on 
+
+log 10 (MSE) across the 25 PDEs and apply Holm correction for multiple comparisons. PINNsForge shows a statistically significant advantage over RoPINN, PINNsFormer, and PINNsAgent, with the adjusted significance level for all three comparisons given by 
+
+padj = 1 .79 × 10 −7.
+
+Taken together, the per-task win rate, relative error reduction, stability across repeated runs, and cross-task statistical tests show that the performance gains of PINNsForge are broad and consistent across PDEs rather than being driven by a small number of problems. 
+
+## 4.3 Component Ablation 
+
+To analyze the contribution of different mechanisms in PINNsForge to final performance, we construct three ablated variants on 12 representative PDEs. • w/o Knowledge Base : Remove the PDE/PINN prior knowledge provided to the LLM and the posterior knowledge formed during the run, to evaluate the role of knowledge guidance in candidate generation and subsequent search. • w/o Execution Feedback : Retain PDE prior knowledge and parent configurations, but do not provide subsequent LLM calls with the current candidates’ PDE residuals, constraint errors, optimization diagnostics, or run-scoped posterior, to evaluate the contribution of real training-result feedback to subsequent design. • w/o Evolutionary Search : Remove parent-based evolution so that subsequent candidates are generated indepen-dently and do not inherit, modify, or recombine existing configurations from the Global Top-3. This ablation tests whether the performance gains arise from continual evolution rather than simply evaluating more candidates under the same budget. 13 Table 2: Component ablation settings for PINNsForge. 
+
+Variant Prior Knowledge Run-scoped Posterior Execution Feedback to LLM Parent-based Evolution w/o Knowledge Base × × ✓ ✓
+
+w/o Execution Feedback 
+
+✓ × × ✓
+
+w/o Evolutionary Search 
+
+✓ ✓ ✓ ×
+
+PINNsForge ✓ ✓ ✓ ✓
+
+Because MSE values span multiple orders of magnitude across PDEs, we additionally compute the error ratio of each ablated variant relative to the full PINNsForge on each task: 
+
+r = MSE ablation 
+
+MSE full 
+
+,
+
+and use the median rmedian across the 12 tasks to summarize the overall performance change for each ablated variant. 
+
+Table 3: Component ablation results. Lower MSE is better; the last row reports the median cross-task error ratio relative to the full PINNsForge. 
+
+PDE Problem Representative Char-acter-istic w/o Knowledge Base w/o Execution Feedback w/o Evolutionary Search PINNsForge burgers_1d Nonlinear /shock 7.42E-05 ±
+
+6.31E-05 6.32E-04 ±
+
+7.82E-05 2.78E-04 ±
+
+3.24E-05 
+
+6.50E-05 ±
+
+4.42E-07 
+
+burgers_2d 2D non-linear trans-port 2.44E-01 ±
+
+2.86E-02 6.71E-01 ±
+
+8.37E-02 1.67E+00 ±
+
+2.31E-01 
+
+1.95E-01 ±
+
+1.31E-02 
+
+gray_scott_2d Coupled reaction– diffusion 5.29E-03 ±
+
+4.91E-04 5.36E-03 ±
+
+5.62E-03 6.23E-03 ±
+
+6.87E-04 
+
+3.60E-03 ±
+
+2.65E-04 
+
+heat_2d_multiscale Multiscale dy-nam-ics 3.81E-05 ±
+
+4.28E-06 2.08E-04 ±
+
+2.74E-04 1.30E-03 ±
+
+1.66E-03 
+
+1.19E-05 ±
+
+2.16E-06 
+
+heat_2d_varying_coefficient Variable coeffi-cient 2.18E-03 ±
+
+2.03E-03 2.57E-03 ±
+
+2.71E-04 4.15E-03 ±
+
+4.86E-04 
+
+1.59E-03 ±
+
+4.77E-04 
+
+heat_2d_complex_geometry Complex geom-etry 1.90E-03 ±
+
+2.41E-03 1.59E+00 ±
+
+2.14E-01 1.97E-02 ±
+
+2.77E-03 
+
+4.45E-04 ±
+
+9.72E-05 
+
+poisson_3d_complex_geometry 3D com-plex geom-etry 8.79E-03 ±
+
+9.38E-04 2.00E-02 ±
+
+2.66E-03 2.49E-02 ±
+
+3.18E-03 
+
+1.04E-03 ±
+
+2.34E-04 
+
+14 PDE Problem Representative Char-acter-istic w/o Knowledge Base w/o Execution Feedback w/o Evolutionary Search PINNsForge poisson_5d High-dimensional PDE 2.55E-07 ±
+
+2.87E-07 1.24E-07 ±
+
+1.41E-08 2.06E-05 ±
+
+2.72E-06 
+
+5.64E-08 ±
+
+3.95E-08 
+
+poisson_inverse_2d Inverse prob-lem 6.94E-04 ±
+
+7.64E-05 3.72E-03 ±
+
+4.58E-04 3.14E-04 ±
+
+3.63E-04 
+
+2.57E-04 ±
+
+1.29E-04 
+
+navier_stokes_2d_backstep Nonlinear fluid dy-nam-ics 2.05E-03 ±
+
+2.68E-04 4.50E-03 ±
+
+6.13E-03 3.06E-03 ±
+
+3.97E-03 
+
+2.63E-04 ±
+
+4.71E-05 
+
+darcy_flow_2d Heterogeneous 2.76E-10 ±
+
+3.17E-10 2.97E-09 ±
+
+4.06E-10 1.07E-08 ±
+
+1.48E-09 
+
+1.64E-11 ±
+
+3.28E-12 
+
+shallow_water_2d Hyperbolic sys-tem 3.18E-07 ±
+
+3.52E-08 2.32E-07 ±
+
+2.69E-08 5.59E-07 ±
+
+7.14E-08 
+
+7.15E-08 ±
+
+2.86E-08 Median error ratio rmedian – 3.74 × 12.10 × 10.10 × 1.00 ×
+
+Overall, removing the Knowledge Base, Execution Feedback, and Evolutionary Search increases the median MSE across the 12 tasks to 3.74 ×, 12.10 ×, and 10.10 × that of the full PINNsForge, respectively. The largest degradations occur when removing Execution Feedback and Evolutionary Search, indicating that feedback from real training and continual evolution from high-performing parents are two key mechanisms underlying the stable performance gains of PINNsForge. The three ablations also exhibit distinct functional patterns. The Knowledge Base has a relatively small ef-fect on problems such as Burgers, but a larger effect on complex-geometry, high-dimensional PDE, backstep-flow, and Darcy-flow tasks. This suggests that PDE priors primarily provide a better-grounded starting point for search and reduce ineffective exploration. Without Execution Feedback, errors increase substantially on most tasks; for 
+
+heat_2d_complex_geometry , the MSE rises from 4.45 × 10 −4 to (1.59). This indicates that static knowledge available before search is insufficient for continual candidate improvement, whereas performance, physical, and opti-mization information produced by real training provides direct evidence specific to the current PDE for subsequent design. When Evolutionary Search is removed, the same candidate-evaluation budget and the available knowledge and execution feedback are retained, but existing designs are no longer inherited, modified, or recombined from the Global Top-3. The median cross-task MSE still increases to 10.10 × that of the full PINNsForge. The degradation is particularly pronounced on multiscale, high-dimensional, and complex-geometry problems, indicating that preserving strong historical candidates and continuing to modify and recombine them is an important mechanism for translating accumulated execution experience into subsequent performance gains. Overall, the Knowledge Base provides a grounded starting point for search, Execution Feedback feeds real training behavior into subsequent design, and Evolutionary Search enables effective designs to be continually retained, modified, and recombined. Together, these components form the execution-feedback-driven evolutionary search loop of PINNsForge. 
+
+## 4.4 Search Process Analysis 
+
+To further analyze the search process itself, we select four representative PDEs and examine their multi-generation search trajectories together with the performance changes between the low- and high-fidelity stages. These problems cover nonlinear transport, multiscale dynamics, high-dimensional PDEs, and fluid systems, allowing us to observe the search behavior of PINNsForge under different solution characteristics. Search trajectories and corresponding results for the remaining PDEs are provided in Appendix D. Figure 2 shows the evolutionary search trajectories for the four 15 Figure 2: Evolutionary Search Trajectories across Representative PDE Problems. representative PDEs. Each curve records the best low-fidelity MSE found up to the current generation during search, while the star marker denotes the best result obtained after independently training the Global Top-3 at high fidelity from new random initializations. Figure 2: Evolutionary Search Trajectories across Representative PDE Problems Table 4 further summarizes one independent search trajectory for each of the four PDEs. Generation-0 Best denotes the lowest MSE among the initial candidates, Best LF denotes the best result found over the entire low-fidelity search stage, and Final HF denotes the best MSE obtained after independently training the Global Top-3 under the high-fidelity budget. PDE Generation-0 Best MSE Best LF MSE Final HF MSE G0 → Best LF G0 → Final HF burgers_1d 3.64E-03 2.05E-04 (G8) 6.51E-05 17.74 × 55.82 ×
+
+heat_2d_multiscale 3.01E-02 9.140E-05 (G9) 1.014E-05 330.08 × 2,975.09 ×
+
+poisson_5d 6.44E-06 1.01E-07 (G9) 5.65E-08 63.58 × 114.03 ×
+
+navier_stokes_2d_classic1.86E-03 1.61E-05 (G9) 2.35E-06 115.60 × 792.09 ×
+
+The search trajectories show that all four representative problems discover a new global-best candidate after Genera-tion 0. In particular, heat_2d_multiscale , poisson_5d , and navier_stokes_2d_classic continue to produce new best configurations through Generation 9. This indicates that final performance is not primarily determined by a one-shot LLM generation during initialization; subsequent multi-generation search continues to discover more promising PINN designs. 16 Relative to the best Generation-0 candidate, the best configurations eventually found during low-fidelity search improve MSE by 17 .74 ×, 330 .08 ×, 63 .58 ×, and 115 .60 ×, respectively. This shows that continual search combining strong historical candidates with real execution feedback can progressively discover more effective PINN configurations across different types of PDEs. Building on these results, the Global Top-3 candidate configurations are kept unchanged and each is trained at high fidelity from a new random initialization. The high-fidelity stage does not generate new candidates; instead, it evaluates how the strong configurations selected during low-fidelity search perform under more complete training and re-establishes the final ranking. Relative to Generation 0, the four representative runs ultimately achieve MSE improvements of 55 .82 ×, 2,975 .09 ×, 114 .03 ×, and 792 .09 ×, respectively. These results indicate that low-fidelity search effectively identifies promising configurations, while high-fidelity training further confirms their performance after more complete optimization. 
+
+## 4.5 Training Budget 
+
+To compare the training cost required by each method to obtain its final result, we count the optimizer-step budget used for candidate selection on a single PDE. For RoPINN, PINNsFormer, and PINNsAgent, each independent experiment trains five candidates with different random seeds, using 20K optimizer steps per candidate, and selects the lowest MSE as the final result. The total training budget per independent experiment is therefore 
+
+5 × 20 K = 100 K
+
+optimizer steps. PINNsForge uses multi-fidelity budget allocation. Generation 0 contains 8 candidates, followed by at most 9 generations with 5 candidates generated per generation, resulting in at most 
+
+8 + 9 × 5 = 53 
+
+low-fidelity candidates. Each candidate is trained for 1K optimizer steps, giving a maximum low-fidelity budget of 53K. After search, the Top-3 candidates are selected from the full search history, their configurations are kept unchanged, and each is independently trained from a new random initialization for 10K optimizer steps for high-fidelity evaluation, adding a further 30K steps. The maximum total training budget of PINNsForge is therefore 
+
+53 K + 30 K = 83 K
+
+optimizer steps, which is lower than the 100K budget used by the three unified comparison baselines. 
+
+Table 5: Optimizer-step budget for obtaining the final result on a single PDE. 
+
+Method Result Selection Protocol Optimizer-Step Budget RoPINN Best of 5 independent 20K runs 100K PINNsFormer Best of 5 independent 20K runs 100K PINNsAgent Best of 5 independent 20K runs 100K 
+
+PINNsForge 53 × 1K LF + Top-3 × 10K HF ≤ 83K 
+
+# 5 Conclusion 
+
+We propose PINNsForge, an execution-feedback-driven automated search framework over the complete PINN design space. The method jointly incorporates PDE prior knowledge, performance and physical diagnostics produced by real training, run-scoped posterior experience, and high-performing candidates from the full search history into a multi-generation search process. It uses an LLM to jointly modify and recombine coupled design components spanning network representation, architecture, sampling, constraints, loss design, and optimization, forming a closed-loop “design—execute—feedback—evolve” search mechanism. The experimental results show that automated PINN design can be extended from one-shot configuration generation to cross-component evolutionary search continually driven by real solution evidence, providing a unified and scalable implementation paradigm for automated PINN design across 17 heterogeneous PDEs. Across 25 heterogeneous PDEs, PINNsForge achieves the lowest mean MSE among the four unified comparison methods on 24 tasks, with an average rank of 1.04; ablations on 12 representative problems further indicate that execution feedback and parent-driven evolutionary search play key roles in overall performance. 
+
+# 6 Broader Impact 
+
+PINNsForge is intended to reduce the reliance of PINN design in scientific machine learning on manual expertise and repeated trial and error. By preserving structured candidate configurations together with their corresponding execution evidence, it also improves the traceability and auditability of the automated solver-design process. The framework may support automated model design and method exploration across different types of PDEs. It is important to note that a low reference error obtained through automated search does not by itself guarantee physical correctness or generalization. Candidate solvers may still degrade in unsampled regions, out-of-distribution regimes, or under more complex parameter settings, and may inadequately satisfy local physical constraints or conservation relations. PINNsForge is therefore better viewed as a tool for assisting scientific computing and algorithm design, and its outputs should still be assessed through independent validation, physical-consistency checks, uncertainty analysis, and domain-expert review. In addition, LLM-driven multi-round search introduces extra inference and computational overhead. Evaluations of such automated design methods should therefore consider not only final solution accuracy, but also training cost, LLM-call overhead, and overall resource consumption to support fairer and more comprehensive comparisons. 
+
+# References 
+
+Samuel M. Allen and John W. Cahn. A microscopic theory for antiphase boundary motion and its application to antiphase domain coarsening. Acta Metallurgica , 27(6):1085–1095, 1979. Jinshuai Bai, Yizheng Wang, Hyogu Jeong, Shiyuan Chu, Qingxia Wang, Laith Alzubaidi, Xiaoying Zhuang, Timon Rabczuk, Yi Min Xie, Xi-Qiao Feng, and Yuantong Gu. Towards the future of physics- and data-guided AI frameworks in computational mechanics. Acta Mechanica Sinica , 41(7):225340, 2025. doi:10.1007/s10409-025-25340-x. Fujun Cao, Xiaobin Guo, Xinzheng Dong, and Dongfang Yuan. wbPINN: Weight balanced physics-informed neural networks for multi-objective learning. Applied Soft Computing , 170:112632, 2025. doi:10.1016/j.asoc.2024.112632. Hugo Carrillo, Taco de Wolff, Luis Martí, and Nayat Sanchez-Pi. Evolutionary multi-objective physics-informed neural networks: The MOPINNs approach. AI Communications , 37(3):397–409, 2024. doi:10.3233/AIC-230073. Henry Darcy. Les fontaines publiques de la ville de Dijon: Exposition et application des principes à suivre et des formules à employer dans les questions de distribution d’eau. Victor Dalmont, Paris, 1856. Adhémar Jean Claude Barré de Saint-Venant. Théorie du mouvement non-permanent des eaux, avec application aux crues des rivières et à l’introduction des marées dans leur lit. Comptes Rendus des Séances de l’Académie des Sciences , 73:147–154, 237–240, 1871. Jain M. Francis, Rakesh Kumar, Chandhini G, and Nagaiah Chamakuri. S-PINN: Physics-informed neural networks for solving weakly hyperbolic systems. Physica Scripta , 100(12):126002, 2025. doi:10.1088/1402-4896/ae2391. Jain M. Francis, Chandhini Godavarma, and Nagaiah Chamakuri. An adaptive residual-structured and scheduled loss weighting framework for enhancing physics-informed neural networks in solving partial differential equations. Com-munications in Nonlinear Science and Numerical Simulation , 153:109531, 2026. doi:10.1016/j.cnsns.2025.109531. Bo Gao, Ruoxia Yao, and Yan Li. Physics-informed neural networks with adaptive loss weighting algorithm for solving partial differential equations. Computers & Mathematics with Applications , 181:216–227, 2025. doi:10.1016/j.camwa.2025.01.007. Zhongkai Hao, Jiachen Yao, Chang Su, Hang Su, Ziao Wang, Fanzhi Lu, Zeyu Xia, Yichi Zhang, Songming Liu, Lu Lu, and Jun Zhu. PINNacle: A comprehensive benchmark of physics-informed neural networks for solving PDEs. 
+
+Advances in Neural Information Processing Systems , 37, 2024. 18 Xin He, Liangliang You, Hongduan Tian, Bo Han, Ivor Tsang, and Yew-Soon Ong. Lang-PINN: From language to physics-informed neural networks via a multi-agent framework. ICLR 2026 Workshop on AI with Recursive Self-Improvement , 2026. Ameya D. Jagtap and George Em Karniadakis. Extended physics-informed neural networks (XPINNs): A generalized space-time domain decomposition based deep learning framework for nonlinear partial differential equations. 
+
+Communications in Computational Physics , 28(5):2002–2041, 2020. Ameya D. Jagtap, Kenji Kawaguchi, and George Em Karniadakis. Adaptive activation functions accelerate convergence in deep and physics-informed neural networks. Journal of Computational Physics , 404:109136, 2020. Ana Kaplarevi´ c-Mališi´ c, Branka Andrijevi´ c, Filip Bojovi´ c, Sr ¯ dan Nikoli´ c, Lazar Krsti´ c, Boban Stojanovi´ c, and Miloš Ivanovi´ c. Identifying optimal architectures of physics-informed neural networks by evolutionary strategy. Applied Soft Computing , 146:110646, 2023. Ehsan Kharazmi, Zhongqiang Zhang, and George Em Karniadakis. hp-VPINNs: Variational physics-informed neural networks with domain decomposition. Computer Methods in Applied Mechanics and Engineering , 374:113547, 2021. L. I. G. Kovasznay. Laminar flow behind a two-dimensional grid. Proceedings of the Cambridge Philosophical Society ,44(1):58–62, 1948. Aditi S. Krishnapriyan, Amir Gholami, Shandian Zhe, Robert M. Kirby, and Michael W. Mahoney. Characterizing possible failure modes in physics-informed neural networks. Advances in Neural Information Processing Systems ,34:26548–26560, 2021. Shuning Lin and Yong Chen. Causality-guided adaptive sampling method for physics-informed neural networks solving forward problems of partial differential equations. Physica D: Nonlinear Phenomena , 481:134878, 2025. doi:10.1016/j.physd.2025.134878. Fei Liu, Xialiang Tong, Mingxuan Yuan, Xi Lin, Fu Luo, Zhenkun Wang, Zhichao Lu, and Qingfu Zhang. Evolution of Heuristics: Towards efficient automatic algorithm design using large language model. In Proceedings of the 41st International Conference on Machine Learning , PMLR 235:32201–32223, 2024. Fei Liu, Yiming Yao, Ping Guo, Zhiyuan Yang, Xi Lin, Zhe Zhao, Xialiang Tong, Kun Mao, Zhichao Lu, Zhenkun Wang, Mingxuan Yuan, and Qingfu Zhang. A systematic survey on large language models for algorithm design. 
+
+ACM Computing Surveys , 58(8), Article 218:1–32, 2026a. doi:10.1145/3787585. Fei Liu, Yilu Liu, Qingfu Zhang, Xialiang Tong, and Mingxuan Yuan. EoH-S: Evolution of heuristic set using LLMs for automated heuristic design. Proceedings of the AAAI Conference on Artificial Intelligence , 40(43):37090–37098, 2026b. doi:10.1609/aaai.v40i43.41038. Ziti Liu, Yang Liu, Xunshi Yan, Wen Liu, Han Nie, Shuaiqi Guo, and Chen an Zhang. Automatic network structure discovery of physics informed neural networks via knowledge distillation. Nature Communications , 16:9558, 2025. doi:10.1038/s41467-025-64624-3. Jiaqi Luo, Yahong Yang, Yuan Yuan, Shixin Xu, and Wenrui Hao. An imbalanced learning-based sam-pling method for physics-informed neural networks. Journal of Computational Physics , 534:114010, 2025. doi:10.1016/j.jcp.2025.114010. Levi D. McClenny and Ulisses M. Braga-Neto. Self-adaptive physics-informed neural networks. Journal of Computa-tional Physics , 474:111722, 2023. Alkmini Michaloglou, Ioannis Papadimitriou, Ilias Gialampoukidis, Stefanos Vrochidis, and Ioannis Kompatsiaris. Physics-Informed Neural Networks in Materials Modeling and Design: A Review. Archives of Computational Methods in Engineering , 33:5223–5260, 2026. doi:10.1007/s11831-025-10448-9. Quan Minh Phan and Ngoc Hoang Luong. Efficient multi-fidelity neural architecture search with zero-cost proxy-guided local search. In Proceedings of the Genetic and Evolutionary Computation Conference (GECCO ’24) , ACM, 2024. doi:10.1145/3638529.3654027. 19 Zining Qin, Chenhao Wang, Jianxiong Guo, Huiling Qin, Ping Shen, and Weijia Jia. BLADE: Brainstorming LLMs as algorithm designer through evolution for online subset selection. Knowledge-Based Systems , 343:115890, 2026. doi:10.1016/j.knosys.2026.115890. Maziar Raissi, Paris Perdikaris, and George Em Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics , 378:686–707, 2019. Pratik Rathore, Weimu Lei, Zachary Frangella, Lu Lu, and Madeleine Udell. Challenges in training PINNs: A loss landscape perspective. In Proceedings of the 41st International Conference on Machine Learning , PMLR 235:42159–42191, 2024. Zhi-Yuan Ren, Shi-Jie Zhou, Dong Liu, and Qi-He Liu. PINNAS: Physics-Informed Neural Network Architec-ture Search for Solving Integral Equations. Journal of Computer Science and Technology , 41(2):593–608, 2026. doi:10.1007/s11390-025-5433-9. Bernardino Romera-Paredes, Mohammadamin Barekatain, Alexander Novikov, Matej Balog, M. Pawan Kumar, Emilien Dupont, Francisco J. R. Ruiz, Jordan S. Ellenberg, Pengming Wang, Omar Fawzi, Pushmeet Kohli, and Alhussein Fawzi. Mathematical discoveries from program search with large language models. Nature , 625:468–475, 2024. doi:10.1038/s41586-023-06924-6. N. Sukumar and Ankit Srivastava. Exact imposition of boundary conditions with distance functions in physics-informed deep neural networks. Computer Methods in Applied Mechanics and Engineering , 389:114333, 2022. Itthidet Thawon, Duy Vo, Tinh Quoc Bui, Kanya Rattanamongkhonkun, Chakkapong Chamroon, Nakorn Tippayawong, Yuttana Mona, Ramnarong Wanison, and Pana Suttakul. Physics-Informed Neural Networks: Current Progress and Challenges in Computational Solid and Structural Mechanics. Computer Modeling in Engineering & Sciences ,146(2):2, 2026. doi:10.32604/cmes.2026.077044. Juan Diego Toscano, Vivek Oommen, Alan John Varghese, Zongren Zou, Nazanin Ahmadi Daryakenari, Chenxi Wu, and George Em Karniadakis. From PINNs to PIKANs: Recent advances in physics-informed machine learning. 
+
+Machine Learning for Computational Science and Engineering , 1:15, 2025. doi:10.1007/s44379-025-00015-1. Niki van Stein and Thomas Bäck. LLaMEA: A large language model evolutionary algorithm for automat-ically generating metaheuristics. IEEE Transactions on Evolutionary Computation , 29(2):331–345, 2025. doi:10.1109/TEVC.2024.3497793. Niki van Stein, Diederick Vermetten, and Thomas Bäck. In-the-loop hyper-parameter optimization for LLM-based automated design of heuristics. ACM Transactions on Evolutionary Learning and Optimization , 2025. doi:10.1145/3731567. Rouhan Wang and Dan Hu. Non-uniform random walk for adaptive sampling. Journal of Computational Physics ,538:114160, 2025. doi:10.1016/j.jcp.2025.114160. Sifan Wang, Yujun Teng, and Paris Perdikaris. Understanding and mitigating gradient flow pathologies in physics-informed neural networks. SIAM Journal on Scientific Computing , 43(5):A3055–A3081, 2021a. Sifan Wang, Hanwen Wang, and Paris Perdikaris. On the eigenvector bias of Fourier feature networks: From regression to solving multi-scale PDEs with physics-informed neural networks. Computer Methods in Applied Mechanics and Engineering , 384:113938, 2021b. Sifan Wang, Xinling Yu, and Paris Perdikaris. When and why PINNs fail to train: A neural tangent kernel perspective. 
+
+Journal of Computational Physics , 449:110768, 2022. Sifan Wang, Shyam Sankaran, and Paris Perdikaris. Respecting causality is all you need for training physics-informed neural networks. Computer Methods in Applied Mechanics and Engineering , 421:116813, 2024. Yicheng Wang, Xiaotian Han, Chia-Yuan Chang, Daochen Zha, Ulisses Braga-Neto, and Xia Hu. Auto-PINN: Understanding and optimizing physics-informed neural architecture. NeurIPS 2023 Workshop on AI for Science: From Theory to Practice , 2023. 20 Yifan Wang and Linlin Zhong. NAS-PINN: Neural architecture search-guided physics-informed neural network for solving PDEs. Journal of Computational Physics , 496:112603, 2024. Yiyang Wang, Lanyue Zhang, Yuhan Guo, and Lingxiao Wu. Towards automated optimization algorithm design with LLM: An exploratory study in multi-objective weather routing. Transportation Research Part E: Logistics and Transportation Review , 210:104786, 2026. doi:10.1016/j.tre.2026.104786. Jonghyeon Won, Hyun-Suk Lee, and Jang-Won Lee. A review on multi-fidelity hyperparameter optimization in machine learning. ICT Express , 11(2):245–257, 2025. doi:10.1016/j.icte.2025.02.008. Chenxi Wu, Min Zhu, Qinyang Tan, Yadhu Kartha, and Lu Lu. A comprehensive study of non-adaptive and residual-based adaptive sampling for physics-informed neural networks. Computer Methods in Applied Mechanics and Engineering , 403:115671, 2023. Haixu Wu, Huakun Luo, Yuezhou Ma, Jianmin Wang, and Mingsheng Long. RoPINN: Region optimized physics-informed neural networks. Advances in Neural Information Processing Systems , 37, 2024. Xingyu Wu, Sheng-Hao Wu, Jibin Wu, Liang Feng, and Kay Chen Tan. Evolutionary computation in the era of large language model: Survey and roadmap. IEEE Transactions on Evolutionary Computation , 29(2):534–554, 2025. doi:10.1109/TEVC.2024.3506731. Qingpo Wuwu, Chonghan Gao, Tianyu Chen, Yihang Huang, Yuekai Zhang, Jianing Wang, Jianxin Li, Haoyi Zhou, and Shanghang Zhang. PINNsAgent: Automated PDE Surrogation with Large Language Models. In Proceedings of the 42nd International Conference on Machine Learning , PMLR 267:68143–68165, 2025. Xun Yang, Maohua Ran, and Haodong Pu. A novel adaptive gradient-enhanced physics-informed neural networks for solving partial differential equations. Computers & Mathematics with Applications , 213:242–256, 2026. doi:10.1016/j.camwa.2026.04.026. Shunyu Yao, Fei Liu, Xi Lin, Zhichao Lu, Zhenkun Wang, and Qingfu Zhang. Multi-Objective Evolution of Heuristic Using Large Language Model. Proceedings of the AAAI Conference on Artificial Intelligence , 39(25):27144–27152, 2025. doi:10.1609/aaai.v39i25.34922. Haoran Ye, Jiarui Wang, Zhiguang Cao, Federico Berto, Chuanbo Hua, Haeyeon Kim, Jinkyoo Park, and Guojie Song. ReEvo: Large language models as hyper-heuristics with reflective evolution. Advances in Neural Information Processing Systems , 37, 2024. Haoran Yin, Anna V. Kononova, Thomas Bäck, and Niki van Stein. Controlling the mutation in large language models for the efficient evolution of algorithms. In Applications of Evolutionary Computation (EvoApplications 2025) , pages 403–417, Springer, 2025. He Yu and Jing Liu. Automatically optimizing heuristics for robust scale-free network design via large language models. 
+
+Scientific Reports , 15:41030, 2025. doi:10.1038/s41598-025-25031-2. He Yu and Jing Liu. Exploring automated algorithm design synergizing large language models and evolutionary algorithms: Survey and insights. Evolutionary Computation , 34(2):167–194, 2026. doi:10.1162/EVCO.a.370. Jeremy Yu, Lu Lu, Xuhui Meng, and George Em Karniadakis. Gradient-enhanced physics-informed neural networks for forward and inverse PDE problems. Computer Methods in Applied Mechanics and Engineering , 393:114823, 2022. Kaicheng Yu, Christian Sciuto, Martin Jaggi, Claudiu Musat, and Mathieu Salzmann. Evaluating the search phase of neural architecture search. International Conference on Learning Representations , 2020. Bo Zhang and Chao Yang. Discovering physics-informed neural networks model for solving partial differential equations through evolutionary computation. Swarm and Evolutionary Computation , 88:101589, 2024. Jun Zhang and Chensen Ding. Simple yet effective adaptive activation functions for physics-informed neural networks. 
+
+Computer Physics Communications , 307:109428, 2025. doi:10.1016/j.cpc.2024.109428. 21 Yabin Zhang and Liang-Jian Deng. Loss-driven dynamic weight and residual transformation in physics-informed neural network. Neural Networks , 191:107841, 2025. doi:10.1016/j.neunet.2025.107841. Zhiyuan Zhao, Xueying Ding, and B. Aditya Prakash. PINNsFormer: A transformer-based framework for physics-informed neural networks. International Conference on Learning Representations , 2024. Rui Zhong, Abdelazim G. Hussien, Jun Yu, and Masaharu Munetomo. LLMOA: A novel large language model assisted hyper-heuristic optimization algorithm. Advanced Engineering Informatics , 64:103042, 2025. doi:10.1016/j.aei.2024.103042. Wanyun Zhou, Haoze Song, and Xiaowen Chu. Automated design for physics-informed modeling with convolutional neural networks. Communications Physics , 8:509, 2025. doi:10.1038/s42005-025-02414-5. 22 A Benchmark PDE Definitions 
+
+This appendix summarizes the governing equations, computational domains, physical parameters, initial and boundary conditions, and reference solutions of the 25 PDE problems used in our experiments. The formulations follow the corresponding benchmark settings used for training and evaluation. We use 
+
+∆u =
+
+> d
+
+X
+
+> i=1
+
+∂2u∂x 2
+
+> i
+
+, ∂nu = ∇u · n,
+
+where n denotes the outward unit normal. Unless otherwise specified, all parameters take the values given below. 
+
+## A.1 One-dimensional Burgers equation ( burgers_1d )
+
+The governing equation is 
+
+ut + uu x − νu xx = 0 , (x, t ) ∈ [−1, 1] × [0 , 1] ,
+
+with viscosity 
+
+ν = 0.01 
+
+π .
+
+The initial condition is 
+
+u(x, 0) = − sin( πx ),
+
+and homogeneous Dirichlet boundary conditions are imposed at both spatial boundaries: 
+
+u(−1, t ) = u(1 , t ) = 0 .
+
+## A.2 Two-dimensional Burgers system ( burgers_2d )
+
+Let 
+
+u = ( u, v )T.
+
+The coupled two-dimensional Burgers system is 
+
+ut + uu x + vu y − ν(uxx + uyy ) = 0 ,vt + uv x + vv y − ν(vxx + vyy ) = 0 ,
+
+on 
+
+(x, y, t ) ∈ [0 , 4] 2 × [0 , 1] ,
+
+with 
+
+ν = 10 −3.
+
+The initial fields are prescribed by the benchmark data: 
+
+u(x, y, 0) = u0(x, y ), v(x, y, 0) = v0(x, y ),
+
+where u0 and v0 are interpolated from burgers2d_init_u_0.dat and burgers2d_init_v_0.dat ,respectively. Both components are periodic in the two spatial directions: 
+
+u(0 , y, t ) = u(4 , y, t ), v(0 , y, t ) = v(4 , y, t ),u(x, 0, t ) = u(x, 4, t ), v(x, 0, t ) = v(x, 4, t ).
+
+23 A.3 Gray–Scott reaction–diffusion system ( gray_scott_2d )
+
+The governing equations are 
+
+ut = ε1∆u + b(1 − u) − uv 2,vt = ε2∆v − dv + uv 2,
+
+on 
+
+(x, y, t ) ∈ [−1, 1] 2 × [0 , 200] ,
+
+with 
+
+b = 0 .04 , d = 0 .1, ε1 = 10 −5, ε2 = 5 × 10 −6.
+
+The initial conditions are 
+
+u(x, y, 0) = 1 − exp −80  (x + 0 .05) 2 + ( y + 0 .02) 2 ,
+
+and 
+
+v(x, y, 0) = exp −80  (x − 0.05) 2 + ( y − 0.02) 2 .
+
+Following the benchmark protocol, no additional spatial boundary loss is imposed. 
+
+## A.4 Heat equation on a perforated domain ( heat_2d_complex_geometry )
+
+The governing equation is 
+
+ut − ∆u = 0 , (x, y, t ) ∈ Ω × [0 , 3] .
+
+The spatial domain is the rectangle 
+
+R = [ −8, 8] × [−12 , 12] ,
+
+with 17 circular holes removed: 
+
+Ω = R \ [
+
+> c∈C 1
+
+B1(c) ∪ [
+
+> c∈C 0.4
+
+B0.4(c)
+
+!
+
+,
+
+where 
+
+C1 = {(−4, −3) , (4 , −3) , (−4, 3) , (4 , 3) ,
+
+(−4, −9) , (4 , −9) , (−4, 9) , (4 , 9) ,
+
+(0 , 0) , (0 , 6) , (0 , −6) },
+
+and 
+
+C0.4 = {(−3.2, −6) , (−3.2, 6) , (3 .2, −6) , (3 .2, 6) , (−3.2, 0) , (3 .2, 0) }.
+
+The initial condition is 
+
+u(x, y, 0) = 0 .
+
+Robin boundary conditions are imposed as 
+
+∂nu =
+
+
+
+5 − u, on the boundaries of the radius-1 holes ,
+
+1 − u, on the boundaries of the radius-0.4 holes ,
+
+0.1 − u, on the outer rectangular boundary .
+
+24 A.5 Long-time nonlinear heat equation ( heat_2d_long_time )
+
+The governing equation is 
+
+ut − 10 −3(uxx + uyy ) − 5 sin( u2)
+
+
+
+1 + 2 sin πt 
+
+4
+
+
+
+sin(4 πx ) sin(2 πy ) = 0 ,
+
+for 
+
+(x, y, t ) ∈ [0 , 1] 2 × [0 , 100] .
+
+The initial condition is 
+
+u(x, y, 0) = sin(4 πx ) sin(3 πy ).
+
+Homogeneous Dirichlet boundary conditions are imposed on the spatial boundary: 
+
+u(x, y, t ) = 0 , (x, y ) ∈ ∂[0 , 1] 2.
+
+## A.6 Multiscale anisotropic heat equation ( heat_2d_multiscale )
+
+The governing equation is 
+
+ut − 1(500 π)2 uxx − 1
+
+π2 uyy = 0 ,
+
+on 
+
+(x, y, t ) ∈ [0 , 1] 2 × [0 , 5] .
+
+The initial condition is 
+
+u(x, y, 0) = sin(20 πx ) sin( πy ).
+
+Homogeneous Dirichlet boundary conditions are imposed: 
+
+u(x, y, t ) = 0 , (x, y ) ∈ ∂[0 , 1] 2.
+
+The analytical reference solution is 
+
+u⋆(x, y, t ) = sin(20 πx ) sin( πy ) exp 
+
+
+
+−
+
+ (20 π)2
+
+(500 π)2 + π2
+
+π2
+
+
+
+t
+
+
+
+.
+
+## A.7 Varying-coefficient heat equation ( heat_2d_varying_coefficient )
+
+The governing equation used in the benchmark is 
+
+ut − κ(x, y )∆ u = f (x, y, t ),
+
+on 
+
+(x, y, t ) ∈ [0 , 1] 2 × [0 , 5] ,
+
+where κ(x, y ) is the heterogeneous coefficient field stored in heat_2d_coef_256.dat and evaluated by nearest-neighbour interpolation. The source term is 
+
+f (x, y, t ) = 200 sin( πx ) sin(5 πy ) sin( πt ).
+
+The initial condition is 25 u(x, y, 0) = 0 ,
+
+and homogeneous Dirichlet boundary conditions are imposed: 
+
+u|∂[0 ,1] 2 = 0 .
+
+## A.8 Five-dimensional heat equation ( heat_5d )
+
+Let 
+
+Ω = x ∈ R5 : ∥x∥2 ≤ 1 .
+
+The governing equation is 
+
+ut − 15 ∆u = f (x, t ), (x, t ) ∈ Ω × [0 , 1] ,
+
+where 
+
+f (x, t ) = − ∥x∥22
+
+5 exp 
+
+ ∥x∥22
+
+2 + t
+
+
+
+.
+
+Define 
+
+g(x, t ) = exp 
+
+ ∥x∥22
+
+2 + t
+
+
+
+.
+
+The initial condition is 
+
+u(x, 0) = g(x, 0) ,
+
+and the Neumann boundary condition is 
+
+∂nu = g(x, t ), x ∈ ∂Ω.
+
+The reference solution is 
+
+u⋆(x, t ) = g(x, t ).
+
+## A.9 Inverse heat equation ( heat_inverse_2d )
+
+The unknowns are the state u(x, y, t ) and the spatially varying diffusion coefficient a(x, y ). They satisfy 
+
+ut − ∇ · (a∇u) = f (x, y, t ),
+
+on 
+
+(x, y, t ) ∈ [−1, 1] 2 × [0 , 1] .
+
+The manufactured reference fields are 
+
+u⋆(x, y, t ) = e−t sin( πx ) sin( πy ),
+
+and 
+
+a⋆(x, y ) = 2 + sin( πx ) sin( πy ).
+
+The corresponding source term is 26 f (x, y, t ) = e−th
+
+(4 π2 − 1) sin( πx ) sin( πy )+ π2 2 sin 2(πx ) sin 2(πy ) − cos 2(πx ) sin 2(πy )
+
+− sin 2(πx ) cos 2(πy )i
+
+.
+
+Since 
+
+a⋆ = 2 
+
+on the spatial boundary, the coefficient boundary condition is 
+
+a(x, y ) = 2 , (x, y ) ∈ ∂[−1, 1] 2.
+
+The inverse problem additionally uses 2500 noisy state observations: 
+
+uobs = u⋆ + ϵ, ϵ ∼ N (0 , 0.12).
+
+## A.10 Kuramoto–Sivashinsky equation ( kuramoto_sivashinsky_1d )
+
+The governing equation is 
+
+ut + αuu x + βu xx + γu xxxx = 0 ,
+
+on 
+
+(x, t ) ∈ [0 , 2π] × [0 , 1] ,
+
+where 
+
+α = 100 16 , β = 100 16 2 , γ = 100 16 4 .
+
+The initial condition is 
+
+u(x, 0) = cos( x)(1 + sin x).
+
+Following the benchmark protocol, the spatial domain is treated as periodic, while only the initial condition is explicitly included in the constraint loss. 
+
+## A.11 Navier–Stokes flow over a backward-facing step ( navier_stokes_2d_backstep )
+
+Let 
+
+u = ( u, v )T.
+
+The steady incompressible Navier–Stokes equations are 
+
+(u · ∇ )u + ∇p − ν∆u = 0,
+
+together with 
+
+∇ · u = 0 ,
+
+where 
+
+ν = 0 .01 .
+
+The computational domain is 27 Ω = ([0 , 4] × [0 , 2]) \ ([0 , 2] × [1 , 2]) .
+
+At the inlet x = 0 , 0 ≤ y ≤ 1,
+
+u(0 , y ) = 4 y(1 − y), v(0 , y ) = 0 .
+
+At the outlet x = 4 ,
+
+p(4 , y ) = 0 .
+
+The no-slip condition is imposed on the remaining solid walls: 
+
+u = v = 0 .
+
+## A.12 Lid-driven cavity flow ( navier_stokes_2d_classic )
+
+This problem corresponds to the benchmark case navier_stokes_2d_C .The steady incompressible Navier–Stokes equations are 
+
+(u · ∇ )u + ∇p − ν∆u = 0,
+
+and 
+
+∇ · u = 0 ,
+
+on 
+
+(x, y ) ∈ [0 , 1] 2.
+
+The viscosity is 
+
+ν = 0 .01 ,
+
+corresponding to 
+
+Re = 100 .
+
+On the moving top wall, 
+
+u(x, 1) = 4 x(1 − x), v(x, 1) = 0 .
+
+On the other three walls, 
+
+u = v = 0 .
+
+Pressure is fixed by the gauge condition 
+
+p(0 , 0) = 0 .
+
+28 A.13 Long-time incompressible Navier–Stokes equation ( navier_stokes_2d_long_time )
+
+The governing equations are 
+
+ut + ( u · ∇ )u + ∇p − ν∆u = f (x, y, t ),
+
+and 
+
+∇ · u = 0 ,
+
+on 
+
+(x, y, t ) ∈ [0 , 2] × [0 , 1] × [0 , 5] ,
+
+with 
+
+ν = 0 .01 .
+
+The forcing term is 
+
+f (x, y, t ) = 
+
+ 0
+
+− sin( πx ) sin( πy ) sin( πt )
+
+
+
+.
+
+At the inlet x = 0 ,
+
+u(0 , y, t ) = sin( πy ) [sin( πt ) + sin(3 πt ) + sin(5 πt )] ,
+
+and 
+
+v(0 , y, t ) = 0 .
+
+At the outlet x = 2 ,
+
+p(2 , y, t ) = 0 .
+
+On the remaining spatial boundaries, 
+
+u = v = 0 .
+
+The initial condition is 
+
+u(x, y, 0) = v(x, y, 0) = p(x, y, 0) = 0 .
+
+## A.14 Classical Poisson equation on a perforated domain ( poisson_2d_classic )
+
+The governing equation is 
+
+∆u = 0 in Ω,
+
+where 
+
+Ω = 
+
+
+
+− 12 , 12
+
+2
+
+\ [
+
+> c∈C
+
+B0.1(c),
+
+and 
+
+C = {(0 .3, 0.3) , (−0.3, 0.3) , (0 .3, −0.3) , (−0.3, −0.3) }.
+
+The Dirichlet boundary conditions are 
+
+u = 1 on the outer rectangular boundary ,
+
+29 and 
+
+u = 0 on the four circular boundaries .
+
+## A.15 Screened Poisson–Boltzmann problem ( poisson_boltzmann_2d )
+
+The benchmark considers the screened Poisson equation 
+
+−∆u + k2u = f (x, y ),
+
+with 
+
+k = 8 .
+
+The source term is 
+
+f (x, y ) = A  μ21 + x2 + μ22 + y2 sin( μ1πx ) sin( μ2πy ),
+
+where 
+
+A = 10 , μ1 = 1 , μ2 = 4 .
+
+The spatial domain is 
+
+Ω = [ −1, 1] 2 \
+
+> 4
+
+[
+
+> j=1
+
+Brj (cj ),
+
+where 
+
+(c1, r 1) = ((0 .5, 0.5) , 0.2) ,
+
+(c2, r 2) = ((0 .4, −0.4) , 0.4) ,
+
+(c3, r 3) = (( −0.2, −0.7) , 0.1) ,
+
+(c4, r 4) = (( −0.6, 0.5) , 0.3) .
+
+The Dirichlet conditions are 
+
+u = 0 .2 on the outer boundary ,
+
+and 
+
+u = 1 on the circular boundaries .
+
+## A.16 Multiscale multi-area Poisson equation ( poisson_2d_many_area )
+
+The governing equation is 
+
+a(x, y )∆ u + f (x, y ) = 0 , (x, y ) ∈ [−10 , 10] 2.
+
+The domain is partitioned into 5 × 5 rectangular subdomains. Within subdomain Ωij ,
+
+a(x, y ) = aij ,
+
+where aij is read from poisson_a_coef.dat .The local forcing is defined by the tabulated coefficients in poisson_f_coef.dat :
+
+f (x, y ) = cij, 00 +
+
+> 1
+
+X
+
+> r=0 1
+
+X
+
+> s=0
+
+cij,rs sin 
+
+ πr ξ hx
+
+
+
+sin 
+
+ πs η hy
+
+
+
+, (x, y ) ∈ Ωij ,
+
+30 where (ξ, η ) denote the local coordinates within Ωij .The Robin boundary condition is 
+
+∂nu = −u on ∂[−10 , 10] 2.
+
+## A.17 Three-dimensional Poisson equation on a complex geometry ( poisson_3d_complex_geometry )
+
+The governing equation is 
+
+−μ(z)∆ u + κ(z)u = f (x, y, z ),
+
+in a unit cube with four spherical holes: 
+
+Ω = [0 , 1] 3 \
+
+> 4
+
+[
+
+> j=1
+
+Brj (cj ),
+
+where 
+
+(c1, r 1) = ((0 .4, 0.3, 0.6) , 0.2) ,
+
+(c2, r 2) = ((0 .6, 0.7, 0.6) , 0.2) ,
+
+(c3, r 3) = ((0 .2, 0.8, 0.7) , 0.1) ,
+
+(c4, r 4) = ((0 .6, 0.2, 0.3) , 0.1) .
+
+The coefficients are 
+
+μ(z) = 1 ,
+
+and 
+
+κ(z) = 
+
+(
+
+82, z < 0.5,
+
+10 2, z ≥ 0.5.
+
+Let 
+
+r2 = x2 + y2 + z2.
+
+The forcing term is 
+
+f (x, y, z ) = 20 exp [sin( πx ) + sin(10 πy ) + sin(5 πz )] r2 − 1
+
+r2 + 1 + 100 sin( πx ) sin(10 πy ) sin(5 πz ).
+
+A homogeneous Neumann condition is imposed on the complete boundary: 
+
+∂nu = 0 on ∂Ω.
+
+## A.18 Five-dimensional Poisson equation ( poisson_5d )
+
+The governing equation is 
+
+−∆u = π2
+
+4
+
+> 5
+
+X
+
+> i=1
+
+sin 
+
+ πx i
+
+2
+
+
+
+, x ∈ [0 , 1] 5.
+
+The analytical reference solution is 
+
+u⋆(x) = 
+
+> 5
+
+X
+
+> i=1
+
+sin 
+
+ πx i
+
+2
+
+
+
+.
+
+31 The Dirichlet boundary condition is 
+
+u = u⋆ on ∂[0 , 1] 5.
+
+## A.19 Inverse Poisson equation ( poisson_inverse_2d )
+
+The unknowns are u(x, y ) and the spatially varying diffusion coefficient a(x, y ), satisfying 
+
+−∇ · (a∇u) = f (x, y ), (x, y ) ∈ [0 , 1] 2.
+
+The manufactured reference fields are 
+
+u⋆(x, y ) = sin( πx ) sin( πy ),
+
+and 
+
+a⋆(x, y ) = 11 + x2 + y2 + ( x − 1) 2 + ( y − 1) 2 .
+
+Writing 
+
+a = a⋆(x, y ),
+
+the corresponding source term is 
+
+f (x, y ) = 2 π2a sin( πx ) sin( πy )+ 2 πa 2h
+
+(2 x − 1) cos( πx ) sin( πy )+ (2 y − 1) sin( πx ) cos( πy )
+
+i
+
+.
+
+The diffusion coefficient is prescribed on the spatial boundary: 
+
+a = a⋆ on ∂[0 , 1] 2.
+
+The inverse problem uses a 50 × 50 grid of noisy state observations: 
+
+uobs = u⋆ + ϵ, ϵ ∼ N (0 , 0.12).
+
+## A.20 One-dimensional wave equation ( wave_1d )
+
+The governing equation is 
+
+utt − 4uxx = 0 , (x, t ) ∈ [0 , 1] × [0 , 1] .
+
+The initial conditions are 
+
+u(x, 0) = sin( πx ) + 12 sin(4 πx ),
+
+and 
+
+ut(x, 0) = 0 .
+
+The spatial boundary condition is 
+
+u(0 , t ) = u(1 , t ) = 0 .
+
+The analytical reference solution is 
+
+u⋆(x, t ) = sin( πx ) cos(2 πt ) + 12 sin(4 πx ) cos(8 πt ).
+
+32 A.21 Heterogeneous two-dimensional wave equation ( wave_2d_heterogeneous )
+
+The governing equation is 
+
+∆u − 1
+
+c(x, y ) utt = 0 ,
+
+or equivalently, 
+
+utt = c(x, y )∆ u, 
+
+on 
+
+(x, y, t ) ∈ [−1, 1] 2 × [0 , 5] .
+
+The heterogeneous coefficient c(x, y ) is defined by interpolation of the Gaussian-random-field realization stored in 
+
+darcy_2d_coef_256.dat .The initial conditions are 
+
+u(x, y, 0) = exp 
+
+
+
+− (x + 0 .5) 2 + y2
+
+2(0 .3) 2
+
+
+
+,
+
+and 
+
+ut(x, y, 0) = 0 .
+
+A homogeneous Neumann condition is imposed on the spatial boundary: 
+
+∂nu = 0 on ∂[−1, 1] 2.
+
+## A.22 One-dimensional Allen–Cahn equation ( allen_cahn_1d )
+
+The governing equation is 
+
+ut − ε2uxx + u3 − u = 0 ,
+
+on 
+
+(x, t ) ∈ [−1, 1] × [0 , 0.25] ,
+
+with 
+
+ε = 0 .1.
+
+The initial condition is 
+
+u(x, 0) = tanh 
+
+ x
+
+√2ε
+
+
+
+.
+
+The Dirichlet boundary condition is obtained from the stationary reference solution: 
+
+u(±1, t ) = tanh 
+
+ ±1
+
+√2ε
+
+
+
+.
+
+The analytical reference solution is 
+
+u⋆(x, t ) = tanh 
+
+ x
+
+√2ε
+
+
+
+.
+
+33 A.23 Variable-coefficient Darcy equation ( darcy_flow_2d )
+
+The governing equation is 
+
+−∇ · (a(x, y )∇u) = f (x, y ), (x, y ) ∈ [0 , 1] 2.
+
+The heterogeneous coefficient is 
+
+a(x, y ) = 2 + 12 sin(2 πx ) sin(3 πy ).
+
+The manufactured reference solution is 
+
+u⋆(x, y ) = sin( πx ) sin( πy ).
+
+The source term is defined consistently as 
+
+f (x, y ) = −∇ · (a(x, y )∇u⋆(x, y )) .
+
+Equivalently, 
+
+f = −  axu⋆x + ay u⋆y + a∆u⋆ .
+
+The homogeneous Dirichlet boundary condition is 
+
+u = 0 on ∂[0 , 1] 2.
+
+## A.24 Two-dimensional shallow-water system ( shallow_water_2d )
+
+Let h denote the water depth, and let qx and qy denote the two momentum components. The conservative shallow-water equations are 
+
+ht + ( qx)x + ( qy )y = 0 ,
+
+(qx)t +
+
+ q2
+
+> x
+
+h + gh 2
+
+2
+
+
+
+> x
+
++
+
+ qxqy
+
+h
+
+
+
+> y
+
+= 0 ,
+
+and 
+
+(qy )t +
+
+ qxqy
+
+h
+
+
+
+> x
+
++ q2
+
+> y
+
+h + gh 2
+
+2
+
+!
+
+> y
+
+= 0 ,
+
+on 
+
+(x, y, t ) ∈ [0 , 1] 2 × [0 , 0.1] ,
+
+with gravitational acceleration 
+
+g = 9 .81 .
+
+The initial state is spatially uniform: 
+
+(h, q x, q y )( x, y, 0) = (1 , 0.1, −0.05) .
+
+All three variables are periodic in both spatial directions: 
+
+U (0 , y, t ) = U (1 , y, t ),
+
+and 34 U (x, 0, t ) = U (x, 1, t ),
+
+where 
+
+U = ( h, q x, q y )T.
+
+Water-depth positivity is enforced through 
+
+h ≥ hmin , hmin = 10 −3.
+
+The reference solution is the constant state 
+
+U ⋆ = (1 , 0.1, −0.05) T.
+
+## A.25 Kovasznay flow ( kovasznay_flow_2d )
+
+The steady incompressible Navier–Stokes equations are 
+
+(u · ∇ )u + ∇p − ν∆u = 0,
+
+together with 
+
+∇ · u = 0 .
+
+The computational domain is 
+
+(x, y ) ∈ [−0.5, 1] × [−0.5, 1.5] .
+
+The Reynolds number and viscosity are 
+
+Re = 40 , ν = 140 .
+
+Define 
+
+λ = Re 2 −
+
+s
+
+Re 2
+
+4 + 4 π2.
+
+The analytical reference solution is 
+
+u⋆(x, y ) = 1 − eλx cos(2 πy ),v⋆(x, y ) = λ
+
+2π eλx sin(2 πy ),
+
+and 
+
+p⋆(x, y ) = 12
+
+ 1 − e2λx  .
+
+The analytical values are imposed on the rectangular boundary: 
+
+(u, v, p ) = ( u⋆, v ⋆, p ⋆) on ∂Ω.
+
+Pressure is additionally anchored by 
+
+p(0 , 0) = 0 .
+
+35 A.26 Note on the excluded PINNacle Wave2d-MS problem 
+
+Among the PINNacle problems, we exclude the 2D multi-scale long-time wave equation (Wave2d-MS) because its published mathematical specification is internally inconsistent. PINNacle defines the governing equation as 
+
+utt − (uxx + a2uyy ) = 0 , a = √2,
+
+while the reported reference solution is 
+
+sinh( πx ) sinh( πy ) cos( √3πt ).
+
+Direct substitution gives 
+
+−6π2u⋆̸ = 0 .
+
+showing that the reported reference solution does not satisfy the stated governing equation. We further observed that the reference solution in the released PINNacle implementation differs from the one reported in the paper and, under the released default parameters, is also inconsistent with the stated PDE. To avoid evaluating PINN methods against an ambiguous PDE–reference pair, we therefore exclude Wave2d-MS from our benchmark rather than modifying its original definition. All other PINNacle problems used in this work follow the corresponding benchmark formulations described above. 
+
+# B Implementation Details and Mechanistic Evidence for LLM Candidate Generation 
+
+## B.1 LLM Inputs, Outputs, and Information Boundaries 
+
+The LLM in PINNsForge does not directly generate arbitrary executable code. Instead, each call proposes only one complete structured AlgorithmSpec . A controller is responsible for subsequent parsing, validation, instantiation, and real PINN training, so the LLM cannot bypass the predefined search space or directly modify the experimental protocol. The information provided to the LLM at different search stages is summarized below. Context Generation 0 Generation g ≥ 1 Purpose Target PDE description 
+
+✓ ✓ Provides the governing equation, computational domain, IC/BC, and problem characteristics Prior knowledge 
+
+KP
+
+✓ ✓ Provides PINN design rationale relevant to the current PDE Allowed search space Ω
+
+✓ ✓ Restricts the network, sampling, constraint, loss, and optimization components that may be generated Training / resource budget 
+
+✓ ✓ Restricts parameter count, sampling scale, and training budget 36 Context Generation 0 Generation g ≥ 1 Purpose Role / search-strategy condition 
+
+✓ ✓ Specifies the design focus of the current candidate Global Top-3 
+
+AlgorithmSpec 
+
+– ✓ Provides validated high-performing parent configurations Execution evidence of parents – ✓ Provides training evidence including PDE residuals, IC/BC errors, optimization stability, and convergence behavior Run-scoped posterior summary – ✓ Summarizes successes, failures, and design experience observed within the current independent search run At Generation 0, no execution history exists for the current PDE, so initial candidates are independently generated using only PDE information, relevant priors, the allowed search space, and initialization roles. Starting from Generation 1, the Global Top-3 parent configurations and their real execution evidence are added to the context to support the Refine, Physics-Guided, Architecture-Guided, Synthesis, and Novelty strategies defined in the main text. Sampling temperatures for the different strategies are provided in Appendix C.2; the role definitions are not repeated here. The LLM is not allowed to modify the target PDE, computational domain, initial conditions, boundary conditions, evaluation protocol, or experimental budget. Its output can describe only the PINN algorithm components permitted within Ω, including network representation, network architecture, activation functions, constraint handling, sampling strategy, loss handling, optimization strategy, and training control. Candidates are normalized before deduplication and training; normalized AlgorithmSpec s that are exactly identical are treated as the same configuration, avoid-ing duplicate candidates caused solely by field ordering, expansion of default values, or differences in ineffective representations. 
+
+## B.2 Information Isolation in Ablation Experiments 
+
+Section 4.3 of the main text defines three major ablated variants. To ensure that differences among these experiments arise only from the designated information channels, we keep the number of candidates, training budget, search space, and LLM generation protocol unchanged while controlling the context accessible to the LLM. 
+
+Table B.1: Information accessible to the LLM under different ablation settings. 
+
+Variant Prior Knowledge Run-scoped Posterior Execution Feedback to LLM Parent-based Evolution w/o Knowledge Base × × ✓ ✓
+
+w/o Execution Feedback 
+
+✓ × × ✓
+
+w/o Evolutionary Search 
+
+✓ ✓ ✓ ×
+
+PINNsForge ✓ ✓ ✓ ✓
+
+37 In w/o Knowledge Base , the LLM no longer accesses the retrieved PINN priors or the run-specific relevant knowledge maintained through this knowledge channel. In w/o Execution Feedback , historical candidate structures remain visible, but their yg,k , PDE residuals, constraint errors, optimization diagnostics, rankings, and other training outcomes are hidden. No posterior depending on these execution results is formed. The LLM therefore cannot use candidates’ actual execution behavior to guide subsequent modifications. In w/o Evolutionary Search , the LLM can still use aggregated historical execution experience, but it does not receive specific historical AlgorithmSpec s or Global Top-3 parent configurations. Subsequent candidates are therefore generated independently and do not inherit, modify, or recombine the concrete configurations of existing high-performing candidates. This setting corresponds to independent LLM search without parent inheritance under the same candidate-evaluation budget. 
+
+## B.3 Deterministic Validation, Normalization, and Candidate Repair 
+
+The LLM is responsible only for proposing candidates; whether a candidate is admitted to training is determined entirely by a deterministic controller. Every returned AlgorithmSpec passes through Parsing → Normalization → Validation → Instantiation → Training .
+
+The validation stage checks at least the following conditions: • whether the structure of the AlgorithmSpec is complete; • whether all components belong to the allowed search space Ω;• whether different algorithm components are mutually compatible; • whether the number of network parameters satisfies the budget; • whether the sampling budget satisfies the constraints; • whether the training iteration count strictly matches the current low- or high-fidelity training budget. Invalid candidates do not enter training directly. Instead, they undergo structured repair within a fixed repair budget. Repair may address only missing fields, illegal values, or component incompatibilities; it cannot modify the target PDE 
+
+P, enlarge the search space Ω, or relax the experimental budget. If the required number of valid candidates still cannot be obtained within the allowed generation and repair process, low-fidelity search terminates according to the stopping rule in Appendix C.4. Candidates that pass validation are reconstructed and trained according to the experimental protocol, and their actual execution results form (yg,k , E g,k ) for subsequent search. Natural-language or structured suggestions produced by the LLM are therefore not themselves considered valid candidates; only AlgorithmSpec s that pass deterministic validation and complete real PINN training are admitted to the history and the Global Top-3. 
+
+## B.4 Execution Feedback and Cross-Generation Inheritance Evidence on Burgers-1D 
+
+The main text already uses search trajectories to show that multi-generation search continues to discover better candidates after Generation 0; complete trajectories for all 25 PDEs are provided in Appendix D. Here, rather than repeating the Burgers equation definition, initialization roles, or generation-wise global-best values, we retain only two concrete pieces of evidence illustrating how real training feedback changes subsequent design and how the final configuration emerges through multi-generation parent inheritance .Below, we use Gg-Ck as a readable label for candidate ag,k ; for example, G6-C4 corresponds to a6,4.
+
+B.4.1 Representative Parent—Child Modification For parent G6-C4 , real training shows that the network and hard constraints remain stable, but a clear PDE-residual hotspot persists near the shock. The subsequent candidate therefore preserves the validated stable network and constraint mechanisms, concentrates its main modification on local adaptive sampling, and simultaneously explores an alternative optimization configuration. 
+
+Table B.2: Representative execution-feedback-driven modification on Burgers-1D. 
+
+38 Component Parent Configuration Execution Evidence Design Decision Child Configuration Architecture Modified MLP, 
+
+6 × 128 ; no residual connections Completed the full 1,000-step training without NaN or solution collapse 
+
+Preserve. The current network architecture is already stable Keep Modified MLP, 
+
+6 × 128 
+
+Constraint Exact hard transform 
+
+burgers_1d_initial_dirichlet_exact 
+
+IC error 
+
+= 2 .25 × 10 −8, BC error = 8 .74 × 10 −8
+
+Preserve. Do not reallocate search emphasis to constraints that are already well satisfied Keep the exact hard transform Sampling 10,000 Sobol interior points + RAD; add 500 each time; cap at 15,000; residual exponent 2.5 Persistent residual hotspot at 
+
+x ∈ [−0.24 , 0.24] ,
+
+t ∈ [0 .15 , 0.39] 
+
+Modify. Strengthen local refinement while preserving global Sobol coverage Add 600 each time; raise the cap to 16,000; keep the remaining RAD settings unchanged Optimization Adam 800 steps, lr 
+
+1.0 × 10 −3,one-cycle; L-BFGS 200 steps, history 100 Optimization remains numerically stable, but clear residual error remains at the end of training 
+
+Explore. Treat optimization changes as accompanying exploration rather than misclassifying a stable optimizer as a failure Increase Adam lr to 
+
+1.2 × 10 −3, switch to step decay; L-BFGS history 120 The actual training results of the parent and child are: Metric Parent G6-C4 Child G7-C4 Solution MSE 5.71 × 10 −4 2.21 × 10 −4
+
+PDE residual 6.05 × 10 −2 2.14 × 10 −2
+
+IC error 2.25 × 10 −8 1.25 × 10 −8
+
+BC error 8.74 × 10 −8 2.53 × 10 −8
+
+This example is not intended to attribute the performance improvement to any single independent component. The parent and child use independent random initializations, and both the sampling and optimization configurations change simultaneously. Instead, the example illustrates how execution feedback helps the system distinguish between “mechanisms that are already stable and should be preserved” and “components that still require modification,” and use this distinction to form the next-generation candidate. 
+
+B.4.2 Cross-Generation Evolutionary Lineage of the Final Candidate PINNsForge records the parent source of every evolutionary candidate. Single-parent refinement can be written as 
+
+ag,p → ag+1 ,c ,
+
+Multi-parent synthesis instead inherits and recombines design mechanisms from multiple Global Top-3 candidates. Here, refinement and synthesis are not predefined field-wise mutation or crossover operations; which designs are preserved, modified, or combined is determined by the LLM from the parent AlgorithmSpec s, the target PDE, and execution evidence. 
+
+Table B.3: Cross-generation evolutionary lineage of the final Burgers-1D candidate. 
+
+39 Generation Candidate Parent(s) Evolution Mode Main Inherited / Modified Components 0 G0-C2 – Independent Initialization 4 × 64 modified MLP, tanh , soft constraints, Sobol + RAD, Adam + L-BFGS 1 G1-C3 G0-C2, G0-C6, G0-C4 Multi-Parent Synthesis Combine RAD sampling, a deeper network topology, and optimization control; expand to a 6 × 96 modified MLP 2 G2-C1 G1-C3 Single-Parent Refinement Preserve the 6 × 96 network; increase the RAD exponent and interior-point budget 3 G3-C4 G2-C1, G2-C4 Multi-Parent Synthesis Introduce an exact hard IC/BC transform; use fixed weighting; increase the RAD cap 4 G4-C4 G3-C4, G3-C2 Multi-Parent Synthesis Preserve hard constraints and Sobol + RAD; widen the network to 6 × 128; add one-cycle Adam and L-BFGS recovery 5 G5-C4 G4-C4, G4-C3 Multi-Parent Synthesis Adjust the Adam schedule, RAD capacity, and L-BFGS history 6 G6-C4 G5-C4, G5-C1, G5-C3 Multi-Parent Synthesis Preserve hard constraints, tanh ,Sobol + RAD, and Adam →L-BFGS; use a stable 6 ×
+
+128 modified MLP 7 G7-C4 G6-C4 Single-Parent Refinement Strengthen RAD refinement; adjust the Adam schedule and L-BFGS history 40 Generation Candidate Parent(s) Evolution Mode Main Inherited / Modified Components 8 G8-C4 G7-C1, G7-C2, G7-C4 Multi-Parent Synthesis Combine network capacity, sampling, and training strategies from multiple G7 parents; use a 5 ×
+
+192 modified MLP and retune RAD and L-BFGS settings Final HF G8-C4 Low-fidelity source: G8-C4 Independent High-Fidelity Training Keep the G8-C4 
+
+AlgorithmSpec 
+
+unchanged and independently train for 10,000 optimizer steps from a new random initialization This lineage shows that the final configuration is not produced directly by a single independent LLM call, but instead continually inherits, modifies, and synthesizes design mechanisms that have been validated through real PINN training over multiple generations. Together with the search trajectories in the main text and Appendix D, this example provides a traceable mechanistic chain from execution evidence → targeted modification → parent inheritance →
+
+final configuration .
+
+# C Experimental Details 
+
+This appendix provides additional experimental details for reproducing the PINNsForge results. The notation for candidates, execution results, search history, and Global Top-3 follows Section 3 and Appendix B. 
+
+## C.1 Search Configuration 
+
+PINNsForge starts with 8 candidates in Generation 0 and generates 5 candidates in each subsequent generation. Generation indices start from (g=0). The search completes at least Generations 0–3 and at most Generations 0–9, corresponding to a minimum of 4 and a maximum of 10 completed generations. After each completed generation, the controller maintains the distinct all-history Global Top-3 defined in Section 3.3.3. Setting Value Generation-0 candidates 8Candidates per later generation 5Min. / max. completed generations 4 / 10 Parent population Global Top-3 Low-fidelity training 1K steps High-fidelity training 10K steps Maximum trainable parameters 2M Maximum training points 65,536 All normal and escape generations count toward the 10-generation maximum. 41 C.2 LLM Sampling 
+
+Candidate generation uses a fixed role-conditioned temperature schedule. Lower temperatures are assigned to conserva-tive search directions, while higher temperatures encourage exploratory designs. Generation-0 direction Temperature Robust reference 0.20 Constraint / causality 0.35 Localized sampling 0.40 Representation 0.45 Residual / loss 0.45 Optimization 0.40 Capacity / topology 0.50 Cross-component novelty 0.60 Evolution strategy Normal Escape Refine 0.20 0.35 Physics-Guided 0.36 0.51 Architecture-Guided 0.42 0.57 Synthesis 0.47 0.62 Novelty 0.58 0.73 When stagnation triggers an escape generation, the temperature of each evolution strategy is increased by 0.15, capped at 0.85. The Reflection Agent uses a temperature of 0.1. top_p follows the provider default, and no provider-side sampling seed is supplied. 
+
+## C.3 Computational Environment 
+
+Experiments are conducted on a Linux server using NVIDIA GeForce RTX 4090 GPUs. Each PDE search runs on a single GPU using FP32 arithmetic. Component Configuration GPU NVIDIA GeForce RTX 4090 NVIDIA Driver 550.163.01 CUDA 12.4 Python 3.12 PyTorch 2.6.0+cu124 Precision FP32 Additional software dependencies and exact environment specifications are provided with the implementation. 
+
+## C.4 Deterministic Stagnation Detection, Escape Generation, and Termination 
+
+All search-control decisions in this section are computed from the low-fidelity candidate comparison metric defined in Section 3.3.2. For candidate ag,k , let (y_{g,k}) denote its low-fidelity comparison value. In the reported experiments, (y_{g,k}) is the solution MSE computed exclusively on the fixed search-validation reference set. The disjoint final-test reference set is never accessed by search-control decisions, candidate ranking, or termination. Lower values are better. For each completed generation (g), define the best valid candidate value in that generation as 
+
+bg = min  
+
+> k
+
+yg,k ,
+
+42 where the minimum is taken over valid candidates in Generation g. Define the all-history best value through Generation g as 
+
+Bg = min  
+
+> 0≤t≤g
+
+bt.
+
+When Generation g contains at least three valid candidates, define the median of its three best candidate values as 
+
+mg = Median (Top3 {yg,k }k) .
+
+The median comparison value of the distinct all-history Global Top-3 archive after completing Generation g is defined as 
+
+Ag = Median ( {y(a) : a ∈ GlobalDistinctTop3( Hg )}) .
+
+This quantity is used once at least three distinct valid candidates exist in the archive; before that point, archive-median criteria are disabled. The relative improvement from an earlier value x to a later value y is defined as 
+
+I(x, y ) = 
+
+
+
+max 
+
+
+
+0, x − y
+
+|x|
+
+
+
+, x̸ = 0 and both x, y are finite ,
+
+0, otherwise .
+
+With this definition, larger I(x, y ) indicates a larger reduction in the comparison metric. Stagnation detection begins after Generation 3 has completed, i.e., after four completed generations (Generations 0–3). For a normal generation g ≥ 3, an escape generation is scheduled when at least one of the following conditions holds. 1. Global-best stagnation. The three most recent generation-to-generation improvements of the all-history best are all below 1%, and the cumulative improvement over the same window is below 2%: 
+
+I(Bg−3, B g−2) < 0.01 , I(Bg−2, B g−1) < 0.01 ,I(Bg−1, B g ) < 0.01 , I(Bg−3, B g ) < 0.02 .
+
+2. Elite-archive stagnation. Across the last three completed generations, no previously unseen normalized 
+
+AlgorithmSpec enters the distinct all-history Global Top-3 archive. 3. Population stagnation. When each generation in the relevant window contains at least three valid candidates, the median of the three best candidates improves by less than 2% in two consecutive transitions: 
+
+I(mg−2, m g−1) < 0.02 , I(mg−1, m g ) < 0.02 .
+
+If stagnation is detected after Generation gstall , and the 10-generation limit has not yet been reached, the next generation is designated as the escape generation: 
+
+gesc = gstall + 1 .
+
+The escape generation uses the same five semantic evolution strategies and the same 1,000-step low-fidelity training budget as a normal evolution generation, but increases exploration through the following deterministic controls: • each evolution-strategy temperature is increased by 0.15, capped at 0.85; • every generated candidate must differ from its parent context in at least two major executable modules; • exact reproductions of parent configurations and non-substantive numerical perturbations are rejected; • previously failed mechanisms are not repeated unless the candidate explicitly addresses the observed failure reason; • Synthesis and Novelty are prompted to use greater parent or mechanism diversity. 43 The normal evolution-strategy temperature vector is 
+
+τ normal = (0 .20 , 0.36 , 0.42 , 0.47 , 0.58) ,
+
+and the corresponding escape-generation vector is 
+
+τ escape = (0 .35 , 0.51 , 0.57 , 0.62 , 0.73) .
+
+After completing the escape generation gesc , the escape is considered successful if at least one of the following conditions holds. 1. New best candidate. The best candidate in the escape generation improves on the pre-escape all-history best by at least 2%: 
+
+I (Bgstall , b gesc ) ≥ 0.02 .
+
+2. New elite configuration. At least one previously unseen normalized AlgorithmSpec from Generation gesc 
+
+enters the distinct all-history Global Top-3 archive. 3. Elite-archive improvement. The median comparison value of the distinct Global Top-3 improves by at least 2%: 
+
+I (Agstall , A gesc ) ≥ 0.02 .
+
+If the escape succeeds, the stagnation history accumulated before gesc is cleared and normal evolution resumes. If none of the three escape-success conditions is satisfied, the low-fidelity search terminates immediately and the current Global Top-3 is passed to the high-fidelity evaluation stage. The low-fidelity search also terminates when either of the following conditions holds: • the search has completed the maximum of 10 generations, i.e., Generation 9 has finished; or • candidate generation and the bounded repair process cannot produce the required number of valid candidates for the next generation. Normal and escape generations both count toward the 10-generation maximum. Because generation indices run from 0 to 9 and stagnation is first assessed after Generation 3, the earliest possible escape generation is Generation 4. 
+
+# D Complete Search Trajectories 
+
+Table D.1 reports the complete single-run search trajectories for all 25 PDE problems. All MSE values used to describe the search trajectory are computed on the search-validation reference set. Generation-0 Best denotes the lowest validation MSE among the initial candidates, Best LF denotes the lowest validation MSE found during the entire low-fidelity search, and Final HF denotes the lowest high-fidelity validation MSE among the independently trained Global Top-3 candidates. The final-test reference set is not used in constructing these search trajectories. The improvement ratios are computed as G0 → Best LF = MSE G0 
+
+MSE Best LF 
+
+,
+
+G0 → Final HF = MSE G0 
+
+MSE Final HF 
+
+.
+
+Table D.1: Complete single-run search trajectories across 25 PDE problems. 
+
+PDE Generation-0 Best MSE Best LF MSE Final HF MSE G0 → Best LF G0 → Final HF burgers_1d 3.64E-03 2.05E-04 (G8) 6.51E-05 17.74 × 55.82 ×
+
+burgers_2d 2.49E-01 2.13E-01 (G5) 1.78E-01 1.17 × 1.39 ×
+
+44 PDE Generation-0 Best MSE Best LF MSE Final HF MSE G0 → Best LF G0 → Final HF gray_scott_2d 4.37E-03 4.03E-03 (G9) 4.07E-03 1.08 × 1.07 ×
+
+heat_2d_complex_geometry 1.28E-02 3.26E-03 (G8) 4.63E-04 3.92 × 27.64 ×
+
+heat_2d_long_time 1.13E+00 1.10E+00 (G5) 1.08E+00 1.03 × 1.05 ×
+
+heat_2d_multiscale 3.01E-02 9.140E-05 (G9) 1.014E-05 330.08 × 2,975.09 ×
+
+heat_2d_varying_coefficient 1.12E-02 2.85E-03 (G9) 2.18E-03 3.93 × 5.13 ×
+
+heat_5d 1.31E-05 3.85E-07 (G9) 8.99E-09 33.90 × 1,452.78 ×
+
+heat_inverse_2d 1.36E-02 5.73E-03 (G6) 3.68E-03 2.36 × 3.68 ×
+
+kuramoto_sivashinsky_1d 1.34E+00 1.05E+00 (G7) 1.16E+00 1.28 × 1.16 ×
+
+navier_stokes_2d_backstep 2.64E-03 7.68E-04 (G9) 2.30E-04 3.44 × 11.48 ×
+
+navier_stokes_2d_classic 1.86E-03 1.61E-05 (G9) 2.35E-06 115.60 × 792.09 ×
+
+navier_stokes_2d_long_time 5.09E+02 5.08E+02 (G7) 4.97E+02 1.00 × 1.02 ×
+
+poisson_2d_classic 9.77E-02 8.94E-02 (G8) 1.64E-02 1.09 × 5.95 ×
+
+poisson_boltzmann_2d 1.04E-01 1.23E-02 (G9) 6.03E-03 8.45 × 17.16 ×
+
+poisson_2d_many_area 3.27E+00 2.79E+00 (G7) 1.97E+00 1.17 × 1.66 ×
+
+poisson_3d_complex_geometry 8.96E-03 4.48E-03 (G8) 8.83E-04 2.00 × 10.14 ×
+
+poisson_5d 6.44E-06 1.01E-07 (G9) 5.65E-08 63.58 × 114.03 ×
+
+poisson_inverse_2d 6.22E-03 4.32E-04 (G8) 1.45E-04 14.39 × 42.80 ×
+
+wave_1d 7.43E-02 5.57E-02 (G6) 3.15E-02 1.34 × 2.36 ×
+
+wave_2d_heterogeneous 7.85E-02 3.85E-02 (G7) 2.96E-02 2.03 × 2.65 ×
+
+allen_cahn_1d 6.37E-08 1.08E-08 (G9) 1.20E-09 5.89 × 53.1 ×
+
+darcy_flow_2d 6.94E-09 3.14E-10 (G8) 1.53E-11 22.11 × 453.59 ×
+
+shallow_water_2d 2.73E-09 2.33E-10 (G9) 9.83E-11 11.68 × 27.71 ×
+
+kovasznay_flow_2d 2.00E-05 4.95E-08 (G9) 2.59E-09 404.28 × 7,722.18 ×
+
+45

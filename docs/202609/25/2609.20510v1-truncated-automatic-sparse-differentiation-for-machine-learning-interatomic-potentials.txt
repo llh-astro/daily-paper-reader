@@ -1,0 +1,493 @@
+Title: Truncated automatic sparse differentiation for machine learning interatomic potentials
+
+URL Source: https://arxiv.org/pdf/2609.20510v1
+
+Published Time: Fri, 18 Sep 2026 01:45:56 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Truncated automatic sparse differentiation for machine learning interatomic potentials 
+
+Marcel F. Langer 1 Adrian Hill 2,3 Michele Ceriotti 11Laboratory of Computational Science and Modeling (COSMO), EPFL, Lausanne, Switzerland 
+
+> 2
+
+Machine Learning Group, Technical University of Berlin, Berlin, Germany 
+
+> 3
+
+BIFOLD – Berlin Institute for the Foundations of Learning and Data, Berlin, Germany 
+
+{marcel.langer,michele.ceriotti}@epfl.ch , hill@tu-berlin.de 
+
+## Abstract 
+
+Machine learning interatomic potentials (MLIPs) learn the mapping from atomic positions to potential energy. The forces, the negative gradient of this energy, drive molecular dynamics and are readily obtained using automatic differentiation. Higher-order derivatives, most notably the Hessian, describe collective motion and allow the direct prediction of experimental observables, but are considered computationally inaccessible for large systems. We suggest a solution: in physical systems, interactions decay with distance, and most MLIPs build on this locality through message passing up to a finite receptive field. This implies both sparsity of higher-order derivatives and their decay with distance. This structure can be exploited using automatic sparse differentiation (ASD). We explain how to compute the sparsity pattern for MLIP derivatives and demonstrate that, for multiple foundation MLIPs, ASD computes full Hessians of large porous materials exactly, but with modest speedups at best. The larger gains come from truncated ASD: discarding small, but nonzero, Hessian entries between distant atoms yields order-of-magnitude speedups with negligible impact on predicted observables. 
+
+## 1 Introduction 
+
+Machine learning interatomic potentials (MLIPs), i.e., learned approximations to the Born and Oppenheimer [1927] potential energy surface (PES) based on first-principles reference data, have become increasingly valuable tools for computational materials science, chemistry, and biology [Unke et al., 2021, Deringer et al., 2019]. In practice, not only the potential energy, but also its derivatives carry essential information for atomistic modeling. First derivatives describe forces acting on atoms and allow the simulation of atomic motion through molecular dynamics. Higher-order derivatives describe the curvature of the PES. Under the assumption of small deviations around a local minimum (the harmonic approximation ), the Hessian gives rise to collective modes of motion (the phonons ), a long-established model of vibrations in molecules and solids that underpins the prediction of experimental observables such as heat capacity, vibrational spectra, and thermal transport [Debye, 1912, Dove, 1993]. Third and higher-order derivatives are anharmonic terms, interpreted as scattering between phonon modes and determining their lifetimes and linewidths [Maradudin and Fein, 1962]. Obtaining derivatives of MLIPs is therefore an important task. Since the total energy is a scalar, auto-matic differentiation (AD) allows the calculation of forces (its negative gradient) in a single backward pass, at the same asymptotic cost as the energy prediction itself. This is not the case for higher-order derivatives: if the forward pass is O(N ), as for the MLIPs considered here, the full Hessian takes 
+
+3N derivative passes of O(N ) each, hence O(N 2); the full third-derivative tensor (3 N )2 passes, hence O(N 3), and so on. This bottleneck has restricted the use of MLIPs for vibrational analysis to modest system sizes thus far [Gönnheimer et al., 2025, Elena et al., 2025, Loew et al., 2025]. 
+
+> Preprint. arXiv:2609.20510v1 [physics.chem-ph] 17 Sep 2026
+
+Fortunately, this asymptotic scaling is a worst-case estimate for generic higher-order derivatives. If derivatives have additional structure—in particular, sparsity—they can be computed more efficiently by omitting known zeros. This technique is called automatic sparse differentiation (ASD) [Curtis et al., 1974, Powell and Toint, 1979]. This work gives a blueprint for using ASD with MLIPs based on message-passing neural networks (MPNNs). We show how to compute the sparsity pattern for a given MLIP in closed form, and argue that this procedure also gives rise to a hierarchy of truncated 
+
+k-hop sparsity patterns that converges to the exact sparsity pattern of the model. For common MLIPs (M ACE , P ET ) and porous materials—metal–organic frameworks (MOFs), covalent organic frameworks (COFs), and zeolites—we show empirically that (a) ASD with the exact pattern recovers dense Hessians to floating-point accuracy at modest speedups, larger for models with smaller receptive fields, (b) Hessian entries decay rapidly with hop distance, at a rate set by the chemistry of the system, and (c) truncating the pattern at a low hop count therefore trades a controlled approximation for much larger speedups, with often negligible impact on predicted observables. Our results bring experimental observables of large systems within routine reach, opening the door to systematic evaluation of MLIPs on, and fine-tuning with, real-world measurement results. 
+
+## 2 Background 
+
+Machine learning interatomic potentials Under the Born and Oppenheimer [1927] approximation, the N nuclei of a molecule or material move on a PES E = E({(ri, Z i)}Ni=1 ) that depends only on their positions ri and atomic numbers Zi. The forces driving their dynamics are derivatives of this energy, F i = −∂E/∂ ri. In tandem with the increasing availability of quantum-mechanical reference data, MLIPs [Behler and Parrinello, 2007] have emerged as a data-driven approximation to this surface. Modern MLIPs are, almost without exception, graph neural networks (GNNs) [Battaglia et al., 2018] acting on a geometric graph of atoms whose edges encode interatomic vectors within a fixed cutoff radius rc, with each atomic energy contribution Ei local to a receptive field that grows linearly with the number of message-passing iterations. The total energy is a sum of N such contributions, each with cost bounded by the finite cutoff, so one forward pass is O(N ).1 Recently, a line of foundation MLIPs has been trained on broad slices of the periodic table and is able to predict energies and forces for arbitrary chemistries in a zero-shot setting [Batatia et al., 2025, Mazitov et al., 2025, Wood et al., 2025, Yang et al., 2024, Rhodes et al., 2025, Malosso et al., 2026]. 
+
+Phonons Materials are modeled as periodic systems: only the atoms of the unit cell , which is tiled in space, move independently; a supercell combines several unit cells into a larger one to increase the number of independent degrees of freedom. The interatomic force constants Φiα,jβ =
+
+∂2E/∂r iα ∂r jβ , the second-order expansion coefficients of the PES around a minimum, are simply the Hessian of the energy with respect to Cartesian positions. We write ∥Φij ∥ for the Frobenius norm of the 3 × 3 block of atom pair (i, j ). Mass-weighting yields the dynamical matrix, whose eigendecomposition gives the squared phonon frequencies ω2 
+
+> s
+
+. The simulation cell must be large enough to contain all interactions between atoms; for MLIPs, the required size can be determined exactly from the model’s interaction range (Appendix A). Harmonic observables are thermal averages over the phonon spectrum [Dove, 1993]; we consider the isochoric heat capacity 
+
+CV (T ) = kB
+
+X
+
+> s
+
+x2 
+
+> s
+
+exs
+
+(exs − 1) 2 , xs = ℏωs
+
+kBT (1) as an example, but other harmonic observables are readily available, such as Debye–Waller factors. 
+
+## 3 Related work 
+
+Automatic differentiation for Hessians Gönnheimer et al. [2025] computed the Hessian of M ACE 
+
+with AD, predicting zero-shot heat capacities on Moosavi et al. [2022]’s porous-materials benchmark. Using dense AD, they report a ceiling of ∼1900 atoms on an A100 GPU. We tackle this bottleneck. 
+
+Approximating Hessians Hessians can be used as a training signal for MLIPs: Rodriguez et al. [2025] showed that training on full density functional theory (DFT) Hessians improves transition-state     
+
+> 1The relevant scaling for MLIPs is N→ ∞ at constant density (the thermodynamic limit ), so the work per atomic environment stays constant.
+
+2(a)  truncated automatic sparse differentiation  toy chain, 7 atoms, one coordinate each,  𝐾  = 2                          
+
+> exact pattern, 𝑘 =𝐾 =2: 5 HVPs
+> 𝐇 𝐒 𝐇 𝐒
+> Hessian seeds compressed
+> truncated, 𝑘 =1: 3 HVPs
+> 𝐇 𝐒 𝐇 𝐒
+> Hessian seeds compressed
+> Legend
+> hue: one seed, one HVP, one column of 𝐇 𝐒
+> in 𝐇 :the 𝐇 𝐒 entry it is decompressed from
+> shade: hop distance (0, 1, 2 hops)
+> gray: outside the truncated pattern
+> crossed: nonzero but unused in decompression
+> dot: contaminated by a truncated entry
+
+(b)  MOF-177: hops from one atom  (c)  ‖Φ𝑖 𝑗 ‖ from that atom  (d)  Hessian           
+
+> cutoff 𝑟 c
+> hop count 𝑘 , key in (b)
+> ‖Φ𝑖 𝑗 ‖, scale in (c)
+> 01234510−6 102eV/Å² atoms ordered by graph adjacency
+
+Figure 1: Truncated ASD. (a) Toy problem: a chain with 7 atoms and a model with Hessian reach of K = 2 hops. The Hessian H is decompressed from HVPs with the columns of a seed matrix S,which yield the compressed product HS . Since H is sparse, star coloring yields 5 colors (and thus 5
+
+HVPs), fewer than the 7 of a dense evaluation. Every entry of H is decompressed from one entry of HS , shown by its hue, either directly or through its symmetric partner; entries of HS that are sums of several Hessian entries are never read (crossed). Truncating the sparsity pattern to one hop needs only three HVPs, but the neglected two-hop couplings (gray) now contaminate entries used for decompression (dots), leading to errors (Appendix H). (b) MOF-177 with P ET -XS: the atoms within 
+
+K = 5 hops of one Zn atom on the model’s input graph. We indicate the atom’s cutoff sphere and one-hop edges. The rest of the cell is drawn in gray. (c) The same atoms colored by the force-constant block norm ∥Φij ∥ between each atom and the marked one, showing its decay with distance. (d) The whole Hessian of MOF-177 with one cell per pair of atoms, ordered so that graph neighbors are adjacent. Hop count above the diagonal, ∥Φij ∥ below, structural zeros white. and vibrational-spectrum prediction, while PFT [Koker et al., 2026], PHL [Rodriguez et al., 2026], and the HORM dataset [Cui et al., 2026] make this tractable via stochastic sampling of Hessian columns or Hutchinson-style random Hessian-vector products (HVPs). 
+
+Predicting Hessians with MLIPs HIP [Burger et al., 2025] bypasses AD, directly predicting Hessians from SE(3)-equivariant features, with 10 –70 × speedups over AD on small molecules; the predicted Hessians are not guaranteed to be consistent with the gradient of the model’s own forces. Inconsistencies of this kind can lead to problems in physical simulations [Bigi et al., 2025]. 
+
+Exploiting sparsity and decay Truncating force constants by distance is routine in lattice dynamics, whether through the supercell of a finite-displacement calculation [Togo, 2023] or explicit cutoffs in force-constant fitting [Esfarjani and Stokes, 2008, Eriksson et al., 2019]. Probing methods in numerical linear algebra similarly reconstruct matrices with known sparsity or decay from few matrix-vector products [Frommer et al., 2021, Amsel et al., 2026]. 
+
+## 4 Methods 
+
+Hessians via AD Given a function implemented as a computer program, AD automatically gen-erates programs that evaluate Jacobian-vector products (JVPs) or vector-Jacobian products (VJPs) at the same asymptotic cost as the function itself [Griewank and Walther, 2008]. For an MLIP energy E : R3N → R, one VJP therefore yields the entire gradient, and with it all forces, at the 3cost of one energy evaluation (the cheap gradient principle , Wolfe, 1982, Baur and Strassen, 1983). Differentiating that program again yields an HVP Hv, again at the cost of a small multiple of E
+
+[Pearlmutter, 1994]. 2 Individual products are cheap, but materializing H is not: each HVP He i
+
+with a standard basis vector recovers one column, so the full Hessian costs 3N passes; at O(N )
+
+per pass for a linear-scaling MLIP, this amounts to O(N 2). Phonon observables require the full eigenspectrum, and hence the materialized Hessian—matrix-free approaches cannot be used. 
+
+Automatic sparse differentiation ASD via compressed evaluation [Curtis et al., 1974, Powell and Toint, 1979], recently re-popularized in the context of machine learning [Hill et al., 2025, Hill and Dalle, 2025], reduces the 3N HVP passes to the number c of symmetrically orthogonal partitions of the Hessian sparsity pattern, provided the pattern is known ahead of time. Each pass evaluates one HVP with the sum of a partition’s basis vectors, a column of the seed matrix S, returning the sum of the corresponding columns, a column of HS ; orthogonality lets individual entries be read off that sum (Figure 1a). The partitioning is found by graph coloring, specifically star coloring [Coleman and Moré, 1984, Gebremedhin et al., 2005, 2009], so we call c the number of colors ; for very sparse patterns, c ≪ 3N . The sparsity pattern need not be exact: a superset of the true one is safe and merely costs extra colors, while a subset breaks orthogonality and makes the recovery lossy. This tradeoff is the basis of the truncated ASD discussed below. We use asdex [Hill and Dalle, 2026] for coloring and decompression. Coloring in this particular case can be sped up by observing that the sparsity pattern is made up of 3 × 3 blocks, one per pair of atoms, spanning the three components of each atom’s position, with the relevant sparsity fully determined by atom-atom connectivity. We therefore only color the graph of atoms, and then assign the three coordinates of each atom three distinct colors derived from the atom’s color. This yields a valid star coloring of the full sparsity pattern at a fraction of the cost (see Appendix D). 
+
+Sparsity detection for MLIPs Using ASD requires knowing the sparsity pattern of the target derivative matrix without evaluating it. For MLIPs based on GNNs, the sparsity pattern follows directly from the input graph. Manual or empirical inspection of the model determines the receptive field of its energy terms: each term depends on the atoms within L hops of the atom (M ACE ) or edge (P ET ) it is predicted for, with L the number of message-passing layers. Since the second derivative 
+
+∂2E/∂ ri∂rj couples two atoms only when both lie in the receptive field of a shared energy term, the Hessian’s sparsity pattern extends at most to the diameter of that field: K = 2 L hops for M ACE 
+
+and K = 2 L + 1 for P ET ; both counts are derived and verified in Appendix C. The K-hop sparsity pattern is then given by the nonzero entries of 
+
+A(K) =
+
+> K
+
+X
+
+> k=0
+
+Ak, (2) evaluated in Boolean arithmetic, where A is the adjacency matrix of the input graph, Aij = 1 if atoms i and j share an edge (Figure 1b–d). This pattern is exact : entries outside it are structurally zero. It is also the graph the coloring acts on. 
+
+Truncated automatic sparse differentiation Truncating Equation (2) at k < K yields a nested family of increasingly sparse patterns that retain couplings only up to k hops on the input graph. Truncated patterns reduce the cost of ASD, since sparser patterns admit colorings with fewer colors, and therefore require fewer HVPs and less storage. The resulting Hessian is approximate in two ways: couplings beyond k hops are discarded, and, since star coloring guarantees collision-free recovery only for a conservative sparsity pattern, the neglected couplings contaminate retained entries sharing a color. Both errors are controlled by the magnitude of the neglected couplings. Because message-passing MLIPs build up longer-ranged interactions by iterating local ones, these couplings should decay with graph distance, mirroring the decay of the underlying PES. Whether they decay fast enough for truncated Hessians to remain useful is an empirical question, answered in Section 5. 
+
+## 5 Experiments 
+
+Setup We evaluate three foundation MLIPs: M ACE (MACE-MP-0 medium, L=2 , K=4 ), P ET -XS (L=2 , K=5 ), and P ET -S ( L=3 , K=7 ); details are given in Appendix B. We study porous materials 
+
+> 2We refer to Dagréou et al. [2024] for a detailed comparison of HVP modes in JAX and PyTorch.
+
+4Table 1: Dense, truncated ( k<K ), and exact ( k=K, shaded) Hessians of the giant MOFs. N is the number of atoms in the model-converged supercell. Speedups are relative to dense wall time, all end to end, including sparsity pattern construction and coloring. δC V is the deviation of CV at 300 K 
+
+from the dense reference in per mille, with the acoustic sum rule enforced. M ACE has K=4 .                                                                                                                                                                        
+
+> Time Speedup over dense δC V(‰) dense truncated exact truncated exact Structure Model N(s)k=1 k=2 k=3 k=4 Kk=1 k=2 k=3 k=4 K
+> MIL-101 MACE 3604 3529 36 .513 .35.9–2.7−20 .77 −0.18 <0.01 –<0.01
+> PET -XS 3604 316 8.98.57.36.35.3−109 .50 −15 .09 <0.01 <0.01 <0.01
+> PET -S 3604 1248 23 .916 .611 .17.51.9−55 .58 −0.22 <0.01 <0.01 <0.01
+> MIL-100 MACE 2788 1246 18 .67.53.1–1.3−7.71 <0.01 <0.01 –<0.01
+> PET -XS 2788 227 6.35.95.24.43.6−87 .99 −5.60 <0.01 <0.01 <0.01
+> PET -S 2788 876 16 .811 .57.75.01.2−24 .81 0.03 <0.01 <0.01 <0.01
+> MOF-210 MACE 1854 555 10 .98.05.1–2.6−32 .40 −0.39 <0.01 –<0.01
+> PET -XS 1854 111 3.33.23.03.02.7−127 .99 −51 .02 −8.55 <0.01 <0.01
+> PET -S 1854 379 8.06.65.44.31.5−76 .44 −14 .13 <0.01 <0.01 <0.01
+> MOF-177 MACE 6464 9431 80 .530 .214 .3–5.6−26 .28 <0.01 <0.01 –<0.01
+> PET -XS 808 48 1.51.41.41.41.3−126 .79 −39 .20 −7.21 <0.01 <0.01
+> PET -S 6464 3900 67 .146 .423 .415 .43.2−66 .16 −7.37 <0.01 <0.01 <0.01
+
+(MOFs, COFs, zeolites) from Moosavi et al. [2022]’s benchmark: a stratified twelve-structure subset in supercells converged with respect to each model’s interaction range (both described in Appendix A); for validation against prior work, we recompute all 233 structures in their unit cells with M ACE 
+
+(Appendix E). We additionally consider giant MOF unit cells: MIL-101 (3604 atoms), one of the largest unit cells among common MOFs, as well as MIL-100 (2788 atoms), MOF-210 (1854 atoms), and MOF-177 (808 atoms). All Hessians are computed in single precision (a choice ablated in Appendix E) on a single H100 GPU; heat capacities follow the pipeline described there. 
+
+Hessian entries decay with graph distance We first examine the premise of truncation: Figure 3 shows the magnitude of the force-constant blocks ∥Φij ∥ as a function of the hops k between atoms i
+
+and j. Entries decay by roughly two orders of magnitude per hop for M ACE and slightly more than one for the P ET models, so that at k=3 the median block norm lies 3.5 to 7 orders of magnitude below the on-site blocks. The speed of decay depends on chemistry: MOFs and COFs decay at a similar rate, while zeolites display a slower decay. 
+
+Automatic sparse differentiation is exact Next, we use both dense and sparse AD to compute the exact Hessians for two kinds of systems: the giant MOFs, for most of which no supercells are required to obtain converged vibrational properties, and smaller systems, which must be tiled up to each model’s effective interaction range. Cost (measured end-to-end) and accuracy for the giant MOFs are listed in Table 1; results for all structures in Table 4. In all cases, ASD reproduces the dense predictions to within 5 × 10 −4 in relative Frobenius norm, and typically to 10 −6, close to expectation in single precision. However, it offers modest speedups at best: median end-to-end speedups of 
+
+1.7× for M ACE , 1.4× for P ET -XS and 1.2× for P ET -S, never more than 6× anywhere, and around break-even for the densest structures. The reason for this is a lack of usable sparsity: the full interaction range of the MLIPs used in this work is comparable to even the large MOF unit cells, and the supercells used for smaller systems are constructed to have exactly the minimum size to contain that interaction radius. The only additional source of sparsity is therefore porosity, i.e., regions where the input graph is genuinely disconnected, which varies strongly between systems. Low sparsity means many colors, so there is little to gain from ASD. Predicted heat capacities are compared with published calorimetry in Appendix I, where all models overestimate the measured values. 
+
+Truncated automatic sparse differentiation trades accuracy for speed Finally, we measure Hessian error, CV error, and speedup of truncated sparsity patterns against the dense reference, at every hop count k across the benchmark subset and the giant MOFs (Figure 2). As the sparsity pattern becomes more and more filled in with increasing k, errors and speedups decrease. Derived observables converge abruptly: at unconverged rungs the relative error in CV is comparable to that of 51 2 3 4 K
+
+Hop count k      
+
+> 10 −7
+> 10 −6
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> ‖Hk − H‖F / ‖H‖F
+> ←truncated exact
+> 1234K
+
+Hop count k      
+
+> 10 −10
+> 10 −8
+> 10 −6
+> 10 −4
+> 10 −2
+> |δCV | /CV
+> ←truncated exact
+> MACE
+> PET -XS PET -S
+> 1234K
+
+Hop count k  
+
+> 10 0
+> 10 1
+> 10 2
+> Speedup over dense
+> ←truncated exact
+
+Figure 2: Truncation across the benchmark subset and the giant MOFs: relative Hessian error (left), relative CV error at 300 K with the acoustic sum rule enforced (center), and end-to-end speedup over dense AD (right), versus hop count k; each model’s exact K is set apart (shaded). Bold markers are medians over structures; small dots are individual structures. Sparse timings include pattern construction and coloring; the dashed gray line marks break-even. the Hessian, and within two hops it drops to more than two orders of magnitude below the Hessian error. With 0.1 % as the threshold for CV , M ACE is converged at k = 2 for the vast majority of structures, P ET -S at k = 3 , and P ET -XS at k = 4 , with corresponding median speedups of 11 ×, 13 ×,and 1.6×. The exceptions are zeolites, as expected from the slower decay of the Hessian seen in Figure 3. The slowest-converging zeolite requires one more hop: k = 3 for M ACE at 5.9× speedup, 
+
+k = 4 for P ET -S at 5.4×, and the exact k = K = 5 for P ET -XS, where little speedup remains. The modest speedups for P ET -XS throughout reflect its high overall speed and small converged supercells—timings are dominated by fixed overheads and not HVPs. The residual errors in converged 
+
+CV are a threshold effect: the pipeline drops near-zero modes (Appendix E), and truncation can move one across the threshold, adding or removing its ∼kB; at exact K, CV agrees with the dense reference to better than 10 −5 relative. The Hessian error itself separates into the two contributions identified in Section 4; discarded couplings dominate until the pattern is nearly converged (Appendix H). 
+
+## 6 Conclusion 
+
+This work showed how to apply ASD to compute the Hessians of MLIPs. We explained how to obtain the sparsity pattern of MPNN-based MLIPs in closed form from their input graph by summing powers of the adjacency matrix. We then applied ASD to porous materials, whose large unit cells and porosity make them a natural best case for sparse Hessians. However, the interaction ranges of current foundation models are comparable to even these large unit cells, so ASD reproduces dense Hessians faithfully but at only modest speedups. This motivated a truncated version of ASD. The exact sparsity pattern is the endpoint of a hierarchy of sparser patterns that only keep interactions between atoms separated by fewer graph hops. Using these sparser patterns neglects terms of the Hessian, but allows fewer colors, and hence fewer HVPs, for its materialization. We find that this approximation yields similar observables at a fraction of the computational cost. This somewhat surprising result is due to the decay of the Hessian with distance: truncating interactions yields a controlled loss of accuracy, which can be reduced by increasing the number of hops to be considered. Several directions follow from here. Higher-order derivatives are the natural next step: three-phonon linewidths require contractions of the third-derivative tensor with a fixed direction, which reverse-mode AD evaluates without forming the tensor, at a small multiple of the Hessian’s cost [Gower and Gower, 2016]. This tensor inherits the sparsity of the Hessian, so sparsity patterns, colorings [Deussen and Naumann, 2019], and truncations of this work carry over directly; how it is best computed with higher-order and Taylor-mode techniques [Griewank and Walther, 2008, Griewank et al., 2000, 6Bettencourt et al., 2019] is left open. Truncation will not be as benign there as for heat capacity: linewidths weight precisely the distant couplings that truncation discards, so the sufficient hop count will depend on the observable. A theoretical analysis of the truncation error, connecting it to the decay rates of Figure 3, would put the choice of hop count on firmer ground for all derivative orders. Our results also expose message-passing depth as a performance-relevant design decision. The receptive field, so far chosen with accuracy in mind and little cost attached, directly sets the sparsity of higher-order derivatives, and keeping it compact now has a large payoff. For models whose interaction range is formally infinite, whether through deep receptive fields or explicit long-range terms, the Hessian is fully dense. Nevertheless, as physical interactions decay with distance, truncated ASD can still lead to large speedups where exact ASD cannot. Finally, since the predictive pipelines shown here are differentiable, at least in principle, they also pave the way toward fine-tuning on 
+
+experimental instead of simulation data. The presented truncated (or lossy) approach to ASD potentially also extends beyond the domain of MLIPs. For any derivative operator whose per-entry magnitude can be estimated ahead of time, truncated ASD materializes it at reduced cost by neglecting small, but nonzero, entries. 
+
+## Code and data availability 
+
+All code and data of this work are available in a single archive at https://doi.org/10.5281/ zenodo.22813524 , mirrored at https://github.com/sirmarcel/tasd4mlip-archive . The archive contains the JAX re-implementation of M ACE , the experiment scripts, and the relaxed struc-tures, run records, and derived observables of every experiment. A production-ready implementation of truncated ASD will be made available in pet-jax [Langer and Spies, 2026]. Further information and an overview of data sources can be found at https://marcel.science/tasd4mlip .
+
+## Acknowledgments and Disclosure of Funding 
+
+MFL acknowledges funding from the German Research Foundation (DFG), project number 544947822. MFL and MC acknowledge funding from the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation programme (Grant Agreement 101001890-FIAMMA) and from NCCR Separations, a National Centre of Competence in Research funded by the Swiss National Science Foundation (grant number 229280). Furthermore, AH grate-fully acknowledges funding from the German Federal Ministry of Education and Research under the grant BIFOLD26B. 
+
+## References 
+
+Noah Amsel, Tyler Chen, Feyza Duman Keles, Diana Halikias, Cameron Musco, and Christopher Musco. Fixed-Sparsity Matrix Approximation from Matrix-Vector Products. SIAM J. Matrix Anal. Appl. , 47(2):483–511, 2026. doi: 10.1137/25m1742710. Luis Barroso-Luque, Muhammed Shuaibi, Xiang Fu, Brandon M. Wood, Misko Dzamba, Meng Gao, Ammar Rizvi, Matt Uyttendaele, C. Lawrence Zitnick, and Zachary W. Ulissi. The Open Materials 2024 (OMat24) inorganic materials dataset and models. Nat. Comput. Sci. , 6(6):642–652, 2026. doi: 10.1038/s43588-026-00996-w. Ilyes Batatia, David P. Kovacs, Gregor Simm, Christoph Ortner, and Gabor Csanyi. MACE: Higher Or-der Equivariant Message Passing Neural Networks for Fast and Accurate Force Fields. In NeurIPS ,volume 35, pages 11423–11436. Curran Associates, Inc., 2022. doi: 10.52202/068431-0830. Ilyes Batatia, Philipp Benner, Yuan Chiang, Alin M. Elena, Dávid P. Kovács, Janosh Riebesell, Xavier R. Advincula, Mark Asta, Matthew Avaylon, William J. Baldwin, Fabian Berger, Noam Bernstein, Arghya Bhowmik, Filippo Bigi, Samuel M. Blau, Vlad C˘ arare, Michele Ceriotti, Sanggyu Chong, James P. Darby, Sandip De, Flaviano Della Pia, Volker L. Deringer, Rokas Elijošius, Zakariya El-Machachi, Edvin Fako, Fabio Falcioni, Andrea C. Ferrari, John L. A. Gardner, Mikołaj J. Gawkowski, Annalena Genreith-Schriever, Janine George, Rhys E. A. Goodall, Jonas Grandel, Clare P. Grey, Petr Grigorev, Shuang Han, Will Handley, Hendrik H. Heenen, 7Kersti Hermansson, Cheuk Hin Ho, Stephan Hofmann, Christian Holm, Jad Jaafar, Konstantin S. Jakob, Hyunwook Jung, Venkat Kapil, Aaron D. Kaplan, Nima Karimitari, James R. Kermode, Panagiotis Kourtis, Namu Kroupa, Jolla Kullgren, Matthew C. Kuner, Domantas Kuryla, Guoda Liepuoniute, Chen Lin, Johannes T. Margraf, Ioan-Bogdan Magd˘ au, Angelos Michaelides, J. Harry Moore, Aakash A. Naik, Samuel P. Niblett, Sam Walton Norwood, Niamh O’Neill, Christoph Ortner, Kristin A. Persson, Karsten Reuter, Andrew S. Rosen, Louise A. M. Rosset, Lars L. Schaaf, Christoph Schran, Benjamin X. Shi, Eric Sivonxay, Tamás K. Stenczel, Christopher Sutton, Viktor Svahn, Thomas D. Swinburne, Jules Tilly, Cas van der Oord, Santiago Vargas, Eszter Varga-Umbrich, Tejs Vegge, Martin Vondrák, Yangshuai Wang, William C. Witt, Thomas Wolf, Fabian Zills, and Gábor Csányi. A foundation model for atomistic materials chemistry. J. Chem. Phys. , 163(18):184110, 2025. doi: 10.1063/5.0297006. Peter W. Battaglia, Jessica B. Hamrick, Victor Bapst, Alvaro Sanchez-Gonzalez, Vinicius Zambaldi, Mateusz Malinowski, Andrea Tacchetti, David Raposo, Adam Santoro, Ryan Faulkner, Caglar Gulcehre, Francis Song, Andrew Ballard, Justin Gilmer, George Dahl, Ashish Vaswani, Kelsey Allen, Charles Nash, Victoria Langston, Chris Dyer, Nicolas Heess, Daan Wierstra, Pushmeet Kohli, Matt Botvinick, Oriol Vinyals, Yujia Li, and Razvan Pascanu. Relational inductive biases, deep learning, and graph networks. arXiv:1806.01261, 2018. Walter Baur and Volker Strassen. The complexity of partial derivatives. Theor. Comput. Sci. , 22(3): 317–330, 1983. doi: 10.1016/0304-3975(83)90110-x. Jörg Behler and Michele Parrinello. Generalized Neural-Network Representation of High-Dimensional Potential-Energy Surfaces. Phys. Rev. Lett. , 98(14):146401, 2007. doi: 10.1103/ physrevlett.98.146401. Jesse Bettencourt, Matthew J. Johnson, and David Duvenaud. Taylor-Mode Automatic Differentiation for Higher-Order Derivatives in JAX. In NeurIPS 2019 Workshop on Program Transformations for Machine Learning , 2019. URL https://openreview.net/forum?id=SkxEF3FNPH .Filippo Bigi, Marcel F. Langer, and Michele Ceriotti. The dark side of the forces: assessing non-conservative force models for atomistic machine learning. In ICML , volume 267, pages 4384–4414. PMLR, 2025. URL https://openreview.net/forum?id=OEl3L8osas .Filippo Bigi, Paolo Pegolo, Arslan Mazitov, Jonathan Schmidt, and Michele Ceriotti. Pushing the limits of unconstrained machine-learned interatomic potentials. Mach. Learn.: Sci. Technol. , 7(3): 035051, 2026. doi: 10.1088/2632-2153/ae6417. M. Born and R. Oppenheimer. Zur Quantentheorie der Molekeln. Ann. Phys. , 389(20):457–484, 1927. doi: 10.1002/andp.19273892002. Andreas Burger, Luca Thiede, Nikolaj Rønne, Varinia Bernales, Nandita Vijaykumar, Tejs Vegge, Arghya Bhowmik, and Alan Aspuru-Guzik. HIP: Hessian Interatomic Potentials without derivatives. arXiv:2509.21624, 2025. Thomas F. Coleman and Jorge J. Moré. Estimation of sparse hessian matrices and graph coloring problems. Math. Program. , 28(3):243–270, 1984. doi: 10.1007/bf02612334. Taoyong Cui, Yunhong Han, Haojun Jia, Chenru Duan, and Qiyuan Zhao. A Large Scale Molecular Hessian Database for Optimizing Reactive Machine Learning Interatomic Potentials. Sci. Data , 13 (1):37, 2026. doi: 10.1038/s41597-025-06350-5. A. R. Curtis, M. J. D. Powell, and J. K. Reid. On the Estimation of Sparse Jacobian Matrices. IMA J. Appl. Math. , 13(1):117–119, 1974. doi: 10.1093/imamat/13.1.117. Mathieu Dagréou, Pierre Ablin, Samuel Vaiter, and Thomas Moreau. How to Compute Hessian-Vector Products? ICLR Blogposts, 2024. URL https://openreview.net/forum?id=rTgjQtGP3O .P. Debye. Zur Theorie der spezifischen Wärmen. Ann. Phys. , 344(14):789–839, 1912. doi: 10.1002/ andp.19123441404. Volker L. Deringer, Miguel A. Caro, and Gábor Csányi. Machine Learning Interatomic Potentials as Emerging Tools for Materials Science. Adv. Mater. , 31(46):1902765, 2019. doi: 10.1002/adma. 201902765. 8Jens Deussen and Uwe Naumann. Efficient Computation of Sparse Higher Derivative Tensors. In 
+
+Computational Science – ICCS 2019 , pages 3–17. Springer International Publishing, Cham, 2019. doi: 10.1007/978-3-030-22734-0_1. Martin T. Dove. Introduction to Lattice Dynamics . Cambridge University Press, 1993. doi: 10.1017/ cbo9780511619885. David Dubbeldam, Sofía Calero, Donald E. Ellis, and Randall Q. Snurr. RASPA: molecular simulation software for adsorption and diffusion in flexible nanoporous materials. Mol. Simul. , 42(2):81–101, 2016. doi: 10.1080/08927022.2015.1010082. Alin Marin Elena, Prathami Divakar Kamath, Théo Jaffrelot Inizan, Andrew S. Rosen, Federica Zanca, and Kristin A. Persson. Machine learned potential for high-throughput phonon calcu-lations of metal–organic frameworks. npj Comput. Mater. , 11(1):125, 2025. doi: 10.1038/ s41524-025-01611-8. Fredrik Eriksson, Erik Fransson, and Paul Erhart. The Hiphive Package for the Extraction of High-Order Force Constants by Machine Learning. Adv. Theory Simul. , 2(5):1800184, 2019. doi: 10.1002/adts.201800184. Keivan Esfarjani and Harold T. Stokes. Method to extract anharmonic force constants from first principles calculations. Phys. Rev. B , 77(14):144112, 2008. doi: 10.1103/physrevb.77.144112. Andreas Frommer, Claudia Schimmel, and Marcel Schweitzer. Analysis of Probing Techniques for Sparse Approximation and Trace Estimation of Decaying Matrix Functions. SIAM J. Matrix Anal. Appl. , 42(3):1290–1318, 2021. doi: 10.1137/20m1364461. Assefaw H. Gebremedhin, Arijit Tarafdar, Alex Pothen, and Andrea Walther. Efficient Computation of Sparse Hessians Using Coloring and Automatic Differentiation. INFORMS J. Comput. , 21(2): 209–223, 2009. doi: 10.1287/ijoc.1080.0286. Assefaw Hadish Gebremedhin, Fredrik Manne, and Alex Pothen. What Color Is Your Jacobian? Graph Coloring for Computing Derivatives. SIAM Rev. , 47(4):629–705, 2005. doi: 10.1137/ s0036144504444711. Nils Gönnheimer, Karsten Reuter, and Johannes T. Margraf. Beyond Numerical Hessians: Higher-Order Derivatives for Machine Learning Interatomic Potentials via Automatic Differentiation. J. Chem. Theory Comput. , 21(9):4742–4752, 2025. doi: 10.1021/acs.jctc.4c01790. Robert M. Gower and Artur L. Gower. Higher-order reverse automatic differentiation with emphasis on the third-order. Math. Program. , 155(1-2):81–103, 2016. doi: 10.1007/s10107-014-0827-4. Andreas Griewank and Andrea Walther. Evaluating Derivatives: Principles and Techniques of Algorithmic Differentiation, Second Edition . Society for Industrial and Applied Mathematics, 2008. doi: 10.1137/1.9780898717761. Andreas Griewank, Jean Utke, and Andrea Walther. Evaluating higher derivative tensors by forward propagation of univariate Taylor series. Math. Comput. , 69(231):1117–1130, 2000. doi: 10.1090/ s0025-5718-00-01120-0. Adrian Hill and Guillaume Dalle. Sparser, Better, Faster, Stronger: Sparsity Detection for Efficient Automatic Differentiation. Trans. Mach. Learn. Res. , 2025. URL https://openreview.net/ forum?id=GtXSN52nIW .Adrian Hill and Guillaume Dalle. asdex: Automatic Sparse Differentiation in JAX. Zenodo, 2026. URL https://doi.org/10.5281/zenodo.18788242 . Software, version v0.5.2, https: //github.com/adrhill/asdex .Adrian Hill, Guillaume Dalle, and Alexis Montoison. An Illustrated Guide to Automatic Sparse Differentiation. ICLR Blogposts, 2025. URL https://iclr-blogposts.github.io/2025/ blog/sparse-autodiff/ .R. W. Kennard and L. A. Stone. Computer Aided Design of Experiments. Technometrics , 11(1): 137–148, 1969. doi: 10.1080/00401706.1969.10490666. 9F.A. Kloutse, R. Zacharia, D. Cossement, and R. Chahine. Specific heat capacities of MOF-5, Cu-BTC, Fe-BTC, MOF-177 and MIL-53 (Al) over wide temperature ranges: Measurements and application of empirical group contribution method. Microporous Mesoporous Mater. , 217:1–5, 2015. doi: 10.1016/j.micromeso.2015.05.047. Teddy Koker, Abhijeet Gangan, Mit Kotak, Jaime Marian, and Tess Smidt. PFT: Phonon Fine-tuning for Machine Learned Interatomic Potentials. In ICML , 2026. URL https://openreview.net/ forum?id=QC9S8gUOYc .Marcel F. Langer and Johannes Spies. pet-jax. GitHub, 2026. URL https://github.com/ lab-cosmo/pet-jax . Software. Shuang Liu, Fen Xu, Lan-Tao Liu, Yan-Li Zhou, and Wen-xian Zhao. Heat capacities and ther-modynamic properties of Cr-MIL-101. J. Therm. Anal. Calorim. , 129(1):509–514, 2017. doi: 10.1007/s10973-017-6168-9. Antoine Loew, Dewen Sun, Hai-Chen Wang, Silvana Botti, and Miguel A. L. Marques. Universal machine learning interatomic potentials are ready for phonons. npj Comput. Mater. , 11(1):178, 2025. doi: 10.1038/s41524-025-01650-1. Cesare Malosso, Filippo Bigi, Paolo Pegolo, Joseph W. Abbott, Philip Loche, Mariana Rossi, Tiago J. Goncalves, Sandip De, Michele Ceriotti, and Arslan Mazitov. High-quality, high-information datasets for universal atomistic machine learning. arXiv:2603.02089, 2026. A. A. Maradudin and A. E. Fein. Scattering of Neutrons by an Anharmonic Crystal. Phys. Rev. , 128 (6):2589–2608, 1962. doi: 10.1103/physrev.128.2589. Arslan Mazitov, Filippo Bigi, Matthias Kellner, Paolo Pegolo, Davide Tisi, Guillaume Fraux, Sergey Pozdnyakov, Philip Loche, and Michele Ceriotti. PET-MAD as a lightweight universal interatomic potential for advanced materials modeling. Nat. Commun. , 16(1):10653, 2025. doi: 10.1038/ s41467-025-65662-7. Seyed Mohamad Moosavi, Balázs Álmos Novotny, Daniele Ongari, Elias Moubarak, Mehrdad Asgari, Özge Kadioglu, Charithea Charalambous, Andres Ortega-Guerrero, Amir H. Farmahini, Lev Sarkisov, Susana Garcia, Frank Noé, and Berend Smit. A data-science approach to predict the heat capacity of nanoporous materials. Nat. Mater. , 21(12):1419–1425, 2022. doi: 10.1038/ s41563-022-01374-3. Barak A. Pearlmutter. Fast Exact Multiplication by the Hessian. Neural Comput. , 6(1):147–160, 1994. doi: 10.1162/neco.1994.6.1.147. M. J. D. Powell and Ph. L. Toint. On the Estimation of Sparse Hessian Matrices. SIAM J. Numer. Anal. , 16(6):1060–1074, 1979. doi: 10.1137/0716078. Sergey Pozdnyakov and Michele Ceriotti. Smooth, exact rotational symmetrization for deep learning on point clouds. In NeurIPS , volume 36, pages 79469–79501. Curran Associates, Inc., 2023. doi: 10.52202/075280-3478. Benjamin Rhodes, Sander Vandenhaute, Vaidotas Šimkus, James Gin, Jonathan Godwin, Tim Duignan, and Mark Neumann. Orb-v3: atomistic simulation at scale. arXiv:2504.06231, 2025. Austin Rodriguez, Justin S. Smith, and Jose L. Mendoza-Cortes. Does Hessian Data Improve the Performance of Machine Learning Potentials? J. Chem. Theory Comput. , 21(14):6698–6710, 2025. doi: 10.1021/acs.jctc.5c00402. Austin Rodriguez, Justin S. Smith, Sakib Matin, Nicholas Lubbers, Kipton Barros, and Jose L. Mendoza-Cortes. Projected Hessian Learning: Fast Curvature Supervision for Accurate Machine-Learning Interatomic Potentials. arXiv:2603.04523, 2026. Atsushi Togo. First-principles Phonon Calculations with Phonopy and Phono3py. J. Phys. Soc. Jpn. ,92(1):012001, 2023. doi: 10.7566/jpsj.92.012001. Oliver T. Unke, Stefan Chmiela, Huziel E. Sauceda, Michael Gastegger, Igor Poltavsky, Kristof T. Schütt, Alexandre Tkatchenko, and Klaus-Robert Müller. Machine Learning Force Fields. Chem. Rev. , 121(16):10142–10186, 2021. doi: 10.1021/acs.chemrev.0c01111. 10 Philip Wolfe. Checking the Calculation of Gradients. ACM Trans. Math. Softw. , 8(4):337–343, 1982. doi: 10.1145/356012.356013. Brandon Wood, Misko Dzamba, Xiang Fu, Meng Gao, Muhammed Shuaibi, Luis Barroso-Luque, Kareem Abdelmaqsoud, Vahe Gharakhanyan, John Kitchin, Daniel Levine, Kyle Michel, Anuroop Sriram, Taco Cohen, Abhishek Das, Sushree Sahoo, Ammar Rizvi, Zachary Ulissi, and Larry Zitnick. UMA: A Family of Universal Models for Atoms. In NeurIPS , volume 38, pages 143528– 143564. Curran Associates, Inc., 2025. doi: 10.52202/085713-4310. Han Yang, Chenxi Hu, Yichi Zhou, Xixian Liu, Yu Shi, Jielan Li, Guanzhi Li, Zekun Chen, Shuizhou Chen, Claudio Zeni, Matthew Horton, Robert Pinsler, Andrew Fowler, Daniel Zügner, Tian Xie, Jake Smith, Lixin Sun, Qian Wang, Lingyu Kong, Chang Liu, Hongxia Hao, and Ziheng Lu. MatterSim: A Deep Learning Atomistic Model Across Elements, Temperatures and Pressures. arXiv:2405.04967, 2024. 11 A Benchmark structures 
+
+Benchmark set All heat-capacity benchmarks draw on the 233-structure porous-materials set assembled by Moosavi et al. [2022], comprising 214 MOFs, 9 COFs, and 9 zeolites (one further structure carries no class label), for which Gönnheimer et al. [2025] provide reference M ACE heat capacities and phonon frequencies in unit cells and 2×2×2 supercells. We take the published crystal structures as inputs and relax them within our own pipeline (Appendix E); no geometries are inherited from either upstream source. 
+
+Subset selection Computing converged Hessians for all 233 structures would be wasteful, so we benchmark on subsets, chosen deterministically as follows. Within each class, structures are ordered by farthest-point sampling [Kennard and Stone, 1969]: starting from the most central structure, the next pick is always the one most different from all previous ones. Distance is measured on three rank-transformed features: the logarithm of the unit-cell atom count, the number density, and the Hessian fill in the minimal exact supercell, which stand in for size, porosity, and the sparsity available to our method. The per-class orders are interleaved at 8 MOFs : 1 COF : 1 zeolite per ten ranks, so that subsets span all classes even though the full set is dominated by MOFs. A subset of size n is the first n entries of this ranking. The benchmarked twelve extend the first ten ranks (the ten-structure subset of Appendix E): RSM1885 is skipped as infeasible in its M ACE -converged supercell, and one further COF and two zeolites are added for class coverage. 
+
+Supercell selection Vibrational properties converge only once the simulation cell contains every interaction of the model, so supercells are chosen per structure and model. We build the model’s one-hop graph through its production input pipeline and propagate it to the Hessian hop count K
+
+(Section 4), tracking the periodic image that each interaction reaches. A supercell is admissible if no two of these interactions fold onto the same force-constant entry, which reduces to a divisibility test on image-offset differences. Among admissible cells, we pick the diagonal multiplier yielding the smallest volume; the search is exhaustive but finite, since the multiplier one larger than the largest offset difference in each direction is always admissible. Common practice instead interpolates the dynamical matrix in reciprocal space from a supercell judged large enough; we use exact cells to keep the pipeline simple and directly comparable to Gönnheimer et al. [2025]. Both the graph and K
+
+depend on the model, so the converged supercell, and with it N in Table 4, does too. 
+
+Giant MOFs For benchmarks beyond typical unit-cell sizes we use four MOFs with large primitive cells: MOF-177 (808 atoms), MOF-210 (1854), MIL-100 (2788), and MIL-101 (3604), taken unmodified from the structure library of RASPA2 [Dubbeldam et al., 2016] and relaxed in our pipeline like all other structures. For MOF-177 and MIL-101, experimental heat capacities from calorimetry are available for comparison (Appendix I). 
+
+## B Model implementations 
+
+We use two model families in this work: MACE-MP-0 medium [Batatia et al., 2022, 2025] (M ACE )and PET-MAD-1.5 [Pozdnyakov and Ceriotti, 2023, Bigi et al., 2026, Malosso et al., 2026] in its XS and S variants (P ET -XS, P ET -S). MACE combines equivariant message passing with higher-order Atomic Cluster Expansion fea-tures [Batatia et al., 2022]. The MP-0 medium foundation model has L=2 message-passing layers at a 6 Å cutoff, giving K=4 , and is trained on Materials Project relaxation trajectories computed at the PBE(+ U ) level of DFT [Batatia et al., 2025]. PET is an edge-to-edge transformer (within local neighborhoods) without built-in rotational equiv-ariance [Pozdnyakov and Ceriotti, 2023]. The PET-MAD-1.5 models [Malosso et al., 2026] are fine-tuned from the PET-OMat models of Bigi et al. [2026], which are pretrained on the OMat24 dataset [Barroso-Luque et al., 2026]. The fine-tuning set is the smaller, curated MAD-1.5 dataset [Mal-osso et al., 2026], computed at the r 2SCAN level of DFT in a non-magnetic setting. The XS and S variants have L=2 and L=3 layers, giving K=5 and K=7 . Within a fixed outer cutoff radius, P ET 
+
+shrinks its effective cutoff per atomic environment to bound the neighbor count. Since that cutoff depends on atomic positions, it contributes additional force terms, which we disregard: they couple 12 atoms beyond the selected neighbor list and would decrease the very sparsity this work depends on (see the ablations in Appendix E). Both models are distributed for PyTorch; to compute HVPs efficiently with JAX’s AD system, we rely on JAX re-implementations, using pet-jax [Langer and Spies, 2026] for P ET and implementing MACE ourselves. We verify these on the first 50 structures of our benchmark ranking (Appendix A), comparing energies, forces and stresses in single and double precision against the upstream PyTorch models in double precision (Table 2). In double precision the re-implementations agree with upstream to far below the accuracy of the models themselves; in single precision, both stacks depart from that reference by the same amount, so the implementation contributes no error beyond rounding. One structure deviates further because a pair distance happens to fall where the two backends’ tanh 
+
+kernels saturate differently, a property of the floating-point implementation rather than of either model. Allowing JAX to use TF32 for matrix multiplications (the default behavior on GPUs) is a different matter: it leads to errors nearly four orders of magnitude higher in the forces compared to full single precision, and is therefore not used in this work. Table 2: Deviation of each prediction path from the upstream PyTorch model in double precision, over the first 50 structures of the benchmark ranking (Appendix A). Rows per model: upstream in single precision, then our JAX re-implementation in double precision, in full single precision (the production setting of this work), and with TF32 matrix multiplications. Cells are the median over the 50 structures with the worst structure in parentheses, energies per atom, forces and stresses as the largest deviating component. The first three rows are measured on CPU, the TF32 row on GPU. Running the full single-precision path on the GPU instead yields the same deviations to within rounding noise, so the last row isolates TF32, not the device.                                                                                                                                                                                                                                   
+
+> Model Prediction ∆E(eV/atom) ∆F(eV/Å) ∆σ(eV/Å 3)MACE PyTorch fp32 3.3×10 −6(5.4×10 −6)4.0×10 −5(8.4×10 −5)5.5×10 −8(2.0×10 −7)JAX fp64 1.2×10 −8(3.0×10 −8)3.6×10 −7(6.1×10 −7)5.9×10 −9(1.7×10 −8)JAX fp32 1.0×10 −7(3.7×10 −7)4.0×10 −5(8.4×10 −5)5.5×10 −8(1.8×10 −7)JAX fp32, TF32 8.3×10 −5(5.0×10 −4)2.9×10 −1(6.4×10 −1)4.5×10 −4(1.1×10 −3)PET -XS PyTorch fp32 2.1×10 −6(7.1×10 −6)4.1×10 −5(9.0×10 −5)6.4×10 −8(2.2×10 −7)JAX fp64 9.8×10 −7(2.1×10 −6)8.0×10 −6(2.3×10 −5)6.4×10 −8(2.0×10 −7)JAX fp32 1.1×10 −6(2.3×10 −6)4.4×10 −5(5.6×10 −4)1.2×10 −7(7.1×10 −7)JAX fp32, TF32 4.8×10 −4(1.0×10 −3)3.2×10 −1(6.5×10 −1)4.6×10 −4(1.2×10 −3)PET -S PyTorch fp32 2.0×10 −6(7.2×10 −6)4.3×10 −5(8.8×10 −5)5.7×10 −8(1.9×10 −7)JAX fp64 2.4×10 −7(4.6×10 −7)2.6×10 −6(4.8×10 −6)2.5×10 −8(8.0×10 −8)JAX fp32 8.1×10 −8(2.8×10 −7)4.4×10 −5(8.6×10 −5)7.5×10 −8(2.3×10 −7)JAX fp32, TF32 1.5×10 −4(6.0×10 −4)3.2×10 −1(6.7×10 −1)4.6×10 −4(1.2×10 −3)
+
+## C Verifying the Hessian hop count 
+
+The two counts follow from the readout style: a node-readout energy term depends on the L-hop ball around its atom, of graph diameter 2L, while an edge-readout term depends on the union of the L-hop balls around two adjacent atoms, of diameter 2L + 1 . We confirm them by measuring double-precision Hessians of small hand-built structures (chains, rings, chains with second-neighbor bonds, chains with pendant leaves) whose connectivity we control exactly and whose graph diameter exceeds the predicted K, taking the measured K as the largest graph distance at which any 3 × 3
+
+Hessian block is nonzero. Freshly initialized models, whose random weights make every structurally allowed coupling generically nonzero, match the predicted count in every one of 96 measurements spanning L = 1 , . . . , 4, both readout styles, all four graph families, and three seeds; the production checkpoints reproduce it at their trained depths, giving K = 4 for MACE-MP-0 medium, K = 5 for PET -XS, and K = 7 for P ET -S. Beyond K, blocks are exactly zero. For P ET , this is the hop count 
+
+after the adaptive cutoff procedure, whose position dependence our sparse pipeline discards (ablated in Appendix E). 13 D Coloring on the atom graph 
+
+Two coordinates are coupled in the Hessian pattern if and only if their atoms are within K hops on the input graph. The coordinate sparsity pattern is therefore the N × N atom pattern with every nonzero replaced by a dense 3 × 3 block: sparsity is fully determined by pairs of atoms, and coordinates only add a block structure. For this reason, it suffices to color the atom sparsity pattern, which has one ninth of the nonzeros, and then give coordinate d ∈ { 0, 1, 2} of atom i the color 3ci + d, where ci is the atom’s color. By construction, this is a valid star coloring of the full coordinate pattern. The timings we report combine two runs. Hessians and their HVPs come from a run that colored the coordinate pattern directly, the coloring time from a later run that colored the atom graph only. On all 234 sparse rungs of the benchmark the two colorings are identical, yielding the same HVPs, and only the cost of finding the coloring changes. At each model’s exact K, coloring the atom graph is 3 to 
+
+22 × faster than coloring the coordinate pattern, 17 × in the median, and over the whole benchmark the coloring stage drops from 22 .8 h to 1.2 h .
+
+## E Computing heat capacity 
+
+Pipeline To compute heat capacity we follow the example of Gönnheimer et al. [2025]: initial unit cells are relaxed with BFGS over a FrechetCellFilter (L-BFGS with line search for the giant MOFs) to a maximum force of 5 × 10 −3 eV /Å in double precision, with M ACE using the D3 correction and P ET as-is. The Hessian is mass-weighted and diagonalized to give the frequencies entering Equation (1), zeroing imaginary frequencies and dropping near-zero modes with wavenumber 
+
+|ν| < 10 −3 cm −1. In comparisons between sparse and dense Hessians (Table 4 and Figure 2) we additionally enforce the acoustic sum rule, so that the acoustic modes cancel exactly instead of falling on either side of the drop threshold. We verify the pipeline by recomputing frequencies and heat capacities for all 233 structures in their unit cells with M ACE , comparing against the published values of Gönnheimer et al. [2025]. The two pipelines differ in the relaxed geometries and in the D3 Hessian, which is a finite difference over forces there and computed with AD here. The deviations are small: the largest frequency deviation within a structure is 0.7 cm −1 in the median over structures, and 
+
+CV at 300 K deviates by 3 × 10 −5 relative in the median, with a worst case of 2.6% . Cells beyond 
+
+2×2×2 were out of computational reach for Gönnheimer et al. [2025]. 
+
+Ablating precision, the D3 correction, and adaptive-cutoff forces Our pipeline departs from the reference Hessian calculations of Gönnheimer et al. [2025] in three ways: MLIPs are evaluated in single rather than double precision, M ACE Hessians omit the D3 dispersion correction, and PET Hessians disregard the force contributions of the adaptive cutoff procedure (Appendix B). To measure what each departure costs, we compute dense unit-cell Hessians for the ten-structure subset (Appendix A), flipping one axis at a time away from the reference configuration (M ACE in double precision with D3, P ET in double precision with adaptive-cutoff forces), and compare frequencies, Hessians, and heat capacities with the acoustic sum rule enforced. The single-precision ablation is run twice, with matrix multiplications in full single precision and in the TF32 matmul mode that JAX defaults to on GPUs (Appendix B). Table 3 summarizes the results. Single precision itself is harmless: with full matrix multiplications, heat capacities deviate by less than 5 × 10 −5 % in the median. TF32 is not, and its effect is of the same size as omitting D3 or the adaptive-cutoff forces. All production Hessians in this work therefore pin matrix multiplications to full single precision, which makes each HVP 15–29 % slower for M ACE and 55–97 % slower for P ET than with TF32, at production supercell sizes on an H100. The production configuration, combining all three departures, deviates from the reference by at most 0.12 % in the median, with worst cases of a few percent. These worst cases are a threshold effect, not a shift of the spectrum: some structures have genuine low-lying optical modes near the drop threshold of the pipeline, and a perturbation of any origin can push one across it, adding or removing that mode’s ∼kB from CV , a few percent in a small unit cell. The acoustic sum rule removes this ambiguity for the acoustic modes only. Every deviation above 1 % in the ablation is of this kind, with a single exception: for RSM0274, omitting D3 genuinely shifts the spectrum, by up to 
+
+67 cm −1, for a 1.0 % change in CV .14 Table 3: Ablations of the production Hessian pipeline against the reference configuration of Gönnheimer et al. [2025], computed as dense unit-cell Hessians for the ten-structure subset (Ap-pendix A). Per ablation and model: median and worst relative deviation of CV at 300 K with the acoustic sum rule enforced, worst single-mode frequency deviation, and median relative Frobenius error of the Hessian itself, each over the ten structures. The first two rows split single precision by matrix multiplication mode, full fp32 (the production setting) and TF32. The last row combines all departures and is the production configuration. 
+
+Ablation Model med. |δC V | (%) max |δC V | (%) max |∆ν| (cm −1) med. ∥∆H∥F /∥H∥F
+
+fp32 (full matmuls) MACE 6.9 × 10 −6 3.6 × 10 −5 0.019 1.8 × 10 −6
+
+PET -XS 4.7 × 10 −5 2.4 × 10 −2 4.1 2.6 × 10 −6
+
+PET -S 3.3 × 10 −5 9.1 × 10 −4 0.14 2.1 × 10 −6
+
+fp32 (TF32 matmuls) MACE 0.010 3.0 51 5.3 × 10 −3
+
+PET -XS 0.029 3.0 112 4.9 × 10 −3
+
+PET -S 0.015 1.6 26 3.4 × 10 −3
+
+no D3 MACE 0.056 2.9 67 3.6 × 10 −3
+
+no adaptive-cutoff forces PET -XS 0.12 2.5 377 7.0 × 10 −3
+
+PET -S 0.035 1.4 23 1.9 × 10 −3
+
+fp32 MACE 0.056 2.9 67 3.6 × 10 −3
+
++ no D3 PET -XS 0.12 2.5 374 7.0 × 10 −3
+
++ no adaptive-cutoff forces PET -S 0.035 1.4 23 1.9 × 10 −3
+
+15 F Cost and accuracy across the benchmark 
+
+Table 4 lists wall times and heat-capacity errors at every hop count for every structure–model pair in the benchmark. Table 4: Wall time and accuracy of dense, exact ( K), and truncated ( k<K ) Hessians for every benchmark structure and model. N is the number of atoms in the supercell, chosen per model as the smallest multiple of the unit cell that accommodates its full interaction range (Appendix A); rows are grouped by chemistry class and sorted by the largest supercell across models within each group. Sparse wall times are end to end, including sparsity pattern construction and coloring as well as the Hessian evaluation itself. δC V is the relative deviation of the heat capacity at 300 K from the same pair’s dense reference, computed as in Appendix E with the acoustic sum rule enforced; 0.00 marks magnitudes below 0.005% . M ACE has K=4 , so its k=4 entries appear in the K column. 
+
+Wall time ( s) δC V (%) Class Structure Model N dense k=1 k=2 k=3 k=4 K k=1 k=2 k=3 k=4 K
+
+MOF MOF-210 MACE 1854 555 51 69 109 – 213 −3.24 −0.04 0.00 – 0.00 
+
+PET -XS 1854 111 34 35 37 37 42 −12 .80 −5.10 −0.85 0.00 0 .00 
+
+PET -S 1854 379 48 57 70 88 260 −7.64 −1.41 0.00 0.00 0 .00 
+
+MIL-100 MACE 2788 1246 67 167 402 – 968 −0.77 0.00 0.00 – 0.00 
+
+PET -XS 2788 227 36 38 44 52 63 −8.80 −0.56 0.00 0.00 0 .00 
+
+PET -S 2788 876 52 76 113 175 701 −2.48 0.00 0.00 0.00 0 .00 
+
+MIL-101 MACE 3604 3529 97 265 597 – 1327 −2.08 −0.02 0.00 – 0.00 
+
+PET -XS 3604 316 35 37 43 50 59 −10 .95 −1.51 0.00 0.00 0 .00 
+
+PET -S 3604 1248 52 75 112 166 643 −5.56 −0.02 0.00 0.00 0 .00 
+
+RSM1876 MACE 3969 4291 107 345 990 – 2788 −1.70 0.00 0.00 – 0.00 
+
+PET -XS 1176 67 34 36 37 40 43 −8.93 −1.21 0.00 0.00 0 .00 
+
+PET -S 3969 1500 54 78 140 247 1328 −5.07 −1.19 0.00 0.00 0 .00 
+
+RSM0023 MACE 3840 4624 121 557 1769 – 4160 −1.19 −0.03 0.00 – 0.00 
+
+PET -XS 768 45 33 35 35 39 45 −5.94 −0.86 −0.19 0.00 0 .00 
+
+PET -S 4800 2202 56 99 206 408 2198 −3.73 −0.06 −0.03 0.00 0 .00 
+
+MOF-177 MACE 6464 9431 117 312 659 – 1698 −2.63 0.00 0.00 – 0.00 
+
+PET -XS 808 48 32 34 34 35 37 −12 .68 −3.92 −0.72 0.00 0 .00 
+
+PET -S 6464 3900 58 84 167 253 1220 −6.62 −0.74 0.00 0.00 0 .00 
+
+RSM1877 MACE 6615 23 285 490 2788 10 680 – 22 759 −1.15 −0.02 0.00 – 0.00 
+
+PET -XS 1764 116 35 38 42 53 75 −13 .80 −2.78 0.00 0.00 0 .00 
+
+PET -S 6615 4699 65 145 340 742 4458 −4.98 −1.10 0.00 0.00 0 .00 
+
+RSM1162 MACE 2916 1137 56 143 439 – 948 −2.40 −0.08 0.00 – 0.00 
+
+PET -XS 864 45 31 33 33 37 40 −13 .51 −1.54 0.00 0.00 0 .00 
+
+PET -S 6912 4439 62 110 230 519 2782 −4.44 −2.13 0.00 0.00 0 .00 
+
+RSM0010 MACE 7700 39 619 839 5622 22 015 – 38 950 −0.01 −0.01 0.00 – 0.00 
+
+PET -XS 2112 113 35 37 43 56 78 −8.39 −1.26 0.00 0.00 0 .00 
+
+PET -S 8448 6845 69 187 481 1031 6552 −7.05 −0.39 −0.05 0.00 0 .00 
+
+RSM0274 MACE 7840 33 275 515 3220 11 851 – 26 961 −0.45 0.00 0.00 – 0.00 
+
+PET -XS 2016 124 35 38 43 55 71 −7.79 −0.31 −0.17 0.00 0 .00 
+
+PET -S 8960 8723 76 187 522 1094 7283 −4.04 −0.13 −0.04 0.00 0 .00 
+
+RSM0047 MACE 3888 3022 68 209 636 – 1503 −1.76 0.00 0.00 – 0.00 
+
+PET -XS 1152 64 34 36 39 44 53 −5.38 −1.30 0.00 0.00 0 .00 
+
+PET -S 9216 6967 63 136 283 593 3291 −7.45 −2.15 −0.03 0.00 0 .00 
+
+COF 20561N3 MACE 7680 21 529 285 1678 5410 – 11 001 −0.79 0.00 0.00 – 0.00 
+
+PET -XS 960 48 34 34 34 38 45 −10 .07 −2.71 0.00 0.00 0 .00 
+
+PET -S 5760 3091 59 107 242 454 2372 −5.51 −0.78 0.00 0.00 0 .00 
+
+18150N2 MACE 5850 13 406 257 1168 3666 – 8754 −1.10 0.00 0.00 – 0.00 
+
+PET -XS 3120 200 37 40 44 51 61 −11 .14 −3.53 −1.04 0.00 0 .00 
+
+PET -S 9360 9426 78 195 388 827 4280 −3.90 −2.41 0.00 0.00 0 .00 
+
+zeolite VFI MACE 4860 7759 168 681 2116 – 4212 −3.20 −0.09 0.00 – 0.00 
+
+PET -XS 1296 64 34 36 37 42 49 −12 .31 −4.67 −1.55 −0.33 0 .00 
+
+PET -S 5832 3657 66 147 324 671 3616 −2.31 −1.91 −0.14 0.00 0 .00 
+
+NPT MACE 6912 11 453 122 614 1946 – 5182 −7.03 −0.60 0.00 – 0.00 
+
+PET -XS 864 45 33 34 36 38 41 −10 .15 −5.25 −2.36 0.00 0 .00 
+
+PET -S 6912 4428 66 139 340 687 3656 −5.07 −4.18 0.04 −0.56 0 .00 
+
+AFI MACE 6912 16 600 240 1214 4274 – 9249 −5.60 −0.01 0.00 – 0.00 
+
+PET -XS 864 44 36 34 35 39 43 −12 .04 −5.63 −2.48 −0.42 0 .00 
+
+PET -S 9216 8079 74 186 489 1063 6618 −6.10 −2.38 −0.07 −0.01 0 .00 
+
+16 G Force-constant decay 
+
+Figure 3 is computed from the dense Hessians of the benchmark subset and the giant MOFs in their model-converged supercells (Table 4), plus RSM1885 for the P ET models; its M ACE -converged supercell is infeasible (Appendix A). Only rows belonging to atoms in the original unit cell appear, as replica atoms are equivalent and carry the same force constants. The hop count of a pair (i, j ) is the smallest k for which (Ak)ij is nonzero, with A the input-graph adjacency of Section 4; k=0 
+
+labels the on-site blocks, and ∥Φij ∥ is the Frobenius norm of the pair’s 3 × 3 force-constant block. Quantiles are taken over the pooled pairs of each chemistry class, with the giant MOFs counted as MOFs. The same Hessians confirm the sparsity pattern at production scale: beyond each model’s K,every block is exactly zero. 0 1 2 3 4
+
+Hop count k     
+
+> 10 −8
+> 10 −5
+> 10 −2
+> 10 1
+> ‖Φi j ‖F (eV ˚ A−2)
+> MACE
+> MOF COF zeolite
+> 012345
+
+Hop count k       
+
+> PET -XS
+> 01234567
+
+Hop count k
+
+> PET -S
+
+Figure 3: Force-constant block norms ∥Φij ∥ versus hop count k, split by chemistry class, one panel per model: median and 10–90% band over all coupled pairs of the benchmark subset and the giant MOFs, plus RSM1885 for the P ET models. 17 H Truncation error decomposition 
+
+A truncated Hessian is not the dense Hessian with distant couplings set to zero: star coloring prevents collisions only within the assumed sparsity pattern, so neglected couplings contribute to retained entries (Section 4). The error therefore has two parts: the discarded couplings themselves, and the 
+
+contamination of the retained entries. No entry appears in both, so their squared Frobenius norms add up to the squared total error. We compute the split from the stored Hessians of every sparse pattern in Table 4, plus RSM1885 for the P ET models as in Appendix G; the Hessians are single precision, while the comparison is done in double precision. Figure 4 plots one against the other: contamination tracks the discarded couplings at a roughly constant fraction, a median of 0.60 across four orders of magnitude, until it bottoms out at the single-precision noise floor measured by the exact-K patterns, where floating-point noise, not truncation, sets the error. 10 −8 10 −6 10 −4 10 −2 10 0
+
+Discarded couplings ‖∆Hdisc ‖F /‖H‖F
+
+10 −7
+
+10 −6
+
+10 −5
+
+10 −4
+
+10 −3
+
+10 −2
+
+10 −1
+
+10 0 
+
+> Contamination  ‖∆Hcont ‖F /‖H‖F
+> single-precision floor (exact K)
+> MACE
+> PET -XS PET -S
+
+Figure 4: Contamination of the retained entries against the discarded couplings, both relative to the dense Hessian norm: one marker per (structure, model, hop count) for every truncated pattern of Table 4 and of RSM1885 for the P ET models. The dashed line is equality; the band spans the central 80% of the exact-K errors, the single-precision noise floor. 18 I Comparison with experiment 
+
+For the two giant MOFs with published calorimetric heat capacities [Kloutse et al., 2015, Liu et al., 2017], Figure 5 compares predictions from dense Hessians in converged supercells against the measured curves; since Cp ≈ CV for these solids in this temperature range, the comparison is direct. All models overestimate: at 300 K , M ACE lies 30% above experiment for MOF-177 and the PET models around 17% , consistent with the systematic over-softening of predicted phonon spectra observed by Gönnheimer et al. [2025]. For MIL-101 the gap widens to 84% and 61 –64% , too large to attribute to the harmonic approximation or the potentials alone; the measured sample, with defects and possible residual guest species, likely differs substantially from the ideal crystal we compute. Discrepancies of this kind are precisely what large-scale Hessian calculations make visible, and what fine-tuning on experimental data would correct. 100 200 300 400 
+
+Temperature (K) 
+
+0.20.40.60.81.01.2
+
+> Heat capacity (J g −1 K−1)
+> MOF-177
+> exp. (Kloutse 2015) MACE
+> PET -XS PET -S
+
+250 300 350 400 
+
+Temperature (K) 
+
+> MIL-101
+> exp. (Liu 2017) MACE
+> PET -XS PET -S
+
+Figure 5: Predicted heat capacity against calorimetry for the two giant MOFs: measured Cp(T )
+
+curves (gray; MOF-177 from Kloutse et al., 2015, MIL-101 from Liu et al., 2017) and CV from dense MLIP Hessians in converged supercells (markers), with the acoustic sum rule enforced. 19

@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-24</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-25</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
     <strong class="dpr-home-dashboard-count">共 14 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>7</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>5</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>9</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-24 22:36:13 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-25 22:28:49 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,10 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日共生成 14 篇推荐（精读 7 篇，速读 7 篇）</p>
-<p>精读：《Probing Exoplanetary Chemistry with Ariel: Scientific Priorities and Observational Strategies》（10.0/10）, 《Revealing the Shiny Nature of Lava Worlds: Small Planet Phase Curves with TESS》（9.0/10）</p>
-<p>速读：《Marginalized planet-to-star radius ratio posteriors for low-SNR transiting planets via dimensionality reduction》（7.0/10）, 《Stability of Slow-Fast Nonlinear Dynamics: Moving Equilibrium Case》（7.0/10）, 《Nonlocal Magic Spreading in Many-body Quantum Dynamics: From Chaotic Evolution to Quasi-particle Picture in Integrable Models》（6.0/10）</p>
-<p>这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。</p>
+<p>今日精读5篇、速读9篇共14篇论文，原行星盘模拟与垂直剪切不稳定性成为最亮眼方向。最值得看的是两篇9.0分原行星盘研究：一篇用尘埃凝结、沉降与热弛豫模拟解释Class II盘形态，一篇建立气体、辐射与多组分尘埃的热力学方法。普通读者可从&quot;行星如何从尘埃盘中诞生&quot;这一线索入手，先读这两篇高分综述式方法文。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -74,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Probing Exoplanetary Chemistry with Ariel: Scientific Priorities and Observational Strategies">Probing Exoplanetary Chemistry with Ariel: Scientific Priorities and Observational Strategies</span></li><li><span class="dpr-home-dashboard-paper-title" title="Revealing the Shiny Nature of Lava Worlds: Small Planet Phase Curves with TESS">Revealing the Shiny Nature of Lava Worlds: Small Planet Phase Curves with TESS</span></li><li><span class="dpr-home-dashboard-paper-title" title="JWST and HST Confirm Transit Timing Variations for the Ultra-Hot Jupiter TOI-2109 b">JWST and HST Confirm Transit Timing Variations for the Ultra-Hot Jupiter TOI-2109 b</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Just a Phase? Weakening Vertical Shear Instability Explains Class II Disk Morphologies: Simulations with dust coagulation, sedimentation, thermal relaxation, and backreaction">Just a Phase? Weakening Vertical Shear Instability Explains Class II Disk Morphologies: Simulations with dust coagulation, sedimentation, thermal relaxation, and backreaction</span></li><li><span class="dpr-home-dashboard-paper-title" title="Simulating the thermodynamics of gas, radiation, and multispecies dust: Method and applications to protoplanetary disks">Simulating the thermodynamics of gas, radiation, and multispecies dust: Method and applications to protoplanetary disks</span></li><li><span class="dpr-home-dashboard-paper-title" title="Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks">Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>6</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>3</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -87,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">9 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Marginalized planet-to-star radius ratio posteriors for low-SNR transiting planets via dimensionality reduction">Marginalized planet-to-star radius ratio posteriors for low-SNR transiting planets via dimensionality reduction</span></li><li><span class="dpr-home-dashboard-paper-title" title="Stability of Slow-Fast Nonlinear Dynamics: Moving Equilibrium Case">Stability of Slow-Fast Nonlinear Dynamics: Moving Equilibrium Case</span></li><li><span class="dpr-home-dashboard-paper-title" title="Nonlocal Magic Spreading in Many-body Quantum Dynamics: From Chaotic Evolution to Quasi-particle Picture in Integrable Models">Nonlocal Magic Spreading in Many-body Quantum Dynamics: From Chaotic Evolution to Quasi-particle Picture in Integrable Models</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Truncated automatic sparse differentiation for machine learning interatomic potentials">Truncated automatic sparse differentiation for machine learning interatomic potentials</span></li><li><span class="dpr-home-dashboard-paper-title" title="PINNForge: Execution-Grounded Evolutionary Design of Physics-Informed Neural Networks for PDE Solving via Large Language Models">PINNForge: Execution-Grounded Evolutionary Design of Physics-Informed Neural Networks for PDE Solving via Large Language Models</span></li><li><span class="dpr-home-dashboard-paper-title" title="Marginalized planet-to-star radius ratio posteriors for low-SNR transiting planets via dimensionality reduction">Marginalized planet-to-star radius ratio posteriors for low-SNR transiting planets via dimensionality reduction</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>3</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>3</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>6</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>3</strong></span></div>
 </section>
 </div>
 

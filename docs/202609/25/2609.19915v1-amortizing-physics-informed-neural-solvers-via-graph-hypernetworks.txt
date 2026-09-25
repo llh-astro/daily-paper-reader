@@ -1,0 +1,882 @@
+Title: Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+URL Source: https://arxiv.org/pdf/2609.19915v1
+
+Published Time: Fri, 18 Sep 2026 00:53:06 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks 
+
+Cheng Jing ∗
+
+Arizona State University 
+
+cjing6@asu.edu 
+
+Abhishek Verma 
+
+Applied Materials Inc. 
+
+AbhishekKumar_Verma@amat.com 
+
+Kallol Bera 
+
+Applied Materials Inc. 
+
+Kallol_Bera@amat.com 
+
+Yixuan He 
+
+Arizona State University 
+
+Yixuan.He@asu.edu 
+
+Kookjin Lee †
+
+Arizona State University 
+
+Kookjin.Lee@asu.edu 
+
+# Abstract 
+
+Amortizing physics-informed neural networks (PINNs) across related PDEs re-quires describing each equation to a reusable solver. Coefficient vectors encode numerical parameters in predefined slots, leaving operator and cross-field assign-ments implicit. We make these relationships explicit in an operator graph, with nodes for fields, derivatives, terms, and residuals and coefficients retained as term attributes. A graph hypernetwork generates diagonal codes that initialize a meta-trained factorized PINN for each target equation. Meta-training and target-specific adaptation use governing equations and prescribed conditions without solution labels. We compare coefficient-vector, DeepSets-based term-set, and graph conditioning by solution accuracy within a fixed adaptation budget. In scalar convection–diffusion–reaction problems, both term-based descriptors im-prove high-reaction accuracy, with similar performance. In two-field Fisher–KPP, meta-training sees uncoupled and one-way systems; after 3,000 adaptation steps on unseen two-way coupling, the graph’s mean final error is 35 .7% below the term set and 67 .7% below the coefficient vector. In a fixed-structure capacitively coupled plasma model, the coefficient vector performs best. These results sup-port extending coefficient conditioning with explicit equation relationships for physics-based solver adaptation. 
+
+# 1 Introduction 
+
+Scientific modeling often requires solving a family of related partial differential equations (PDEs) rather than a single equation. Physics-informed neural networks (PINNs) construct solutions by optimizing the governing residuals and prescribed conditions (Raissi et al., 2019), but repeating this optimization for every instance can be costly. Hypernetwork-based amortization shares information across instances by predicting equation-specific solver configurations that can be further adapted using physics residuals (de Avila Belbute-Peres et al., 2021; Cho et al., 2023). This raises a representation question: what information about an equation should the hypernetwork receive? 
+
+Coefficient-conditioned hypernetworks describe each instance through numerical parameters in a pre-defined equation layout. Such layouts can cover different term combinations and coupling directions by reserving equation-specific slots for candidate terms. Our focus is how these relationships are presented to the hypernetwork: implicitly through slot conventions or explicitly through connections. Coupled PDEs make this distinction concrete. The strength of an interaction and the variables it connects are both part of the equation’s meaning: a source κv in the equation for u and a source κu in the equation for v describe opposite coupling directions, even when κ is unchanged. This motivates 
+
+> ∗
+
+Work done during internship at Applied Materials Inc. 
+
+> †
+
+Corresponding author. Accepted at LoG 2026. arXiv:2609.19915v1 [cs.LG] 17 Sep 2026 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks 
+
+supplying the hypernetwork with differential operators and cross-field relationships alongside their numerical coefficients. We represent this information as an operator graph : fields, derivatives, additive terms, and equation residuals are nodes, and their connections specify how the PDE is assembled. Coefficients remain attributes of the terms, while connectivity makes operator composition and coupling explicit. A graph hypernetwork reads this representation and predicts per-layer configuration codes for a shared factorized PINN backbone (Cho et al., 2023). The predicted codes and meta-trained backbone form an equation-conditioned initialization. The target solver is then adapted by minimizing its physics residual and enforcing its prescribed conditions. This combines coefficients and connectivity within a shared operator vocabulary; both training phases use physics objectives without solution labels. We evaluate this approach on three PDE families, each with one spatial dimension and its own trained model. Cross-structure convection–diffusion–reaction ( CDR ) tests combinations of familiar terms, including a high-reaction regime with a documented PINN optimization failure mode (Krishnapriyan et al., 2021). Our two-field Fisher–KPP variant builds on linearly coupled reaction–diffusion systems (Holzer, 2016) and tests generalization from uncoupled and one-way-coupled systems to previously unseen two-way coupling. A simplified capacitively coupled plasma (CCP) model (Jing et al., 2026a) tests application to a continuity–Poisson system whose coupling structure stays fixed while its coefficients vary. Comparisons with coefficient-vector and DeepSets-based term-set baselines (Zaheer et al., 2017) show benefits from term-based conditioning in the high-reaction CDR regime and lower graph-model error on unseen Fisher–KPP coupling. The coefficient vector performs best in fixed-structure CCP. This contrast is consistent with the hypothesis that the value of relational conditioning depends on what varies within the equation family, rather than on coupling alone. Our contributions are: • Operator-graph conditioning for amortized PINNs (§3). A graph hypernetwork configures a shared neural solver from a representation that combines numerical coefficients, differential operators, and cross-field relationships. • Evidence across term and coupling variation (§5). Under fixed target-adaptation budgets, term-based conditioning improves high-reaction CDR accuracy, and graph conditioning gives the lowest mean error on unseen Fisher–KPP coupling composition. A fixed-structure continuity– Poisson comparison identifies a setting where coefficient conditioning performs best. 
+
+# 2 Background 
+
+We review the PINN solver, its factorized backbone, and the hypernetwork and message passing used to configure it. 
+
+Physics-informed neural networks. Let u(x, t ) denote a PDE solution and uθ (x, t ) its neural approximation, with solver parameters θ. For a coupled system, u collects the fields uf and R
+
+collects their equation residuals; parameter subscripts are suppressed in architectural formulas. Given R[u] = 0 , physics-informed training minimizes 1
+
+> |X|
+
+P 
+
+> (x,t )∈X
+
+∥R [uθ ]( x, t )∥22 over space– time collocation points X, together with initial and boundary conditions (Raissi et al., 2019). These conditions are imposed either through loss penalties or directly in the network output. Derivatives are computed by automatic differentiation. Repeated optimization across PDE instances motivates amortization, especially when the physics loss is difficult to optimize (Krishnapriyan et al., 2021). 
+
+Factorized PINN backbone. We adopt the layer parameterization of Cho et al. (2023) for each field. For field f and hidden layer ℓ, the configured weight is W ℓf = Cℓ diag( sℓf ) Rℓ, where 
+
+Cℓ, R ℓ ∈ Rw×w are shared learned bases and w is the hidden width. The code sℓf ∈ Rw specifies the effective diagonal for that instance and field. With these full-width bases, the hypernetwork configures each layer through w diagonal entries rather than predicting all w2 matrix entries. The shared bases are learned across the PDE family; the codes are instance-specific. 
+
+Hypernetworks. A hypernetwork H predicts parameters of another neural network (Ha et al., 2017). In Hyper-LR-PINN, PDE coefficients condition the diagonal codes of a factorized solver (Cho et al., 2023). We retain this code interface, s = H(d) with s = {sℓf }, and compare a coefficient vector, a set of terms, and an operator graph as the descriptor d. The predicted codes configure 
+
+> 2Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+the shared PINN, providing an initial approximation that is subsequently adapted using the physics objective. This shares the cost of learning useful solver configurations across instances; the training and deployment phases are described in §3. 
+
+Message passing. On a graph G = ( V, E ), node i ∈ V has a hidden state hki at round k. A message-passing update combines that state with its neighbors’ states using shared learned functions (Gilmer et al., 2017). After K rounds, information can propagate across a K-hop neighborhood. A readout pools node states into a graph-level or field-specific representation. Section 3 specifies how this representation configures the PINN. 
+
+# 3 Method 
+
+We learn an equation-conditioned initialization for physics-based adaptation. A hypernetwork reads the PDE’s operator graph and predicts diagonal codes; these codes and the meta-trained backbone initialize the target PINN. We then optimize its codes and backbone using the target physics objective. The prediction before adaptation is the initial approximation . We describe the graph, configured solver, and optimization phases below. 
+
+3.1 Operator graph 
+
+For conditioning, we express each governing residual as additive terms, each represented by a scalar coefficient and its field or derivative factors. These terms define the operator graph G = ( V, E ). The physics loss evaluates the same governing equations by automatic differentiation; graph construction and loss evaluation may use algebraically equivalent residual forms (App. A). The graph has four node kinds: fields, derivatives, terms, and equation residuals. Connections link a field to its derivatives, each factor to the terms containing it, and each term to its target residual (App. A). Node features zi record the node kind and its attributes: field identity and derivative orders where applicable, and coefficient sign, log-magnitude, and arity (number of factors) for each nonzero term. For example, −κv in the equation for u gives the path v → (−κv ) → R u: the connections identify the source field and target equation, while the term node retains the coupling coefficient. Field identities and distinct field/residual node kinds retain these source and target roles even when message passing uses symmetrized connections. Changing terms or their assignments changes the graph over this shared vocabulary. Coefficients and connectivity therefore describe complementary parts of the same equation. 
+
+3.2 Graph hypernetwork and PINN 
+
+The hypernetwork H embeds node features as h0 
+
+> i
+
+= ϕ(zi), aggregates neighboring states, and decodes per-field configuration codes. The Fisher–KPP implementation uses 
+
+hk+1  
+
+> i
+
+= hki + σ
+
+
+
+Wself hki + Wneigh 
+
+P 
+
+> j∈V
+
+ˆaij hkj
+
+
+
+,
+
+where σ is GELU and Wself , W neigh are shared across nodes and rounds. The weights ˆaij come from symmetrizing graph connections, adding self-loops, and normalizing each row. All edges use one neighbor matrix; coefficient signs enter through node features. After K rounds ( K = 2 in the main comparison), a readout for field f with node if predicts codes for the L factorized layers: 
+
+rf = ρ  hKif ; ¯h  , sℓf = ReLU  Aℓrf + bℓ ∈ Rw (ℓ = 1 , . . . , L ), (1) where ϕ is the learned node embedding, ρ is the learned readout network, [ ; ] denotes concatenation, and ¯h is the mean of the final term and field states. The learned Aℓ, b ℓ decode layer ℓ. Family-specific aggregation and readout settings are given in App. A.2. Appendix C.4 varies the propagation depth with training and test depths matched. The codes configure field f ’s MLP gf through W ℓf = Cℓ diag( sℓf ) Rℓ (§2): H predicts diagonal codes rather than full weight matrices. With a fixed coordinate encoding γ and output transform 
+
+Af , the prediction is uf (x, t ) = Af
+
+ gf (γ(x, t )) , x, t . Fisher–KPP uses periodic spatial features and a hard initial-condition transform; CCP uses RF-periodic features and hard spatial boundary values. For CDR , Af is the identity and initial and boundary conditions enter as loss penalties. These family-specific constructions are detailed in App. B.2, App. B.4, and App. B.3. 
+
+> 3Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+3.3 Training and deployment Meta-training. We sample PDE instances and collocation points and jointly optimize the hypernet-work, shared bases Cℓ, R ℓ, and the backbone’s remaining parameters, including its input and output layers. Gradients pass through the predicted codes and the configured PINN. The objective combines squared equation residuals with any soft initial/boundary penalties; hard constraints enter through the coordinate and output transforms above. Each meta-step averages losses over the declared training structures, then adds the basis penalty once (App. A.4). No solution labels enter this optimization. 
+
+Coefficient sampling. The sampler determines which numerical instances are presented to the amortizer; the descriptor determines how they are represented. High-reaction CDR uses bounded per-turbations around coefficient-grid nodes, with a radius that gradually expands to cover the coefficient box (App. B.2.2). The schedule is shared across descriptors. Appendix D fixes the seven training structures, objective, and budgets and compares this schedule with full-radius perturbations from the start and grid-only sampling. 
+
+Deployment. For each target instance, we evaluate s = H(G) once and initialize a separate solver with the predicted codes and meta-trained backbone. The hypernetwork is no longer optimized. Our main full fine-tune updates the instance’s codes and all backbone parameters using the target physics objective. Fisher–KPP retains a ReLU parameterization of the effective diagonal codes during adaptation; CDR and CCP optimize the diagonal entries directly (App. A.4). Numerical reference solutions are used only for evaluation. Algorithm 1 in App. A.4 summarizes both phases; App. B gives the family-specific protocols. 
+
+3.4 Descriptor baselines DeepSets-based term set. We use a standard DeepSets encoder (Zaheer et al., 2017) for variable-cardinality term conditioning. It independently embeds each term token zq and mean-pools over the term set T , r = ρ  1 
+
+> |T|
+
+P 
+
+> q∈T
+
+ϕ(zq ), with its own learned embedding and readout networks. Tokens contain coefficient sign and log-magnitude, derivative orders, and arity. In Fisher–KPP, they omit source-field and target-equation assignment and are pooled globally; CCP instead groups terms by residual/field. Thus the graph–set comparison evaluates complete descriptor designs, including their input information and readouts. 
+
+Coefficient vector. We adapt the coefficient-conditioned hypernetwork of Cho et al. (2023) to each benchmark family: an MLP maps its predefined coefficient layout to codes. The layouts, normalization, and missing-term conventions are part of our benchmark implementation. Equation-specific slots can encode coupling assignments implicitly. Absent terms are zero-filled; in our standardized CDR implementation, this zero can coincide with an active coefficient’s mean; Fisher– KPP additionally tests explicit presence indicators. Layouts and transformations are specified in App. A.2. Each descriptor retains the active numerical coefficients and is trained with its own hypernetwork and backbone under the same within-family protocol. Backbone architectures and approximate total parameter counts are matched within each family; the fitted weights are learned separately. 
+
+# 4 Problem families and evaluation rationale 
+
+We select three PDE families to examine when a hypernetwork benefits from receiving operator composition and cross-field relationships alongside coefficients. Scalar CDR tests combinations of local operators without cross-field coupling. Two-field Fisher–KPP adds independently controlled interactions between fields, allowing familiar couplings to be combined in an unseen pattern. CCP retains a physically meaningful continuity–Poisson feedback while varying only its coefficients. All three problems have one spatial dimension, with a separate model trained for each family and descriptor comparisons made within each family. 
+
+4.1 CDR : recombining local operators 
+
+Convection transports a profile, diffusion smooths it, and logistic reaction drives growth toward saturation. Their combinations provide a controlled setting for studying equation composition in a 
+
+> 4Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+Table 1: The CDR structures and the cross-structure split: train on the five seen structures, test on the two unseen combinations of advection with reaction.                                                   
+
+> residual = 0 ADV a∂ xuDIFF D∂ xx uRXN r u (1 −u)
+> train (5 structures, seen)
+> convection ∂tu+a∂ xu•
+> heat ∂tu−D∂ xx u•
+> reaction ∂tu−r u (1 −u)•
+> conv-diff ∂tu+a∂ xu−D∂ xx u••
+> Fisher ∂tu−D∂ xx u−r u (1 −u)••
+> test (2 structures, unseen combinations)
+> adv-reaction ∂tu+a∂ xu−r u (1 −u)••
+> adv-diff-reaction ∂tu+a∂ xu−D∂ xx u−r u (1 −u)•••
+
+single field. Our CDR family combines the operators studied by Krishnapriyan et al. (2021) and used for parameterized-PDE meta-learning by Cho et al. (2023). For u(x, t ) on the periodic line x ∈ [0 , 1) ,
+
+t ∈ [0 , 1] , the full residual is 
+
+R[u] = ∂tu + a ∂ xu − D ∂ xx u − r u (1 − u), (2) with three switchable motifs : advection, diffusion, and logistic reaction. The evolution term ∂tu is always present; each non-empty subset of the three motifs defines one of seven structures (Table 1). The initial profile, periodic boundary condition, and time window are fixed, so only the active motifs and their coefficients vary. App. B.2 gives the coefficient ranges, initial profile, and numerical references. Throughout, “Fisher” denotes the scalar diffusion–reaction member; “two-field Fisher– KPP” denotes the coupled family below. 
+
+Term composition and coefficient variation. The cross-structure protocol trains one amortizer on five structures and deploys on two unseen combinations. Training never pairs advection with reaction; both test structures do. This asks whether conditioning on familiar operators helps configure a solver for their unseen combination. The reaction coefficient also controls an optimization challenge: PINNs can converge to inaccurate low-residual solutions at high reaction rates (Krishnapriyan et al., 2021). We therefore distinguish 
+
+structural generalization from optimization reliability . The five-to-two protocol tests held structures in lower-reaction and high-reaction regimes. A separate all-seven-structure protocol trains through the high-reaction range and evaluates held-out coefficients of known structures; it tests the role of training coverage and descriptor-conditioned initialization. Section 5 compares the high-reaction protocols; App. C.1 reports the lower-reaction results. 
+
+4.2 Two-field Fisher–KPP: recombining cross-field couplings 
+
+Fisher–KPP models a field that spreads by diffusion and grows locally toward saturation (Fisher, 1937). Holzer (2016) studies two such equations with a linear one-way source coupling, showing that coupling can change spreading dynamics. Our periodic, advective extension controls both coupling directions independently. On x ∈ [0 , 1) , t ∈ [0 , 1] , the two fields satisfy Ru = Rv = 0 , with residuals 
+
+Ru = ∂tu − ϵu∂xx u + au∂xu − ρuu(1 − u) − κuv v, (3a) 
+
+Rv = ∂tv − ϵv ∂xx v + av ∂xv − ρv v(1 − v) − κvu u. (3b) The source +κuv v in the evolution of u represents v → u, while +κvu u represents u → v. Setting either nonnegative coupling coefficient to zero removes that interaction while retaining both fields’ transport, diffusion, and growth. The initial fields, periodic boundaries, and time window are fixed, and the local coefficients and active coupling strengths vary within prescribed ranges (App. B.3). This gives a small coupled family in which source-field and target-equation assignments can change without changing the local physical mechanisms. We train on the uncoupled system and each of the two one-way systems, then test the bidirectionally coupled system at four coefficient settings. Both interactions have appeared during training, but the test activates them together for the first time. Unlike scalar CDR , this composition specifies 
+
+> 5Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+not only which operators are active but also which field influences which equation. The question is whether explicitly organizing these relationships improves solver conditioning for the unseen coupling combination. App. B.3 specifies the held systems; Apps. C.2 and C.3 report the descriptor controls. 
+
+4.3 CCP: coefficient variation within a fixed coupled structure 
+
+A capacitively coupled plasma (CCP) is a gas discharge driven by an alternating voltage between electrodes, with charge transport and the electric field influencing each other. This fixed-coupling family tests whether physical interaction alone motivates graph conditioning. We use a simplified one-dimensional drift–diffusion–Poisson model (Jing et al., 2026a), coupling a charged-species density N to an electrostatic potential Φ. On ξ, τ ∈ [0 , 1] , its residuals are 
+
+RN = ∂τ N − aD ∂ξξ N + aμ ∂ξ
+
+ N ∂ ξ Φ − S(ξ), (4a) 
+
+RΦ = ∂ξξ Φ − β (N − 1) , (4b) The potential gradient drives density transport in RN , and the density sources the potential in RΦ.Both feedback links are retained throughout the family: deleting either would remove part of this self-consistent coupling. Instead, an applied voltage V0 and source rate R0 determine the varying coefficients while the operator structure stays fixed. We train on a continuous (V0, R 0) box and deploy on held-out interior parameter values. The nondimensional map, boundary conditions, and reference fields are given in App. B.4. A fixed coefficient layout describes the instance variation in this family. CCP therefore tests whether graph-based processing provides an additional benefit in a coupled application whose connectivity is already known, complementing Fisher–KPP’s varying-coupling test. Our working hypothesis across these problems is that the utility of relational conditioning depends on which parts of an equation vary across instances, rather than on the presence of coupling alone. Section 5 evaluates the three roles through within-family comparisons of accuracy after target-specific adaptation. 
+
+# 5 Experiments 
+
+5.1 Evaluation protocol 
+
+We evaluate equation-conditioned initializations by the solution accuracy reached within a fixed budget of target-specific physics optimization. We compare coefficient-vector, term-set, and operator-graph conditioning using the shared factorized backbone of §3. Each family has its own trained models. Within a comparison, the amortized descriptor methods share the PDE distribution, backbone architecture, physics objective, sampling policy, and training and adaptation budgets. The from-scratch control uses the same backbone and deployment budget without meta-training. Main results use ten training seeds for CDR and five for each coupled family; their numerical settings are in Apps. B.2.1, B.3, and B.4. We measure relative solution error rel L2 = ∥uθ − u⋆∥2/∥u⋆∥2 on the reference grid, averaging fieldwise errors for coupled systems. We first average held cases within each training seed, then report the mean and sample standard deviation across independent seeds. For Fisher–KPP and CCP, the primary measure is the final error after 3,000 adaptation steps. The CDR optimization study reports oracle-best : the lowest error over scheduled evaluations within its fixed deployment budget. Reference solutions are used only for evaluation, including oracle-best selection, and never for training or online stopping. Results from distinct training protocols are reported separately. 
+
+5.2 Term composition and training coverage in CDR 
+
+Scalar CDR first tests whether term-based conditioning helps when familiar operators appear in new combinations. The high-reaction five-to-two and all-seven protocols of §4.1 evaluate the same eight high-reaction AR/ADR cases, separating unseen term composition from held-coefficient adaptation within known structures. Table 2 shows substantially lower mean errors for both term-based descriptors than for the coefficient vector. On unseen structures, the term set and operator graph reduce the mean by 85 .1% and 85 .4% ,
+
+> 6Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+Table 2: High-reaction CDR oracle-best rel L2 (mean ± sample SD over ten seed means). Both protocols evaluate the same eight AR/ADR cases. Five-to-two holds out their structures; all-seven training holds out only their coefficients.                      
+
+> Meta-training Coefficient vector Term set Operator graph Five-to-two 0.7459 ±0.3690 0.1112 ±0.0979 0.1093 ±0.1221
+> All seven 0.4869 ±0.4803 0.0191 ±0.0016 0.0204 ±0.0018
+
+respectively. Including all seven structures further lowers their errors and reduces seed-to-seed variation. Their means remain close in both protocols: this scalar family supports term-based conditioning, without a consistent advantage for the graph over the set. Fixed-final errors support the same comparison (App. C.1), which also reports lower-reaction results and seed distributions. A supplementary all-seven experiment (App. D) tests dependence on the coefficient-sampling sched-ule. Low Set and Graph errors persist with full jitter from the start. Under grid-only training, Graph has more consistent threshold attainment across the sampled seeds. Thus coefficient exposure affects adaptation alongside the descriptor; these supplementary results use their own collocation budget and seed cohorts. 
+
+5.3 Generalization to unseen Fisher–KPP coupling Scratch Vector Set Graph 0246810 Relative  L2 error (10 −3 )
+
+Figure 1: Fisher–KPP error at step 3000. Circles: five seed means over H1–H4; diamonds: overall means. Fisher–KPP tests whether explicitly representing cross-field relationships improves adaptation to an unseen combination of familiar interactions. Under the split in §4.2, all four held systems activate both coupling directions, which meta-training sees only separately. The operator graph has the lowest mean final er-ror (Fig. 1): (1 .786 ± 0.318) × 10 −3, compared with (2 .779 ± 0.712) × 10 −3 for the term set, 
+
+(5 .531 ± 1.302) × 10 −3 for the coefficient vector, and (9 .660 ± 0.626) × 10 −3 from scratch. Its mean is 35 .7% below the term set and 67 .7% below the coefficient vector. The ordering is also preserved un-der oracle-best evaluation (Table 7). The lower final error supports graph conditioning for adaptation to the unseen coupling combination, beyond the gains already provided by the term set. The lower Graph mean also holds for each held case and each field separately (App. C.2, Table 8). The solution maps in Fig. 2 show that both learned solvers recover the main field structure. Their differences are clearer in the shared-scale absolute-error maps, where the graph prediction has smaller errors on this example. The quantitative conclusion above uses all held cases and seeds rather than the displayed snapshot. A separate five-seed complete-method comparison on one GPU (App. F) evaluates a parameter-matched Iwata-style conditional decoder. It has lower initialization error, whereas Graph has 44 .6% 
+
+lower mean error after 3,000 updates. 
+
+> 7
+
+Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks 0.5 1              
+
+> u: t
+> Reference Graph Set Graph error Set error
+> 0.5 1
+> x
+> 0.5 1
+> v: t
+> 0.5 1
+> x
+> 0.5 1
+> x
+> 0.5 1
+> x
+> 0.5 1
+> x
+> 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8
+> Field value
+> 0123
+> Absolute error (10 −3 )
+
+Figure 2: Fisher–KPP H1, seed 101. Rows show u and v; columns show the reference, Graph and Set predictions, and their absolute errors. The first three columns share the adjacent field-value colorbar; the error columns share the rightmost linear colorbar. Both use rainbow. The case and seed are fixed; Graph and Set use their respective oracle-best checkpoints at steps 2400 and 3000. These snapshots illustrate solution quality; Fig. 1 reports aggregate final-step performance. 
+
+5.4 Coefficient variation within fixed CCP coupling Table 3: CCP error at step 3000: mean ±
+
+sample SD over five seeds. 
+
+Method Final rel L2
+
+From scratch 0.4866 ± 0.0435 
+
+Coefficient vector 0.1396 ± 0.0347 
+
+Term set 0.2361 ± 0.0782 
+
+Operator graph 0.2483 ± 0.1152 
+
+CCP retains the continuity–Poisson feedback through-out training and testing, so coefficients specify all vari-ation within the equation family. Table 3 reports final accuracy at the two held interior parameter settings. The coefficient vector performs best. The operator graph lowers the mean error relative to training from scratch, but not relative to coefficient conditioning. This fixed-structure application shows that physical coupling alone does not ensure a graph advantage un-der this protocol. 
+
+5.5 Number of message-passing rounds 1 2 3 4 5  
+
+> Propagation rounds K
+> 123
+> Relative  L2
+> 1e 3
+
+Figure 3: Fisher–KPP error after 3000 updates. Thin lines: five seed means over fields and H1–H4; bold line and whiskers: mean and sample SD. On Fisher–KPP, we vary propagation rounds 
+
+K ∈ { 1, 2, 3, 4, 5}, matching meta-training and target-encoding depths. Shared weights keep all models at 132,866 parameters; initialization and coefficient/collocation streams are paired within each seed. A five-seed depth ablation (App. C.4) fixes the parameter count and optimizer budgets. Increas-ing propagation from two to five rounds further lowers mean final error, with a paired improve-ment in four of the five seeds. The descriptor comparison above retains two rounds. At step 3000, the mean error reduction from K = 2 to 
+
+K = 5 is 26 .6% (Fig. 3). The comparison fixes optimizer updates, not compute time; deeper encoding requires more computation. 
+
+Evidence across families. Fisher–KPP provides the direct evidence that graph conditioning im-proves adaptation to an unseen coupling composition. High-reaction CDR shows benefits from both term-based descriptors, while CCP identifies a fixed-structure setting where coefficient conditioning performs best. Together, these observations motivate testing relational conditioning when cross-field interactions vary across instances. The sampler controls in App. D complement this structural 
+
+8Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks 
+
+comparison by testing sensitivity to numerical coefficient exposure. Complementing fixed-budget accuracy, a separate three-seed CDR study in App. E measures updates to a common error threshold. On held structures, graph conditioning reduces the median from 2200 scratch updates to 600; Vector and Set also require fewer updates, establishing an amortization benefit shared by the descriptors. 
+
+# 6 Related work 
+
+Amortized physics-informed solvers. HyperPINN (de Avila Belbute-Peres et al., 2021) predicts PINN weights from equation parameters to share learning across instances. Hyper-LR-PINN (Cho et al., 2023) predicts diagonal codes for shared factorized layers, including for a parameterized CDR family. We retain this factorization and coefficient-to-code interface while broadening the equation descriptor. Our comparisons use full adaptation of codes and backbone parameters (§3), whereas Cho et al.’s online phase freezes the factorized bases. The contribution concerns solver conditioning within this framework. In a related dynamics-learning setting, Jing et al. (2026b) use latent-conditioned hypernetworks for few-shot adaptation of structure-preserving models from trajectory data, whereas we condition PINNs on explicit equation graphs and adapt them using physics residuals. 
+
+Representing equation families. Coefficient dictionaries can describe different equations, not just different parameter values of one equation. Iwata et al. (2023) encode coefficients of a polynomial in fields and derivatives, combine them with a set representation of boundary conditions, and condition a coordinate-based solution network trained with physics losses. Their target-specific refinement updates the solution decoder and the inferred problem representation while keeping the problem encoder fixed. This differs from coefficient-to-code hypernetwork conditioning. Appendix F compares a parameter-matched two-field adaptation of this conditional decoder with our solver. Their setting motivates comparing equation representations without treating fixed-length vectors as intrinsically restricted to one structure. Our operator graph makes factor and residual assignments explicit. The term-set baseline uses standard DeepSets pooling (Zaheer et al., 2017), providing a variable-size representation of additive terms against which to assess the complete graph descriptor. 
+
+Graph-conditioned neural fields. Graph hypernetworks predict weights from target-network connectivity in architecture search, unseen-architecture prediction, and program synthesis (Zhang et al., 2019; Knyazev et al., 2021; Li et al., 2026). Our graph instead describes the governing equations. More closely, PDEformer and PDEformer-2 combine equation graphs with graph Transformers and implicit neural representations (Ye et al., 2024, 2025). PDEformer generates layer modulations from graph embeddings, so graph-conditioned neural fields already have a direct precedent. These models use numerical solution datasets for pretraining; we use equation graphs to configure factorized PINNs through physics-only meta-training and adaptation. 
+
+Multi-equation learning with physics. HyPINO (Bischof et al., 2025) generates PINNs from PDE parameterizations using manufactured-solution labels and physics losses, and evaluates both forward prediction and subsequent fine-tuning. PI-MFM (Zhu et al., 2025) combines symbolic equations and condition inputs, assembles physics losses automatically, and supports physics-only adaptation after mixed data/physics pretraining. Our study shares the goal of reusing solvers across equations, but focuses on how coefficient, term-set, and graph descriptors condition a common within-family backbone when neither meta-training nor adaptation uses solution labels. 
+
+# 7 Limitations and future directions 
+
+Our results concern three separately trained, one-spatial-dimensional PDE families with fixed con-ditions and bounded coefficients. Transfer across families, dimensions, and boundary conditions remains open. Varying coefficients and admissible connectivity independently within a common coupled model would better isolate when relational conditioning helps. The sampler controls use small, unequal seed cohorts (App. D). The update-count study (App. E) and measured Fisher timings (App. F) cover fixed deployment sets. Broader deployment coverage and physics-based stopping rules remain future work. 
+
+> 9Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+# Acknowledgements 
+
+Cheng Jing acknowledges funding support from Applied Materials, Inc. Yixuan He acknowledges support from a Jetstream2 AI Fellowship and an NVIDIA Academic Grant Award. 
+
+# References 
+
+Maziar Raissi, Paris Perdikaris, and George E. Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics , 378:686–707, 2019. doi: 10.1016/j.jcp. 2018.10.045. 1, 2 Filipe de Avila Belbute-Peres, Yi-fan Chen, and Fei Sha. HyperPINN: Learning parameterized differ-ential equations with physics-informed hypernetworks. In NeurIPS Workshop on the Symbiosis of Deep Learning and Differential Equations , 2021. URL https://openreview.net/forum?id= LxUuRDUhRjM . 1, 9 Woojin Cho, Kookjin Lee, Donsub Rim, and Noseong Park. Hypernetwork-based meta-learning for low-rank physics-informed neural networks. In Advances in Neural Information Processing Systems , volume 36, pages 11219–11231, 2023. doi: 10.52202/075280-0496. 1, 2, 4, 5, 9, 14 Aditi S. Krishnapriyan, Amir Gholami, Shandian Zhe, Robert M. Kirby, and Michael W. Mahoney. Characterizing possible failure modes in physics-informed neural net-works. In Advances in Neural Information Processing Systems , volume 34, pages 26548–26560, 2021. URL https://proceedings.neurips.cc/paper/2021/hash/ df438e5206f31600e6ae4af72f2725f1-Abstract.html . 2, 5, 14 Matt Holzer. A proof of anomalous invasion speeds in a system of coupled Fisher–KPP equations. 
+
+Discrete and Continuous Dynamical Systems , 36(4):2069–2084, 2016. doi: 10.3934/dcds.2016.36. 2069. 2, 5 Cheng Jing, Uvini Balasuriya Mudiyanselage, Abhishek Verma, Kallol Bera, Shahid Rauf, and Kookjin Lee. Extending Fourier neural operators for modeling parameterized and coupled PDEs. In International Conference on Learning Representations , volume 2026, pages 119621– 119651, 2026a. URL https://proceedings.iclr.cc/paper_files/paper/2026/hash/ c253f6fe5cc2bd1905427da63ac37917-Abstract-Conference.html . 2, 6, 16 Manzil Zaheer, Satwik Kottur, Siamak Ravanbakhsh, Barnabas Poczos, Ruslan Salakhutdinov, and Alexander J. Smola. Deep Sets. In Advances in Neural Information Processing Systems ,volume 30, 2017. URL https://proceedings.neurips.cc/paper_files/paper/2017/ hash/f22e4747da1aa27e363d86d40ff442fe-Abstract.html . 2, 4, 9 David Ha, Andrew M. Dai, and Quoc V. Le. HyperNetworks. In International Conference on Learning Representations (ICLR) , 2017. URL https://openreview.net/forum?id=rkpACe1lx . 2 Justin Gilmer, Samuel S. Schoenholz, Patrick F. Riley, Oriol Vinyals, and George E. Dahl. Neural message passing for quantum chemistry. In Proceedings of the 34th International Conference on Machine Learning , volume 70 of Proceedings of Machine Learning Research , pages 1263–1272. PMLR, 2017. URL https://proceedings.mlr.press/v70/gilmer17a.html . 3 Ronald A. Fisher. The wave of advance of advantageous genes. Annals of Eugenics , 7(4):355–369, 1937. doi: 10.1111/j.1469-1809.1937.tb02153.x. 5 Cheng Jing, Uvini Balasuriya Mudiyanselage, Woojin Cho, Minju Jo, Anthony Gruber, and Kookjin Lee. Meta-learning structure-preserving dynamics. In International Conference on Machine Learning , 2026b. URL https://arxiv.org/abs/2508.11205 . 9 Tomoharu Iwata, Yusuke Tanaka, and Naonori Ueda. Meta-learning of physics-informed neural networks for efficiently solving newly given PDEs. arXiv preprint arXiv:2310.13270 , 2023. URL 
+
+https://arxiv.org/abs/2310.13270 . 9, 24 Chris Zhang, Mengye Ren, and Raquel Urtasun. Graph HyperNetworks for neural architecture search. In International Conference on Learning Representations , 2019. URL https://openreview. net/forum?id=rkgW0oA9FX . 9 Boris Knyazev, Michal Drozdzal, Graham W. Taylor, and Adriana Romero-Soriano. Parameter prediction for unseen deep architectures. In Advances in Neural Information Processing Systems ,
+
+> 10 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+volume 34, pages 29433–29448, 2021. URL https://proceedings.neurips.cc/paper/ 2021/hash/f6185f0ef02dcaec414a3171cd01c697-Abstract.html . 9 Wenhao Li, Yudong Xu, Elias Khalil, and Scott Sanner. Structure-aware graph hypernetworks for neural program synthesis. In International Conference on Learning Representations , volume 2026, pages 129239–129270, 2026. URL https://proceedings.iclr.cc/paper_files/paper/ 2026/hash/d1e2f808a51842eedaf6ef0099d716c6-Abstract-Conference.html . 9 Zhanhong Ye, Xiang Huang, Leheng Chen, Hongsheng Liu, Zidong Wang, and Bin Dong. PDEformer: Towards a foundation model for one-dimensional partial differential equations. arXiv preprint arXiv:2402.12652 , 2024. URL https://arxiv.org/abs/2402.12652 . 9 Zhanhong Ye, Zining Liu, Bingyang Wu, Hongjie Jiang, Leheng Chen, Minyan Zhang, Xiang Huang, Qinghe Meng, Jingyuan Zou, Hongsheng Liu, and Bin Dong. PDEformer-2: A versatile foundation model for two-dimensional partial differential equations. arXiv preprint arXiv:2507.15409 , 2025. URL https://arxiv.org/abs/2507.15409 . 9 Rafael Bischof, Michal Piovarci, Michael Kraus, Siddhartha Mishra, and Bernd Bickel. HyPINO: Multi-physics neural operators via HyperPINNs and the method of manufactured solutions. In 
+
+Advances in Neural Information Processing Systems , volume 38, pages 144798–144831, 2025. doi: 10.52202/085713-4845. URL https://proceedings.neurips.cc/paper_files/paper/ 2025/hash/d551ee47a0165febf1f2748b9b450886-Abstract-Conference.html . 9 Min Zhu, Jingmin Sun, Zecheng Zhang, Hayden Schaeffer, and Lu Lu. PI-MFM: Physics-informed multimodal foundation model for solving partial differential equations. arXiv preprint arXiv:2512.23056 , 2025. URL https://arxiv.org/abs/2512.23056 . 9 
+
+> 11 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+# A Representation and implementation 
+
+This section gives the descriptor details supplementing §3. Benchmark settings are in App. B; supplementary descriptor comparisons and coefficient-sampling controls are in Apps. C and D. 
+
+A.1 Graph construction 
+
+We use uf for field f , Rf for its governing residual, G = ( V, E ) for the operator graph, and sℓf for the code of factorized layer ℓ. Each additive monomial is a term node with a scalar coefficient and a tuple of field or derivative factors. Arity counts factors with multiplicity: u2 has arity two, a constant has arity zero, and −κv in Ru has arity one with source field v and target equation u.The four node kinds are fields, derivatives, terms, and residual roots. Connections run from a field to its derivatives, from factors to their terms, and from each term to its target residual. Node attributes identify kind, field or target-field identity, derivative orders, and coefficient sign/log-magnitude where applicable. The symbolic incidence is directed; message passing uses symmetrized, self-looped, row-normalized connectivity without edge-specific transformations. The CDR and CCP layouts reserve a global-node kind but remove that node before encoding. Figure 4 shows all CDR motifs. Removing reaction removes the −ru and +ru 2 terms and their incidences. In a coupled system, the target connection also identifies which equation receives each term (Fig. 5). The schematics use ru, r N , r Φ for Ru, RN , RΦ. Their edge signs illustrate residual assembly; the encoders receive coefficient signs as term-node attributes and use unsigned message-passing adjacency. ×+×2 +    
+
+> ×
+> ×
+> ×+
+> ru
+> +au
+> xu
+> +rD
+> 2
+> xu
+> r+1
+> tu
+> field derivative term residual differentiate
+> ×factor (into term) + / add into residual
+
+Figure 4: CDR operator graph. Other motif combinations remove the corresponding terms and incidences. 
+
+A.2 Family-specific descriptor inputs and readouts CDR.. The coefficient vector has layout [a, D, r ]. Active D uses log 10 ; a and r use the identity transform. Active entries are standardized using the protocol’s active-value means and standard deviations; absent entries are zero-filled after standardization, without presence indicators. Thus absence and a mean-valued active coefficient can share an encoding. Term-set and graph inputs instead use coefficient sign and log-magnitude without this standardization. The graph has 22-dimensional features: five node-kind slots, eight field-identity slots, three derivative-order slots, three term-attribute slots, and three source/location slots. Its two residual update rounds have round-specific affine maps. The embedded and updated states are concatenated at each node, projected to the node width, and mean-pooled over term and field nodes before decoding the single field’s codes. Each amortized CDR model has approximately 1.0M parameters. 
+
+Fisher–KPP.. The equation-ordered vector is [ϵu, a u, ρ u, κ uv , ϵ v , a v , ρ v , κ vu ]. Diffusion entries are log 10 -transformed, active entries are analytically standardized, and absent couplings are filled with zero after standardization. The presence-indicator control appends eight binary indicators. A term-set token contains [sign( c), log 10 |c|, P dx, P dt, arity , ⊮constant source ]. Tokens are inde-pendently embedded and globally mean-pooled; the readout then receives target-field identity. The 
+
+> 12
+
+Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks 
+
+tokens do not identify their source fields or target equations. The ownership-aware control adds these assignments (App. C.3). The graph has 12-dimensional node features: four node-kind indicators, two field indicators, two derivative orders, and coefficient sign, log-magnitude, arity, and a constant-source flag. The bidi-rectionally coupled test graph has 22 nodes and 30 directed incidence edges before symmetrization. Its update and readout follow §3. The operator graph uses two rounds and has 132,866 parameters. Other descriptor totals are within 0.3% of this total. 
+
+CCP.. The vector uses a 17-slot union layout with four active coefficients (aD , a μ, β, S 0), where 
+
+S0 is the source amplitude defined in App. B.4. Active entries use log 10 (|c| + 10 −8) without standardization; other slots are zero. One predicted code set is broadcast to both fields. The set encoder uses five term attributes (coefficient sign, log-magnitude, two derivative orders, and arity) and groups terms by residual/field. The graph uses the 22-dimensional layout above, including source-location attributes, with two non-residual update rounds and a final-hop per-field readout. Total parameter counts differ by at most 0.12% between amortized arms. 
+
+A.3 Consistency between the graph and physics loss 
+
+CDR and Fisher–KPP share term lists between descriptor construction and automatic-differentiation residual evaluation. The five-seed CCP implementation constructs the graph explicitly while differen-tiating its drift in conservative form: 
+
+∂ξ (N ∂ ξ Φ) = ( ∂ξ N )( ∂ξ Φ) + N ∂ ξξ Φ.
+
+Both right-hand terms occur in the graph with coefficient aμ. The Poisson residual is ∂ξξ Φ−β(N −1) .The graph and physics loss use the same coefficients and prescribed two-zone source: the graph stores the first interval and uses the fixed mirrored-interval convention. Thus the two code paths represent the same governing equations. 
+
+Engineering value. Within the supported operator vocabulary, the graph provides an inspectable interface between an equation definition and the hypernetwork. In CDR and Fisher–KPP, one term representation supplies both graph construction and residual evaluation, so supported term or coupling edits can be expressed once and reused in both paths. This code reuse complements the accuracy comparisons; new operators, field layouts, or boundary prescriptions still require explicit implementation. × × ×+×     
+
+> ×+
+> ×++×
+> ×+
+> rN
+> SaD
+> N
+> 2N
+> +a
+> N
+> +a
+> 2
+> +1
+> N
+> r
+> ++1
+> field derivative term residual differentiate
+> ×factor (into term) + / add into residual
+
+Figure 5: CCP operator graph. Density and potential enter both the drift–diffusion and Poisson residuals. 
+
+A.4 Physics-only training and adaptation 
+
+Algorithm 1 summarizes the two phases for one PDE family. The physics loss is the weighted mean of squared equation residuals, computed by automatic differentiation, plus any soft initial/boundary penalties. Hard conditions are built into the coordinate and output transforms. Numerical reference solutions enter only the separate evaluation procedure (App. B.1). Meta-training is joint optimization across equations; it has no inner adaptation loop. The training set has five or seven structures in CDR, three in Fisher–KPP, and one in CCP. Equal step counts 
+
+13 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks 
+
+Algorithm 1 Physics-only meta-training and full adaptation. 
+
+Input: Training PDE structures, coefficient sampler, prescribed conditions, and train-ing/adaptation budgets. 
+
+Phase 1: Learn a shared equation-conditioned initialization  
+
+> 1:
+
+Initialize the graph hypernetwork and shared factorized PINN backbone.  
+
+> 2:
+
+for each meta-training step do  
+
+> 3:
+
+Sample one PDE per training structure and fresh collocation points.  
+
+> 4:
+
+for each sampled PDE do  
+
+> 5:
+
+Build its operator graph, retaining coefficients and term assignments.  
+
+> 6:
+
+Predict diagonal codes with the hypernetwork and configure the shared PINN.  
+
+> 7:
+
+Evaluate the physics loss for this PDE at its sampled points.  
+
+> 8:
+
+end for  
+
+> 9:
+
+Average the PDE losses; add the configured basis-orthogonality penalty once.  
+
+> 10:
+
+Backpropagate through the codes; update the hypernetwork and shared backbone.  
+
+> 11:
+
+end for Phase 2: Adapt an independent solver to each target equation  
+
+> 12:
+
+for each target PDE do  
+
+> 13:
+
+Build its graph and call the trained hypernetwork once to obtain initial codes.  
+
+> 14:
+
+Copy the trained backbone; make the codes independent trainable tensors.  
+
+> 15:
+
+for each adaptation step do  
+
+> 16:
+
+Sample fresh points and recompute the target physics loss and configured penalty.  
+
+> 17:
+
+Update the codes and all copied backbone parameters; keep the hypernetwork fixed.  
+
+> 18:
+
+end for  
+
+> 19:
+
+Return the adapted PINN as the target solution approximation.  
+
+> 20:
+
+end for 
+
+across different structure sets therefore need not imply equal computation. Samplers, loss weights, regularization, and optimizer budgets follow the family protocols in App. B. The predicted codes include the output ReLU of Eq. (1). At deployment, Fisher–KPP initializes independent trainable tensors ˜sℓf with these predictions and uses sℓf = ReLU(˜ sℓf ) in Cℓ diag( sℓf )Rℓ
+
+at every forward pass. CDR and CCP instead optimize sℓf directly, without a nonnegativity clamp. Full adaptation updates the instance’s code tensors and all copied backbone parameters; the hypernetwork remains unchanged. 
+
+# B Benchmark and evaluation protocols 
+
+B.1 Errors and aggregation 
+
+For one field, rel L2 = ∥uθ − u⋆∥2/∥u⋆∥2 on the reference grid. For a coupled case, we average the two fieldwise relative errors. Final error is measured at the fixed deployment budget; oracle-best is the minimum case error over scheduled evaluations, including initialization. Reference fields are used only for evaluation, not for training or online stopping. We average case errors within each training seed, then report the mean and sample standard deviation over ten CDR or five Fisher–KPP/CCP seed means. The three-seed ownership control and the supplementary CDR sampling cohorts are reported separately in Apps. C.3 and D. 
+
+B.2 CDR: motif combinations and coefficient regimes 
+
+The scalar family of Eq. (2) combines convection, diffusion, and logistic reaction (Cho et al., 2023; Krishnapriyan et al., 2021) on x ∈ [0 , 1) and t ∈ [0 , 1] . Advection translates the profile, diffusion damps spatial variation, and logistic reaction drives positive values toward saturation. The seven nonempty combinations of these motifs are listed in Table 1. All share the initial condition 
+
+u0(x) = 0 .5 + 0 .20 sin(2 πx ) + 0 .10 sin(4 πx + 0 .7) + 0 .05 cos(6 πx )
+
+and periodic boundary conditions. Both constraints enter as separate unit-weighted soft penalties. In the five-to-two split, meta-training omits AR and ADR; these two structures combine advection and 
+
+> 14 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+reaction for the first time at deployment. In the all-seven protocol, all structures are seen and only evaluation coefficient settings are new. 
+
+Reference solutions. We use 256 endpoint-excluded Fourier spatial nodes and 101 output times, with a float64 pseudo-spectral method of lines, BDF integration, relative tolerance 10 −8, and absolute tolerance 10 −10 , without dealiasing. Translation and diffusion modal-decay checks give errors of approximately 10 −7. References are used only for evaluation. 
+
+B.2.1 Ten-seed descriptor comparisons 
+
+The ten-seed comparisons use the width-256 backbone with three coded layers and two graph-update rounds. Each physics-loss evaluation draws 512 interior, 128 initial, and 128 periodic-boundary samples. Meta-training and full adaptation use Adam at 2.5 × 10 −4; the basis-orthogonality weight is 10 −4 during meta-training and zero during adaptation. Errors are evaluated every 200 deployment steps. All three protocols use seeds 0–9 and float32 computation on NVIDIA GB10 GPUs. Task draws share seed IDs across descriptors; collocation sampling follows the same policy but is not pointwise paired across architectures. Both high-reaction protocols use 30,000 meta-training and 3,000 deployment steps. They share the coefficient grid and bounded-jitter schedule of App. B.2.2, with radius held at zero through step 8,000 and expanded to full coverage by step 24,000. Each meta-step averages the loss over the declared five or seven training structures. The five-to-two protocol omits AR/ADR losses; the all-seven protocol includes them. Their common primary evaluation comprises AR and ADR at a ∈ { 4.5, 9.5} and 
+
+r ∈ { 8.5, 9.5}, with D = 10 −2 for ADR, giving eight cases. Table 2 reports their results. The lower-reaction five-to-two protocol instead uses 20,000 meta-training and 5,000 deployment steps, with a ∼ U [2 , 4] , r ∼ U [1 , 4] , and log-uniform D ∈ [10 −3, 10 −1] on active terms. App. C.1 reports its six-case held AR/ADR evaluation. 
+
+B.2.2 Coefficient grid and sampling schedule 
+
+The high-reaction protocols sample the Cartesian product of the active coefficient axes in Table 4. Write α(m) ∈ [0 , 1] for the jitter radius at meta-step m. A sampled grid node is perturbed uniformly by up to α(m) times the axis half-spacing, in log 10 D for diffusion, then clipped to its range. At 
+
+α = 0 only grid nodes are sampled; at α = 1 neighboring jitter intervals meet and the whole box is covered. This is continuous support, not a claim that the clipped distribution is uniform. The scheduled setting holds α = 0 through step 8,000 and increases it linearly to one by step 24,000 of 30,000. 
+
+Table 4: High-reaction coefficient grid and jitter half-spacings.                                     
+
+> axis nodes spacing (HALF) range
+> a(advection) 2,4.5,7,9.5,12 (linear) 2.5(1.25 )[2 ,12]
+> D(diffusion) 10 −3,10 −2.5,10 −2,10 −1.5,10 −1(log) 0.5dec ( 0.25 )[10 −3,10 −1]
+> r(reaction) 1,3.25 ,5.5,7.75 ,10 (linear) 2.25 (1.125 )[1 ,10]
+
+B.3 Two-field Fisher–KPP: held coupling composition 
+
+We solve the residual system in Eqs. (3a)–(3b) on x ∈ [0 , 1) , t ∈ [0 , 1] , with periodic space and 
+
+u0(x) = 0 .35 + 0 .20 sin(2 πx ) + 0 .08 cos(4 πx + 0 .3) ,v0(x) = 0 .30 + 0 .18 cos(2 πx + 0 .4) − 0.06 sin(6 πx ).
+
+For each q ∈ { u, v }, we independently draw log 10 ϵq uniformly on log 10 [0 .005 , 0.02] , aq ∼
+
+U [0 .2, 0.8] , and ρq ∼ U [0 .8, 1.6] ; each active coupling is drawn from U [0 .1, 0.4] . The three meta-training structures are uncoupled ( κuv = κvu = 0 ), v → u only ( κuv > 0, κ vu = 0 ), and u → v only (κuv = 0 , κ vu > 0). Within a meta-training step, they share one draw of the six local coefficients and the same collocation batch. The four test systems activate both couplings. The residual convention makes the advection term positive on the left-hand side and the active coupling term negative; the equivalent evolution equations have −aq ∂xq and positive cross-field sources. 
+
+> 15 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+Table 5: Four held bidirectionally coupled Fisher–KPP coefficient settings.                                         
+
+> task ϵuauρuκuv ϵvavρvκvu
+> H1 .008 .25 .90 .15 .018 .65 1.50 .35 H2 .015 .55 1.40 .32 .006 .30 1.00 .18 H3 .010 .75 1.20 .25 .012 .45 1.30 .40 H4 .017 .40 1.55 .38 .009 .70 .85 .22
+
+The backbone has width 96, three coded factor layers, tanh activation, orthogonal basis initialization, and spatial Fourier features at frequencies 1, 2, 3, 4. The initial condition is imposed exactly as 
+
+(u, v ) = ( u0, v 0) + tf θ (x, t ). Training seeds are 101 , 202 , 303 , 404 , 505 . Meta-training uses 3,000 Adam steps at 5 × 10 −4; deployment uses 3,000 steps at 2 × 10 −4. Both phases resample 1,024 interior points per step, clip the gradient norm at 10, weight the two residuals equally, and set the basis penalty to zero. Scratch uses the same width-96 backbone without an encoder and is optimized under the same deployment objective, test settings, sampled batches, and 3,000-step budget. We evaluate every 100 steps. Descriptor configurations are specified in App. A.2. Reference fields use a float64 periodic Fourier method of lines on a 256-point spatial grid with 101 uniform output times, integrated by BDF with relative tolerance 10 −9, absolute tolerance 10 −11 ,and maximum step 0.02 . The relative difference between reference fields computed on 128- and 256-point grids is less than 10 −12 . References are used only for evaluation. 
+
+B.4 CCP: fixed-structure coefficient variation 
+
+The one-dimensional continuity–Poisson model of Eq. (4) (Jing et al., 2026a) evolves density N and potential Φ on ξ ∈ [0 , 1] , with RF phase τ ∈ [0 , 1] . Potential drives density transport, and density supplies the Poisson source. The structure is fixed throughout this benchmark. 
+
+Nondimensionalization and constraints. With nio = R0(x2 − x1)/c s,
+
+aD = DT L2 , aμ = μV 0TL2 , β = e n io L2
+
+ε0V0
+
+, S(ξ) = S0I(ξ), S0 = R0Tnio 
+
+,
+
+where I is the indicator of [0 .2, 0.4] ∪ [0 .6, 0.8] and x2 − x1 = 0 .2L. Thus β ∝ R0/V 0, while 
+
+S0 = T c s/(x2 − x1) is independent of R0. The physical constants are L = 0 .025 m, f = 13 .56 
+
+MHz, T = 1 /f , Te = 3 .0 eV, νm = 10 8 s−1, and mi = 40 amu, with μ = e/ (meνm), D = μT e,and cs = peT e/m i. There is no initial-condition constraint. Spatial boundary values are imposed through 
+
+N = ξ(1 − ξ)egN , Φ = ξ sin(2 πτ ) + ξ(1 − ξ)gΦ.
+
+Reference bank and evaluation cases. The reference bank covers V0 ∈ { 130 , 200 , 270 } V and 
+
+R0 ∈ { 1, 2, 3.5, 5} × 10 20 m−3s−1. It uses 200 finite-volume cells (201 nodes), backward Euler with Scharfetter–Gummel fluxes, 2,000 time steps per RF period, three Gummel sweeps per step, and 40 periods, storing 200 time levels from the final period. The bank filter rejects nonfinite values, a mid-domain bulk mean N < 0.7, or max |Φ| > 3. We evaluate the two interior cells V0 = 200 V, 
+
+R0 ∈ { 2, 3.5} × 10 20 m−3s−1. Training samples the continuous enclosing box without excluding these neighborhoods, so this is coefficient interpolation, not a held region or held topology. 
+
+B.4.1 Five-seed training and deployment 
+
+The width-96 backbone has three coded layers and coordinate input [ξ, sin(2 πτ ), cos(2 πτ )] , enforc-ing RF periodicity exactly. Seeds 0–4 each receive 3,000 meta-training steps and 3,000 full-adaptation steps; Scratch receives the same deployment budget without meta-training. Both phases use Adam at 2.5 × 10 −4 and 1,024 fresh interior points per step; evaluation occurs every 100 deployment steps. The weighted residual loss uses (wN , w Φ) = (0 .003 , 0.997) . The orthogonality penalty is added once after combining residual losses, with weight 10 −4 during meta-training and zero during deployment. The coefficient sampler uses V0 ∈ [130 , 270] and logarithmic R0 ∈ [10 20 , 5 × 10 20 ],holding its centre-out radius at zero through step 750 and reaching the full box at step 2,250. The operator graph applies two non-residual update rounds. 
+
+> 16 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+# C Supplementary comparisons 
+
+C.1 CDR: term composition and seed variation 
+
+Figure 6 complements Table 2 with the ten seed means. Set and Graph perform similarly in both high-reaction protocols; including AR/ADR during meta-training lowers their errors and seed variation. Vector Set Graph 10 −1   
+
+> 10 0
+> Relative  L2 error
+> (a) Vector Set Graph
+> (b)
+
+Figure 6: CDR oracle-best error: five-to-two (left) and all-seven training (right). Circles average eight AR/ADR cases within each seed; diamonds average ten seeds. 
+
+Fixed-budget endpoints. Table 6 reports the step-3000 errors for the same ten seeds and eight AR/ADR cases as Table 2, without checkpoint selection. Both term-based descriptors retain substan-tially lower mean errors than Vector. All-seven training again lowers their errors and seed variation; Graph does not consistently outperform Set across the two protocols. 
+
+Table 6: High-reaction CDR final rel L2 at step 3000: mean ± sample SD over ten seed means, each averaging the same eight cases as Table 2.                      
+
+> Meta-training Coefficient vector Term set Operator graph Five-to-two 0.7682 ±0.3800 0.1625 ±0.1775 0.1382 ±0.1590
+> All seven 0.4909 ±0.4842 0.0201 ±0.0015 0.0210 ±0.0017
+
+In the lower-reaction five-to-two protocol of App. B.2.1, the oracle-best means are 0.0210 ± 0.0075 
+
+(Vector), 0.0119 ± 0.0031 (Set), and 0.0312 ± 0.0233 (Graph), each averaging six cases within a seed and then ten seeds. Together, these comparisons support term-based conditioning in high-reaction CDR, with no consistent Graph advantage over Set across the evaluated regimes. 
+
+C.2 Fisher–KPP: accuracy and coefficient-presence control 
+
+Table 7 reports final and oracle-best errors for the five-seed coupling-composition experiment. The extra vector control adds presence indicators to distinguish an absent coupling from a mean-valued active coefficient. It improves the mean error relative to the unmasked vector, while the operator graph retains the lowest mean error. 
+
+Consistency across held cases and fields. Table 8 separates the same five-seed cohort by held instance. Graph has lower mean final error than Set and Vector on each of H1–H4. Across matched case–seed pairs, Graph is lower than Set in 18/20 and lower than Vector in 20/20; these pairs comprise five independent training seeds, not 20. The Graph–Set ordering also holds separately for each field after averaging the four cases within each seed: the five-seed means are 1.306 versus 2.233 for u and 
+
+2.266 versus 3.326 for v, all in units of 10 −3. Thus the aggregate improvement is not confined to one held case or one field. 
+
+> 17 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+Table 7: Fisher–KPP relative errors in units of 10 −3: mean ± sample SD over five seed means. Final uses step 3000; oracle-best uses each case’s lowest scheduled error.                                                                        
+
+> Method Final Oracle-best From scratch 9.660 ±0.626 9.660 ±0.626
+> Coefficient vector 5.531 ±1.302 5.348 ±1.458
+> Term set 2.779 ±0.712 2.754 ±0.698
+> Operator graph 1.786 ±0.318 1.658 ±0.410
+> Vector with presence indicators 4.191 ±2.174 3.884 ±2.267
+> Case Coefficient vector Term set Operator graph H1 3.142 ±0.599 1.640 ±0.445 1.044 ±0.218
+> H2 3.298 ±0.491 1.785 ±0.408 1.122 ±0.308
+> H3 7.478 ±2.653 3.735 ±0.458 1.936 ±0.280
+> H4 8.204 ±2.019 3.957 ±1.815 3.043 ±0.887
+
+Table 8: Fisher–KPP final error by held case, in units of 10 −3. Mean ± sample SD over five seeds, averaging the two fieldwise errors. 
+
+C.3 Fisher–KPP: ownership-aware term conditioning 
+
+To test whether explicit field/equation assignments suffice for the term set, we add two target-equation indicators and eight source-factor multiplicities to its six-attribute token. This 16-attribute token uses the same DeepSets pooling and field-conditioned readout, without graph adjacency. The control uses seeds 101, 202, and 303 with the backbone, budgets, and within-seed coefficient/collocation streams of App. B.3. These seed IDs overlap the five-seed comparison. 
+
+Table 9: Ownership control: final relative error at step 3000, in units of 10 −3. Mean ± sample SD over three seed means, each averaging H1–H4 and both fields.           
+
+> Method Final Term set 3.065 ±0.453
+> Ownership-aware term set 4.829 ±1.951
+> Operator graph 1.687 ±0.136
+
+Adding ownership attributes does not close the gap to the graph under this budget. This comparison concerns complete encoders, including their processing and readouts. 
+
+> 18
+
+Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks 
+
+C.4 Fisher–KPP: message-passing depth 
+
+We test whether the graph-conditioned initialization and its subsequent adaptation benefit from additional message-passing rounds. This ablation varies the recurrence count K ∈ { 1, 2, 3, 4, 5} in the encoder of §3, retaining the operator graph, node features, readout, and PINN backbone. The same K is used in meta-training and when encoding a held equation. Because the update weights are shared across rounds, all depths have 132,866 parameters. 
+
+Matched protocol. We use the Fisher–KPP split, coefficient distribution, hard initial/periodic constraints, and optimization settings of App. B.3. Seeds 101 , 202 , 303 , 404 , 505 each define five depth models with identical initial parameter tensors and coefficient/collocation streams within the seed. Every model receives 3,000 meta-training updates, followed by 3,000 full-adaptation updates on each of H1–H4, starting from a fresh model copy for every case. The K = 2 setting matches the main graph comparison. We evaluate initialization and steps 500 and 3000, first averaging relative errors over both fields and four held cases within a seed, then reporting the mean and sample SD across seeds. 
+
+Table 10: Matched-depth Fisher–KPP ablation. Relative L2 error in units of 10 −3: mean ± sample SD over five seed means. 
+
+Rounds K Initialization Step 500 Step 3000 1 143 .86 ± 7.80 11 .583 ± 2.063 2.691 ± 0.971 
+
+2 138 .40 ± 6.76 10 .107 ± 1.572 1.786 ± 0.318 
+
+3 131 .95 ± 5.79 8.822 ± 1.025 1.704 ± 0.226 
+
+4 136 .70 ± 12 .28 8.130 ± 1.384 1.572 ± 0.240 
+
+5 109 .39 ± 23 .32 6.118 ± 1.136 1.311 ± 0.352 1 2 3 4 5             
+
+> Propagation rounds K
+> 0.10 0.12 0.14
+> Relative  L2
+> 0 adaptation steps
+> 12345
+> Propagation rounds K
+> 0.6 0.8 1.0 1.2 1.4
+> Relative  L2
+> 1e 2
+> 500 adaptation steps
+> 12345
+> Propagation rounds K
+> 123
+> Relative  L2
+> 1e 3
+> 3,000 adaptation steps
+> Seed 101 Seed 202 Seed 303 Seed 404 Seed 505 Mean ± SD
+
+Figure 7: Depth sensitivity at initialization and two adaptation checkpoints. Thin lines connect the five depth models within each seed; the bold line and whiskers show the mean and sample SD. Training and test depths are matched. Vertical scales differ across checkpoints. 
+
+Depth sensitivity. Table 10 and Fig. 7 show lower mean error at five rounds than at two: reductions of 21 .0% at initialization, 39 .5% after 500 updates, and 26 .6% after 3000. The paired five-versus-two comparison improves all five seeds at the first two checkpoints and four of five at the last; seed 202 has lower final error at two rounds. Intermediate depths do not improve monotonically in every seed. Thus additional graph processing can improve fixed-budget adaptation at unchanged parameter count, while the benefit varies across training runs. This comparison holds optimizer updates fixed, not compute time: deeper encoding requires more computation. 
+
+19 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks 
+
+As a separate equation-consistency diagnostic, we measure mean squared residual over both equations on a fixed 32 × 32 midpoint grid, then average H1–H4 within each seed. At step 3000, residual MSE decreases from (6 .907 ± 2.565) × 10 −5 at K = 2 to (3 .623 ± 0.994) × 10 −5 at K = 5 . This diagnostic uses no reference solution values and is distinct from the relative solution error above. Figure 8 complements the aggregate comparison with the H1 fields. The predictions recover the main spatiotemporal structure at every depth, while the error maps reveal remaining local differences. Scalar results in Table 10 use the full reference grid and all four held cases. 0.0 0.5 
+
+> x
+> 0.0 0.5 1.0
+> ut
+
+Reference  
+
+> 0.0 0.5
+> x
+
+K = 1  
+
+> 0.0 0.5
+> x
+
+K = 2  
+
+> 0.0 0.5
+> x
+
+K = 3  
+
+> 0.0 0.5
+> x
+
+K = 4  
+
+> 0.0 0.5
+> x
+
+K = 5         
+
+> 0.2 0.4 0.6
+> Field value
+> 0.0 0.5
+> x
+> 0.0 0.5 1.0
+> vt
+> 0.0 0.5
+> x
+> 0.0 0.5
+> x
+> 0.0 0.5
+> x
+> 0.0 0.5
+> x
+> 0.0 0.5
+> x
+> 0.25 0.50 0.75
+> Field value 0.0 0.5 1.0
+> x
+> 0.0 0.5 1.0
+> ut
+
+Reference   
+
+> 0.25 0.50 0.75
+> Field value
+> 0.0 0.5 1.0
+> x
+
+K = 1   
+
+> 0.0 0.5 1.0
+> x
+
+K = 2   
+
+> 0.0 0.5 1.0
+> x
+
+K = 3   
+
+> 0.0 0.5 1.0
+> x
+
+K = 4   
+
+> 0.0 0.5 1.0
+> x
+
+K = 5             
+
+> 048
+> Mean absolute error ×10 −4
+> 0.0 0.5 1.0
+> x
+> 0.0 0.5 1.0
+> vt
+> 0.3 0.6
+> Field value
+> 0.0 0.5 1.0
+> x
+> 0.0 0.5 1.0
+> x
+> 0.0 0.5 1.0
+> x
+> 0.0 0.5 1.0
+> x
+> 0.0 0.5 1.0
+> x
+> 0.0 1.5 3.0
+> Mean absolute error ×10 −3
+
+Figure 8: H1 after 3000 adaptation steps. Top: reference and predicted fields for the predeclared seed 101, with one shared field-value scale per row. Bottom: reference fields and the five-seed mean of pointwise absolute errors, computed before averaging seeds. Each pair of rows shows u and v. In the bottom panel, the reference colorbar follows the left column; the error colorbar is at the far right. All maps use linear rainbow scales, shared across depths within each field and quantity. Display grids contain 128 spatial and 51 temporal points. 
+
+20 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks 
+
+# D Coefficient interpolation under different training samplers 
+
+The all-seven CDR comparison in §5.2 shows that term-based descriptors can configure accurate solvers at new coefficients of familiar structures. Its meta-training sampler gradually expands around coefficient-grid nodes. This raises a complementary question: does the observed accuracy require that particular sampling schedule, or does it persist when training sees either the full continuous range from the start or only the discrete grid? We address this question by fixing the training structures and varying the coefficient sampler. The comparison concerns coefficient interpolation after physics-based adaptation, rather than new term combinations. 
+
+D.1 Controlled coefficient-interpolation setting 
+
+All three sampling conditions train on the seven CDR structures in Table 1. They share the initial and boundary conditions, reference solver, descriptor definitions, and coefficient grid of Apps. B.2 and A.2. For each active axis, a grid node is sampled and perturbed within a fraction α(m) of its half-spacing at meta-step m, with clipping at the axis limits. Diffusion is sampled in log 10 D. The three conditions are: • Scheduled jitter : α(m) = 0 through step 8,000, then increases linearly to one by step 24,000 and remains one through step 30,000. • Full jitter : α(m) = 1 throughout training, so the continuous coefficient box is accessible from the first step. • Grid-only : α(m) = 0 throughout training, so only the discrete nodes are accessible. At full radius, neighboring perturbation intervals meet; the clipped sampling distribution need not be uniform. Scheduled and full jitter have the same eventual support but different exposure to intermediate values during training. Grid-only retains the range endpoints and all grid nodes while removing the intervening continuous support. 
+
+Shared optimization protocol. This supplementary experiment uses the width-256 backbone with three coded layers, two graph-update rounds, 30,000 meta-training steps, and 3,000 full-adaptation steps. Adam uses learning rate 2.5 × 10 −4 in both phases. Each loss evaluation resamples 20,000 interior points, 1,000 initial points, and 1,000 periodic-boundary pairs. Residual, initial, and periodic-value losses have unit weights; the basis-orthogonality weight is 10 −4 during meta-training and zero during adaptation. Meta-training averages the losses of all seven structures and adds the basis penalty once. Descriptor preprocessing and architecture are held fixed across samplers. These larger collocation batches distinguish this experiment from the ten-seed main comparison; its results are reported separately. 
+
+Evaluation cases and aggregation. The 12 high-reaction cases comprise reaction and diffusion– reaction at r ∈ { 8.5, 9.5}, and AR/ADR at a ∈ { 4.5, 9.5} × r ∈ { 8.5, 9.5}. Diffusion-bearing cases use D = 0 .01 . Both test reaction rates lie strictly between adjacent training nodes 7.75 and 10 , while the test advection and diffusion values are grid nodes. Thus grid-only deployment specifically tests interpolation in reaction strength, without changing the equation structures or extrapolating beyond the coefficient ranges. We evaluate every 200 adaptation steps and use each case’s oracle-best rel L2 within the budget, including initialization. Table 11 averages the 12 case errors within each seed and then across seeds. Its hit fraction is the proportion of case–seed deployments with oracle-best rel L2 < 0.3; reference fields enter only this evaluation, not training or online stopping. Scheduled and full jitter use three seeds per descriptor. Grid-only uses six seeds for Set and Graph and three for Vector. Each seed contributes the same 12 cases within a condition, and unsuccessful deployments remain in both the error and hit summaries. 
+
+> 21 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+D.2 Gradual widening is not required for low error 
+
+Table 11 compares accuracy under the three samplers. With scheduled jitter, Set and Graph both have mean error 0.010 and every evaluated deployment reaches the stated threshold. Full jitter gives closely similar errors, 0.013 for Set and 0.012 for Graph, with the same hit fractions. Their low errors therefore persist when the continuous coefficient range is available from the beginning. The gradual-widening schedule is not required for this outcome under the tested budget. 
+
+Table 11: CDR coefficient-sampling comparison: mean oracle-best rel L2 and hit fraction ( rel L2 <
+
+0.3). Scheduled/full jitter use three seeds per method; grid-only uses three Vector and six Set/Graph seeds, with 12 cases per seed.                           
+
+> Scheduled jitter Full jitter Grid-only Descriptor Error Hit Error Hit Error Hit Coefficient vector 0.958 0.00 0.330 0.67 0.958 0.00
+> Term set 0.010 1.00 0.013 1.00 0.200 0.79
+> Operator graph 0.010 1.00 0.012 1.00 0.010 1.00
+
+The coefficient vector also responds to the sampler: its mean error falls from 0.958 with scheduled jitter to 0.330 with full jitter, and its hit fraction increases from zero to 0.67 . It still has higher error than the term-based descriptors. This comparison shows that sampling choices can change the size of a descriptor gap; the term-based advantage in this experiment is nevertheless present under both continuous-support conditions. 
+
+D.3 Grid-only training exposes seed variation 
+
+Removing continuous coefficient support separates Set and Graph in this cohort. The graph’s mean error remains 0.010 , while Set’s mean increases to 0.200 . The seed-level counts in Table 12 show why the aggregate gap should not be read as uniformly worse Set performance: four of its six training seeds reach the threshold on all 12 cases, one reaches it on nine, and one on none. Graph reaches it on all 12 cases for each of six seeds. 
+
+Table 12: Grid-only deployments with oracle-best rel L2 < 0.3, out of 12 per seed. The total combines deployments, not independent training runs.                             
+
+> Descriptor Seed 0 Seed 1 Seed 2 Seed 3 Seed 4 Seed 5 Total Coefficient vector 0/12 0/12 0/12 ———0/36
+> Term set 12 /12 0/12 9/12 12 /12 12 /12 12 /12 57 /72
+> Operator graph 12 /12 12 /12 12 /12 12 /12 12 /12 12 /12 72 /72
+
+Within the shared seed IDs 0–2, the counts are 36 /36 for Graph, 21 /36 for Set, and 0/36 for Vector. In the additional seeds 3–5, both Set and Graph reach 36 /36 . The pooled hit-fraction gap therefore comes from two of the six Set training seeds, rather than a loss of accuracy in every seed. Seed IDs are shared across descriptors, but different architectures do not produce pointwise-matched collocation streams. 
+
+Implication and scope. Together, these controls support two specific observations: low Set/Graph error persists without gradual widening, and Graph is more consistent across the sampled seeds when meta-training sees only grid coefficients. Both observations concern solver adaptation to intermediate reaction rates within familiar equation structures and a bounded coefficient range. Each target solver receives 3,000 physics-based updates. These results complement the coupling-composition experiment by showing how numerical coefficient exposure affects adaptation under the three conditioning schemes. 
+
+> 22 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+# E Optimization steps and amortization 
+
+Reaching a common solution accuracy. A separate lower-reaction CDR experiment measures the optimization head-start provided by equation-conditioned initialization. Five structures are used for meta-training, with advection–reaction and advection–diffusion–reaction held out. Training samples a ∈ [2 , 4] , r ∈ [1 , 4] , and log 10 D ∈ [−3, −1] for active terms. Each method uses three independent seeds, a width-256 backbone with three coded layers, and full target-specific adaptation. The amortized methods receive 20,000 meta-training updates, each averaging one sampled problem per training structure. Physics losses use 25,000 interior, 1,000 initial, and 1,000 periodic samples, with Adam at 2.5 × 10 −4. Deployment runs for 5,000 updates, evaluating the reference-grid error every 200 updates, including initialization. This cohort is separate from the ten-seed comparisons in App. B.2.1. For each deployment, n0.1 is the first scheduled update with rel L2 ≤ 0.1. Table 13 reports its median among successful deployments, together with the fraction reaching the threshold. The control contains ten held-coefficient cases per seed on seen structures; the structural test contains six cases per seed on the two held structures. Reference errors determine these evaluation statistics only; they are not used for training or online stopping.                        
+
+> Seen structure, held coefficients Held structure Method Median n0.1Reach fraction Median n0.1Reach fraction From scratch 600 90% 2200 94%
+> Coefficient vector 200 100% 800 100%
+> Term set 200 100% 400 100%
+> Operator graph 200 100% 600 100%
+
+Table 13: CDR updates to rel L2 ≤ 0.1: three seeds, with 30 control and 18 held-structure deployments per method. Medians condition on threshold attainment; reach fractions are rounded. On held structures, the graph requires 600 rather than 2200 median updates, giving a ratio of 3.67 .The vector and set also reduce the required updates. Across seeds, the mean and population standard deviation of the within-seed medians are 2267 ± 170 for scratch, 833 ± 125 for Vector, 467 ± 125 
+
+for Set, and 633 ± 340 for Graph. These results support an amortized optimization head-start, while the Fisher–KPP comparison in §5.3 addresses the additional value of relational conditioning. These are update-count comparisons: a grouped meta-training update processes five PDE instances, whereas a deployment update processes one. Matched-device Fisher–KPP timings are reported separately in App. F. 
+
+> 23 Amortizing Physics-Informed Neural Solvers via Graph Hypernetworks
+
+# F Conditional-decoder comparison 
+
+F.1 A matched-budget external method 
+
+The descriptor comparison in §5.3 fixes the solver backbone. Here we compare the complete graph-conditioned solver with a conditional decoder following Iwata et al. (2023), whose equation and condition encoders produce a latent input to a sinusoidal solution network. Its deployment phase refines a copied decoder and this latent while keeping the encoder fixed. Both approaches therefore share physics information across equations and retain target-specific refinement, but use different solver architectures. We extend the polynomial coefficient dictionary to the two Fisher fields. For each residual, the variables (u, u t, u x, u tt , u tx , u xx , v, v t, v x, v tt , v tx , v xx ) give one constant, 12 linear and 78 quadratic monomials. Concatenating the two residual rows gives 182 signed coefficients, with absent monomials represented by zero. The condition encoder pools 64 prescribed initial point–value pairs; the initial profiles are fixed across this benchmark. Four-layer ReLU networks encode coefficients and condition points, followed by pooling and a linear combination layer. A coordinate projection and the latent feed a five-layer sine decoder with residual hidden connections. All methods use the Fisher task distribution, periodic coordinate features, hard initial-condition construction, physics objective and optimizer budgets of App. B.3. The conditional decoder uses hidden and latent width 82, chosen by parameter count: 132,514 parameters versus 132,866 for Graph. Its decoder has 34,934 parameters; the remainder belongs to the encoder. Linear layers use the PyTorch default initialization. We refer to this two-field, parameter-matched implementation as 
+
+Iwata-style : the source paper uses scalar equations, Dirichlet conditions, width 256 and a different training distribution. This comparison evaluates complete methods at a matched total parameter budget, alongside the fixed-backbone descriptor controls in the main text. The external-method cohort runs Iwata-style, two-round Graph and scratch serially on one NVIDIA GB10 with PyTorch 2.10.0a0 and CUDA 13, float32, without AMP or TF32. Each method uses seeds 101, 202, 303, 404 and 505, the same per-seed coefficient and collocation streams, 3,000 grouped meta-updates for the trained methods, and 3,000 adaptation updates on each of H1–H4. All comparisons in this section use this cohort; the CPU descriptor results in the main text remain a separate experiment.                               
+
+> Method Initialization Step 500 Step 3000 From scratch 544 .18 ±63 .46 84 .86 ±3.81 9.66 ±0.63
+> Iwata-style 88 .10 ±14 .43 12 .84 ±0.76 3.27 ±0.31
+> Operator graph 138 .04 ±6.29 9.80 ±1.38 1.81 ±0.30
+
+Table 14: Matched-device Fisher–KPP external-method comparison. Relative L2 errors in units of 
+
+10 −3: mean ± sample SD over five seed means. Table 14 shows lower initialization error for Iwata-style, but lower Graph error after 500 and 3000 updates. At the final checkpoint, Graph reduces the mean by 44 .6% relative to Iwata-style, with lower case-averaged error in all five seeds. Thus the ordering of initial predictions differs from that after physics refinement. 
+
+Measured solve cost. Meta-training takes 356 .1 ± 16 .5 seconds for Graph and 285 .9 ± 17 .0
+
+seconds for Iwata-style (mean ± sample SD across five seeds). All methods reach rel L2 ≤ 0.1 on all 20 deployments; Graph’s mean online time to the first scheduled hit is 4.12 ± 0.24 seconds per problem, versus 16 .54 ± 1.84 from scratch, while Iwata-style has lower online cost than Graph at this loose target. CUDA-synchronized online time includes encoding, target setup and optimization, but excludes reference generation and diagnostic evaluation. Threshold hits are evaluated every 100 updates, including initialization, retrospectively over the full 3,000-update trajectories rather than used as an online stopping rule.
