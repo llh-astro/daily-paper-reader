@@ -1,0 +1,1599 @@
+Title: Stochastic Physics-Constrained Operator Inference for Complex Systems
+
+URL Source: https://arxiv.org/pdf/2609.33380v1
+
+Published Time: Tue, 29 Sep 2026 02:39:51 GMT
+
+Number of Pages: 38
+
+Markdown Content:
+# STOCHASTIC PHYSICS -C ONSTRAINED OPERATOR INFERENCE FOR COMPLEX SYSTEMS 
+
+Changhong Mou 
+
+Department of Mathematics and Statistics Utah State University, Logan, UT 84322, USA 
+
+changhong.mou@usu.edu 
+
+September 29, 2026 
+
+## ABSTRACT 
+
+Quadratically nonlinear systems driven by additive noise arise throughout science and engineering, both as stochastic dynamical systems in their own right and as reduced-order models (ROMs) of turbulent flows. We propose stochastic physics-constrained operator inference (SPOpInf), a non-intrusive method that learns a stochastic differential equation, i.e., a quadratic–linear drift and adiffusion amplitude, from data. Unlike operator inference (OpInf), which fits a deterministic drift by least squares, SPOpInf maximizes an Euler–Maruyama increment likelihood in which the residual covariance is itself an unknown, so the deterministic and stochastic components are calibrated jointly; it enforces the energy-preserving quadratic structure exactly, through linear equality constraints imposed inside the optimization; and it works in an upper-triangular parametrization that removes the structural non-identifiability of the full quadratic tensor. The resulting optimization is solved by an expectation–maximization (EM)-based iterative learning algorithm that updates the drift coefficients and the noise levels in turn: each iteration requires only an inexpensive weighted least-squares solve for the drift and a residual-variance update for the noise. With five stochastic benchmark systems that show intermittency and chaos, SPOpInf recovers the deterministic operators more accurately than OpInf, satisfies the imposed constraints to machine precision, accurately estimates the noise amplitudes, and reproduces long-time statistics. Applied to a stochastic Burgers equation and a quasi-geostrophic double-gyre flow, the same estimator yields non-intrusive stochastic ROMs that remain stable over long times where unconstrained alternatives blow up. 
+
+## 1 Introduction 
+
+Quadratically nonlinear systems driven by noise are among the most common model classes in science and engineering [10, 28, 29]. The quadratic nonlinearity originates in advection, vortex stretching, and triad interactions among wave modes, and stochastic forcing enters either as physical randomness or as the effective action of unresolved scales on resolved ones [18, 31, 32]. Systems of this type serve two complementary purposes. As low-dimensional test problems, from the Lorenz models to the Charney–DeVore and truncated Burgers–Hopf systems, they are laboratories for understanding chaos, intermittency, regime switching, and extreme events in complex systems [12, 13, 25, 34]. As discretizations and reduced-order models (ROMs) of turbulent flows, they are the computational models themselves: spectral and finite-element discretizations of the Burgers, Navier–Stokes, and quasi-geostrophic equations yield systems of exactly this quadratic form, though with a very large number of degrees of freedom (DOFs), and projection-based ROMs, such as the POD–Galerkin ROM, inherit the same quadratic form in low-dimensional subspaces [3, 20, 41, 54]. Learning such systems from trajectory data is therefore a central task in two senses: as system identification, when the goal is to recover the dynamics of an observed stochastic system, and as reduced-order modeling, when the learned equations themselves serve as a non-intrusive low-dimensional surrogate of a complex PDE. Over the past decade, each of these two tasks has acquired an effective regression-based method. For system identifica-tion, the sparse identification of nonlinear dynamics (SINDy) discovers interpretable governing equations for observed states by sparse regression on a library of candidate terms [7, 47]. For reduced-order modeling, operator inference arXiv:2609.33380v1 [physics.comp-ph] 27 Sep 2026 A PREPRINT - S EPTEMBER 29, 2026 
+
+(OpInf) learns the operators of a projection-based ROM non-intrusively, by fitting a polynomial model of the form suggested by the governing equations to reduced trajectory data [42]; OpInf has been extended to general nonlinear PDEs through lifting transformations [45, 46], applied to challenging engineering problems such as combustion [35], and analyzed for noisy training data [53]. The two methods are closely related: when the SINDy library is restricted to linear and quadratic monomials and the sparsity threshold is switched off, the SINDy regression coincides with the OpInf least-squares problem, up to each method’s customary regularization. The difference between the two lies in the setting and the goal rather than in the algorithm: SINDy works on observed states with a large candidate library and uses sparsity for equation discovery, whereas OpInf learns the reduced operators non-intrusively from projected trajectory data of a known high-dimensional model. For the systems above, however, two essential components are often desirable that the standard OpInf formulation was not designed to provide. The first is stochasticity . In turbulent flows, the discarded scales act back on the resolved ones as an effectively random forcing, so a deterministic reduced model cannot reproduce the correct long-time statistics; this observation underlies stochastic climate modeling and stochastic parameterization [4, 14, 18, 33] and modern stochastic closures for turbulence [19, 52]. Stochasticity is equally essential when the system itself is a stochastic dynamical system, and in data assimilation, where every forecast model is imperfect: representing the inevitable model error by a calibrated stochastic term supplies the forecast uncertainty that the filter requires, and is central to the skillful filtering of turbulent signals [10, 29, 40]. Stochastic identification approaches exist [6, 8], learning both a nonlinear drift, that is, the deterministic part of the dynamics, and the noise amplitude from libraries of candidate terms. However, because they estimate the drift and the noise by averaging the observed dynamics over small regions of state space, they have in practice been limited to one or a few variables [8], and physics enters only through the choice of candidate terms, with no constraint on the identified coefficients. The second missing component is energy conservation . In the physical systems above, the quadratic nonlinearity redistributes energy among components without creating or destroying it; a fitted quadratic operator that violates this property, even slightly, can inject energy without bound and blow up in finite time [21, 50]. Structure-aware variants of OpInf enforce energy preservation or stability constraints [15, 16, 23, 49], but they identify deterministic models only. In this paper, we propose stochastic physics-constrained operator inference (SPOpInf) to close this gap. SPOpInf differs from classical OpInf in three ways. First, OpInf estimates a deterministic drift, whereas SPOpInf identifies a stochastic differential equation, that is, a drift and a diffusion amplitude. Second, OpInf solves an ordinary least-squares regression, whereas SPOpInf maximizes an Euler–Maruyama increment likelihood in which the residual covariance is itself an unknown, so the deterministic and stochastic components are calibrated jointly rather than sequentially. Third, SPOpInf enforces linear equality constraints to retain energy-preserving quadratic structure exactly during the likelihood optimization, not as a post hoc correction, and works in an upper-triangular parametrization that removes the structural non-identifiability of the full quadratic tensor. Computationally, SPOpInf is an extension of the OpInf regression. From the same snapshot data, it estimates time derivatives by finite differences and fits the quadratic–linear model by iteratively alternating two simple steps until convergence, each as cheap as an ordinary least-squares solve: one step estimates the noise level of each equation from the current fitting residuals, and the other refits the coefficients, weighting each equation by its estimated noise level and enforcing the energy constraints exactly. In this way, the drift and the noise are updated iteratively, each improving the estimate of the other, until the change in the estimates falls below a prescribed tolerance; the noise amplitude is then read off from the final residuals. Every step is an inexpensive least-squares solve, so SPOpInf keeps nearly the cost of OpInf. The proposed method applies in two settings. In the first, it identifies stochastic dynamical systems from observed trajectories. In the second, it builds ROMs for complex PDEs: snapshot data of the PDE solution are projected onto a reduced subspace spanned by POD or Fourier modes, the model is inferred from the resulting time coefficients, and then serves as a non-intrusive stochastic ROM. Our contributions are: (i) an equality-constrained joint-likelihood calibration of the deterministic and stochastic components of quadratic SDEs, in which the residual covariance is an unknown of the same optimization; (ii) a compact, provably complete construction of the energy-preserving constraints in the identifiable upper-triangular parametrization (proposition 3.3); (iii) a systematic formulation whose instances cover both directly observed stochastic systems and ROMs for complex PDEs, so one estimator serves system identification and stochastic reduced-order modeling; (iv) an investigation across five stochastic systems which show intermittency, chaos, and metastable regime switching, together with two ROMs for PDE applications; and (v) sensitivity tests (section 4.3) quantifying the dependence of the estimates on the sampling interval, the training data, the realization of the driving noise, and observation noise. The paper is organized as follows. Section 2 states the problem setting for stochastic quadratic systems, from low-dimensional dynamical systems to discretized complex PDEs; section 3 develops the SPOpInf framework, from the operator-inference model through the upper-triangular formulation and the energy-preserving constraints to the stochastic optimization; section 4 presents the numerical tests in two categories, identifying stochastic dynamical systems (section 4.1) and reduced-order modeling for complex PDEs (section 4.2); and section 5 concludes. 
+
+2A PREPRINT - S EPTEMBER 29, 2026 
+
+## 2 Stochastic quadratic systems: dynamical systems and complex PDEs 
+
+2.1 Stochastic quadratic model 
+
+We begin by defining the model considered throughout this paper: a stochastic differential equation with quadratic drift, written in a notation used consistently for all later sections. Throughout, a(t) ∈ Rr denotes the resolved state: for a stochastic dynamical system, Rr is the state space itself and a its observed state; for a complex PDE, the solution is approximated by an expansion Pri=1 ai(t) ϕi(x) in basis functions ϕi, such as Fourier or POD modes, and 
+
+a = ( a1, . . . , a r )⊤ collects the time-dependent coefficients (section 2.2). In either case, the object to be identified is the following stochastic quadratic model. We use componentwise tensor notation: let Bi ∈ Rr×r be the ith slice of the third-order quadratic tensor B, let C ∈ Rr×r be the linear operator, let D ∈ Rr be a constant forcing, and let 
+
+Σ = diag( σ1, . . . , σ r ) be the amplitude of an r-dimensional standard Wiener process Wt. The ith component of a
+
+evolves as 
+
+dai = a⊤Bia + ( Ca )i + Di
+
+ dt + σi dWi, i = 1 , . . . , r, (1) where the bracketed term is the deterministic component (the drift) and σi dWi is the stochastic component. To simplify the notation, stacking the quadratic terms of all r components defines the vector-valued quadratic operator: 
+
+QB(a) := a⊤B a = a⊤B1a · · · a⊤Br a⊤ . (2) The stochastic quadratic model then takes the vector form 
+
+da = a⊤B a + Ca + D dt + Σ dWt. (3) The stochastic quadratic model eq. (3) is the finite-dimensional form of the canonical structure of turbulent dynamical systems [10, 28, 29, 40]. In that setting, the skew-symmetric part of the linear operator C represents dispersion and its negative-definite symmetric part represents dissipation; the constant vector D represents the deterministic forcing; the additive noise Σ dWt represents either physical stochastic forcing or the effect of unresolved scales on the resolved ones. Finally, the quadratic interactions transfer energy across scales without creating or destroying it: this energy conservation is also the physics constraint that SPOpInf enforces exactly during identification (section 3.3.2). The inference problem addressed in this paper is then stated as follows: given a sampled trajectory of a, infer the deterministic operators (B, C, D) and the stochastic amplitude Σ in eq. (3) , subject to linear equality constraints on the quadratic tensor. Depending on the origin of a, this is a system identification problem, when a is the observed state of a stochastic dynamical system, or an operator inference problem, when a contains the ROM coefficients of a complex PDE and the inferred model serves as a stochastic ROM (section 2.2). In general no part of the drift is assumed known: D is inferred together with (B, C) as part of SPOpInf. Any component that is known a priori, such as the projected forcing in Setting II or a known linear damping, can instead be supplied to the method and removed from the inference, as detailed in section 2.3. This inference problem is difficult for three reasons. First, the energy-conserving quadratic structure is easily violated by regression, and even a slight violation of the fitted quadratic tensor can inject energy without bound and cause finite-time blow-up [21, 36, 50]. Second, the systems of interest are chaotic, so individual trajectories cannot be matched for long; an inferred model must instead be evaluated by its long-time statistics, such as the distribution of states and their temporal correlations [28], and these statistics are sensitive to small errors in the inferred operators. Third, phenomena such as intermittency and regime transitions depend quantitatively on the noise, so the noise amplitude requires the same attention in inference as the drift; however, each observed state change over a time step combines a deterministic contribution and a stochastic one, which the data do not separate [29]. These three difficulties motivate, respectively, the exact energy constraints of section 3.3.2, the statistics-based evaluation metrics used throughout section 4, and the joint estimation of the deterministic and stochastic components in section 3.2. Table 1: Notations and acronyms.                          
+
+> a∈Rrresolved state / reduced coefficients Σ, σ inoise amplitude
+> B,Biquadratic tensor and its ith slice Genergy-constraint matrix
+> Clinear operator θstacked unknown coefficients
+> Dconstant forcing (inferred, or known and moved to fknown )Φn,ℓfeature matrix / feature vector
+> τROM closure term R,Q∆residual / increment covariance
+> ϕi, φ ibasis functions εtol tolerance
+
+3A PREPRINT - S EPTEMBER 29, 2026 
+
+2.2 Two settings: stochastic dynamical systems and complex PDEs 
+
+The stochastic quadratic model eq. (3) is used in two settings that differ not in the data, which in both cases is a sampled trajectory of a, but in what the model represents: in the first, a is the state of a stochastic dynamical system and eq. (3) is a model of the system itself; in the second, a collects the ROM coefficients of a complex PDE and eq. (3) is a stochastic reduced-order model of that PDE. 
+
+Setting I: stochastic dynamical systems. Here a is the observed state of a finite-dimensional stochastic dynamical system, and eq. (3) is a model for the system itself. This is the classical stochastic system identification setting; the benchmark systems of section 4.1 are of this type. 
+
+Setting II: complex PDEs. Here a contains the basis coefficients of a nonlinear PDE solution. For illustration, consider the incompressible Navier–Stokes equations, 
+
+∂tu + ( u · ∇ )u = −∇ p + Re −1∆u, ∇ · u = 0 , (4) where u is the velocity, p is the pressure, and Re is the Reynolds number. The velocity field is approximated by the expansion 
+
+ur (x, t ) = u(x) + 
+
+> r
+
+X
+
+> i=1
+
+ai(t)ϕi(x), (5) where u is the mean field and the basis functions ϕi are, for example, Fourier or POD modes. The Galerkin projection substitutes eq. (5) into eq. (4) and takes the L2 inner product (·, ·) with each basis function; for divergence-free bases the pressure term vanishes, and the result is a system of r ordinary differential equations for the coefficients: for 
+
+i = 1 , . . . , r ,
+
+˙ai = DG,i + ( CGa)i + a⊤BG,i a, (6) with 
+
+DG,i =  Re −1∆u − (u · ∇ )u, ϕi
+
+, (7a) 
+
+(CG)im =  Re −1∆ϕm − (u · ∇ )ϕm − (ϕm · ∇ )u, ϕi
+
+, (7b) 
+
+(BG,i )mn = − (ϕm · ∇ )ϕn, ϕi
+
+. (7c) Because the nonlinearity of eq. (4) is quadratic, no higher-order terms arise, and collecting the components gives the Galerkin reduced-order model (G-ROM) in exactly the form of section 2.1, 
+
+˙a = fG(a) = QBG (a) + CGa + DG. (8) The same construction applies to any PDE with quadratic nonlinearity, including the Burgers and quasi-geostrophic equations of section 4.2 [3, 5, 20, 39, 41]. The G-ROM eq. (8) is exact only if the solution remains in the span of the r retained modes. In turbulent and convection-dominated flows it does not: for a small r, a substantial fraction of the kinetic energy resides in the discarded modes, and those modes interact with the retained ones through the quadratic nonlinearity. To make this precise, decompose the full-order solution as u = u + ur + u′, where ur is the part resolved by the r modes in eq. (5) and u′ is the truncated remainder. Projecting eq. (4) onto ϕi without dropping u′ gives the exact evolution of the resolved coefficients, 
+
+˙a = fG(a) + τ (a, u′), τi(a, u′) =  Re −1∆u′ − (ur · ∇ )u′ − (u′ · ∇ )ur − (u′ · ∇ )u′, ϕi
+
+, (9) where the closure term τ collects every interaction that involves the truncated modes. The G-ROM is eq. (9) with τ
+
+set to zero, and the discrepancy between the G-ROM and the projected full-order solution is exactly the neglected τ .Because τ depends on u′, which the ROM does not carry, it cannot be evaluated within the ROM and must be modeled in terms of the resolved coefficients a alone; this is the classical closure problem of ROMs [1, 51]. Two properties of τ in the turbulent regime guide how it should be modeled. First, on average it is dissipative: the quadratic term transfers energy from the large, retained scales to the small, discarded scales, where viscosity removes it, so that the net effect of τ on the retained modes is an additional energy dissipation. The classical remedies model τ as an eddy viscosity or a variational-multiscale dissipation acting on a [2, 38, 48, 55]; in the notation of section 2.1, such a correction modifies the symmetric, negative-definite part of the linear operator C. Second, τ fluctuates: the discarded modes evolve on time scales much shorter than those of the retained ones, and the Mori–Zwanzig formalism shows that the exact closure consists of a Markovian correction to the drift, a memory integral, and an orthogonal-dynamics term driven by the unresolved initial data that is unpredictable from a [11, 52]. When the discarded modes decorrelate quickly, the memory integral collapses onto the drift and the orthogonal term is well approximated by white noise; this 
+
+4A PREPRINT - S EPTEMBER 29, 2026 
+
+is the central argument of stochastic climate modeling [18] and of stochastic mode reduction [32, 33], where averaging over the fast modes produces a closed quadratic model for the slow ones with additional dissipation and additive noise, and it is the basis of data-driven stochastic closures for Galerkin ROMs [19, 24, 40]. In the turbulent setting, therefore, the closure term is well described by a combination of energy dissipation and white noise, which is precisely the structure of the additive noise and the dissipative part of C in the stochastic quadratic model eq. (3). 
+
+2.3 Non-intrusive discrete-time formulation 
+
+In both settings of section 2.2, the only input to the inference is a sampled trajectory of the resolved state: snapshots 
+
+a1, . . . , aN ∈ Rr at the uniform time step ∆t, so that an ≈ a(tn) with tn = n ∆t. In Setting I the an are the observed states themselves; in Setting II they are the projections of the full-order snapshots onto the basis of eq. (5), 
+
+an,i = ( u(·, t n) − u, ϕi), and this projection is the only place where the full-order solution enters. In particular, neither the Galerkin operators eq. (7) nor the closure term τ of eq. (9) is ever assembled or evaluated. The formulation is therefore non-intrusive in the sense of operator inference [42]: it requires no access to the discretized PDE operators or to the solver that produced the snapshots, and the same procedure applies verbatim to both settings. This subsection converts the continuous-time model eq. (3) into a regression model that links consecutive snapshots; this discrete model is what the estimator of section 3 works with. We first separate the drift of eq. (3) into a part that is known a priori and a part to be inferred: 
+
+fθ (a) = fknown (a) + Φ(a) θ, θ = vec( B, C, D) ∈ Rp. (10) Here θ stacks all unknown coefficients of the quadratic tensor B, the linear operator C, and the constant forcing D
+
+into one vector, and Φ(a) ∈ Rr×p is the feature matrix whose columns evaluate the corresponding candidate terms, the unique quadratic monomials aj ak with j ≤ k, the linear terms aj , and the constant 1, at the state a. The known part fknown collects whatever portion of the drift is available a priori and may be zero. When a term is known—for example the projected forcing DG of eq. (7a) in Setting II, or a known linear damping—it is carried by fknown and the corresponding columns are removed from the library; in the fully known-forcing case, θ reduces to vec( B, C) and every inferred coefficient belongs to an interaction term. In Setting II this split also makes precise what is being learned: since the data are the projected full-order trajectory, which obeys the closed equation eq. (9) rather than the G-ROM eq. (8), the inferred (B, C) are the Galerkin operators corrected by the deterministic, dissipative part of the closure, and 
+
+Σ represents its fluctuating part; neither correction requires knowledge of τ itself. Discretizing eq. (3) over one time step by the Euler–Maruyama scheme, the standard forward scheme for SDEs, gives the increment model 
+
+an+1 = an + ∆ t fknown (an) + ∆ t Φnθ + ϵn, ϵn ∼ N (0, Q∆), Q∆ = ∆ t ΣΣ ⊤, (11) where Φn = Φ(an): the next snapshot equals the current one, advanced by the known and unknown parts of the drift over ∆t, plus a Gaussian random increment ϵn whose covariance Q∆ grows linearly in ∆t, as is characteristic of Brownian forcing. Dividing eq. (11) by ∆t and moving the known part to the left-hand side yields the equivalent regression form 
+
+yn := an+1 − an
+
+∆t − fknown (an) = Φnθ + ηn, ηn ∼ N (0, R), R = ΣΣ ⊤
+
+∆t , (12) in which the response yn is a finite-difference approximation of the unknown part of the drift, and the noise ηn is the scaled stochastic increment. Its covariance R is the covariance of this regression residual, not of the state, and it determines the stochastic amplitude through ΣΣ ⊤ = ∆ t R; note that R grows as ∆t decreases, reflecting the roughness of stochastic trajectories. Equation (12) has the form of the operator-inference regression [42], with one essential difference: the residual ηn is not a fitting error to be minimized away but carries the stochastic amplitude Σ
+
+that we wish to identify. For this reason the operators and the noise cannot be estimated separately, and the inference of 
+
+(θ, R), and hence of (B, C, Σ), from eq. (12) under the energy constraints of section 3.3.2 is the subject of section 3. Throughout, the snapshots are assumed to be exact, noise-free observations of the state: measurement error would enter the finite difference in eq. (12) at order O(σobs /∆t), increasing R and biasing bΣ; this effect is examined in section 4.3. 
+
+## 3 The stochastic physics-constrained operator inference framework 
+
+3.1 Operator inference 
+
+The proposed framework is built on top of the classical operator-inference (OpInf) regression [42], which we recall first in the notation of section 2. For the resolved state a(t) ∈ Rr , the OpInf model is 
+
+˙aOpInf = bc + bAa + cH (a e⊗ a), (13) 
+
+5A PREPRINT - S EPTEMBER 29, 2026 
+
+where a e⊗ a ∈ Rr(r+1) /2 collects the unique quadratic monomials aj ak, j ≤ k [35, 42, 45]. This is exactly the drift of the stochastic quadratic model eq. (3) with the stochastic component removed: bA corresponds to the linear operator 
+
+C, cH is the matricized form of the quadratic tensor B in its upper-triangular representation, and bc corresponds to the constant forcing D, which is inferred unless it is known a priori and carried by fknown . OpInf estimates the operators by ordinary least squares on the regression model eq. (12), 
+
+θLS = arg min 
+
+> θ
+
+X
+
+> n
+
+∥yn − Φnθ∥22, (14) with the same responses yn and feature matrices Φn as in section 2.3, so OpInf and the proposed method are trained on identical data and libraries. Throughout, OpInf serves as the deterministic reference model: it does not model the stochastic component, so in Setting I it is compared on operator-recovery errors only and is excluded from the statistical comparisons, and in Setting II it is integrated as a deterministic ROM. Its differences from SPOpInf are summarized in section 3.5. 
+
+The four reference models. Throughout section 4, SPOpInf is compared against the same four reference models, defined once here. • G-ROM : the intrusive Galerkin ROM eq. (8), whose operators (BG, CG, DG) are assembled from the PDE as in eq. (7), integrated with Σ = 0. It exists only in Setting II, where a full-order model is available. • G-ROM (σ): the same Galerkin operators, integrated with a nonzero diagonal amplitude obtained by projecting the physical forcing noise onto the reduced basis, σi = ∥Σ⊤
+
+> FOM
+
+ϕi∥2.• OpInf : the ordinary least-squares fit eq. (14) on the same library and the same data, integrated deterministically (Σ = 0). • OpInf (σ): the same least-squares drift, integrated with the diagonal amplitude read off afterwards from its own regression residual, σi = p∆t (N − 1) −1 P
+
+> n
+
+(yn,i − (ΦnθLS )i)2. This is the sequential counterpart of SPOpInf: same library, same noise model, but neither the energy constraints nor the joint calibration. In Setting I (section 4.1) only OpInf and SPOpInf are compared on operator recovery, because there is no full-order model from which to assemble a Galerkin model; and the statistical comparisons there use SPOpInf alone, because the reference is the true system itself rather than a projection of it. The constrained-versus-unconstrained comparison in Setting I is instead reported in section 4.3, where the constraint set itself is varied on the CDV system. 
+
+3.2 The stochastic physics-constrained operator inference (SPOpInf) formulation 
+
+Stochastic physics-constrained operator inference (SPOpInf) infers both components of the stochastic quadratic model eq. (3) at once. The drift is parametrized through the candidate-term library of section 2.3, 
+
+fθ (a) = fknown (a) + Φ(a) θ, ℓ(a) = (aj ak)j≤k, a 1, . . . , a r , 1⊤, (15) where ℓ(a) is the feature vector of candidate terms, each row of Φ(a) applies ℓ(a) to one equation, and θ =vec( B, C, D) stacks the retained quadratic, linear, and constant coefficients, so the constant forcing is inferred as part of SPOpInf. When D, or any other part of the drift, is known a priori, it is carried by fknown and the corresponding library columns are dropped (section 2.3). The energy constraints act only on the quadratic term, i.e., B, so the rows of G carry zeros on the linear and constant columns. The second unknown is the diagonal stochastic amplitude 
+
+Σ = diag( σ1, . . . , σ r ), and physical structure is imposed through linear equality constraints Gθ = 0, where G is a known constraint matrix. Because the noise level enters the estimation criterion, the SPOpInf problem is not the constrained version of the least-squares problem eq. (14). Under the increment model eq. (11), the negative log-likelihood of the data, in the response form of eq. (12) with R = ΣΣ ⊤/∆t and a ridge term Γ ⪰ 0 for numerical stability, gives the SPOpInf formulation: 
+
+min   
+
+> θ,R=diag( R1,...,R r)
+> Ri>0
+
+N − 12 log |R| + 12 
+
+> N−1
+
+X
+
+> n=1
+
+(yn − Φnθ)⊤R−1(yn − Φnθ) + 12 θ⊤Γθ, Gθ = 0. (16) The first term penalizes large noise levels and the second weights the misfit by the inverse noise level, so the deterministic and stochastic components are coupled in one criterion. The following subsections develop each ingredient of eq. (16) in turn: section 3.3 specifies the admissible parametrization of θ and constructs the rows of G, and section 3.4 solves the optimization by an alternating calibration of the coefficients and the noise levels, each step an inexpensive weighted least-squares solve. 
+
+6A PREPRINT - S EPTEMBER 29, 2026 
+
+3.3 Constraints and the upper-triangular formulation 
+
+SPOpInf restricts which coefficient vectors θ are admissible in eq. (16). Section 3.3.1 keeps one coefficient per quadratic monomial, the upper-triangular formulation, and section 3.3.2 imposes energy conservation as linear equality constraints on θ, enforced exactly. 
+
+3.3.1 Well-posedness and the upper-triangular representation 
+
+If every entry of each matrix Bi is treated as an independent coefficient, the cross term in a⊤Bia is [( Bi)jk +(Bi)kj ] aj ak, so the data can identify only the sum. The following proposition states the resulting failure of well-posedness precisely; it sharpens the discussion in Mou et al. [40, Appendix B.3.2–B.3.3]. 
+
+Proposition 3.1 (Structural non-identifiability of the full parametrization) . Fix i and j̸ = k, let δ̸ = 0 , and let ν be the parameter perturbation that adds +δ to (Bi)jk and −δ to (Bi)kj and leaves every other coefficient unchanged. Then 
+
+fθ+ν = fθ identically on Rr. Consequently, in the regression model eq. (12) the feature matrices satisfy Φnν = 0
+
+for every snapshot, so any estimation criterion that depends on θ only through the model, including the least-squares problem eq. (14) and the likelihood introduced in section 3.2, is constant along the affine lines θ + Rν; the Gram matrix P 
+
+> n
+
+Φ⊤ 
+
+> n
+
+Φn, weighted or not, is singular; and no amount of data determines (Bi)jk and (Bi)kj separately. The estimation problem is therefore not well posed. Proof. Since aj ak = akaj , the form a⊤Bia depends on the pair  (Bi)jk , (Bi)kj 
+
+ only through its sum, which ν
+
+preserves; hence the drift is unchanged, and in the regression eq. (12) the features multiplying the two coefficients are the identical signal aj (t)ak(t), so the corresponding columns of every Φn coincide and Φnν = 0. Any criterion built from the residuals yn − Φnθ is then invariant under θ 7 → θ + ν, and ν lies in the null space of P 
+
+> n
+
+Φ⊤ 
+
+> n
+
+W Φn for any weighting W ; in particular, for Gaussian noise the Fisher information is proportional to such a weighted Gram matrix and inherits the null vector. 
+
+Corollary 3.2 (Upper-triangular reparametrization) . The map that sends each full slice to its upper-triangular repre-sentative, (Bi)jk 7 → (Bi)jk + ( Bi)kj for j < k with diagonal entries unchanged and lower entries set to zero, is a bijection between the model-equivalence classes of proposition 3.1 and the retained coordinates. It leaves the vector field, and therefore the likelihood, unchanged, and it removes every duplicated feature column, so the flat directions of proposition 3.1 disappear. Identifiability of the restricted problem then reduces to the standard requirement that the design matrix have full column rank, which is a property of the data rather than of the parametrization. 
+
+Accordingly, SPOpInf retains one coefficient per unique monomial aj ak, j ≤ k—an upper-triangular representation of each Bi. The energy-preserving constraints derived next in section 3.3.2 are imposed in these coordinates, where they take the explicit reduced form eq. (20). Figure 1 illustrates proposition 3.1 from the inference viewpoint. In the forward direction, the two coefficients act as separate gains on the identical signal aj (t)ak(t) feeding the same trajectory component, so the observed contribution to the time derivative is proportional to their sum. In the inverse direction, the likelihood is constant along the flat direction of proposition 3.1: its minimizing set is an entire line, whereas after the reparametrization of proposition 3.2 the restricted problem is strictly convex in the retained coefficient, with the unique minimizer equal to the sum. 
+
+7A PREPRINT - S EPTEMBER 29, 2026 (forward) both coefficients act on the same signal  
+
+> ai(t)
+> aj(t)
+
+×  
+
+> ai(t)aj(t)
+
+Bijk 
+
+Bjik aiaj = aj ai 
+
+> (identical input)
+
++         
+
+> contribution to ˙ ak(t)the output is ( Bijk +Bjik )aiaj: data reveal only the sum (inference) full: a line of minimizers
+> ±δ
+> minimizers
+> Bijk
+> Bjik
+> flat valley: same fit anywhere upper-triangular
+> Bijk
+> Lˆ︁
+> Bijk =Bijk +Bjik (unique)
+
+Figure 1: Why the upper-triangular representation is necessary. Left (forward): with Bijk = ( Bi)jk denoting the coefficient of aj ak in the ith equation, the coefficients Bijk and Bikj act as two gains applied to the identical signal 
+
+aj (t) ak(t) and are merged into the same output component, so the data reveal only the sum Bijk +Bikj (proposition 3.1). Right (inverse): contours of the likelihood over the coefficient pair are parallel lines and the minimizers form an entire flat valley (top), whereas the upper-triangular restriction eliminates the flat direction and the restricted problem is strictly convex with the unique minimizer equal to the sum (bottom, proposition 3.2). Figure 2 places SPOpInf between the two models it is compared with. The closure ROM above it is intrusive: its operators are assembled from the PDE and its closure term cannot be evaluated in the reduced space. SPOpInf is non-intrusive: every operator is inferred from the projected trajectory, and the stochastic component takes over the role of the closure term. Operator inference below it is likewise non-intrusive and shares the quadratic parametrization, but has neither the stochastic term nor the energy constraint. 
+
+8A PREPRINT - S EPTEMBER 29, 2026 ˙a = CG a + a                
+
+> ⊤
+> a
+> · · ·
+> +τ(a,u′)
+> closure stochasticity
+> BG,r
+> BG, 1
+> upper-triangular
+> ˙a=Ca+a
+> ⊤
+> a
+> · · ·
+> +
+> Σ
+> ˙Wt
+> Br
+> B1
+> 0
+> QB(a)
+> energy-preserving constraint
+> a⊤QB(a) =
+> r∑︂
+> i=1
+> aia⊤Bia= 0 ∀a⇐⇒ Gθ =0
+
+Figure 2: The three quadratic models compared in this paper. (a) Closure ROM: the intrusive Galerkin projection eq. (8), with the full quadratic tensor BG = ( BG, 1, . . . , BG,r ) assembled from the PDE operators and the closure term 
+
+τ (a, u′) (dashed) of eq. (9), which depends on the truncated modes and cannot be evaluated within the ROM. (b) SPOpInf: the stochastic model eq. (3), learned non-intrusively from the projected trajectory. Its operators (B, C) are inferred, not assembled, and differ from the Galerkin ones; the stochastic component Σ ˙Wt, the white-noise form of 
+
+Σ dWt, mimics the effect of the closure term (arrow “stochasticity”; the dt on the drift is implicit). The quadratic tensor is in the upper-triangular representation of proposition 3.2, and the energy-preserving constraint eqs. (18) and (21) is enforced exactly (box). (c) Operator inference in its matricized form eq. (13), cH ∈ Rr×r(r+1) /2 acting on the unique monomials a e⊗ a: also non-intrusive and with the same parametrization as (b), but with neither stochastic term nor constraint, fitted by least squares. 
+
+3.3.2 Energy-preserving quadratic constraints 
+
+Let E(a) = 12 ∥a∥22 denote the resolved energy, so that ∇E(a) = a and the level sets of E are the spheres centered at the origin. We call E the resolved energy because it coincides with the physical energy in section 4.2.1, where the sine basis is orthonormal in the variable whose L2 norm is the energy. In general 12 ∥a∥22 is the quadratic invariant of the variable in which the basis is orthonormal ; for the quasi-geostrophic problem of section 4.2.2, where POD is applied to the vorticity, it is the resolved enstrophy 12 ∥ωr ∥2 
+
+> L2
+
+rather than the energy 12 (ψr , ω r ), and proposition 3.4 treats the general weighted case. Nothing below depends on which of the two it is: proposition 3.3 is a statement about the cubic form alone. Along any trajectory of the deterministic part of eq. (3), the chain rule gives the energy rate 
+
+ddt E(a) = a⊤ ˙a = a⊤QB(a)
+
+| {z }
+
+> quadratic
+
++ a⊤Ca + a⊤D. (17) The quadratic term is called energy preserving if its contribution to eq. (17) vanishes identically: 
+
+a⊤QB(a) = 
+
+> r
+
+X
+
+> i=1
+
+ai a⊤Bia = 0 for every a ∈ Rr . (18) 
+
+9A PREPRINT - S EPTEMBER 29, 2026 
+
+Writing Bijk = ( Bi)jk for the tensor entries, the left-hand side of eq. (18) is the homogeneous cubic form C(a) = Pri,j,k =1 Bijk aiaj ak. The following proposition collects the equivalent characterizations of eq. (18) that the estimator uses. 
+
+Proposition 3.3 (Characterizations of energy preservation) . The following statements are equivalent. 
+
+(i) The quadratic term contributes no instantaneous energy change along any trajectory: the first term in eq. (17) 
+
+vanishes for every solution. 
+
+(ii) QB(a) ⊥ a for every a ∈ Rr ; equivalently, the quadratic vector field is tangent to every level sphere of E.
+
+(iii) The full-tensor entries satisfy 
+
+Biii = 0 , (19a) 
+
+Biij + Biji + Bjii = 0 , i̸ = j, (19b) 
+
+Bijk + Bikj + Bjik + Bjki + Bkij + Bkji = 0 , i, j, k distinct . (19c) (iv) In the upper-triangular representation of section 3.3.1, where Bijk = 0 for j > k , the retained entries satisfy 
+
+Biii = 0 , 1 ≤ i ≤ r, (20a) 
+
+Biij + Bjii = 0 , i < j, (20b) 
+
+Bijj + Bjij = 0 , i < j, (20c) 
+
+Bijk + Bjik + Bkij = 0 , i < j < k, (20d) 
+
+which form r + r(r − 1) +  r
+
+> 3
+
+ linear equations with at most three nonzero entries per row. Proof. (i) ⇔(ii): by eq. (17), the quadratic contribution to the energy rate at state a equals ⟨∇ E(a), QB(a)⟩ =
+
+a⊤QB(a), and ∇E(a) = a is the outward normal of the sphere through a, so the contribution vanishes at every state if and only if the field is everywhere tangential. (ii) ⇔(iii): C is a polynomial on Rr , and a polynomial over an infinite field vanishes identically if and only if all of its coefficients vanish. Grouping the sum defining C by monomials, the coefficient of a3 
+
+> p
+
+is Bppp ; the coefficient of a2
+
+> p
+
+aq with p̸ = q is Bppq + Bpqp + Bqpp ; and the coefficient of apaq as with 
+
+p, q, s distinct is the sum of Bijk over the six permutations (i, j, k ) of (p, q, s ). Setting each coefficient to zero gives eq. (19). (iii) ⇔(iv): substituting Bijk = 0 for j > k into eq. (19) removes the entries Biji for i < j , Bjji for i < j ,and, for i < j < k , the entries Bikj , Bjki , and Bkji , leaving exactly eq. (20). The count follows from one equation per monomial: r pure cubes, r(r − 1) ordered pairs for the mixed-square monomials, and  r
+
+> 3
+
+ distinct triples. The relations eq. (20), restricted to the coordinates of the regression library, are assembled row by row as 
+
+Gθ = 0. (21) 
+
+Remark 3.4 (Weighted energies) . The choice E(a) = 12 ∥a∥22 presumes a basis that is orthonormal in the variable whose L2 norm defines the conserved quantity. If the conserved quantity is instead a general quadratic form EM (a) =  
+
+> 12
+
+a⊤M a with M symmetric positive definite—for instance when POD is applied to the vorticity, so that 12 ∥a∥22 is the resolved enstrophy rather than the energy—the change of variables ˜a = M 1/2a reduces EM to the spherical case, and proposition 3.3 applies verbatim to the transformed tensor; the resulting conditions remain linear equality constraints on 
+
+θ.
+
+Remark 3.5 (Stochastic energy balance) . For the full SDE eq. (3) with constant Σ, Itˆ o’s formula gives dE =a⊤QB(a) + a⊤Ca + a⊤D + 12 tr( ΣΣ ⊤)dt + a⊤Σ dWt. Under eq. (18) the first term vanishes identically, so 
+
+ddt E[E] = Ea⊤Ca + a⊤D + 12 tr( ΣΣ ⊤) : (22) the quadratic term redistributes energy among components while the energy budget is set entirely by the linear operator, the forcing, and the noise, as in the stochastic climate-modeling framework [32, 33]. 
+
+Remark 3.6 (What the constraint removes, and what it does not) . Decompose any quadratic field at a̸ = 0 into tangential and radial parts, QB(a) = Qtan (a) + c(ba) ∥a∥2 a with ba = a/∥a∥2 and c(ba) = ba⊤QB(ba). The radial part injects energy at rate c(ba) ∥a∥32, which is cubic in the state norm; if regression noise makes c positive along some direction, this production eventually dominates any linear dissipation, whose removal rate is only quadratic in the norm, and the identified model can blow up in finite time [50]. Constraint eq. (21) sets c ≡ 0, deleting this mechanism identically. The constraint alone does not, however, guarantee boundedness: the linear part must additionally dissipate, as in the trapping condition of Kaptanoglu et al. [21]. Proposition 3.7 records the corresponding second-moment statement. 
+
+10 A PREPRINT - S EPTEMBER 29, 2026 
+
+Lemma 3.7 (Second-moment bound under the constraint) . Suppose eq. (18) holds and the symmetric part of the linear operator is negative definite, 12 λmax (C + C⊤) = −μ < 0. Then along eq. (3) ,
+
+ddt E[E] ≤ − μ E[E] + ∥D∥22
+
+2μ + 12 tr( ΣΣ ⊤), so lim sup 
+
+> t→∞
+
+E[E] ≤ 1
+
+μ
+
+ ∥D∥22
+
+2μ + 12 tr( ΣΣ ⊤)
+
+
+
+. (23) 
+
+Proof. By proposition 3.5, ddt E[E] = E[a⊤Ca ] + E[a⊤D] + 12 tr( ΣΣ ⊤). The quadratic form satisfies a⊤Ca ≤−μ∥a∥22 = −2μE , and Young’s inequality gives a⊤D ≤ ∥ a∥2∥D∥2 ≤ μE + ∥D∥22/(2 μ). Combining the two bounds yields the differential inequality, and Gr¨ onwall’s lemma yields the limit superior. 
+
+3.4 An expectation–maximization (EM)-based iterative learning algorithm 
+
+Section 3.2 stated the SPOpInf criterion eq. (16); we now derive it from the increment likelihood and solve it. Recall that the unknowns are the coefficient vector θ = vec( B, C, D) ∈ Rp of eq. (10), which stacks the r · r(r + 1) /2
+
+retained quadratic coefficients, the r2 linear coefficients, and, when the constant forcing is inferred, the r constant coefficients, so p = r2(r + 3) /2 + r in the general case, and the diagonal stochastic amplitude Σ = diag( σ1, . . . , σ r );the constraint matrix G of eq. (21) is known, and the formulation applies to any such G.Under the increment model eq. (11), the increments an+1 − gn − Mnθ are independent Gaussian vectors, where we abbreviate 
+
+gn = an + ∆ t fknown (an), Mn = ∆ t Φn, (24) that is, gn is the one-step prediction from the known part of the drift and Mn maps coefficients to their one-step contribution. The negative log-likelihood of the data, up to an additive constant, is therefore 
+
+L(θ, Q∆) = N − 12 log |Q∆| + 12 
+
+> N−1
+
+X
+
+> n=1
+
+ϵ⊤ 
+
+> n
+
+Q−1∆ ϵn, ϵn = an+1 − gn − Mnθ, Gθ = 0, (25) with Q∆ = ∆ t ΣΣ ⊤ the increment covariance. Dividing each residual by ∆t converts eq. (25) into the response form of eq. (12), with Q∆ = ∆ t2R, and adding the ridge term recovers exactly the working formulation eq. (16) stated in section 3.2. Following the joint calibration of Mou et al. [40], we solve eq. (16) by alternating minimization over R and θ; each subproblem is solved exactly and inexpensively. Let S = {1, . . . , p } be the index set of library columns, let Φn,S , ΓSS ,and GS denote the restrictions to those columns (discarding empty constraint rows), and let en = yn − Φnθ be the current residuals. For fixed θ, minimizing over R gives the residual-variance update 
+
+R ← diag 
+
+"
+
+diag 1
+
+N − 1 
+
+> N−1
+
+X
+
+> n=1
+
+ene⊤
+
+> n
+
+!# 
+
+, (26) that is, Ri is the mean squared residual of the ith equation. For fixed R, the problem in θ is an equality-constrained weighted least-squares problem; with the Gram matrix and right-hand side 
+
+KS = 
+
+> N−1
+
+X
+
+> n=1
+
+Φ⊤ 
+
+> n,S
+
+R−1Φn,S + ΓSS , bS = 
+
+> N−1
+
+X
+
+> n=1
+
+Φ⊤ 
+
+> n,S
+
+R−1yn, (27) the stationarity conditions of its Lagrangian give the multiplier and the constrained coefficients explicitly in closed form, 
+
+λG = ( GS K−1 
+
+> S
+
+G⊤ 
+
+> S
+
+)−1GS K−1 
+
+> S
+
+bS , (28) 
+
+θS = K−1 
+
+> S
+
+bS − K−1 
+
+> S
+
+G⊤ 
+
+> S
+
+λG, (29) so every iterate satisfies GS θS = 0 exactly. This alternation does not fit a deterministic drift first and then choose a noise amplitude independently: through R−1 in eq. (27), the current noise estimate reweights the coefficient update, and vice versa. Because all states are observed, the expectation step of the EM algorithm reduces to the residual-variance update eq. (26), and the maximization step to the constrained weighted least-squares solve. The inner alternation of eqs. (26) to (29) continues until the coefficient change falls below a tolerance εtol .Finally, R is recomputed on the converged coefficients, and the stochastic amplitude follows from ΣΣ ⊤ = ∆ t R of eq. (12): 
+
+bσi = pRi ∆t, i = 1 , . . . , r. (30) 
+
+11 A PREPRINT - S EPTEMBER 29, 2026 
+
+The generalized least-squares equations eqs. (27) to (29) are an inner update for the joint likelihood, not the definition of SPOpInf. The complete procedure is summarized as follows. 
+
+Algorithm 1 (SPOpInf). Input: snapshots a1, . . . , aN , step ∆t, known drift part fknown (possibly zero), constraint matrix G, ridge Γ, tolerance εtol .1. Form the responses yn and features Φn of eq. (12); initialize S = {1, . . . , p } and R = I.2. Repeat until ∥θnew − θ∥ ≤ εtol : update θ by the constrained weighted least squares eqs. (27) to (29), then update R by eq. (26). 3. Recompute R on the converged coefficients and return bθ and bσi = √Ri ∆t eq. (30). 
+
+Remark 3.8 (Block structure and cost) . The claim that SPOpInf costs nearly as much as OpInf rests on a structural property of eq. (27) worth making explicit. Because the same feature vector ℓ(a) is applied to every equation, the feature matrix of snapshot n is Φn = Ir ⊗ ℓ⊤ 
+
+> n
+
+with ℓn = ℓ(an) ∈ Rpeq , peq = r(r + 1) /2 + r (plus one when D is inferred) and p = r p eq . Hence  
+
+> N−1
+
+X
+
+> n=1
+
+Φ⊤ 
+
+> n
+
+R−1Φn = R−1 ⊗ M , M = 
+
+> N−1
+
+X
+
+> n=1
+
+ℓnℓ⊤ 
+
+> n
+
+∈ Rpeq ×peq , (31) so K is block diagonal with blocks M /R i + Γii that share the single matrix M . Three consequences follow. (i) 
+
+M and the right-hand sides are accumulated once, in a single pass over the data costing O(N p 2eq ) — the same pass OpInf makes — after which no iteration touches the snapshots again. (ii) Without constraints the problem decouples 
+
+equation by equation and is independent of R, so the unconstrained limit of SPOpInf returns exactly θLS : the noise levels influence the estimate only through the constrained correction −K−1 
+
+> S
+
+G⊤ 
+
+> S
+
+λG of eq. (29), where they decide how the correction enforcing Gθ = 0 is distributed across equations. (iii) Each iteration costs O(r p 3eq + m3) with m
+
+the number of retained constraint rows, independent of N . In practice K−1 
+
+> S
+
+is never formed: each diagonal block is factorized by Cholesky and eqs. (28) and (29) are applied as triangular solves, and the inverses in those displays denote these solves. Figure 3 summarizes the complete framework: the snapshot data of either setting, the joint calibration of the drift and the noise levels under the energy constraints, and the resulting stochastic model. (a) Data (b) SPOpInf (c) Learned model              
+
+> Setting I: stochastic system
+> an≈a(tn)∈Rr
+> n= 1 , . . . , N
+> Setting II: complex PDE
+> u(x, t ),modes {ϕi}ri=1
+> span {ϕi}
+> u(·, t n)
+> ur(·, t n)
+> an,i =(︁ u(·, t n)−u,ϕi)︁
+
+Joint drift–noise calibration                                                                           
+
+> an+1 =an+ ∆ t[︁ fknown (an) + Φnθ]︁ +ϵn
+> ϵn∼ N (0,∆tΣΣ ⊤)
+> min
+> θ,R
+> N−12log |R|+ 12
+> N−1∑︂
+> n=1
+> e⊤
+> nR−1ens.t. Gθ =0
+> en=yn−Φnθ,yn=an+1 −an
+> ∆t−fknown (an)
+> R=ΣΣ ⊤/∆t= diag( R1, . . . , R r)
+> Noise
+> Ri←1
+> N−1∑︁ ne2
+> n,i
+> Drift
+> weighted least squares,
+> Gθ =0exactly iterate until ∥θnew −θ∥ ≤ εtol ˆ︁
+> θ= vec( ˆ︁ B,ˆ︁ C,ˆ︁ D),ˆ︁ σi=√Ri∆t
+> Gθ =0: energy-preserving B
+> Setting I: identified SDE
+> da=[︁ a⊤ˆ︁ Ba+ˆ︁ Ca +ˆ︁ D]︁ dt
+> +ˆ︁ ΣdWt
+> PDFs, ACFs, regime densities
+> Setting II: stochastic ROM
+> ur(x, t ) = u(x) + ∑︁ ri=1 ai(t)ϕi(x)
+> stability, mean fields, densities
+
+Figure 3: Overview of SPOpInf. (a) Training data: observed states of a stochastic system (Setting I) or projected coefficients of a PDE solution (Setting II). (b) Joint calibration of the drift and the noise levels under the energy constraints Gθ = 0. (c) The learned stochastic model: an identified SDE (Setting I) or a stochastic ROM (Setting II). 
+
+12 A PREPRINT - S EPTEMBER 29, 2026 
+
+3.5 Differences between SPOpInf and OpInf 
+
+Since SPOpInf and OpInf share the same quadratic–linear library and the same training data, it is useful to state explicitly where the two methods differ. Throughout, we use drift and deterministic component interchangeably, and likewise diffusion, or noise amplitude, and stochastic component, as in section 2.1. The first difference is what each method returns. OpInf returns the deterministic coefficients θLS and stops, so its output is an ordinary differential equation: a drift alone. SPOpInf returns the drift coefficients together with the diffusion amplitude, ( bθ, bσ), so its output is a complete stochastic model of the form eq. (3), which can be simulated repeatedly and compared with the true system not only trajectory by trajectory but also in its long-time statistics. The second difference is how the coefficients are estimated. OpInf minimizes the plain sum of squared residuals eq. (14), which treats every equation equally. SPOpInf minimizes the likelihood criterion eq. (16), in which the noise level of each equation is itself an unknown. As a result, the deterministic and stochastic components are estimated together: the current noise estimate eq. (26) decides how strongly each equation is weighted in the coefficient update eqs. (27) to (29), and the returned diffusion amplitude eq. (30) belongs to the final constrained model, rather than being read off afterwards from a model fitted without it. The third difference is physical consistency. OpInf places no restriction on the fitted coefficients, so noise in the data can produce quadratic terms that create energy, which no physical member of the model class does. SPOpInf enforces the energy-conservation relations eq. (21) as exact equality constraints inside the optimization, so the learned quadratic tensor satisfies them by construction rather than approximately. In summary, these differences show that SPOpInf is not simply standard OpInf supplemented with a noise estimate. Because the physical constraints couple the coefficients of different equations, the noise-weighted constrained regression yields a drift operator that differs from the one obtained by unconstrained least squares. Moreover, the diffusion amplitude is not estimated a posteriori from the residual of a previously fitted drift; instead, it is determined jointly with the drift within the same optimization problem. 
+
+## 4 Numerical tests 
+
+The numerical study is organized according to the two settings of section 2.2. In section 4.1 the method identifies stochastic dynamical systems from their observed state; in section 4.2 it builds stochastic reduced-order models of complex PDEs from projected snapshots. In both cases the question is whether the learned model reproduces the key dynamical and statistical features of the underlying system [40], and the same evaluation methodology is used throughout. 
+
+4.1 Stochastic dynamical systems 
+
+The first part of the numerical study concerns Setting I of section 2.2, in which the training data are directly observed trajectories of finite-dimensional stochastic dynamical systems. We consider five test problems, illustrated in fig. 4, which span intermittent, complex-valued, chaotic, cyclic, and metastable dynamics. All reference trajectories are generated by the Euler–Maruyama scheme, and all stochastic regressions use the forward response eq. (12). The constant forcing of each system is treated as known and removed before fitting, so that the inferred terms contain only the upper-triangular quadratic and the linear terms. This instantiates the known-drift option of section 2.3: the general SPOpInf formulation infers D as part of θ, and supplying the true forcing here simply removes the constant column from the library. The definitions and experimental settings of the five systems are given first; section 4.1.6 then shows the recovery results for the operators and the stochastic amplitude, and section 4.1.7 examines the long-time statistical quantities. 
+
+13 A PREPRINT - S EPTEMBER 29, 2026 (a) Dyad: truth trajectories 
+
+t       
+
+> 050 100 150 200 250
+> state
+> -2 02uv
+
+(b) Dyad: phase plane 
+
+u      
+
+> -1.5 -1 -0.5 00.5 11.5
+> v
+> -2 -1 01
+
+(c) TBH: truth trajectories 
+
+t          
+
+> 20 25 30 35 40 45
+> state
+> -1 -0.5 00.5
+> Re u1Re u2Re u3
+
+(d) TBH: phase projection 
+
+Re u1     
+
+> -1.5 -1 -0.5 00.5 1
+> Re  u2
+> -1 01
+
+(e) Lorenz-84: truth trajectories 
+
+t       
+
+> 20 40 60 80 100
+> state
+> -2 02
+> xyz2-2
+
+yx
+
+(f) Lorenz-84: phase portrait  
+
+> z
+> 000122-2
+
+(g) Lorenz-96: site trajectories 
+
+t        
+
+> 10 20 30 40 50 60 70
+> state
+> -5 0510
+> x1x3x5
+
+(h) Lorenz-96: Hovmoller field 
+
+t      
+
+> 10 20 30 40 50 60 70
+> site  j
+> 246
+> -10 010
+> xj
+
+(i) Charney-DeVore: regime trajectories 
+
+t      
+
+> 01000 2000 3000 4000 5000
+> state
+> -0.5 00.5 1
+> x1x4
+
+(j) Charney-DeVore: joint density 
+
+x1       
+
+> 0.75 0.8 0.85 0.9 0.95 11.05 1.1
+> x4
+> -0.6 -0.4 -0.2
+> 020 40 density
+
+Figure 4: Test models. Truth visualizations show representative multicomponent trajectories and a complementary state-space view for the intermittent dyad (a,b), truncated Burgers–Hopf system (c,d), Lorenz–84 system (e,f), Lorenz–96 system (g,h), and Charney–DeVore system (i,j). The right-hand panels are, respectively, a phase plane, a two-mode phase projection, a three-dimensional phase portrait, a six-site Hovmoller field, and the joint density in the regime-discriminating (x1, x 4) coordinates. All panels use post-transient truth data from the corresponding identification runs. 
+
+4.1.1 Intermittent stochastic dyad 
+
+The two-state dyad isolates one nontrivial a2 
+
+> i
+
+aj energy constraint while producing intermittent bursts. Its governing SDE is [9, 10, 30] 
+
+du = ( −duu + γuv + Fu) d t + σu dWu, (32) 
+
+dv = ( −dv v − γu 2) d t + σv dWv . (33) The quadratic contribution conserves (u2 + v2)/2 because the two cubic terms cancel. Bursts occur when v weakens the effective damping of u.
+
+14 A PREPRINT - S EPTEMBER 29, 2026 
+
+Settings. We set du = 0 .1, dv = 0 .5, γ = 1 , Fu = 0 .1, (σu, σ v ) = (0 .15 , 0.5) , and (u0, v 0) = (0 .1, −0.1) . The step is ∆t = 0 .005 , the training interval is T = 2000 , the first 20 time units are discarded, and the training seed is 10. The known forcing is (Fu, 0) ⊤. For SPOpInf, we set Γ = 10 −8I, εtol = 10 −8, and at most 100 alternating updates. The pathwise comparison under identical noise realizations uses a window of 200 time units. Long-time PDFs and ACFs use three independent trajectories of length 4000 per model. 
+
+4.1.2 Three-mode truncated Burgers–Hopf system 
+
+The truncated Burgers–Hopf (TBH) test is simulated in three complex modes and inferred in the six-dimensional real coordinates a = ( ℜu1, ℑu1, ℜu2, ℑu2, ℜu3, ℑu3)⊤ [34]. With independent complex Wiener processes dZk =(d W (R) 
+
+> k
+
++ i dW (I) 
+
+> k
+
+)/√2, the truth is 
+
+du1 = [ −i (u1u2 + u2u3) − νu 1] d t + s dZ1, (34) 
+
+du2 = −i  u21 + 2 u1u3
+
+ − νu 2
+
+ dt + s dZ2, (35) 
+
+du3 = [ −3iu 1u2 − νu 3] d t + s dZ3. (36) Thus the complex interaction coefficients are (−i, −i, −i, −2i, −3i), attached respectively to u1u2 and u2u3 in the u1
+
+equation, to u21 and u1u3 in the u2 equation, and to u1u2 in the u3 equation, and all three linear damping coefficients are −ν. In the real coordinates a, the quadratic interactions conserve 12
+
+P 
+
+> k
+
+|uk|2 = 12 ∥a∥22, so the energy-preserving constraint of section 3.3.2 applies. SPOpInf is not given this complex parametrization; it identifies a general real quadratic tensor and the result is mapped back only for evaluation. 
+
+Settings. We set ν = 0 .5, s = 0 .5, and hence real-component stochastic amplitude s/ √2 ≈ 0.3536 . With random seed 10, each complex initial mode is 0.1( ξ(R) 
+
+> k
+
++ iξ (I) 
+
+> k
+
+). The step is ∆t = 0 .005 , the training interval is T = 1000 ,and the first 20 time units are discarded. There is no constant forcing. For SPOpInf, we set Γ = 10 −8I, εtol = 10 −8,and 100 maximum alternating updates. The pathwise comparison under identical noise realizations uses a window of 60 time units. Long-time PDFs and ACFs use three independent trajectories of length 1500 per model after a 20-unit burn-in. 
+
+4.1.3 Stochastic Lorenz–84 system 
+
+The Lorenz–84 atmospheric circulation model [26] is 
+
+dx = −y2 − z2 − a(x − F ) dt + σx dWx, (37) 
+
+dy = [ xy − bxz − y + G] d t + σy dWy , (38) 
+
+dz = [ bxy + xz − z] d t + σz dWz . (39) Its quadratic terms conserve (x2 + y2 + z2)/2, whereas damping and forcing control the energy balance. 
+
+Settings. The parameters are a = 0 .25 , b = 4 , F = 8 , G = 1 , and σx = σy = σz = 0 .1. The initial state is 
+
+(1 , 1, 1) ⊤, ∆t = 0 .005 , T = 100 , the discarded transient is 20 time units, and the training seed is 10. For SPOpInf, we set Γ = 10 −8I, εtol = 10 −8 and 100 maximum alternating updates. The pathwise comparison under identical noise realizations uses a window of 60 time units. Long-time PDFs and ACFs use three independent trajectories of length 2000 per model after a 50-unit burn-in. 
+
+4.1.4 Stochastic Lorenz–96 system 
+
+For J cyclic variables, with indices interpreted modulo J, the stochastic Lorenz–96 model [27] is 
+
+dxj = [( xj+1 − xj−2)xj−1 − xj + F ] d t + σ dWj , j = 1 , . . . , J. (40) The cyclic quadratic interaction is energy preserving and provides a test of whether inference maintains both the cubic cancellation and site symmetry. 
+
+Settings. We set J = 6 , F = 8 , σ = 0 .5 at every site, and an initial state x0 = F 1 + 0 .01 ξ0. The step is ∆t = 0 .005 ,the training interval is T = 1000 , the first 10 time units are discarded, and Euler–Maruyama increments use seed 10. The known forcing is F 1. For SPOpInf, we set Γ = 10 −8I, εtol = 10 −8, and 100 maximum alternating updates. The pathwise comparison under identical noise realizations uses a window of 20 time units. Statistical PDFs are pooled over cyclic sites and ACFs are site averaged using three independent trajectories of length 2000 per model after a 20-unit burn-in. 
+
+15 A PREPRINT - S EPTEMBER 29, 2026 
+
+4.1.5 Six-mode Charney–DeVore system 
+
+The six-mode Charney–DeVore (CDV) model tests metastable atmospheric regime switching [12]. To distinguish its scalar damping from the inferred linear operator C, denote the former by cd. The stochastic governing equations are 
+
+dx1 = [ eγ1x3 − cd(x1 − x∗
+
+> 1
+
+)] d t + σ dW1, (41) 
+
+dx2 = [ −(α1x1 − β1)x3 − cdx2 − δ1x4x6] d t + σ dW2, (42) 
+
+dx3 = [( α1x1 − β1)x2 − γ1x1 − cdx3 + δ1x4x5] d t + σ dW3, (43) 
+
+dx4 = [ eγ2x6 − cd(x4 − x∗
+
+> 4
+
+) + ϵ(x2x6 − x3x5)] d t + σ dW4, (44) 
+
+dx5 = [ −(α2x1 − β2)x6 − cdx5 − δ2x4x3] d t + σ dW5, (45) 
+
+dx6 = [( α2x1 − β2)x5 − γ2x4 − cdx6 + δ2x4x2] d t + σ dW6. (46) For m = 1 , 2, the coefficients are generated exactly as 
+
+αm = 8√2
+
+πm2(b2 + m2 − 1) (4 m2 − 1)( b2 + m2) , βm = βb 2
+
+b2 + m2 , (47) 
+
+δm = 64 √215 πb2 − m2 + 1 
+
+b2 + m2 , eγm = 4√2γ0
+
+πmb 3
+
+(4 m2 − 1)( b2 + m2) , (48) 
+
+γm = 4√2γ0
+
+πm3b
+
+(4 m2 − 1)( b2 + m2) , ϵ = 16 √25π . (49) 
+
+Settings. The parameters are x∗ 
+
+> 1
+
+= 0 .95 , x∗ 
+
+> 4
+
+= −0.76095 , cd = 0 .1, β = 1 .25 , γ0 = 0 .2, b = 0 .5, and the noise amplitude is σ = 0 .02 in all six components. The nominal initial state is (0 .9, 0, 0, −0.6, 0, 0) ⊤, perturbed by Gaussian noise with standard deviation 0.01 . The system is integrated by the Euler–Maruyama scheme with time step ∆t = 0 .005 
+
+and random seed 10 over a training interval of length T = 5000 , of which the first 200 time units are discarded as a transient. The known forcing is (cdx∗
+
+> 1
+
+, 0, 0, c dx∗
+
+> 4
+
+, 0, 0) ⊤. Because the smallest physical couplings are of the order of 
+
+10 −3, SPOpInf uses a weak regularization Γ = 10 −8I and a tight tolerance εtol = 10 −8, with at most 100 alternating updates. Two constraint rows that are violated by the true system, both associated with δ2 + ϵ − δ1 ≈ − 0.186 , are removed. These are the rows that enforce vanishing cubic coefficients for the monomials x2x4x6 and x3x4x5, whose true values are ±(δ2 + ϵ − δ1); consequently, the quadratic terms of CDV are not exactly energy preserving. All remaining rows are enforced. CDV is therefore the only test problem in this section whose quadratic terms are not energy preserving, and it is included for this reason: it assesses the method when the standing assumption of section 3.3.2 is violated in a known and localized manner. The case in which the violation is not known in advance is examined below. Imposing the full constraint set, including the two incompatible rows, yields eB = 0 .155 ± 0.022 , compared with 0.249 ± 0.014 for unconstrained OpInf. Thus, SPOpInf retains most of its advantage under an incorrect constraint set, and removing the two incompatible rows reduces the error further to 0.140 ± 0.024 .We next describe how the two incompatible rows can be identified without analytical knowledge of the system. Ranking the constraint rows by the residual |Gj bθ| of a single unconstrained fit does not separate them: for one realization, the incompatible rows have residuals 0.086 and 0.013 (normalized as in eq. (50)), whereas a compatible row attains 0.097 .The sampling variability of the unconstrained fit thus exceeds the magnitude of the violation. Averaging the residuals over independent trajectories separates the rows, because the violation is systematic whereas the sampling error is not. Over eight seeds, the two incompatible rows rank first and second among all 56 rows, with averaged residuals 0.065 and 
+
+0.063 , compared with a maximum of 0.060 and a median of 0.022 over the compatible rows; their averaged magnitude agrees with the true violation 0.063 to within 3% . This residual-based screening is therefore effective, provided that an ensemble of trajectories, rather than a single trajectory, is available. The pathwise comparison under identical noise realizations uses a window of 400 time units. The regime PDFs, ACFs, and the (x1, x 4) joint density are computed from three independent trajectories of length 4000 per model. 
+
+4.1.6 Operator and stochastic-component recovery 
+
+Let bθ = vec( bB, bC) denote the coefficient vector returned by SPOpInf, that is, the converged solution of the alternating updates eqs. (26) to (29), and let bσ be the corresponding stochastic amplitude eq. (30). Besides the relative operator errors eB = ∥ bB − B∥ F /∥B∥ F and eC = ∥ bC − C∥F /∥C∥F , we report the relative structure error 
+
+eG( bθ) = ∥Gkept bθ∥∞
+
+∥B∥ F
+
+, (50) 
+
+16 A PREPRINT - S EPTEMBER 29, 2026 
+
+where Gkept = G except for the CDV system, in which the two constraint rows incompatible with the true dynamics are removed. The numerator is the largest violation among the constraints actually imposed; since their target is zero, it is normalized by the Frobenius norm of the true quadratic tensor, which provides the consistent scale for all methods. This measure follows the same energy-preservation principle as the constrained quadratic identification methods of Kaptanoglu et al. [21, 22], Koike and Qian [23] and the stochastic ROMs of Mou et al. [40], here combined with the joint likelihood estimation of section 3.2. The operator-recovery results are collected in table 2. Table 2: Relative deterministic-operator and structure errors. Here eB = ∥ bB −B∥ F /∥B∥ F and eC = ∥ bC −C∥F /∥C∥F .
+
+eG = ∥Gkept bθ∥∞/∥B∥ F is the relative structure error. 
+
+System Method eB eC eG
+
+Dyad OpInf 1.0570 ×10 −1 1.3981 ×10 −1 9.1840 ×10 −2
+
+SPOpInf 3.8973 ×10 −3 5.4598 ×10 −2 4.3×10 −18 
+
+TBH OpInf 1.1744 ×10 −1 1.8335 ×10 −1 4.5920 ×10 −2
+
+SPOpInf 8.6911 ×10 −2 1.8312 ×10 −1 5.4664 ×10 −17 
+
+L84 OpInf 1.0992 ×10 −2 5.7567 ×10 −2 6.9352 ×10 −3
+
+SPOpInf 5.1161 ×10 −3 1.5536 ×10 −2 5.7824 ×10 −19 
+
+L96 OpInf 5.7027 ×10 −3 3.0880 ×10 −2 1.8273 ×10 −3
+
+SPOpInf 2.7370 ×10 −3 3.3466 ×10 −3 2.3912 ×10 −17 
+
+CDV OpInf 2.4481 ×10 −1 1.1142 8.9453 ×10 −2
+
+SPOpInf 1.1363 ×10 −1 3.3833 ×10 −1 9.8646 ×10 −17 
+
+For all five benchmarks, SPOpInf reduces the quadratic-operator error and enforces the structure constraints to machine precision (table 2). The linear operator estimate is improved as well in four of the five systems, but not uniformly: for TBH, eC = 1 .8312 × 10 −1 against 1.8335 × 10 −1 for OpInf, an improvement of only about 0.1% . This is what the structure of the estimator predicts. By proposition 3.8, the unconstrained problem decouples equation by equation and is independent of R, so the noise weighting by itself changes nothing; the constraints act only on the quadratic block, and they reach C only indirectly, through the redistribution of the constrained correction across equations. Where the quadratic and linear blocks are strongly correlated in the design, as for the dyad, Lorenz–84, Lorenz–96 and CDV, that indirect route is effective and eC falls by factors of 2 to 10 ; for TBH the six real coordinates carry a nearly diagonal linear operator −νI whose estimate is already at the noise floor of the data, and there is nothing for the constraint to correct. All SPOpInf entries are at the level of the rounding error of the Cholesky solve, and none is algebraically zero. For CDV we report the total energy residual 
+
+ϱ(B) = max 
+
+> 1≤i≤j≤k≤r
+
+X
+
+> (p,q,s )∈perm( i,j,k )
+
+Bpqs , (51) the largest coefficient of the cubic form C(a) = a⊤QB(a); it vanishes exactly when eq. (18) holds, and for the true CDV tensor it is attained at the two monomials x2x4x6 and x3x4x5, whose coefficients are ±(δ2 + ϵ − δ1), so that 
+
+ϱ(Btrue ) = |δ2 + ϵ − δ1| = 0 .1864 exactly. The constrained estimate gives ϱ( bB) = 0 .1825 , a relative discrepancy of 
+
+0.021 : the method reproduces the physical energy violation of CDV almost exactly, while satisfying every constraint row to machine precision. Forcing the full residual to zero would nevertheless be physically incorrect; the method instead satisfies the constraint set exactly. For stochastic-component recovery we use a separate relative error, 
+
+eσ = ∥bσ − σ∥2
+
+∥σ∥2
+
+. (52) This quantity is reported only for SPOpInf because ordinary OpInf does not infer σ.
+
+17 A PREPRINT - S EPTEMBER 29, 2026 
+
+Table 3: SPOpInf stochastic-component estimates and their relative errors. The eσ values are computed from the full-precision estimates. System bσ σ (truth) eσ
+
+Dyad (0 .1501 , 0.4997) (0 .15 , 0.50) 6.0331 ×10 −4
+
+TBH (0 .3534 , 0.3537 , 0.3534 , 0.3534 , 0.3541 , 0.3533) 0.3536 16 7.8853 ×10 −4
+
+L84 (0 .0990 , 0.1005 , 0.0999) 0.1 13 6.7355 ×10 −3
+
+L96 (0 .4997 , 0.4999 , 0.5008 , 0.5000 , 0.4998 , 0.4997) 0.5 16 7.9237 ×10 −4
+
+CDV 0.0200 16 0.02 16 7.7728 ×10 −4
+
+The separate stochastic-component results in table 3 show that SPOpInf recovers σ with relative error below 10 −3 for the dyad, TBH, Lorenz–96, and CDV cases and with error 6.7355 × 10 −3 for Lorenz–84. For TBH, in addition, the real-valued inference recovers the underlying complex interaction coefficients with absolute errors between 2.00 × 10 −2
+
+and 4.50 × 10 −2, despite not being given the complex parametrization. Table 4 lists the five coefficients individually. They reconcile with eB = 8 .69 × 10 −2 as follows: the absolute errors are all of order 3 × 10 −2, while ∥B∥ F for the real six-dimensional tensor is dominated by the single coefficient −3i, so the relative error of the tensor as a whole is a few percent even though no individual coefficient is off by more than 4.5 × 10 −2. The spurious real parts, which should all vanish, are bounded by 3.6 × 10 −2 and are the visible signature of the estimator not being told that the underlying interaction is purely imaginary. Table 4: Truncated Burgers–Hopf interaction coefficients recovered by SPOpInf in real coordinates and mapped back to the complex parametrization, which the estimator is not given. The last column is |bc − c|. The three linear damping coefficients are recovered as −0.5172 + 0 .0056 i, −0.5220 + 0 .0329 i and −0.4851 + 0 .0059 i against the true 
+
+−ν = −0.5.                                                     
+
+> Equation Term True cRecovered bc|bc−c|
+> u1u1u2−i0.0263 −1.0175 i3.16 ×10 −2
+> u1u2u3−i−0.0127 −1.0336 i3.60 ×10 −2
+> u2u21−i−0.0356 −1.0168 i3.94 ×10 −2
+> u2u1u3−2i0.0325 −1.9689 i4.50 ×10 −2
+> u3u1u2−3i−0.0198 −3.0025 i2.00 ×10 −2
+
+No stochastic-component error is reported for ordinary OpInf because its least-squares deterministic fit does not identify 
+
+Σ.
+
+18 A PREPRINT - S EPTEMBER 29, 2026 
+
+4.1.7 Long-time statistical fidelity 
+
+Figure 5: Intermittent dyad statistics from independent truth and SPOpInf ensembles. The long-tailed marginal and autocorrelation diagnostics test burst frequency and duration, which are not determined by a small one-step residual alone. 
+
+Figure 6: Lorenz–84 marginal densities (top) and autocorrelation functions (bottom). The SPOpInf SDE reproduces the principal equilibrium features of the truth while simultaneously satisfying the quadratic energy relations. 
+
+19 A PREPRINT - S EPTEMBER 29, 2026 
+
+Table 5 shows the quantitative statistical comparison. For each system it reports, over all resolved components, the largest discrepancy between the SPOpInf ensemble and the truth ensemble in the first four moments and in the integral correlation time. Means and standard deviations agree to better than 4% for four of the five systems, the skewness to within 0.14 and the kurtosis to within 0.37 in absolute units, and the decorrelation time to within 9% everywhere. The largest discrepancies are those of CDV, whose mean is displaced by 0.20 standard deviations; this is the regime-occupancy error visible in figs. 9 and 10 and is the expected consequence of the weak topographic couplings that set the switching rate. Table 5: Quantitative long-time statistical errors between independent truth and SPOpInf ensembles. Each entry is the maximum over the resolved components of: the mean discrepancy in units of the truth standard deviation, |bμi − μi|/s i;the relative standard-deviation error |bsi − si|/s i; the absolute skewness and excess-kurtosis discrepancies; and the relative error in the integral correlation time τi. Computed from the same ensembles that produce figs. 5 to 9.                                
+
+> System |∆μ|/s |∆s|/s |∆skew ||∆kurt ||∆τ|/τ
+> Dyad 0.016 0.034 0.068 0.304 0.045
+> TBH 0.070 0.040 0.122 0.190 0.054
+> L84 0.017 0.011 0.023 0.043 0.018
+> L96 0.009 0.009 0.021 0.018 0.000
+> CDV 0.203 0.025 0.141 0.372 0.083
+
+Each plot compares the reference process with SPOpInf; ordinary OpInf is omitted because it does not infer a stochastic component and therefore does not define the stochastic model needed for a PDF or ACF comparison. Lorenz–84 densities and ACFs are closely matched (fig. 6); the dyad retains intermittent tails (fig. 5); L96 retains cyclically pooled statistics (fig. 8); the TBH marginal PDFs and ACFs are compared in fig. 7; and the CDV marginals and joint regime density are examined in figs. 9 and 10 below. 
+
+Figure 7: TBH marginal PDFs and autocorrelation functions from independent ensembles. The complex truth and real-valued SPOpInf SDE test whether the inferred model reproduces the equilibrium statistics. 
+
+20 A PREPRINT - S EPTEMBER 29, 2026 
+
+Figure 8: Lorenz–96 equilibrium PDF and ACF comparison between truth and SPOpInf. PDFs are pooled over cyclic sites and ACFs are site averaged, making symmetry breaking or distributional bias visible without relying on individual chaotic paths. 
+
+Figure 9: CDV marginal PDFs and autocorrelation functions from independent truth and SPOpInf ensembles. These distributional diagnostics complement the joint regime density by testing each resolved component separately. 
+
+21 A PREPRINT - S EPTEMBER 29, 2026 CDV: joint regime density       
+
+> Truth
+> x1
+> 0.8 0.9 11.1
+> x4
+> -0.8 -0.7 -0.6 -0.5 -0.4 -0.3 -0.2 -0.1
+> 0510 15 20 25 30 35
+> SPOpInf
+> x1
+> 0.8 0.9 11.1
+> x4
+> -0.8 -0.7 -0.6 -0.5 -0.4 -0.3 -0.2 -0.1
+> 0510 15 20 25 30 35
+
+Figure 10: Two-panel comparison of the truth and SPOpInf joint CDV regime densities from independent simulations. Retaining both metastable regions is a stronger test than matching componentwise means and variances. The CDV marginal comparisons in fig. 9 and joint density in fig. 10 are the most stringent equilibrium tests in the present suite because weak topographic couplings control switching between regimes. Conclusions about rare transitions would, however, require uncertainty estimates across more independent training trajectories and confidence intervals for dwell-time distributions. 
+
+4.2 Complex partial differential equations 
+
+The second part of the numerical study is Setting II of section 2.2: the training data are ROM coefficients of nonlinear PDEs, and the identified SDE eq. (3) serves as a non-intrusive stochastic reduced-order model. We test whether the SPOpInf framework remains accurate after projection of nonlinear PDEs. The two applications are the one-dimensional stochastic Burgers equation and the two-dimensional barotropic quasi-geostrophic (QG) equation; their reference solutions are shown in fig. 11. In both test problems, the training data are the responses yn of eq. (12) with fknown = DG, the projected forcing eq. (7a); for the stochastic Burgers equation, which has no deterministic forcing, DG = 0. The estimator uses the upper-triangular quadratic-linear formulation, alternating updates of the coefficients and noise levels, and constraint 
+
+a⊤QB(a) = 0 described in section 3. 
+
+22 A PREPRINT - S EPTEMBER 29, 2026 0 200 400 600 800 1000                    
+
+> t
+> 0
+> π
+> 2π
+> x
+> Stochastic Burgers equation: reference u(x,t)
+> -0.10 -0.05 0.00 0.05 0.10
+> u
+> 00.5 1
+> x
+> 012
+> y
+> QG vorticity ω,t= 20
+> 00.5 1
+> xt= 30
+> 00.5 1
+> xt= 40
+> 00.5 1
+> xt= 50
+> 00.5 1
+> xt= 60
+> -400 -200 0200 400
+> ω
+
+Figure 11: Reference data for the complex PDEs (Setting II). Top: spatiotemporal field u(x, t ) of the stochastic Burgers reference solution, reconstructed from the projected full-order snapshots. Bottom: vorticity snapshots of the quasi-geostrophic reference solution at t = 20 , 30 , 40 , 50 , 60 ; both rows use a symmetric diverging color scale. 
+
+4.2.1 One-dimensional stochastic Burgers equation 
+
+The first PDE is the viscous stochastic Burgers equation on x ∈ (0 , L ),
+
+du = ( νu xx + κu − γuu x) d t +
+
+> mξ
+
+X
+
+> k=1
+
+σkek(x) d Wk(t), u(0 , t ) = u(L, t ) = 0 , (53) with the orthonormal sine functions ek(x) = p2/L sin( kπx/L ). We use L = 2 π, ν = 0 .005 , κ = 0 .01125 , γ = 1 ,
+
+mξ = 4 , and σk = 0 .003 for k = 1 , . . . , 4. The FOM step is 10 −3 and data is saved every 50 time steps, i.e., ∆t = 0 .05 .The initial condition uses the sine modes one and four with amplitude 0.1 as in [40]. Projection onto the first r sine modes yields the G-ROM: 
+
+da = [ QBr (a) + Cr a] d t + Σr dWt, (54) where G-ROM uses Cr = κI − νA with Aii = ( iπ/L )2, and the Galerkin-projected quadratic tensor as Br. OpInf and SPOpInf identify the quadratic-linear reduced drift from the projected trajectory. Deterministic G-ROM and OpInf set Σr = 0 . G-ROM (σ) uses the projected diffusion values, whereas OpInf (σ) estimates a diagonal diffusion from its regression residual. Because the sine basis is orthonormal and the forcing acts on the first mξ = 4 modes with known amplitudes, the projected diffusion is simply Σr = diag( σ1, . . . , σ min( r, 4) , 0, . . . , 0) with σk = 0 .003 : at r = 2 the G-ROM carries only the first two forced modes, so Σr = 0 .003 I2 and the remaining two forced modes are simply outside the reduced space; at r = 6 the last two components are unforced and Σr has two zeros. SPOpInf jointly estimates its drift and diagonal diffusion. Every stochastic ROM, i.e., G-ROM (σ), OpInf (σ), and SPOpInf, is driven by the exact Wiener-increment path saved with the FOM, so pathwise differences cannot be attributed to different noise realizations. 
+
+23 A PREPRINT - S EPTEMBER 29, 2026 
+
+Table 6 compares the inferred amplitudes with this known truth. SPOpInf recovers every forcing amplitude σk to three significant figures at all three reduced dimensions and, at r = 6 , correctly identifies the two unforced modes: the amplitudes it assigns them are two orders of magnitude below the forced ones. The relative error eσ eq. (52) grows with 
+
+r, roughly doubling from r = 2 to r = 4 and tripling again from r = 4 to r = 6 , because each added mode contributes its own small misfit and, at r = 6 , the two unforced modes enter the error as nonzero estimates of a zero truth. Table 6: Stochastic Burgers: SPOpInf diffusion amplitudes against the known projected truth σk = 0 .003 for the 
+
+mξ = 4 forced sine modes and 0 otherwise. eσ is eq. (52). 
+
+r bσ (SPOpInf) σ (truth) eσ
+
+2 (0 .00300 , 0.00300) 0.003 12 1.60 × 10 −3
+
+4 (0 .00299 , 0.00300 , 0.00299 , 0.00301) 0.003 14 2.71 × 10 −3
+
+6 (0 .00299 , 0.00300 , 0.00299 , 0.00301 , (0 .003 14, 0, 0) 8.06 × 10 −3
+
+2.35 × 10 −5, 3.98 × 10 −5)
+
+For r = 2 , 4, 6, training ends at T = 500 and propagation continues to T = 1000 . We report the long-time reduced-state error 
+
+eL2(0 ,T ) =
+
+R T 
+
+> 0
+
+∥aROM (t) − aFOM (t)∥22 dt
+
+1/2
+
+R T 
+
+> 0
+
+∥aFOM (t)∥22 dt
+
+1/2 . (55) A trajectory is classified as unstable if, at any time in the horizon 0 ≤ t ≤ 1000 , its modal amplitude leaves the bounded region occupied by the projected full-order solution; its error is then undefined and is marked by a dash in table 7. Long-time densities use the complete interval 50 ≤ t ≤ 1000 and therefore exclude any model classified as unstable, since it does not cover that entire window. Table 7: Stochastic Burgers pathwise comparison using the FOM Wiener path: long-time relative L2 error eq. (55) at each reduced dimension r. A dash marks a trajectory that becomes unstable before T = 1000 , so the long-time error is undefined. Best value in each column in bold. 
+
+Model r = 2 r = 4 r = 6 
+
+G-ROM — — 1.4845 
+
+G-ROM (σ) — — 1.2875 
+
+OpInf 1.2043 1.2352 —OpInf (σ) — — —SPOpInf 1.0288 0.4983 1.0966 0.0 0.1           
+
+> a1
+> 0200 400 600 800 1000
+> t
+> -0.10 -0.05 0.00 0.05
+> a2
+> Reference G-ROM G-ROM ( σ)OpInf OpInf ( σ)SPOpInf
+
+Figure 12: Stochastic Burgers modal trajectories at r = 2 over the complete interval 0 ≤ t ≤ 1000 . The vertical range of each panel is set by the reference and the ROMs that remain bounded through T = 1000 ; divergent ROMs leave the paneland are marked by a dash in table 7. 
+
+24 A PREPRINT - S EPTEMBER 29, 2026 π     
+
+> x
+> Reference
+> π
+> x
+> OpInf
+> 0200 400 600 800 1000
+> t
+> π
+> x
+> SPOpInf
+> -0.10 -0.05 0.00 0.05 0.10
+> ur(x, t)
+
+Figure 13: Stochastic Burgers spatiotemporal reconstruction at r = 2 over 0 ≤ t ≤ 1000 . Only the projected FOM and ROMs that remain bounded over the full horizon are shown, using the symmetric color scale computed from the FOM reconstruction and a single shared colorbar. 0.0 0.1 
+
+a1  
+
+> 020 40 60
+> PDF
+> -0.10 -0.05 0.00
+
+a2  
+
+> 020 40 60
+> G-ROM, G-ROM ( σ), OpInf ( σ): not shown (trajectory unbounded before the end of the density window) Reference OpInf SPOpInf
+
+Figure 14: Long-time marginal densities of the two retained Burgers modes at r = 2 , estimated over the complete interval 50 ≤ t ≤ 1000 . Only the models that remain bounded over this window are drawn; the legend names the excluded models. 
+
+25 A PREPRINT - S EPTEMBER 29, 2026 -0.1 0.0 0.1           
+
+> a1
+> -0.1 0.0
+> a2
+> 0.0 0.1
+> a3
+> 0200 400 600 800 1000
+> t
+> 0.0 0.1
+> a4
+> Reference G-ROM G-ROM ( σ)OpInf OpInf ( σ)SPOpInf
+
+Figure 15: Stochastic Burgers modal trajectories at r = 4 over the complete interval 0 ≤ t ≤ 1000 . The vertical range of each panel is set by the reference and the ROMs that remain bounded through T = 1000 ; divergent ROMs leave the panelsand are marked by a dash in table 7. π     
+
+> x
+> Reference
+> π
+> x
+> OpInf
+> 0200 400 600 800 1000
+> t
+> π
+> x
+> SPOpInf
+> -0.10 -0.05 0.00 0.05 0.10
+> ur(x, t)
+
+Figure 16: Stochastic Burgers spatiotemporal reconstruction at r = 4 over 0 ≤ t ≤ 1000 . Only the projected FOM and ROMs that remain bounded over the full horizon are shown. All three panels use the symmetric color scale computed from the FOM reconstruction and a single shared colorbar. 
+
+26 A PREPRINT - S EPTEMBER 29, 2026 0.0 0.1       
+
+> a1
+> 0510 15 20 25
+> PDF
+> -0.1 0.0
+> a2
+> 0510 15 20 25 0.00 0.05
+> a3
+> 0510 15 20 -0.05 0.00 0.05
+> a4
+> 0510 15 20 25 30
+> G-ROM, G-ROM ( σ), OpInf ( σ): not shown (trajectory unbounded before the end of the density window) Reference OpInf SPOpInf
+
+Figure 17: Long-time marginal densities of the four retained Burgers modes at r = 4 , estimated from the complete interval 50 ≤ t ≤ 1000 . Curves are drawn only for models that remain bounded over the full density window; the common legend names the excluded models. Over this window the deterministic OpInf model has settled on a fixed point, so its density is a delta and is drawn as a vertical line at the steady value. Table 7 reports the long-time relative L2 error of each model at r = 2 , 4, 6, with a dash for every model that becomes unstable within the time interval. SPOpInf is the only inferred model, deterministic or stochastic, that remains stable over the whole interval at all three ROM dimensions; at r = 6 the only stable competitors are the two Galerkin ROMs. Among the stable models, SPOpInf also has the smallest long-time error in every column. The improvement is largest at 
+
+r = 4 , where SPOpInf reduces the error of deterministic OpInf, the only other stable model at that dimension, by more than a factor of two; at r = 2 the reduction over deterministic OpInf is about 15% , and at r = 6 SPOpInf improves on the better G-ROM (σ) by a similar margin. Adding residual-calibrated noise to unconstrained OpInf does not stabilize the drift: OpInf (σ) is unstable at every ROM dimension. This comparison isolates the distinction of section 3.5 in the ROM setting: OpInf (σ) shares the library and the noise model with SPOpInf but lacks the constraint and the joint calibration. The modal, spatiotemporal, and density comparisons in figs. 12 to 17 show that SPOpInf remains stable and retains the broad switching pattern of the reference, while also revealing remaining distributional bias. 
+
+4.2.2 Two-dimensional quasi-geostrophic equations 
+
+The second PDE test is the quasi-geostrophic equations (QGE), also known as the barotropic vorticity equations, a simplified model for geophysical flows in which rotation plays a central role, such as wind-driven ocean circulation in mid-latitude ocean basins [31, 39]. In the streamfunction–vorticity formulation, the QGE read 
+
+∂ω ∂t + J(ω, ψ ) − Ro −1 ∂ψ ∂x = Re −1∆ω + Ro −1Fe, (56) 
+
+ω = −∆ψ, (57) where ψ is the streamfunction, ω is the vorticity, J(ω, ψ ) = ∂ω ∂x ∂ψ ∂y − ∂ω ∂y ∂ψ ∂x is the Jacobian, Fe is the external forcing, 
+
+Re is the Reynolds number, and Ro is the Rossby number, which quantifies the rotation effects. Following Mou et al. [39, 40], we consider the rectangular domain Ω = [0 , 1] × [0 , 2] with homogeneous Dirichlet boundary conditions for both ψ and ω, the symmetric double-gyre wind forcing Fe = sin  π(y − 1) , and Re = 450 , Ro = 0 .0036 . Although a double-gyre wind forcing is used, the long-term time average yields a four-gyre circulation pattern [17], and the relatively low Rossby number produces a sharp western boundary layer, which makes this four-gyre test problem challenging for both FOM and ROM simulations [39]. The FOM uses a pseudospectral discretization with a 257 × 513 
+
+spatial resolution; the ROM time step is 10 −3, states are saved every 0.01 time units, and the comparison interval is 
+
+10 ≤ t ≤ 80 , over which the flow is statistically steady but chaotic [38–40]. The POD basis is generated from 3500 equally spaced vorticity snapshots. The ROM construction follows the Galerkin ROM (G-ROM) framework for the QGE [39]. POD applied to the vorticity snapshots yields the orthonormal vorticity basis {φi}ri=1 , and the streamfunction basis {ϕi}ri=1 is defined by the Poisson problems −∆ϕi = φi with homogeneous Dirichlet boundary conditions, so that the ROM approximations 
+
+ωr = Pri=1 ai(t) φi(x) and ψr = Pri=1 ai(t) ϕi(x) share the same coefficients. The componentwise G-ROM is: for 
+
+i = 1 , . . . , r ,
+
+˙ai(t) = DG,i +
+
+> r
+
+X
+
+> m=1
+
+(CG)im am(t) + 
+
+> r
+
+X
+
+> m=1
+> r
+
+X
+
+> n=1
+
+(BG,i )mn am(t) an(t), (58) 
+
+27 A PREPRINT - S EPTEMBER 29, 2026 
+
+where 
+
+DG,i = Ro −1 Fe, φ i
+
+, (CG)im = Ro −1 ∂ϕ m 
+
+> ∂x
+
+, φ i
+
+
+
+−Re −1 ∇φm, ∇φi
+
+, (BG,i )mn = − J(φm, ϕ n), φ i
+
+,
+
+(59) and (·, ·) denotes the L2 inner product over Ω. SPOpInf retains the projected forcing DG = ( DG,i ) as the known part of the drift, fknown = DG as in section 4.2, and learns the complete quadratic-linear reduced drift and the diagonal stochastic amplitude from the projected vorticity trajectory; the training data and solver settings are listed in the Settings paragraph below. For the ROM trajectories we report the long-time relative error 
+
+etraj =
+
+ P 
+
+> n
+
+∥aROM (tn) − aFOM (tn)∥22
+
+1/2
+
+ P 
+
+> n
+
+∥aFOM (tn)∥22
+
+1/2 , (60) the discrete analogue of eq. (55), over 10 ≤ tn ≤ 80 .
+
+Settings. The computational setting follows Mou et al. [37, 40]: the double-gyre forcing, the homogeneous Dirichlet boundary conditions, and the parameters Re = 450 and Ro = 0 .0036 are those used there, the FOM is a spectral solution on a 257 × 513 grid recorded every 0.01 time units, and the POD basis is built from the vorticity snapshots described above, with the streamfunction basis obtained by solving the Poisson problem for each vorticity mode. The training data for OpInf and SPOpInf are 400 adjacent snapshot pairs (an, an+1 ) whose left members are spread uniformly over the training interval [10 , 50] , so the step entering eq. (12) is the snapshot spacing ∆t = 0 .01 ; the number of pairs is the same at every r. For SPOpInf, we set Γ = 10 −8I, εtol = 10 −6, and at most 20 alternating updates, reduced to 10 at r = 25 ; at r = 30 the normal equations are numerically singular, with reciprocal condition numbers below 10 −16 , so that case rescales the state by its global root-mean-square value ( 33 .71 ), uses Γ = 10 −1I,and performs a single update. All ROMs are integrated on [10 , 80] from the projected FOM state at t = 10 with the time step 10 −3, and the reduced state is stored every ten steps to match the FOM sampling rate. The deterministic G-ROM and OpInf models are advanced by the fourth-order Runge–Kutta scheme (RK4), as in Mou et al. [37, 40]. SPOpInf, whose model carries a diffusion term, uses the same time step: the drift is advanced by RK4 and the Gaussian increment bΣ√δt ξn is added at each step, where δt = 10 −3 is the ROM time step and ξn is a standard normal vector, with the increment path fixed at each r by the seed 2026 + r. A trajectory is classified as divergent when it becomes non-finite or ∥a(t)∥2 > 10 16 .Because the QGE is chaotic, trajectories of different models diverge quickly and pathwise agreement cannot be expected. The trajectory error eq. (60) in table 8 therefore serves only as a stability diagnostic: a model is useful if its error remains at the level set by chaotic decorrelation rather than growing without bound. The primary metric is statistical. Following Mou et al. [37, 40], we use the L2 error of the time-averaged ROM streamfunction over [10 , 80] , which tests the models on the full interval although they are trained on [10 , 50] only, 
+
+E(L2) = ψFOM (x) − ψROM (x) L2 , ψ = 1
+
+T1 − T0
+
+Z T1
+
+> T0
+
+ψ(t) d t, (61) with [T0, T 1] = [10 , 80] . This metric is appropriate because successful ROMs for this test problem are expected to reproduce the four-gyre structure of the time-averaged streamfunction with the correct magnitude [17, 39]. Table 8: QG pathwise comparison over 10 ≤ t ≤ 80 : long-time reduced-state relative error eq. (60) for each reduced dimension r. A dash marks a trajectory that diverges (becomes non-finite or exceeds ∥a∥2 = 10 16 ) before the final time T = 80 , so the long-time error is undefined. Best value in each row in bold. G-ROM (σ) is not included, since the full-order model eq. (56) is deterministic and there is no physical noise to project.                              
+
+> rG-ROM OpInf OpInf (σ)SPOpInf 532 .3530 1.6952 —1.1870
+> 10 15 .6463 ——1.1056
+> 15 8.7633 ——1.0596
+> 20 2.0168 ——1.0648
+> 25 1.7169 ——1.0390
+> 30 1.5223 ——1.0844
+
+Table 8 shows that OpInf is unstable beyond r = 5 and OpInf (σ) at every r, whereas SPOpInf remains stable at every 
+
+r, with etraj close to one, the level set by chaotic decorrelation of two trajectories with matched statistics. The G-ROM 
+
+28 A PREPRINT - S EPTEMBER 29, 2026 
+
+is also stable at every r, but at small r its trajectory error lies far above that level ( 32 .4 at r = 5 ); this reflects a drift of the mean state rather than decorrelation, the same defect that table 9 measures directly. Table 9 therefore compares SPOpInf with the G-ROM, the only other model that remains stable over [10 , 80] at every 
+
+r: OpInf is stable only at r = 5 and OpInf (σ) at no r (table 8), and G-ROM (σ) is not defined for this deterministic full-order model. Table 9: QG time-averaged streamfunction errors eq. (61) over 10 ≤ t ≤ 80 .
+
+r G-ROM SPOpInf 5 99 .6506 0.5183 
+
+10 50 .4060 0.9725 
+
+15 39 .2524 0.8656 
+
+20 7.5923 0.8647 
+
+25 3.6814 1.1333 
+
+30 1.7693 0.9602 0 0.5 1
+
+x
+
+> 012
+> y
+
+FOM             
+
+> (L2) = 99.65
+> G-ROM
+> r= 5
+> (L2) = 50.41
+> G-ROM
+> r= 10
+> (L2) = 39.25
+> G-ROM
+> r= 15
+> (L2) = 7.59
+> G-ROM
+> r= 20
+> (L2) = 3.68
+> G-ROM
+> r= 25
+> (L2) = 1.77
+> G-ROM
+> r= 30
+> (L2) = 0.52
+> SPOpInf
+> r= 5
+> (L2) = 0.97
+> SPOpInf
+> r= 10
+> (L2) = 0.87
+> SPOpInf
+> r= 15
+> (L2) = 0.86
+> SPOpInf
+> r= 20
+> (L2) = 1.13
+> SPOpInf
+> r= 25
+> (L2) = 0.96
+> SPOpInf
+> r= 30
+> -2 -1 012
+> ψ
+
+Figure 18: Time-averaged QG streamfunction, ψ, for different r values for the FOM, G-ROM, and SPOpInf. All panels share the symmetric color scale of the FOM field and a single colorbar, so magnitude errors are visible directly; the thin contour marks ψ = 0 , and the mean-streamfunction error eq. (61) of table 9 is printed under each ROM panel. 
+
+Remark 4.1 (Conserved quadratic invariant) . As noted in section 3.3.2, the constraint eq. (21), imposed on the vorticity coefficients, conserves the resolved enstrophy 12 ∥a∥22 = 12 ∥ωr ∥2 
+
+> L2
+
+rather than the kinetic energy 12 (ψr , ω r ). This is the appropriate invariant for the QGE: the Jacobian J(ω, ψ ) conserves the enstrophy in the continuum, and the projected Galerkin tensor assembled from eq. (59) inherits this property to quadrature accuracy, which we verified by evaluating the cubic form a⊤QBG (a) on the assembled operators. The same quadrature confirms that the vorticity POD basis is orthonormal, so no weighting of the kind described in proposition 3.4 is needed and eq. (20) applies verbatim. The low-dimensional G-ROM has a severe mean-field bias: at r = 5 its error exceeds that of SPOpInf by roughly two orders of magnitude. The SPOpInf error stays within a narrow band of order one across the entire sweep, a level the G-ROM approaches only at r = 30 , where SPOpInf still reduces the G-ROM error by nearly a factor of two. The 
+
+29 A PREPRINT - S EPTEMBER 29, 2026 
+
+SPOpInf error is not monotone in r and is in fact smallest at r = 5 . Two mechanisms act in opposite directions. The learned stochastic closure absorbs the truncation error directly at each dimension, so enlarging the basis does not by itself improve the mean field; and with the training data fixed at 400 snapshot pairs while the size of the quadratic library grows with r, the regression becomes progressively less well conditioned, until at r = 30 the normal equations are numerically singular (see the Settings paragraph) and the mean field is shaped partly by the ridge term rather than by the data alone. Neither mechanism dominates, which is why the error varies within the band instead of decreasing. Whether the non-monotonicity persists when the training data grow with r has not been tested. The time-averaged streamfunction fields in fig. 18 show that the SPOpInf gain concerns the long-time four-gyre spatial structure rather than synchronization of individual chaotic trajectories. 
+
+4.3 Sensitivity tests 
+
+Except for the CDV constraint study, the results of section 4.1 are each obtained from a single training trajectory, generated with one realization of the driving noise, sampled at one time interval, and observed without noise. This subsection examines each of these choices in turn for the five Setting I benchmarks, using eight independent random seeds per system. SPOpInf and OpInf use the same library of terms and differ only in the energy constraints and the joint calibration of drift and noise. The seed-to-seed comparison in table 10 uses the same training intervals as section 4.1. For the other three tests (tables 11 to 13), we simulate one reference trajectory per system and seed with time step 
+
+∆t = 0 .005 and then derive every training set from it: coarser sampling intervals by keeping every k-th snapshot, shorter training intervals by keeping only the initial part, and noisy observations by adding random perturbations. Each test therefore compares estimates obtained from the same underlying trajectory. The results for the sampling and training intervals are also plotted in figs. 19 and 20. 
+
+Seed-to-seed variability. Table 10 repeats the experiments of section 4.1 with eight independent realizations of the driving noise. For each realization, OpInf and SPOpInf are trained on the same trajectory, so any difference between them comes from the method and not from the data. The SPOpInf errors vary noticeably from seed to seed, most for the dyad, whose bursty trajectory contains the fewest informative events, less for Lorenz–84, and least for the other three systems. This variation does not change the comparison with OpInf: SPOpInf has the smaller quadratic error eB for every seed of every system, and the smaller linear error eC for every seed of Lorenz–84, Lorenz–96, and CDV and for most seeds of the dyad and TBH. The TBH exceptions are expected from section 4.1.6: the constraints act directly on B and only indirectly on C, and for TBH there is little for them to correct. For every seed, SPOpInf recovers the noise amplitude accurately and satisfies the constraints to machine precision, whereas the OpInf operators violate them clearly. The single-trajectory results of section 4.1.6 therefore give the correct ranking of the two methods, although not always the typical error size: for the dyad, the reported run has a quadratic error about an order of magnitude smaller than the mean over seeds and should be read with that in mind. 
+
+Sampling interval. We keep every first, second, fourth, tenth, twentieth, and fortieth snapshot of the same trajectory, which gives sampling intervals from ∆t = 0 .005 to 0.2 (table 11 and fig. 19). The sampling interval affects the estimate in two ways: a longer interval makes the finite-difference approximation in eq. (12) less accurate, and it changes how much of the one-step change is attributed to noise. For the dyad, TBH, and CDV, the quadratic error eB of both methods is nearly unchanged up to moderate sampling intervals, because it is limited by the finite length of the record rather than by the finite difference. For the two chaotic Lorenz systems, whose states change fastest along a trajectory, the finite-difference error dominates already at the second smallest interval, and eB grows steadily with ∆t. The noise-amplitude error eσ grows with ∆t in every system: slowly for CDV, roughly in proportion to ∆t for the dyad and TBH, and by several orders of magnitude for the two Lorenz systems, because the increment likelihood assigns the entire one-step discretization error to the noise. The noise amplitude is therefore more sensitive to the sampling interval than the drift, and for chaotic systems both require the finest available sampling; the interval used in section 4.1 is the smallest tested and gives the smallest errors throughout. OpInf depends on ∆t in the same way, and its quadratic error is larger than that of SPOpInf for almost every combination of system, seed, and sampling interval; the only exceptions are one dyad seed at the two coarsest intervals. The gap between the two methods narrows as ∆t grows, since the discretization error common to both then dominates, except for Lorenz–84, where the gap widens. The linear operator behaves differently. For Lorenz–84 at every interval above the finest, and for Lorenz–96 at the coarsest, SPOpInf has the larger linear error eC for every seed. This is consistent with the energy constraints keeping the finite-difference error out of B, so that part of it is absorbed by C instead; at the finest interval the effect disappears and SPOpInf has the smaller eC for every seed of both systems. 
+
+Training interval. We train on the first T time units of each trajectory, after the initial transient of section 4.1 is discarded, for T between 100 and 1000 and a sampling interval of ∆t = 0 .005 (table 12 and fig. 20). The quadratic 
+
+30 A PREPRINT - S EPTEMBER 29, 2026 
+
+error eB of both methods decreases steadily as T grows, in every system and without leveling off, at a rate comparable to the reference line T −1/2 in fig. 20; the dyad shows the largest fluctuations because of its intermittent bursts. The systems differ mainly in how much data they need. The dyad and TBH reach small errors on the shorter records, whereas CDV, whose smallest coefficients are very small, still has a sizeable error on the longest record tested, which is why its training interval in section 4.1 is much longer than for the other systems. Lorenz–84, trained on the shortest interval in section 4.1, benefits from more data as well, but its error is already small on that interval. The advantage over OpInf does not depend on T : OpInf decreases at nearly the same rate, so the gap between the two methods stays roughly constant, largest for the dyad and moderate for the other four systems. SPOpInf has the smaller quadratic error for all but one combination of system, seed, and T , and the smaller linear error eC for most of them. The noise-amplitude error 
+
+eσ is nearly the same for all five systems and follows the standard error expected when a noise amplitude is estimated from T / ∆t independent Gaussian increments (last row of table 12). With the sampling interval used here, the accuracy of the noise amplitude is therefore determined mainly by the length of the record. 
+
+Observation noise. We replace each snapshot by aobs  
+
+> n,i
+
+= an,i + ηn,i , where the errors ηn,i ∼ N (0 , σ 2obs ,i ) are independent across snapshots and σobs ,i = ε std( ai) is proportional to the spread of each coefficient, to examine the effect of the noise-free assumption discussed in section 2.3. The quadratic error eB is essentially unchanged at the two smaller noise levels (table 13, top). At the largest level the effect differs between systems: the error is unchanged for TBH and Lorenz–84, increases moderately for Lorenz–96 and the dyad, and more than doubles for CDV, whose driving noise is by far the weakest and which is therefore the most sensitive to added observation noise. The noise amplitude is much more sensitive, and in a predictable way. Since the errors at two consecutive snapshots are independent, each finite difference carries the variance of both, so eq. (26) overestimates the squared noise amplitude by 2σ2obs ,i /∆t.The measured estimates agree closely with this prediction in all five systems (table 13, bottom). The prediction also explains why the sensitivity differs between systems: it is largest where the driving noise is weak relative to the state amplitude, as for Lorenz–84 and Lorenz–96. The effect of observation noise on the noise amplitude is thus a systematic and predictable bias rather than random error, and it could be removed if σobs ,i were known or estimated together with the model, which we leave to future work. 
+
+Remark 4.2 (Incorrect constraints) . Table 14 completes the CDV constraint comparison discussed in section 4.1. Imposing every constraint, including the two that the true dynamics does not satisfy, increases the quadratic error eB
+
+only slightly, and the result remains clearly more accurate than the unconstrained fit. In every case, the constraints that the true dynamics does satisfy are met to rounding error. SPOpInf therefore degrades gracefully when part of the constraint set is incorrect. Table 10: Seed-to-seed variability at the settings of section 4.1: mean ± standard deviation over eight independent driving-noise realizations, with OpInf and SPOpInf fitted to the same eight trajectories. The smaller quadratic and linear errors are in bold. eσ is reported for SPOpInf only, since OpInf does not infer Σ.                                                                 
+
+> System Method eBeCeσ
+> Dyad OpInf 9.10 ×10 −2±3.8×10 −21.37 ×10 −1±5.8×10 −2—SPOpInf 3.43 ×10 −2±1.9×10 −28.70 ×10 −2±5.1×10 −21.23 ×10 −3±7.8×10 −4
+> TBH OpInf 1.09 ×10 −1±7.1×10 −31.65 ×10 −1±2.2×10 −2—SPOpInf 8.07 ×10 −2±6.8×10 −31.62 ×10 −1±2.3×10 −21.71 ×10 −3±6.5×10 −4
+> L84 OpInf 1.15 ×10 −2±2.8×10 −35.16 ×10 −2±1.6×10 −2—SPOpInf 7.66 ×10 −3±2.5×10 −33.41 ×10 −2±1.4×10 −24.75 ×10 −3±1.1×10 −3
+> L96 OpInf 5.67 ×10 −3±4.7×10 −43.23 ×10 −2±2.4×10 −3—SPOpInf 3.92 ×10 −3±2.0×10 −42.19 ×10 −2±1.5×10 −31.65 ×10 −3±5.0×10 −4
+> CDV OpInf 2.41 ×10 −1±1.3×10 −21.100 ±0.138 —SPOpInf 1.38 ×10 −1±1.9×10 −25.70 ×10 −1±1.4×10 −16.88 ×10 −4±1.9×10 −4
+
+31 A PREPRINT - S EPTEMBER 29, 2026 
+
+Table 11: Sampling interval. Mean over eight seeds of the quadratic error eB of OpInf and SPOpInf and of the noise-amplitude error eσ of SPOpInf, obtained by sub-sampling the same trajectories, of length T = 2000 for the dyad and Lorenz–84, 1000 for TBH and Lorenz–96, and 5000 for CDV. The value used in section 4.1 is ∆t = 0 .005 . The smaller quadratic error of each pair is in bold. 
+
+∆t 0.005 0.01 0.02 0.05 0.1 0.2
+
+quadratic error eB
+
+Dyad OpInf 1.17 ×10 −1 1.16 ×10 −1 1.12 ×10 −1 1.07 ×10 −1 1.16 ×10 −1 1.64 ×10 −1
+
+SPOpInf 2.64 ×10 −2 2.56 ×10 −2 2.39 ×10 −2 2.85 ×10 −2 4.71 ×10 −2 1.08 ×10 −1
+
+TBH OpInf 1.21 ×10 −1 1.21 ×10 −1 1.20 ×10 −1 1.23 ×10 −1 1.37 ×10 −1 1.97 ×10 −1
+
+SPOpInf 8.89 ×10 −2 8.87 ×10 −2 8.90 ×10 −2 9.39 ×10 −2 1.14 ×10 −1 1.83 ×10 −1
+
+L84 OpInf 2.20 ×10 −3 1.75 ×10 −2 5.15 ×10 −2 1.53 ×10 −1 3.20 ×10 −1 6.25 ×10 −1
+
+SPOpInf 1.38 ×10 −3 8.78 ×10 −3 2.55 ×10 −2 6.32 ×10 −2 6.12 ×10 −2 2.40 ×10 −1
+
+L96 OpInf 5.52 ×10 −3 1.48 ×10 −2 4.22 ×10 −2 1.32 ×10 −1 3.09 ×10 −1 6.89 ×10 −1
+
+SPOpInf 3.65 ×10 −3 1.19 ×10 −2 3.49 ×10 −2 1.13 ×10 −1 2.78 ×10 −1 6.49 ×10 −1
+
+CDV OpInf 2.60 ×10 −1 2.59 ×10 −1 2.59 ×10 −1 2.58 ×10 −1 2.59 ×10 −1 2.73 ×10 −1
+
+SPOpInf 1.55 ×10 −1 1.54 ×10 −1 1.54 ×10 −1 1.55 ×10 −1 1.59 ×10 −1 1.79 ×10 −1
+
+noise-amplitude error eσ , SPOpInf Dyad 1.23 ×10 −3 1.92 ×10 −3 4.19 ×10 −3 1.07 ×10 −2 2.21 ×10 −2 4.47 ×10 −2
+
+TBH 1.63 ×10 −3 2.60 ×10 −3 4.39 ×10 −3 1.14 ×10 −2 2.19 ×10 −2 3.83 ×10 −2
+
+L84 1.27 ×10 −3 1.76 ×10 −3 1.15 ×10 −2 2.46 ×10 −1 1.62 ×10 0 5.45 ×10 0
+
+L96 1.65 ×10 −3 2.32 ×10 −3 4.49 ×10 −2 7.66 ×10 −1 3.05 ×10 0 7.14 ×10 0
+
+CDV 6.57 ×10 −4 9.81 ×10 −4 1.70 ×10 −3 2.80 ×10 −3 5.06 ×10 −3 9.37 ×10 −30.005 0.01 0.02 0.05 0.1 0.2 
+
+sampling interval Δ t
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> e
+
+0.005 0.01 0.02 0.05 0.1 0.2 
+
+sampling interval Δ t
+
+10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+10 1
+
+> eσ
+
+∝ Δ t
+
+Dyad TBH Lorenz–84 Lorenz–96 CDV 
+
+Figure 19: Sampling-interval sweep of table 11: mean over eight seeds of the quadratic error eB (left) and the noise-amplitude error eσ (right) of SPOpInf against ∆t, obtained by sub-sampling the same trajectories; the OpInf quadratic errors are listed in table 11. The dotted line has slope one. 
+
+32 A PREPRINT - S EPTEMBER 29, 2026 
+
+Table 12: Training interval on a common grid. Mean over eight seeds of the quadratic error eB of OpInf and SPOpInf and of the noise-amplitude error eσ of SPOpInf at ∆t = 0 .005 ; each estimate uses the first T time units of one trajectory per system and seed, the same data for both methods. The smaller quadratic error of each pair is in bold. The last row is 
+
+(2 T / ∆t)−1/2, the relative standard error of a noise amplitude estimated from T / ∆t Gaussian increments. 
+
+T 100 150 200 300 500 700 1000 
+
+quadratic error eB
+
+Dyad OpInf 4.67 ×10 −1 4.37 ×10 −1 3.50 ×10 −1 2.64 ×10 −1 2.12 ×10 −1 1.58 ×10 −1 1.26 ×10 −1
+
+SPOpInf 1.63 ×10 −1 1.19 ×10 −1 8.42 ×10 −2 6.59 ×10 −2 4.82 ×10 −2 2.86 ×10 −2 2.86 ×10 −2
+
+TBH OpInf 4.62 ×10 −1 3.39 ×10 −1 2.83 ×10 −1 2.20 ×10 −1 1.63 ×10 −1 1.31 ×10 −1 1.09 ×10 −1
+
+SPOpInf 3.25 ×10 −1 2.42 ×10 −1 2.01 ×10 −1 1.59 ×10 −1 1.15 ×10 −1 9.67 ×10 −2 8.07 ×10 −2
+
+L84 OpInf 1.02 ×10 −2 8.71 ×10 −3 8.05 ×10 −3 6.80 ×10 −3 4.76 ×10 −3 3.94 ×10 −3 2.93 ×10 −3
+
+SPOpInf 5.56 ×10 −3 4.40 ×10 −3 4.88 ×10 −3 4.08 ×10 −3 2.61 ×10 −3 2.42 ×10 −3 1.96 ×10 −3
+
+L96 OpInf 1.86 ×10 −2 1.46 ×10 −2 1.25 ×10 −2 1.03 ×10 −2 7.79 ×10 −3 6.58 ×10 −3 5.67 ×10 −3
+
+SPOpInf 1.17 ×10 −2 9.20 ×10 −3 8.31 ×10 −3 6.76 ×10 −3 5.30 ×10 −3 4.54 ×10 −3 3.92 ×10 −3
+
+CDV OpInf 4.08 ×10 0 2.80 ×10 0 2.17 ×10 0 1.47 ×10 0 9.71 ×10 −1 7.70 ×10 −1 5.92 ×10 −1
+
+SPOpInf 2.13 ×10 0 1.42 ×10 0 1.12 ×10 0 7.60 ×10 −1 5.41 ×10 −1 4.25 ×10 −1 3.40 ×10 −1
+
+noise-amplitude error eσ , SPOpInf Dyad 4.72 ×10 −3 5.19 ×10 −3 4.51 ×10 −3 2.68 ×10 −3 2.19 ×10 −3 1.58 ×10 −3 1.57 ×10 −3
+
+TBH 5.22 ×10 −3 4.40 ×10 −3 3.48 ×10 −3 2.39 ×10 −3 1.89 ×10 −3 1.64 ×10 −3 1.71 ×10 −3
+
+L84 5.07 ×10 −3 4.38 ×10 −3 3.59 ×10 −3 2.38 ×10 −3 2.06 ×10 −3 1.44 ×10 −3 1.50 ×10 −3
+
+L96 4.31 ×10 −3 4.14 ×10 −3 3.64 ×10 −3 2.35 ×10 −3 1.83 ×10 −3 1.50 ×10 −3 1.65 ×10 −3
+
+CDV 4.70 ×10 −3 3.81 ×10 −3 3.65 ×10 −3 3.03 ×10 −3 2.37 ×10 −3 1.91 ×10 −3 1.70 ×10 −3
+
+(2 T / ∆t)−1/2 5.00 ×10 −3 4.08 ×10 −3 3.54 ×10 −3 2.89 ×10 −3 2.24 ×10 −3 1.89 ×10 −3 1.58 ×10 −3100 150 200 300 500 700 1000 
+
+training interval T
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+> e
+
+∝ T−1/2 
+
+100 150 200 300 500 700 1000 
+
+training interval T
+
+10 −3 
+
+2 × 10 −3 
+
+5 × 10 −3 
+
+> eσ
+
+(2 T/Δ t)−1/2 
+
+Dyad TBH Lorenz–84 Lorenz–96 CDV 
+
+Figure 20: Training-interval sweep of table 12: mean over eight seeds of the quadratic error eB (left) and the noise-amplitude error eσ (right) of SPOpInf against T , at ∆t = 0 .005 ; the OpInf quadratic errors are listed in table 12. The dotted line on the left has slope −1/2; on the right it is (2 T / ∆t)−1/2, the relative standard error of a noise amplitude estimated from T / ∆t Gaussian increments, which the five systems follow closely. 
+
+33 A PREPRINT - S EPTEMBER 29, 2026 
+
+Table 13: Observation noise of relative amplitude ε = σobs /std( ai) (SPOpInf). Top: quadratic error as a multiple of its noise-free value. Bottom: measured ratio bσ/σ , with the predicted value in parentheses.                                            
+
+> εDyad TBH L84 L96 CDV
+> quadratic error eB(ε)/e B(0) 10 −41.000 1.000 1.000 1.000 1.000 10 −31.002 1.000 0.999 1.001 1.003 10 −21.306 0.998 0.990 1.156 2.663
+> noise-amplitude ratio bσ/σ , measured (predicted)
+> 10 −41.000 1.000 1.000 1.000 1.000 10 −31.000 1.000 1.013 1.011 1.009 10 −21.034 1.020 1.922 1.811 1.662 (1 .034) (1 .020) (1 .920) (1 .811) (1 .659)
+
+Table 14: Charney–DeVore under an incorrect constraint set: mean ± standard deviation over four seeds. “pruned” removes the two rows the true dynamics violates (the setting used in section 4.1), “full” imposes all rows including those two, and “none” is the unconstrained least-squares fit. The last column is the largest residual of the compatible 
+
+rows, normalized as in eq. (50).                                
+
+> Constraint set eBeCeG(compatible rows) pruned (SPOpInf) 0.140 ±0.024 0.605 ±0.168 7.8×10 −17
+> full (incorrect) 0.155 ±0.022 0.639 ±0.150 1.8×10 −16
+> none (OpInf) 0.249 ±0.014 1.172 ±0.049 1.3×10 −1
+
+## 5 Conclusions 
+
+We proposed stochastic physics-constrained operator inference (SPOpInf), a non-intrusive method that identifies a complete stochastic quadratic model, drift and diffusion amplitude together, from snapshot data. SPOpInf differs from classical operator inference in three ways: the deterministic and stochastic components are calibrated jointly by maximizing an Euler–Maruyama increment likelihood in which the residual covariance is itself an unknown; the energy-preserving structure of the quadratic tensor is enforced exactly, as linear equality constraints inside the optimization; and the model is parametrized in upper-triangular form, which removes the structural non-identifiability of the full tensor. The optimization is solved by an expectation–maximization (EM)-based iterative algorithm that alternates between updating the drift coefficients and the noise levels, each step an inexpensive weighted least-squares solve, so the method retains nearly the cost of ordinary least-squares regression. We tested SPOpInf on five stochastic systems that show intermittent bursts, chaos, and switching between regimes. Compared with OpInf, it gave more accurate quadratic operators, satisfied the energy constraints to machine precision, recovered the noise amplitudes accurately, and reproduced the long-time probability densities and autocorrelations of each system. For the stochastic Burgers equation, it was the only learned model that remained stable over the whole time interval at every reduced dimension tested, and it recovered the known noise amplitude of each mode, correctly assigning near-zero values to the modes that receive no forcing. For the quasi-geostrophic double-gyre flow, it reproduced the four-gyre time-averaged circulation at reduced dimensions where the Galerkin ROM fails. The sensitivity tests of section 4.3 varied the noise realization, the sampling interval, the length of the training record, and the level of observation noise. They showed that SPOpInf learns the quadratic operator more accurately than OpInf for almost every combination tested; that the quadratic error decreases steadily as the training record grows, while the error in the noise amplitude matches what is expected from a finite number of independent increments; and that the noise amplitude is more sensitive than the drift to both the sampling interval and observation noise, in the latter case through a simple bias that we predict and confirm numerically. Several limitations point to future work. The noise is assumed to be additive, with a constant amplitude for each mode and no correlation between modes; noise that is correlated across modes, depends on the state, or changes with the flow regime would require a more general noise model. The likelihood is built on the Euler–Maruyama scheme and first-order finite differences, so the learned drift carries a discretization error and the noise amplitude depends on the sampling interval, strongly so for chaotic systems; likelihoods based on higher-order schemes would reduce this dependence. The snapshots are assumed to be free of observation noise; the sensitivity tests of section 4.3 show that such noise biases the noise amplitude in a predictable way, and estimating the observation-noise level together with the 
+
+34 A PREPRINT - S EPTEMBER 29, 2026 
+
+model is a natural extension. When the true dynamics does not satisfy part of the constraint set, the constraints that it does satisfy must be identified beforehand; the method remains accurate when they are not, but a systematic way of selecting them is still missing. Finally, for the quasi-geostrophic flow at the largest reduced dimension, the fit is poorly conditioned with the amount of training data used here, so the behavior of the method when the training data grow with the reduced dimension remains open. Beyond these limitations, three directions are of particular interest. First, the method should be applied to more challenging problems, such as three-dimensional turbulent flows, systems with several interacting scales, and systems whose reduced dynamics are not well described by a quadratic model. Second, the method calls for numerical analysis: showing that the constrained maximum likelihood estimator converges to the true operators and noise amplitudes as the sampling interval decreases and the training record grows, and deriving error bounds for the resulting reduced-order model that account for both the discretization error and the finite-data error observed in section 4.3. Third, the learned drift and noise amplitudes could be combined with the statistical closure framework of Qi and Liu [43, 44], in which the reduced-order model is calibrated to reproduce the leading statistics of the full system rather than individual trajectories; extending this combination to parametric and memory-dependent (non-Markovian) closures would further broaden the range of problems the method can address. 
+
+## Code availability 
+
+The code that implements SPOpInf and reproduces the numerical results of this paper is publicly available at https: //github.com/chhmou/SPOpinf . The full-order snapshot data for the stochastic Burgers and quasi-geostrophic tests of section 4.2 are not included in the repository and are available from the author upon reasonable request. 
+
+## Declaration of AI usage 
+
+During the preparation of this work, the author used Claude (Anthropic) to improve the language and consistency of the manuscript. After using this tool, the author reviewed and edited the content as needed and takes full responsibility for the content of the publication. 
+
+## References 
+
+[1] Shady E. Ahmed, Suraj Pawar, Omer San, Adil Rasheed, Traian Iliescu, and Bernd R. Noack. On closures for reduced order models—a spectrum of first-principle to machine-learned avenues. Physics of Fluids , 33(9):091301, 2021. doi: 10.1063/5.0061577. [2] Nadine Aubry, Philip Holmes, John L. Lumley, and Emily Stone. The dynamics of coherent structures in the wall region of a turbulent boundary layer. Journal of Fluid Mechanics , 192:115–173, 1988. doi: 10.1017/ S0022112088001818. [3] Peter Benner, Serkan Gugercin, and Karen Willcox. A survey of projection-based model reduction methods for parametric dynamical systems. SIAM Review , 57(4):483–531, 2015. [4] Judith Berner, Ulrich Achatz, Lauriane Batt´ e, Lisa Bengtsson, Alvaro de la C´ amara, Hannah M. Christensen, Matteo Colangeli, Danielle R. B. Coleman, Daan Crommelin, Stamen I. Dolaptchiev, et al. Stochastic parameteri-zation: Toward a new view of weather and climate models. Bulletin of the American Meteorological Society , 98 (3):565–588, 2017. [5] Lander Besabe, Michele Girfoglio, Annalisa Quaini, and Gianluigi Rozza. Linear and nonlinear filtering for a two-layer quasi-geostrophic ocean model. Applied Mathematics and Computation , 488:129121, 2025. [6] Lorenzo Boninsegna, Feliks N”uske, and Cecilia Clementi. Sparse learning of stochastic dynamical equations. 
+
+The Journal of Chemical Physics , 148(24):241723, 2018. doi: 10.1063/1.5018409. [7] Steven L. Brunton, Joshua L. Proctor, and J. Nathan Kutz. Discovering governing equations from data by sparse identification of nonlinear dynamical systems. Proceedings of the National Academy of Sciences , 113(15): 3932–3937, 2016. doi: 10.1073/pnas.1517384113. [8] Jared L. Callaham, Jean-Christophe Loiseau, Georgios Rigas, and Steven L. Brunton. Nonlinear stochastic modelling with Langevin regression. Proceedings of the Royal Society A , 477(2250):20210092, 2021. doi: 10.1098/rspa.2021.0092. [9] Nan Chen and Andrew J. Majda. Filtering nonlinear turbulent dynamical systems through conditional Gaussian statistics. Monthly Weather Review , 144(12):4885–4917, 2016. 
+
+35 A PREPRINT - S EPTEMBER 29, 2026 
+
+[10] Nan Chen and Andrew J. Majda. Conditional Gaussian systems for multiscale nonlinear stochastic systems: Prediction, state estimation and uncertainty quantification. Entropy , 20(7):509, 2018. [11] Alexandre J. Chorin, Ole H. Hald, and Raz Kupferman. Optimal prediction and the Mori–Zwanzig representation of irreversible processes. Proceedings of the National Academy of Sciences , 97(7):2968–2973, 2000. doi: 10.1073/pnas.97.7.2968. [12] Daan T. Crommelin, J. D. Opsteegh, and Ferdinand Verhulst. A mechanism for atmospheric regime behav-ior. Journal of the Atmospheric Sciences , 61(12):1406–1419, 2004. doi: 10.1175/1520-0469(2004)061 ⟨1406: AMFARB ⟩2.0.CO;2. [13] Mohammad Farazmand and Themistoklis P. Sapsis. Extreme events: Mechanisms and prediction. Applied Mechanics Reviews , 71(5):050801, 2019. [14] Christian L. E. Franzke, Terence J. O’Kane, Judith Berner, Paul D. Williams, and Valerio Lucarini. Stochastic climate theory and modeling. Wiley Interdisciplinary Reviews: Climate Change , 6(1):63–78, 2015. [15] Leonidas Gkimisis, Igor Pontes Duff, Pawan Goyal, and Peter Benner. On the representation of energy-preserving quadratic operators with application to operator inference. Applied Mathematics Letters , 173:109761, 2026. doi: 10.1016/j.aml.2025.109761. [16] Pawan Goyal, Igor Pontes Duff, and Peter Benner. Guaranteed stable quadratic models and their applications in SINDy and operator inference. Physica D: Nonlinear Phenomena , 483:134893, 2025. doi: 10.1016/j.physd.2025. 134893. [17] Richard J. Greatbatch and Balasubramanya T. Nadiga. Four-gyre circulation in a barotropic model with double-gyre wind forcing. Journal of Physical Oceanography , 30(6):1461–1471, 2000. [18] Klaus Hasselmann. Stochastic climate models Part I. Theory. Tellus , 28(6):473–485, 1976. [19] Rik Hoekstra, Daan Crommelin, and Wouter Edeling. Reduced data-driven turbulence closure for capturing long-term statistics. Computers & Fluids , 285:106469, 2024. doi: 10.1016/j.compfluid.2024.106469. [20] Philip Holmes, John L. Lumley, and Gahl Berkooz. Turbulence, Coherent Structures, Dynamical Systems and Symmetry . Cambridge University Press, Cambridge, 1996. [21] Alan A. Kaptanoglu, Jared L. Callaham, Aleksandr Aravkin, Chris J. Hansen, and Steven L. Brunton. Promoting global stability in data-driven models of quadratic nonlinear dynamics. Physical Review Fluids , 6:094401, 2021. doi: 10.1103/PhysRevFluids.6.094401. [22] Alan A. Kaptanoglu, Kyle D. Morgan, Chris J. Hansen, and Steven L. Brunton. Physics-constrained, low-dimensional models for magnetohydrodynamics: First-principles and data-driven approaches. Physical Review E ,104:015206, 2021. doi: 10.1103/PhysRevE.104.015206. [23] Tomoki Koike and Elizabeth Qian. Energy-preserving reduced operator inference for efficient design and control. In AIAA SciTech 2024 Forum , 2024. doi: 10.2514/6.2024-1012. AIAA Paper 2024-1012. [24] Dmitri Kondrashov, Micka¨ el D. Chekroun, and Michael Ghil. Data-driven non-Markovian closure models. 
+
+Physica D: Nonlinear Phenomena , 297:33–55, 2015. doi: 10.1016/j.physd.2014.12.005. [25] Edward N. Lorenz. Deterministic nonperiodic flow. Journal of the Atmospheric Sciences , 20(2):130–141, 1963. [26] Edward N. Lorenz. Irregularity: a fundamental property of the atmosphere. Tellus A , 36A(2):98–110, 1984. doi: 10.1111/j.1600-0870.1984.tb00230.x. [27] Edward N. Lorenz. Predictability—a problem partly solved. In Proceedings of the Seminar on Predictability ,volume 1, pages 1–18, Reading, UK, 1996. European Centre for Medium-Range Weather Forecasts. [28] Andrew J. Majda. Introduction to Turbulent Dynamical Systems in Complex Systems , volume 5 of Frontiers in Applied Dynamical Systems: Reviews and Tutorials . Springer, Cham, 2016. [29] Andrew J. Majda and John Harlim. Filtering Complex Turbulent Systems . Cambridge University Press, Cambridge, 2012. [30] Andrew J. Majda and Yoonsang Lee. Conceptual dynamical models for turbulence. Proceedings of the National Academy of Sciences , 111(18):6548–6553, 2014. [31] Andrew J. Majda and Xiaoming Wang. Nonlinear Dynamics and Statistical Theories for Basic Geophysical Flows . Cambridge University Press, Cambridge, 2006. [32] Andrew J. Majda, Ilya Timofeyev, and Eric Vanden-Eijnden. A mathematical framework for stochastic climate models. Communications on Pure and Applied Mathematics , 54(8):891–974, 2001. doi: 10.1002/cpa.1014. 
+
+36 A PREPRINT - S EPTEMBER 29, 2026 
+
+[33] Andrew J. Majda, Ilya Timofeyev, and Eric Vanden-Eijnden. Systematic strategies for stochastic mode reduction in climate. Journal of the Atmospheric Sciences , 60(14):1705–1722, 2003. [34] Andrew J. Majda, Ilya Timofeyev, and Eric Vanden-Eijnden. Stochastic models for selected slow variables in large deterministic systems. Nonlinearity , 19(4):769–794, 2006. doi: 10.1088/0951-7715/19/4/001. [35] Shane A. McQuarrie, Cheng Huang, and Karen E. Willcox. Data-driven reduced-order models via regularised operator inference for a single-injector combustion process. Journal of the Royal Society of New Zealand , 51(2): 194–211, 2021. doi: 10.1080/03036758.2020.1863237. [36] Ian Moore, Ping-Hsuan Tsai, Anthony Gruber, Ionut ¸ Farcas ¸, Christopher Wentland, Irina Tezaur, and Traian Iliescu. Learning long-term stable Operator Inference reduced-order models of fluid flows through online spatial filtering, 2026. URL https://arxiv.org/abs/2609.14812 . arXiv:2609.14812. [37] Changhong Mou, Honghu Liu, David R Wells, and Traian Iliescu. Data-driven correction reduced order models for the quasi-geostrophic equations: A numerical investigation. International Journal of Computational Fluid Dynamics , 34(2):147–159, 2020. [38] Changhong Mou, Birgul Koc, Omer San, Leo G. Rebholz, and Traian Iliescu. Data-driven variational multiscale reduced order models. Computer Methods in Applied Mechanics and Engineering , 373:113470, 2021. doi: 10.1016/j.cma.2020.113470. [39] Changhong Mou, Zhu Wang, David R. Wells, Xuping Xie, and Traian Iliescu. Reduced order models for the quasi-geostrophic equations: A brief survey. Fluids , 6(1):16, 2021. doi: 10.3390/fluids6010016. [40] Changhong Mou, Nan Chen, and Traian Iliescu. An efficient data-driven multiscale stochastic reduced order modeling framework for complex systems. Journal of Computational Physics , 493:112450, 2023. doi: 10.1016/j. jcp.2023.112450. [41] Bernd R. Noack, Konstantin Afanasiev, Marek Morzy´ nski, Gilead Tadmor, and Frank Thiele. A hierarchy of low-dimensional models for the transient and post-transient cylinder wake. Journal of Fluid Mechanics , 497: 335–363, 2003. [42] Benjamin Peherstorfer and Karen Willcox. Data-driven operator inference for nonintrusive projection-based model reduction. Computer Methods in Applied Mechanics and Engineering , 306:196–215, 2016. doi: 10.1016/j. cma.2016.03.025. [43] Di Qi and Jian-Guo Liu. A random batch method for efficient ensemble forecasts of multiscale turbulent systems. 
+
+Chaos: An Interdisciplinary Journal of Nonlinear Science , 33(2), 2023. [44] Di Qi and Jian-Guo Liu. Data assimilation models for computing probability distributions of complex multiscale systems. Journal of Computational Physics , page 114465, 2025. [45] Elizabeth Qian, Boris Kramer, Benjamin Peherstorfer, and Karen Willcox. Lift & learn: Physics-informed machine learning for large-scale nonlinear dynamical systems. Physica D: Nonlinear Phenomena , 406:132401, 2020. doi: 10.1016/j.physd.2020.132401. [46] Elizabeth Qian, Ioana-Gabriela Farcas ¸, and Karen Willcox. Reduced operator inference for nonlinear partial differential equations. SIAM Journal on Scientific Computing , 44(4):A1934–A1959, 2022. doi: 10.1137/ 21M1393972. [47] Samuel H. Rudy, Steven L. Brunton, Joshua L. Proctor, and J. Nathan Kutz. Data-driven discovery of partial differential equations. Science Advances , 3(4):e1602614, 2017. doi: 10.1126/sciadv.1602614. [48] Omer San and Romit Maulik. Neural network closures for nonlinear model order reduction. Advances in Computational Mathematics , 44(6):1717–1750, 2018. doi: 10.1007/s10444-018-9590-z. [49] Nihar Sawant, Boris Kramer, and Benjamin Peherstorfer. Physics-informed regularization and structure preser-vation for learning stable reduced models from data with operator inference. Computer Methods in Applied Mechanics and Engineering , 404:115836, 2023. doi: 10.1016/j.cma.2022.115836. [50] Michael Schlegel and Bernd R. Noack. On long-term boundedness of Galerkin models. Journal of Fluid Mechanics , 765:325–352, 2015. [51] William Snyder, Changhong Mou, Honghu Liu, Omer San, Raffaella DeVita, and Traian Iliescu. Reduced order model closures: a brief tutorial. In Recent Advances in Mechanics and Fluid-Structure Interaction with Applications: The Bong Jae Chung Memorial Volume , pages 167–193. Springer, 2022. [52] Yifeng Tian, Yen Ting Lin, Marian Anghel, and Daniel Livescu. Data-driven learning of Mori–Zwanzig operators for isotropic turbulence. Physics of Fluids , 33(12):125118, 2021. doi: 10.1063/5.0070548. 
+
+37 A PREPRINT - S EPTEMBER 29, 2026 
+
+[53] Wayne Isaac Tan Uy, Yuepeng Wang, Yuxiao Wen, and Benjamin Peherstorfer. Active operator inference for learning low-dimensional dynamical-system models from noisy data. SIAM Journal on Scientific Computing , 45 (4):A1462–A1490, 2023. doi: 10.1137/21M1439729. [54] Min Wang, Siu Wun Cheung, Wing Tat Leung, Eric T Chung, Yalchin Efendiev, and Mary Wheeler. Reduced-order deep learning for flow dynamics. the interplay between deep learning and model reduction. Journal of Computational Physics , 401:108939, 2020. [55] Zhu Wang, Imran Akhtar, Jeff Borggaard, and Traian Iliescu. Proper orthogonal decomposition closure models for turbulent flows: A numerical comparison. Computer Methods in Applied Mechanics and Engineering , 237–240: 10–26, 2012. doi: 10.1016/j.cma.2012.04.015. 
+
+38
