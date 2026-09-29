@@ -1,0 +1,458 @@
+Title: Gradient Surgery for Physics-Informed Neural Networks
+
+URL Source: https://arxiv.org/pdf/2609.30966v1
+
+Published Time: Mon, 28 Sep 2026 00:45:20 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# GRADIENT SURGERY FOR PHYSICS -I NFORMED NEURAL 
+
+# NETWORKS 
+
+Thomas Borsani, Giuseppe Di Fatta 
+
+Faculty of Engineering Free University of Bozen - Bolzano Bozen - Bolzano, Italy 
+
+{tborsani, giuseppe.difatta}@unibz.it 
+
+ABSTRACT 
+
+Physics-Informed Neural Networks (PINNs) are trained by optimising a composite objective that combines data fitting with physics-based constraints, typically resulting in a highly imbalanced multi-task optimisation problem. Under these conditions, existing optimisation strategies are affected by conflicting task gradients, leading to slow convergence and unstable training, particularly for stiff and high-frequency partial differential equations. We analyse gradient conflicts throughout training of PINNs with standard optimiser and investigate Multi-Task Deep Learning (MTDL) optimisation methods. In our analysis across four benchmark problems we observed that PINN optimisation exhibits three distinct phases in which angle- and magnitude-based gradient conflicts alternate, with only one present at a time. Building on these observations, we propose PAM-GS, a physics-aware gradient surgery method that adaptively mitigates task interference during training according to the observed conflict types. Experiments on four representative PDE benchmarks demonstrate that PAM-GS combines competitive solution accuracy with consistently strong task-balanced performance, outperforming existing methods on most problems. Code is available at https://github.com/ThomBors/gs_pinn 
+
+Keywords Physics-Informed Neural Networks · Multi-Task Deep Learning · Gradient Surgery Recent advances in deep learning have driven growing interest in neural networks models for solving partial differential equations (PDEs) [1, 2]. PDEs arise across diverse scientific disciplines, including fluid dynamics, electromagnetics, and financial mathematics [3, 4, 5]. However, solving nonlinear and high-dimensional PDEs efficiently remains a fundamental challenge for traditional numerical methods due to stability and computational constraints. Physics-Informed Neural Networks (PINNs) address this challenge by formulating PDE solving as the optimisation of a neural network constrained by the governing physical laws [6, 7]. Specifically, PINNs employ an implicit neural representation, where a neural network parametrises the solution field as a continuous, differentiable function, enabling spatial and temporal derivatives to be computed efficiently via automatic differentiation. The governing PDE residuals are enforced at collocation points within the computational domain, while boundary and initial conditions are included as additional terms in the training objective. Despite its simplicity, this formulation gives rise to a challenging multi-objective optimisation problem [8, 7, 9, 10, 11]. Competing objectives can result in gradient imbalances caused by numerical stiffness [11], heterogeneous convergence rates between loss components [10], the soft enforcement of physical constraints [8], poor initialisation [12], and inefficient collocation sampling strategies. These factors often lead to slow convergence, optimisation stagnation, and reduced solution accuracy. Consequently, adaptive weighting schemes have been proposed to balance the loss functions for PDE residuals, boundary conditions, and initial conditions [13], although no consensus exists on an optimal strategy. In parallel, Multi-Task Deep Learning (MTDL) addresses analogous issues via gradient surgery methods, which mitigate inter-task interference by modifying conflicting gradients during joint optimisation [14]. Such conflicts arise from misaligned gradient directions (angle-based) and/or disproportionate magnitudes that dominate shared updates (magnitude-based) [15]. Similar phenomena are expected in PINNs [16], where PDE residual gradients can dominate boundary and initial condition gradients [11], and where the residual loss landscape is often highly non-convex due arXiv:2609.30966v1 [cs.LG] 25 Sep 2026 Gradient Surgery for PINNs to underdetermined PDE constraints [17]. However, a systematic study of gradient conflicts and a comprehensive evaluation of gradient surgery methods in this setting remains limited. This work studies the training dynamics of PINNs, with a focus on the emergence of gradient conflicts [15] across canonical PDE benchmarks. Specifically, we consider problems that capture a range of behaviours, including non-linear convection, dispersion, and incompressible fluid dynamics, making them suitable testbeds for analysing optimisation behaviour in PINNs. We perform a systematic evaluation of modern gradient surgery methods to assess their impact on optimisation behaviour. Our empirical analysis reveals a distinct temporal structure in gradient conflicts: task-angle-based gradient conflict dominates early training, while later stages are primarily affected by magnitude gradient conflicts. Based on these findings, we propose Physics-Aware Momentum Gradient Surgery (PAM-GS), a conflict-aware gradient method for PINNs that outperforms existing optimisers in most cases. Our main contributions are summarised as follows: • We study the emergence of gradient conflicts in PINNs across canonical 1D and 2D PDE benchmarks. • We perform a systematic evaluation of modern gradient surgery methods and quantify their impact on optimisation behaviour. • We propose Physics-Aware Momentum Gradient Surgery (PAM-GS), a conflict-aware optimisation method that improves performance over existing approaches. 
+
+1 Physics-Informed Neural Networks 
+
+Preliminaries. We consider the initial–boundary value problem for a general partial differential equation (PDE) defined over a scalar field u(x, t ) : Ω × (0 , T ] → R:
+
+N [u(x, t ), x, t ] := N [u(x, t ), x, t ] + f (x, t ) = 0 , x ∈ Ω, t ∈ (0 , T ], (1) 
+
+B[u(x, t ), x, t ] := B[u(x, t ), x, t ] + g(x, t ) = 0 , x ∈ ∂Ω, t ∈ (0 , T ], (2) 
+
+I[u(x, 0) , x, 0] := u(x, 0) + h(x) = 0 , x ∈ Ω, (3) where Ω ⊂ Rd denotes the spatial domain with boundary ∂Ω, and N and B are differential operators that encode the dynamics of PDE and the boundary conditions, respectively. The functions f , g, and h represent the source terms. 
+
+PINN formulation. To solve this system, PINNs introduce a parametric neural approximation ˆu(x, t ; θ) of the solution u(x, t ), where θ denotes the network parameters. The spatial and temporal derivatives required by the operators 
+
+N and B are calculated using automatic differentiation applied to ˆu(x, t ; θ). The PDE is then enforced by minimising the following composite loss:                
+
+> L(θ) = 1
+> nNnNX
+> i=1
+> ∥N [ˆ u(xi, t i;θ), x i, t i]∥
+> |{z }
+> LP DE
+> +1
+> nBnBX
+> i=1
+> ∥B [ˆ u(xi, t i;θ), x i, t i]∥
+> |{z }
+> LBC
+> + 1
+> nInIX
+> i=1
+> ∥I [ˆ u(xi,0; θ), x i,0] ∥
+> |{z }
+> LIC
+> .(4)
+
+Optimisation structure. PINNs can be formulated as a MTDL problem, where a neural network with shared parameters ( θ ∈ Rm) jointly optimises ( K ≥ 2) physics-based objectives. Each physical constraint defines a task-specific loss, including the PDE residual ( LPDE ), boundary conditions ( LBC ), and initial conditions ( LIC ). The resulting optimisation problem is given by θ∗ = arg min θ∈Rm L(θ).
+
+The LPDE enforces the governing equations at collocation points throughout the spatio-temporal domain, whereas the 
+
+LBC and LIC impose soft constraints on the solution at the spatial boundaries and the initial time, respectively. This decomposition explicitly exposes the multi-objective nature of PINN optimisation, where gradients interaction induced by different physical constraints may interfere, leading to conflicting optimisation directions. 
+
+2 Conflicting Gradients in Multi-Task Deep Learning 
+
+In MTDL, model parameters are optimised concurrently with respect to multiple task-specific objectives. Consequently, gradients associated with different tasks may interfere during optimisation, reducing convergence efficiency and degrading overall performance. Gradient conflicts can generally be categorised into two complementary forms. 
+
+Angle-Based Gradient Conflict. Consider two task-specific gradients gi, g j ∈ Rd. An angle-based conflict arises when the two update directions are misaligned such that their inner product becomes negative. Equivalently, this corresponds to an angle larger than 90 ◦, as expressed in Equation (5). 2Gradient Surgery for PINNs 
+
+cos( ϕij ) = gi · gj
+
+∥gi∥∥ gj ∥ < 0. (5) From an optimisation perspective, such misalignment implies that the resulting aggregated update cannot simultaneously reduce both objectives along a shared descent direction. When gradients are weakly misaligned (e.g., close to orthogonal), progress is still partially inhibited, since the effective descent component is reduced. In the extreme case of opposing gradients, updates cancel, leading to vanishing progress for both tasks. 
+
+Magnitude-Based Gradient Conflict. Let gi, g j ∈ Rd be task gradients. A magnitude-based conflict refers to situations where one task gradient dominates the update due to a substantially larger norm. To quantify this imbalance, we use: 
+
+ψ(gi, g j ) = 2∥gi∥2∥gj ∥2
+
+∥gi∥22 + ∥gj ∥22
+
+. (6) Low values of ψ(gi, g j ) indicate a strong imbalance between tasks, which can bias parameter updates toward goals with larger gradient magnitudes. Unlike Angle-Based Gradient Conflicts, magnitude imbalance does not necessarily imply opposing objectives; instead, it reflects disparities in scaling induced by loss geometry, normalisation choices, or differing optimisation difficulty across tasks. 
+
+Gradient Surgery Methods. To mitigate gradient interference in MTDL, Gradient Surgery methods define heuristic procedures that modify task-specific gradients before aggregation. Formally, for K tasks, the layer l update is computed via an aggregation operator: ∇θ(l) L = s ∇θ(l) L1, . . . , ∇θ(l) LK
+
+, where s(·) defines the specific combination rule induced by a given gradient surgery strategy. 
+
+3 Related Work 
+
+Existing approaches to mitigating gradient conflicts fall into two main categories. 
+
+Loss Balancing. Loss balancing methods aim to appropriately weight the loss functions of the tasks involved in a joint optimisation setting. A range of strategies have been introduced to estimate suitable weights for each task. The 
+
+UW method [18] employs the homoscedastic uncertainty associated with each task to determine the corresponding loss weights. In contrast, UW-SO [19] uses the inverse of the task-specific losses, which demonstrate to be the analytically optimal UW scheme. Meanwhile, DWA [20] derives the task weights from the temporal rate of change of the individual task losses. GradNorm [21] adjusts the weights according to the magnitude of the corresponding gradients. Unlike these schemes, RLW [22] simply samples random weights. Furthermore, FAMO [23] learns the weights dynamically based on the effectiveness of the loss updates. Collectively, these techniques reduce gradient interference by preventing any task from dominating training. 
+
+Gradient Surgery. These methods accelerate MTDL convergence by reweighting task gradient components. They introduce heuristics that reduce conflicts and guide optimisation. Nash-MTL [24] uses the Nash Bargaining Solution to balance task gradients, while MGDA [25, 26] finds a direction that jointly decreases all objectives under multi-objective KKT [27] conditions. Although computationally demanding, these approaches are effective. Other methods more directly target gradient conflicts. GDOD [28] decomposes task gradients into shared and conflicting parts, updating only the shared ones. PCGrad [15] decorrelates gradients to reduce conflicts, and CAGrad [29] finds a conflict-averse update direction. GradDrop [30] enforces consistent gradient signs across tasks. IMTL [31] finds a path along which cosine similarities between task gradients stay stable, and Aligned-MTL [32] aligns the principal components of the gradient matrix. These methods often outperform the more complex Nash-MTL [24] while keeping computational costs low. FairGrad [33] frames gradient aggregation as an α-fair utility optimisation problem to balance task improvements and reach Pareto-stationary solutions. CONFIG [16] is tailored for PINNs and handles gradients by building a normalised task-gradient space and computing updates via a pseudoinverse-based projection. This enforces consistent alignment of loss components so all physics constraints contribute positively to the shared update, preventing any single term from dominating. SAM-GS [34] identifies magnitude-based gradient conflicts as a key source of sub-optimal optimisation in MTDL settings, and proposes a momentum-based optimisation to mitigate their effect by stabilising gradient magnitudes across tasks. 3Gradient Surgery for PINNs 
+
+4 Comparative Analysis Methodology 
+
+In this section, we present the metrics and benchmarks used to conduct the empirical analysis on gradient conflicts and the optimisation behaviour of surgery methods for PINNs. 
+
+Benchmarks. We evaluate the proposed methods on four canonical PDE benchmarks spanning increasing dimen-sionality and diverse physical regimes: the 1D unsteady Burgers’ equation, the 1D unsteady Schrödinger equation, the 2D Kovasznay flow (Navier–Stokes equations), and the 3D unsteady Beltrami flow (Navier–Stokes equations). Further details are provided in Appendix A. These problems capture non-linear convection, dispersive dynamics, and incompressible fluid behaviour, providing a diverse testbed for analysing optimisation dynamics in PINNs. 
+
+Gradient surgery methods. To study the effect of gradient interference on optimisation dynamics, we developed an experimental protocol to run, test and compare many representative MTDL optimisation methods. The selected methods include classical reweighing strategies such as DWA, UW-SO and FAMO, as well as a wide range of gradient manipulation techniques. Within gradient surgery methods, we consider PCGrad, GradDrop, IMTL, CAGrad, Aligned-MTL, CONFIG, Nash-MTL, and SAM-GS. 
+
+Performance Metrics We evaluate gradient surgery methods on the test set using the Mean Squared Error (MSE) at the initial condition (IC), boundary condition (BC), and PDE residual (PDE) for each governing equation, together with the overall test MSE. To provide an aggregate comparison across metrics, we report the Mean Rank (MR) and the relative improvement ( ∆M %) [24]. MR is computed by averaging the rank of each method across all evaluation metrics. ∆M % measures the relative improvement over a baseline method. Lower values of MR and ∆M % indicate better performance. 
+
+∆M % = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+mMTL ,k − mbase ,k 
+
+mbase ,k 
+
+· 100 (7) where mMTL ,k and mbase ,k denote the performance metrics of the MTDL optimisation method and the vanilla joint training method for task k, respectively. 
+
+5 Addressing Gradient Conflicts in PINNs 
+
+This section empirically studies gradient conflicts during PINN training and evaluates how different gradient surgery methods affect their structure and frequency. To quantify gradient conflicts, we compute two measures during training of vanilla PINNs using the Adam optimiser. The average cosine gradient angle (5), which captures task gradient alignment and serves as a proxy for interference, and the average gradient magnitude ratio (6), which measures scale imbalance across tasks. Figure 1 shows that both angle- and magnitude-based gradient conflicts align closely with the Fitting–Diffusion–Total Diffusion learning phases identified in [35], despite those phases originally being defined in terms of inter-batch gradient homogeneity. Here, the same phase structure is observed in the interaction of gradients arising from different loss terms within a single batch, transitioning from heterogeneous to progressively aligned and equilibrium-like regimes in total diffusion. These regimes correspond to distinct transitions in optimisation dynamics and are consistent with the evolution of gradient conflicts throughout training. During the Fitting phase, angle-based conflicts are negligible, whereas gradient magnitudes exhibit low similarity across batches. The subsequent Diffusion phase is characterised by increasing angular conflict alongside a rise in magnitude similarity. In the Total Diffusion phase, angular conflict decreases (indicating stronger directional alignment), but magnitude consistency deteriorates, while remaining higher than in the initial phase. These findings suggest the emergent phase structure is not solely due to batch variability. Motivated by this, we evaluate existing gradient surgery methods. Most approaches couple angular and magnitude conflicts, ignoring the three-phase learning structure and thereby potentially degrading optimisation performance [34]. SAM-GS is among the few methods that explicitly detects gradient conflicts [34], but it implicitly assumes co-occurrence of angular and magnitude conflicts. In regimes where magnitude imbalance dominates without strong angular disagreement, similarity-based updates may still be applied, which can be harmful in the ill-conditioned loss landscapes typical of PINNs [8]. 
+
+Physics-Aware Momentum Gradient Surgery. Building on these observations, we introduce Physics-Aware Mo-mentum Gradient Surgery (PAM-GS), a new gradient descent optimiser that explicitly detects angular and magnitude 4Gradient Surgery for PINNs 1D Burgers' Equation 1D Schrödinger Equation 2D Kovasznay Flow 3D Beltrami Flow cos (φ)  ψ
+
+> 1e+00 1e+01 1e+02 1e+03 1e+04 1e+01 1e+03 1e+05 1e+01 1e+03 1e+05 1e+01 1e+03 1e+05 1e+00 1e+01 1e+02 1e+03 1e+04 1e+01 1e+03 1e+05 1e+01 1e+03 1e+05 1e+01 1e+03 1e+05 −0.25 0.00 0.25 0.50 0.75 0.4 0.6 0.8 1.0 −1.0 −0.5 0.0 0.5 0.00 0.25 0.50 0.75 1.00 −0.2 −0.1 0.0 0.1 0.2 0.2 0.3 0.4 0.5 −0.4 −0.2 0.0 0.2 0.4 0.6 0.2 0.4 0.6 0.8
+
+log10 (Epochs )
+
+Figure 1: Evolution of gradient conflict metrics ( cos (ϕ),Ψ) during PINNs training with ADAM optimiser. The red line denotes the angle-based gradient conflict threshold, while the blue lines highlight the transitions between training phases, from Fitting phase to Diffusion and to Total Diffusion. 
+
+Algorithm 1 Physics-Aware Momentum Gradient Surgery 
+
+Hyperparameters: β1 ← 0.9, β 2 ← 0.99 , γ ← 0.1
+
+Initialise: θ0, m 0 ← 0, h 0 ← 0, t ← 0, ϵ ← 1e − 8
+
+repeat 
+
+t ← t + 1 
+
+gk ← ∇ θt Lk, ∀k
+
+Ψt = 1
+
+> K
+
+PKk=1 
+
+ 1
+
+> d2
+
+Pdi=1 
+
+Pdj=1 ψ(gk,i,t , g k,j,t )
+
+
+
+; Φt = 1
+
+> K
+
+PKk=1 
+
+ 1
+
+> d2
+
+Pdi=1 
+
+Pdj=1 ϕij,t 
+
+⃗m k,t ← β1⃗m k,t −1 + (1 − β1)gk, ∀k; ht ← β2ht−1 + (1 − β2)(1 − Ψt)2
+
+b⃗m k,t ←⃗ m k,t 
+
+> 1−βt
+> 1
+
+; bht ← ht
+
+> 1−βt
+> 2
+
+if Ψt < γ then 
+
+wk = ∥gk ∥2  
+
+> ∥gk∥2
+
+1k, ∀k
+
+else if cos (Φ t) < 0 then 
+
+wk = | b⃗m k,t |
+
+√bht+ϵ , ∀k
+
+else 
+
+wk = 1k
+
+end if Update: θt = θt−1 − α PKk=1 wk ⊙ gk
+
+until convergence conflicts and adjust the gradient accordingly. When angle-conflicts are detected the approach introduce a modulation of the overall gradient with a momentum based on the gradient-magnitude similarity while for magnitude-based conflicts task gradient equalisation is adopted. In Algorithm 1, let θt denote the model parameters and gk,t = ∇θ Lk(θt) the gradient of task k, k = 1 , . . . , K . At each iteration, PAM-GS computes the magnitude similarity Ψt (6) and the cosine similarity Φt (5) by aggregating pairwise similarities among the d task gradients per hidden layer, where d is the number of hidden units. By averaging over the K tasks the type of conflict can be detected. In particular, when 
+
+Ψt < γ a magnitude conflict is detected as gradient magnitudes are highly imbalanced. Under this condition, task gradients with larger norm would dominate the update, inducing a bias towards their objectives. Therefore, in order to mitigate this problem, PAM-GS equalises task gradients before their aggregation. When cos (Φ t) < 0, an angle-based conflict is detected, the task gradients partially cancel and the magnitude of their sum decreases. This would slow the training process, though it may not affect the overall gradient direction. PAM-GS addresses this regime through momentum-based reweighing, with mk,t tracking task-gradient dynamics and ht tracking (1 − Ψt)2. The coefficients 
+
+β1 and β2 control the corresponding exponential moving averages, and ˆ· denotes their bias-corrected estimates. The resulting weights exploit temporal consistency, with high magnitude similarity across recent updates permitting stronger momentum, whereas persistent dissimilarity increases regularisation and enforces more conservative updates. If neither conflict is detected, PAM-GS directly aggregates the task gradients, where 1d denotes the d-dimensional all-ones vector. 5Gradient Surgery for PINNs 
+
+Constraint-wise MSE Overall MSE GS method IC BC PDE Mean SD MR ∆M %
+
+Base Line 1.289 0.716 1.615 1.599 0.035 0 0FAMO 4993.946 1270.649 3719.593 3698.4728 1.087 11.0 > 1000 
+
+UW-SO 5071.515 1348.557 3797.431 3776.3081 66.17 12.0 > 1000 
+
+IMTL 18.171 850.346 583.555 581.59 681.7 10.0 > 1000 
+
+Aligned-MTL 1.314 0.758 1.706 1.689 0.081 8.5 4.73 SAM-GS 1.293 0.731 1.692 1.675 0.086 8.0 2.94 DWA 1.323 0.729 1.638 1.622 0.071 7.25 1.796 GraDrop 1.296 0.72 1.628 1.612 0.045 6.0 0.65 CONFIG 1.261 0.729 1.626 1.610 0.051 5.0 0.2 Nash-MTL 1.289 0.716 1.615 1.6 0.022 4.0 0PCGrad 1.229 0.717 1.607 1.598 0.063 2.5 -1.42 CAGrad 1.227 0.709 1.578 1.563 0.034 1.0 -2.62 
+
+PAM-GS 1.237 0.715 1.599 1.583 0.042 2.75 -1.82 
+
+Table 1: Performance comparison of gradient surgery methods on the 1D Burgers equation. All MSE values are reported in units of 10 −4.Solution u Solution v Magnitude h Overall MSE GS method BC IC PDE MSE BC IC PDE MSE BC IC PDE MSE Mean SD MR ∆M (%) Base Line 1.269 1.770 35.86 35.42 0.306 0.566 55.62 54.92 1.049 1.203 3.662 3.630 31.32 4.288 0 0UW-SO 39430 854.5 44340 44130 1042 1568 33490 33080 37390 1522 67410 66890 48030 114.3 111.6 > 1000 
+
+FAMO 33950 3409 38650 38470 15.70 35.13 30440 30050 33800 3049 59890 59440 42650 85.74 10.73 > 1000 
+
+IMTLg 433.9 377.8 47040 46450 566.6 299.3 36590 36130 40.16 416.8 6005 5934 29500 381.3 10.67 > 1000 
+
+Aligned-MTL 1.515 2.699 9350 9512 1.081 1.748 13710 13540 0.874 1.208 679.0 670.3 7907 112.8 8.8 > 1000 
+
+DWA 14.22 2.538 2045 2019 1.251 2.186 3049 3010 13.89 1.805 205.0 202.5 1744 538.4 8.200 > 1000 
+
+Nash-MTL 1.335 1.719 36.60 36.15 0.320 0.603 56.49 55.78 1.116 1.171 3.788 3.754 31.89 4.386 6.73 2.471 SAM-GS 0.647 1.468 18.54 18.31 19.20 0.425 38.18 37.70 0.595 1.485 2.237 2.219 19.41 4.960 5.00 -33.28 GradDrop 0.89 1.096 20.78 20.53 0.267 0.469 31.62 31.22 0.738 0.813 2.265 2.245 18.00 1.041 5.07 -35.60 CONFIG 0.810 1.309 9.216 9.111 0.181 0.411 17.38 17.16 0.75 1.288 1.053 1.051 9.107 2.092 4.13 -52.85 PCGrad 0.699 1.066 4.774 4.724 0.223 0.401 7.416 7.325 0.598 0.766 0.672 0.672 4.240 0.427 2.27 -65.95 CAGrad 1.423 1.799 4.471 4.434 0.134 0.285 6.804 6.719 1.121 1.224 0.741 0.747 3.967 0.18 2.53 -57.00 PAM-GS 0.473 1.009 5.772 5.706 0.041 0.102 11.1 11.00 0.214 0.398 0.693 0.687 5.799 1.360 2.27 -77.01 
+
+Table 2: Performance comparison of gradient surgery methods on the 1D Schrödinger equation. All MSE values are reported in units of 10 −5.The proposed algorithm therefore applies different update strategies according to the conflict type. It prioritises the detection of magnitude-based gradient conflicts, as these have been reported to substantially hinder training performance, particularly during the fitting phase [36]. While angle-based gradient conflicts can decelerate the convergence process [34]. 
+
+6 Performance Evaluation 
+
+This section evaluates gradient surgery methods in terms of predictive performance for PINNs. All methods, including the baselines, are independently trained and results averaged across five different random weight initialisations. Relevant parameters are selected via hyperparameter optimisation, as detailed in Appendix B. 
+
+1D Burgers’ equation (3 tasks) The results on the 1D Burgers’ equation (Table 1) highlight the limitations of loss balancing methods, particularly more recent dynamic variants. The results shows that PAM-GS improves over SAM-GS and is competitive with the best results achieved by CAgrad for this benchmark. Although CAGrad achieves a lower MSE, the performance of CAGrad and PAM-GS is comparable with the difference falling within the observed variability (SD). 
+
+Pressure p Velocity u Velocity v Velocity w Overall MSE GS method MSE MSE MSE MSE Mean SD MR ∆M (%) Base Line 1.946e+01 3.211 3.571 2.897 7.284 1.505 0 0UW-SO 602200 95830 107200 98950 226000 8734 10.90 > 1000 
+
+FAMO 513200 85500 87890 86990 193400 25.08 10.10 > 1000 
+
+DWA 32.48 6.318 7.212 6.321 13.08 2.953 9.75 92.50 IMTLg 33.46 3.823 3.524 4.218 11.26 0.135 8.1 36.71 Nash-MTL 20.67 2.942 3.168 2.967 7.436 0.136 6.2 -2.491 GradDrop 18.31 3.787 4.097 3.074 7.316 0.245 5.75 4.811 PCGrad 16.45 3.563 4.059 4.080 7.038 0.116 6.5 9. CONFIG 18.56 2.477 3.951 2.209 6.799 0.435 5.2 -6.791 CAGrad 19.04 2.510 2.265 2.624 6.609 0.052 4.0 -16.89 SAM-GS 16.64 2.016 2.397 2.980 6.009 0.156 3.5 -18.36 Aligned-MTL 11.76 2.896 3.360 3.409 5.355 0.078 3.15 -11.79 PAM-GS 14.14 1.602 1.762 1.273 4.693 0.073 1.200 -46.13 
+
+Table 3: Performance comparison of gradient surgery methods on the 3D Beltrami flow. All MSE values are expressed in units of 10 −5.6Gradient Surgery for PINNs                                                                                     
+
+> Constraint-wise MSE Overall MSE GS method BC PDE Mean SD MR ∆M%
+> Base Line 7.347 5.041 5.044 3.911 00UW-SO 20530000 4754000 4770000 1857 11.0 >1000
+> FAMO 5686000 2407000 2410000 1978 10.0 >1000
+> CONFIG 20.41 20.23 20.23 3.77 10.0 2.62 SAM-GS 1.452 3.764 3.762 0.345 7.3 -15.51 Nash-MTL 8.193 2.501 2.507 0.401 7.7 -29.73 CAGrad 1.153 2.460 2.459 0.105 6.3 -62.25 IMTLg 4.975 2.244 2.247 0.145 6.3 -47.74 PCGrad 2.975 1.938 1.939 0.114 5.3 -60.88 DWA 2.142 1.595 1.595 0.069 4.3 -57.80 GradDrop 8.275 1.333 1.340 0.127 4.7 -44.78 Aligned-MTL 0.719 0.521 0.522 0.078 2.0 -89.84 PAM-GS 0.199 0.323 0.323 0.062 1.0 -94.83
+
+Table 4: Performance comparison of gradient surgery methods on the 2D Kovasznay flow. All MSE values are reported in units of 10 −7.cos (φ) ψ cos (φ) ψ 
+
+> 0.0e+00 2.5e+04 5.0e+04 7.5e+04 1.0e+05 0.0e+00 2.5e+04 5.0e+04 7.5e+04 1.0e+05 0.0e+00 2.5e+04 5.0e+04 7.5e+04 1.0e+05 0.0e+00 2.5e+04 5.0e+04 7.5e+04 1.0e+05 0.2 0.4 0.6 0.8 −0.5 0.0 0.5 0.2 0.4 0.6 0.8 −0.6 −0.3 0.0 0.3 PAM−GS SAM−GS Epochs Ablation ( γ)0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 BaseLine
+
+Figure 2: Ablation study of the parameter γ for SAM-GS and PAM-GS gradient surgery methods during training on the 2D Kovasznay flow. Curves correspond to generalised additive model fits; shaded regions indicate 95% confidence intervals. 
+
+1D Schrödinger equation (3 tasks) The 1D Schrödinger equation considers a spatio-temporal problem defined over 
+
+(x, t ) ∈ R2. The PINN model predicts three scalar fields: the real component u(x, t ), the imaginary component v(x, t ),and the solution magnitude h(x, t ). Results are reported separately for each component (Table 2), reflecting both phase and amplitude accuracy of the learned solution. Although PAM-GS ranks third in overall MSE performance, it achieves the best aggregate relative improvement ( ∆M % = −77 .01 ) compared with ( ∆M % = −57 .00 ) for the lowest overall MSE method, demonstrating better performance across the full set of metrics. 
+
+3D Beltrami flow (3 tasks) The 3D Beltrami flow considers a spatio-temporal PINN defined over a 3D spatial domain with three velocity components (u, v, w ) and a pressure field p. The model predicts four scalar fields. Results in Table 3 are reported using the MSE of each field variable, together with its decomposition across the IC, BC, and PDE residual terms. For the sake of completeness, the full results are provided in Appendix C. PAM-GS consistently achieves the strongest performance across most metrics and constraint categories in this setting, as reflected by its MR values approaching 1. 
+
+2D Kovasznay flow (2 tasks) The results on the 2D Kovasznay flow (Table 4) are reported in terms of MSE, including contributions from boundary conditions and the PDE residual. PAM-GS consistently achieves the best overall performance across constraints, demonstrating improved accuracy in both components, as reflected by its MR of 1. For this PDE benchmark, in Figure 2 we provide an analysis of the gradient conflicts with a comparison between SAM-GS and PAM-GS at varying parameter γ. In SAM-GS low γ values substantially degrade training dynamics due to excessive gradient modification under the implicit assumption of angular conflict. In PAM-GS, the surgery interventions are properly adapted to the PINNs training phases, leading to a consistent and stable improvement compared to SAM-GS. We analyse the optimisation dynamics on the 2D Kovasznay flow via loss landscape visualisation. Following [37], we project optimisation trajectories and the final trained solution onto a 2D PCA subspace of the parameter space, and construct a loss surface by evaluating the loss over a regular grid in this projected space. The resulting contour plot is obtained by interpolating iso-loss level sets over the grid, providing a qualitative view of how optimisers traverse the underlying objective geometry. Figure 3 shows that different optimisers exhibit distinct trajectories. The differences reflect varying behaviour in flat regions, sharp valleys, and high-curvature areas of the loss landscape. PAM-GS yields the shortest trajectory. 7Gradient Surgery for PINNs 0.5 0.0 0.5 0.5         
+
+> 0.0 0.5 10
+> 5
+> 05
+> Base Line
+> 0.5 0.0 0.5 0.5
+> 0.0 0.5 10
+> 5
+> 05
+> Aligned-MTL
+> 0.5 0.0 0.5 0.5
+> 0.0 0.5 10
+> 5
+> 05
+> Nash-MTL
+> 0.5 0.0 0.5 0.5
+> 0.0 0.5 10
+> 5
+> 05
+> CONFIG
+> 0.5 0.0 0.5 0.5
+> 0.0 0.5 10
+> 5
+> 05
+> PAM-GS
+
+Figure 3: Loss landscape of the 2D Kovasznay flow across optimisers. Panels show log 10 training loss over a 2D PCA subspace with iso-contours and learning trajectories (blue) on the loss 3D surface and 2D projection. 
+
+7 Discussion 
+
+Considering the overall MSE, PAM-GS performs particularly well on Kovasznay and Beltrami flows and remains among the top three methods on Burgers and Schrödinger. Among the strongest baselines, CAGrad performs best on Burgers and Schrödinger but ranks lower on Kovasznay (top-7) and Beltrami (top-4), whereas Aligned-MTL exhibits the opposite trend. In contrast, PAM-GS remains consistently competitive across all four benchmarks, suggesting that its PINN-specific, conflict-aware design is less sensitive to problem-dependent conflict patterns. Given the multi-objective nature of PINNs, MSE alone does not capture task balance. MR and ∆M % complement MSE by taking into account the relative performance across tasks. Under these metrics, PAM-GS achieves the best results on three of four benchmarks and remains competitive (top-2) on Burgers. It also consistently outperforms SAM-GS, supporting the benefit of explicit conflict detection. 
+
+8 Conclusion 
+
+This work investigated the role of gradient conflicts in PINNs and their impact on optimisation dynamics. Through an empirical analysis of multiple PINNs benchmarks, we showed that angle-based and magnitude-based conflicts exhibit an alternating pattern throughout optimisation, with the manifestation of one conflict type coinciding with a reduced occurrence of the other. These observations suggest that treating both phenomena similarly, as done by many existing gradient surgery methods, is suboptimal for PINNs. Motivated by these findings, we proposed PAM-GS, a gradient surgery method that explicitly accounts for the different nature of gradient conflicts encountered during PINN optimisation. Overall, our results highlight the importance of characterising gradient conflicts throughout training rather than treating them as a static phenomenon. By selecting its behaviour according to the detection of specify gradient conflict types, PAM-GS leads to a more effective and balanced optimisation over all tasks. 
+
+References 
+
+[1] Christian Beck, Martin Hutzenthaler, Arnulf Jentzen, and Benno Kuckuck. An overview on deep learning-based approximation methods for partial differential equations. Discrete and Continuous Dynamical Systems ,28(6):3697–3746, 2023. [2] Jiequn Han, Arnulf Jentzen, and Weinan E. Solving high-dimensional partial differential equations using deep learning. Proceedings of the National Academy of Sciences , 115(34):8505–8510, 2018. [3] L. Lu Chen, G. E. Karniadakis, and L. Dal Negro. Physics-informed neural networks for inverse problems in nano-optics and metamaterials. Optics express , 28(8):11618–11633, 2020. [4] Nicholas Geneva and Nicholas Zabaras. Modeling the dynamics of pde systems with physics-constrained deep auto-regressive networks. Journal of Computational Physics , 403:109056, 2020. [5] Xiaowei Jin, Shengze Cai, Hui Li, and George Em Karniadakis. Nsfnets (navier-stokes flow nets): Physics-informed neural networks for the incompressible navier-stokes equations. Journal of Computational Physics ,426:109951, 2021. [6] M. Raissi, P. Perdikaris, and G.E. Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics , 378:686–707, 2019. [7] Salvatore Cuomo, Vincenzo Schiano Di Cola, Fabio Giampaolo, Gianluigi Rozza, Maziar Raissi, and Francesco Piccialli. Scientific machine learning through physics–informed neural networks: Where we are and what’s next. 
+
+Journal of Scientific Computing , 92(3), 2022. 8Gradient Surgery for PINNs [8] Aditi Krishnapriyan, Amir Gholami, Shandian Zhe, Robert Kirby, and Michael Mahoney. Characterizing possible failure modes in physics-informed neural networks. In Advances in Neural Information Processing Systems , pages 26548–26560, 2021. [9] Mario Lino, Stathi Fotiadis, Anil A. Bharath, and Chris D Cantwell. Current and emerging deep-learning methods for the simulation of fluid dynamics. Proceedings of the Royal Society A: Mathematical, Physical and Engineering Sciences , 479(2275):20230058, 2023. [10] Sifan Wang, Xinling Yu, and Paris Perdikaris. When and why pinns fail to train: A neural tangent kernel perspective. Journal of Computational Physics , 449:110768, 2022. [11] Sifan Wang, Yujun Teng, and Paris Perdikaris. Understanding and mitigating gradient flow pathologies in physics-informed neural networks. SIAM Journal on Scientific Computing , 43(5):A3055–A3081, 2021. [12] Jian Cheng Wong, Chin Chun Ooi, Abhishek Gupta, and Yew-Soon Ong. Learning in sinusoidal spaces with physics-informed neural networks. IEEE Transactions on Artificial Intelligence , 5(3):985–1000, 2024. [13] Levi D. McClenny and Ulisses M. Braga-Neto. Self-adaptive physics-informed neural networks. Journal of Computational Physics , 474:111722, 2023. [14] Jun Yu et al. Unleashing the power of multi-task learning: A comprehensive survey spanning traditional, deep, and pretrained foundation model eras. Technical report, 2024. ( https://arxiv.org/abs/2404.18961 ). [15] Tianhe Yu, Saurabh Kumar, Abhishek Gupta, Sergey Levine, Karol Hausman, and Chelsea Finn. Gradient surgery for multi-task learning. In Advances in Neural Information Processing Systems , pages 5824–5836, 2020. [16] Qiang Liu, Mengyu Chu, and Nils Thuerey. ConFIG: Towards conflict-free training of physics informed neural networks. In International Conference on Learning Representations , 2025. [17] Arka Daw, Jie Bu, Sifan Wang, Paris Perdikaris, and Anuj Karpatne. Mitigating propagation failures in physics-informed neural networks using retain-resample-release (R3) sampling. In International Conference on Machine Learning , pages 7264–7302, 2023. [18] Alex Kendall, Yarin Gal, and Roberto Cipolla. Multi-task learning using uncertainty to weigh losses for scene geometry and semantics. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 7482–7491, 2018. [19] Lukas Kirchdorfer, Cathrin Elich, Simon Kutsche, Heiner Stuckenschmidt, Lukas Schott, and Jan M. Köhler. Analytical uncertainty-based loss weighting in multi-task learning. In Pattern Recognition , pages 344–361, 2025. [20] Shikun Liu, Edward Johns, and Andrew J. Davison. End-to-end multi-task learning with attention. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 1871–1880, 2019. [21] Zhao Chen, Vijay Badrinarayanan, Chen-Yu Lee, and Andrew Rabinovich. Gradnorm: Gradient normalization for adaptive loss balancing in deep multitask networks. In International Conference on Machine Learning , pages 794–803, 2018. [22] Baijiong Lin, Feiyang Ye, Yu Zhang, and Ivor W. Tsang. Reasonable effectiveness of random weighting: A litmus test for multi-task learning. Transactions on Machine Learning Research , pages 2835–8856, 2022. [23] Bo Liu, Yihao Feng, Peter Stone, and Qiang Liu. Famo: Fast adaptive multitask optimization. In Advances in Neural Information Processing Systems , pages 57226–57243, 2023. [24] Aviv Navon, Aviv Shamsian, Idan Achituve, Haggai Maron, Kenji Kawaguchi, Gal Chechik, and Ethan Fetaya. Multi-task learning as a bargaining game. In International Conference on Machine Learning , pages 16428–16446, 2022. [25] Jean-Antoine Désidéri. Multiple-gradient descent algorithm (mgda) for multiobjective optimization. Comptes Rendus Mathematique , 350(5):313–318, 2012. [26] Daxiang Dong, Hua Wu, Wei He, Dianhai Yu, and Haifeng Wang. Multi-task learning for multiple language translation. In Annual Meeting of the Association for Computational Linguistics , pages 1723–1732, 2015. [27] Harold W. Kuhn and Albert W. Tucker. Nonlinear programming. Berkeley Symposium on Mathematical Statistics and Probability , 1951. [28] Xin Dong, Ruize Wu, Chao Xiong, Hai Li, Lei Cheng, Yong He, Shiyou Qian, Jian Cao, and Linjian Mo. Gdod: Effective gradient descent using orthogonal decomposition for multi-task learning. In ACM International Conference on Information & Knowledge Management , pages 386–395, 2022. [29] Bo Liu, Xingchao Liu, Xiaojie Jin, Peter Stone, and Qiang Liu. Conflict-averse gradient descent for multi-task learning. In Advances in Neural Information Processing Systems , pages 18878–18890, 2021. 9Gradient Surgery for PINNs [30] Zhao Chen, Jiquan Ngiam, Yanping Huang, Thang Luong, Henrik Kretzschmar, Yuning Chai, and Dragomir Anguelov. Just pick a sign: Optimizing deep multitask models with gradient sign dropout. In Advances in Neural Information Processing Systems , pages 2039–2050, 2020. [31] Liyang Liu, Yi Li, Zhanghui Kuang, Jing-Hao Xue, Yimin Chen, Wenming Yang, Qingmin Liao, and Wayne Zhang. Towards impartial multi-task learning. In International Conference on Learning Representations , 2021. [32] Dmitry Senushkin, Nikolay Patakin, Arseny Kuznetsov, and Anton Konushin. Independent component alignment for multi-task learning. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 20083– 20093, 2023. [33] Hao Ban and Kaiyi Ji. Fair resource allocation in multi-task learning. In International Conference on Machine Learning , pages 2715–2731, 2024. [34] Thomas Borsani, Andrea Rosani, Giuseppe Nicosia, and Giuseppe Di Fatta. Gradient similarity surgery in multi-task deep learning. In Machine Learning and Knowledge Discovery in Databases. Research Track and Applied Data Science Track , 2026. [35] Sokratis J. Anagnostopoulos, Juan Diego Toscano, Nikolaos Stergiopulos, and George Em Karniadakis. Learning in pinns: Phase transition, diffusion equilibrium, and generalization. Neural Networks , 193:107983, 2026. [36] Stanislaw Jastrzebski, Maciej Szymczak, Stanislav Fort, Devansh Arpit, Jacek Tabor, Kyunghyun Cho, and Krzysztof Geras. The break-even point on optimization trajectories of deep neural networks. In International Conference on Learning Representations , 2020. [37] Hao Li, Zheng Xu, Gavin Taylor, Christoph Studer, and Tom Goldstein. Visualizing the loss landscape of neural nets. In Advances in Neural Information Processing Systems , pages 6389–6399, 2018. [38] Philipp Holl, Nils Thuerey, and Vladlen Koltun. Learning to control pdes with differentiable physics. In 
+
+International Conference on Learning Representations , 2020. [39] Chandrajit Bajaj, Luke McLennan, Timothy Andeen, and Avik Roy. Recipes for when physics fails: recovering robust learning of physics informed neural networks. Machine Learning: Science and Technology , 4(1):015013, 2023. [40] Ian Dewancker, Michael McCourt, and Scott Clark. Bayesian optimization primer, 2016. 
+
+A Partial Differential Equation Benchmarks 
+
+1D Burgers Equation. The Burgers equation is a nonlinear model frequently used to study the formation and propagation of shock waves. For a scalar field u(x, t ), the governing equation in one spatial dimension is 
+
+∂u ∂t + u ∂u ∂x = ν ∂2u∂x 2 , (8) where the viscosity coefficient is fixed at ν = 0 .01 /π . The computational domain is defined by t ∈ [0 , 1] and 
+
+x ∈ [−1, 1] , together with u(x, 0) = − sin( πx ) and u(−1, t ) = u(1 , t ) = 0 .For this configuration, no closed-form analytical solution is available. Therefore, numerical solutions generated using 
+
+PhiFlow [38] are adopted as reference data for assessing the performance of PINNs. 
+
+1D Schrödinger Equation. The nonlinear Schrödinger equation describes the evolution of a complex-valued field 
+
+h(x, t ) = u(x, t ) + iv (x, t ) and is given by 
+
+i ∂h ∂t + 12
+
+∂2h∂x 2 + |h|2h = 0 , (9) on the domain x ∈ [−5, 5] and t ∈ [0 , π/ 2] . Periodic boundary conditions are imposed, while the initial state is 
+
+h(x, 0) = 2 sech( x). Since an analytical solution is not available under these conditions, numerical results obtained from DeepXDE [39] are employed as the benchmark solution for evaluating the trained PINNs. 
+
+2D Kovasznay Flow and 3D Beltrami Flow. Both Kovasznay and Beltrami flows represent exact solutions of the incompressible Navier–Stokes equations, 
+
+∂u
+
+∂t + ( u · ∇ )u = −∇ p + 1
+
+Re ∇2u, ∇ · u = 0 , (10) where u denotes the velocity field, p the pressure, and Re the Reynolds number. 10 Gradient Surgery for PINNs 
+
+Kovasznay Flow. Kovasznay flow corresponds to a steady-state two-dimensional solution, implying ∂u/∂t = 0 . The exact velocity field u = [ ux, u y ] and pressure p are 
+
+(ux(x, y ) = 1 − eλx cos(2 πy ), uy (x, y ) = λ
+
+2π eλx sin(2 πy ), p(x, y ) = 12
+
+ 1 − e2λx  ,
+
+with λ = 12ν −
+
+q 14ν2 + 4 π2, ν = 1 
+
+> Re
+
+= 140 , and (x, y ) ∈ [−0.5, 1] × [−0.5, 1.5] .
+
+Beltrami Flow. Beltrami flow is an unsteady three-dimensional solution of the Navier–Stokes equations. The velocity components u(x, y, z, t ) = [ ux, u y , u z ] and pressure field p(x, y, z, t ) are expressed as: 
+
+ux = −a
+
+h
+
+eax sin( ay + dz ) + eaz cos( ax + dy )
+
+i
+
+e−d2t,uy = −a
+
+h
+
+eay sin( az + dx ) + eax cos( ay + dz )
+
+i
+
+e−d2t,uz = −a
+
+h
+
+eaz sin( ax + dy ) + eay cos( az + dx )
+
+i
+
+e−d2t,p = − a2
+
+2
+
+h
+
+e2ax + e2ay + e2az + 2 ea(y+z) sin( ax + dy ) cos( az + dx )+ 2 ea(z+x) sin( ay + dz ) cos( ax + dy ) + 2 ea(x+y) sin( az + dx ) cos( ay + dz )
+
+i
+
+e−2d2t.
+
+For the present study, a = d = 1 , corresponding to Re = 1 . The computational domain is x, y, z ∈ [−1, 1] , and 
+
+t ∈ [0 , 1] . Dirichlet boundary conditions are prescribed for both Kovasznay and Beltrami flows using values obtained from the analytical solutions. In addition, the initial condition for the Beltrami flow is also specified directly from the exact solution. 
+
+B Training Details 
+
+We follow the standard PINN training protocol of [16]. Each model is a fully connected network with four hidden layers of 50 neurons, tanh activations, and Xavier initialisation. Training points are generated via Latin hypercube sampling and resampled at each iteration. For the extended-training setting, we use a fixed learning rate of 10 −4;otherwise, we use cosine annealing from 10 −3 to 10 −4 with a 100-epoch warm-up. All methods are optimised with Adam ( β1 = 0 .9, β2 = 0 .999 , ϵ = 10 −8). The number of collocation points for interior, boundary, and initial-condition points (nN , n B , n I ) are (10 ,000 , 250 , 250) for 1D Burgers, (20 ,000 , 500 , 500) for 1D Schrödinger, (20 ,000 , 1000 , −)
+
+for 2D Kovasznay, and (25 ,000 , 5000 , 5000) for 3D Beltrami flow. The corresponding training budgets are 3 × 10 4
+
+epochs for 1D Burgers and 10 5 epochs for all other problems. Hyperparameters are selected via Bayesian optimization. [40]. We find that the optimal hyperparameters are consistent across benchmarks for CAGrad ( c = 0 .4), FAMO (γ = 10 −4, lr w = 0 .025 ), DWA ( T = 2 ), and SAM-GS ( γ = 0 .9, β1 = 0 .9, β2 = 0 .99 ). PAM-GS similarly uses fixed β1 = 0 .9 and β2 = 0 .99 , with only γ varying across benchmarks: 0.6, 0.4, 0.4, and 0.7 for 1D Burgers, 1D Schrödinger, 2D Kovasznay, and 3D Beltrami, respectively. 
+
+Runtime and Memory Analysis. We measure runtime and memory overhead for three independent training of 2D Kovasznay on an NVIDIA H200 GPU. In Table B, we report the mean memory usage (in MB) and training time (in seconds) over 1,000 training steps. Overall, no substantial differences in computational or memory requirements are observed across the considered methods. Although PAM-GS maintains additional momentum statistics, its memory and computational requirements remain comparable to those of the other methods. 
+
+C Comprehensive Results for the 3D Beltrami Flow 
+
+11 Gradient Surgery for PINNs 
+
+Method Memory (MB) Time (s) DWA 884.25 18 .375 ± 0.187 
+
+FAMO 884.26 18 .616 ± 0.023 
+
+ADMA 884.25 18 .971 ± 0.961 
+
+GradDrop 1605.13 23 .588 ± 0.917 
+
+SAM-GS 1605.33 24 .220 ± 0.277 
+
+PAM-GS 1605.33 24 .281 ± 0.085 
+
+ConFIG 1604.90 24 .347 ± 0.379 
+
+UW-SO 1605.13 24 .371 ± 0.032 
+
+Aligned-MTL 1605.17 24 .581 ± 0.630 
+
+PCGrad 1604.91 25 .247 ± 1.115 
+
+CAGrad 1605.13 25 .749 ± 0.911 
+
+IMTLg 884.25 28 .142 ± 0.173 
+
+Nash-MTL 884.25 28 .202 ± 0.588 
+
+Table 5: Table B: 
+
+Peak GPU memory and training time of the evaluated methods. 
+
+Pressure p Velocity u Velocity v Velocity w
+
+Method BC IC Interior MSE BC IC Interior MSE BC IC Interior MSE BC IC Interior MSE Total MSE MR ∆M (%) Base Line 2.214e+01 1.865e+01 1.565e+01 1.946e+01 4.275 2.262 2.116 3.211 4.802 2.915 2.014 3.571 4.085 2.292 1.376 2.897 7.284 NA 0.000 UW-SO 318400 2034000 124700 602200 79230 211600 46930 95830 90850 230700 52900 107200 83540 218200 45930 98950 226000 10.90 > 1000 
+
+FAMO 341000 1207000 337600 513200 76920 181600 36550 85500 80500 187200 34910 87890 79330 185300 35110 86990 193400 10.10 > 1000 
+
+DWA 35.96 29.28 28.96 32.48 8.753 5.761 2.753 6.318 9.972 7.138 2.806 7.212 8.827 5.244 2.982 6.321 13.08 9.75 92.50 IMTLg 34.22 18.64 41.91 33.46 5.462 1.806 2.496 3.823 4.524 1.833 3.015 3.524 6.112 2.202 2.480 4.218 11.26 8.1 36.71 Nash-MTL 23.08 17.01 19.17 20.67 3.910 2.170 1.883 2.942 4.336 2.802 1.523 3.168 4.299 2.374 1.205 2.967 7.436 6.2 -2.491 GradDrop 21.47 16.19 14.59 18.31 5.421 2.236 2.163 3.787 5.620 2.009 3.005 4.097 4.302 2.367 1.554 3.074 7.316 5.75 4.811 PCGrad 17.93 15.39 14.75 16.45 4.908 2.517 2.078 3.563 5.497 2.617 2.681 4.059 5.766 2.517 2.381 4.080 7.038 6.5 9. CONFIG 21.51 16.82 14.94 18.56 3.077 1.314 2.268 2.477 4.844 1.569 4.069 3.951 2.843 1.571 1.602 2.209 6.799 5.2 -6.791 CAGrad 20.95 13.38 19.66 19.04 3.180 1.541 2.061 2.510 3.182 1.381 1.363 2.265 3.886 1.652 1.222 2.624 6.609 4.0 -16.89 Aligned-MTL 12.77 8.946 11.96 11.76 3.827 1.377 2.387 2.896 4.675 1.510 2.448 3.360 4.424 1.859 2.783 3.409 5.355 3.15 -11.79 SAM-GS 20.67 13.11 12.46 16.64 2.742 1.657 1.078 2.016 3.064 1.426 1.954 2.397 3.864 1.513 2.512 2.980 6.009 3.5 -18.36 PAM-GS 18.18 8.987 10.97 14.14 2.351 0.823 0.900 1.602 2.536 0.798 1.144 1.762 1.794 0.818 0.728 1.273 4.693 1.200 -46.13 
+
+Table 6: Performance comparison of GS methods on the 3D Beltrami flow. All MSE values are reported in units of 
+
+10 −5. Lower values indicate better performance. 12

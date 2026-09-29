@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-27</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-28</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 6 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 10 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>6</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-27 21:52:26 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-29 00:06:47 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精选6篇：精读2篇、速读4篇，主线聚焦星子形成与婴儿行星质量约束。</p>
-<p>最值得看的是9.0分的《压力 bumps 中毫米级颗粒重新审视星子形成》，以及8.0分用 HARPS-N 长期视向速度监测约束 V1298 Tau 婴儿行星质量的研究。</p>
-<p>普通读者可先读这两篇精读，再按兴趣速览径向速度探测技术、低信噪比凌星后验降维等速读方向。</p>
+<p>今日精读6篇、速读4篇，重点关注系外岩石行星GJ 357 b异常炽热昼面与两套新暖木星系统。最值得看的是两颗9分论文揭示的行星大气与轨道多样性格局。普通读者可先读GJ 357 b这篇，感受系外行星“昼夜温差”的极端世界。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">6 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Revisiting planetesimal formation from mm-sized grains in pressure bumps">Revisiting planetesimal formation from mm-sized grains in pressure bumps</span></li><li><span class="dpr-home-dashboard-paper-title" title="The GAPS programme at TNG LXXIX. New mass constraints for the infant planets in the V1298 Tau system through a long-term radial velocity monitoring with HARPS-N">The GAPS programme at TNG LXXIX. New mass constraints for the infant planets in the V1298 Tau system through a long-term radial velocity monitoring with HARPS-N</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Hot Rocks Survey VI: An anomalously hot dayside for the rocky planet GJ 357 b">Hot Rocks Survey VI: An anomalously hot dayside for the rocky planet GJ 357 b</span></li><li><span class="dpr-home-dashboard-paper-title" title="TS23/McDonald and FIES/NOT strike again. Two new warm Jupiter systems and outer companions in a third">TS23/McDonald and FIES/NOT strike again. Two new warm Jupiter systems and outer companions in a third</span></li><li><span class="dpr-home-dashboard-paper-title" title="A Systematic Approach To Chaos In PDEs And Their Semidiscretizations">A Systematic Approach To Chaos In PDEs And Their Semidiscretizations</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>4</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -89,9 +87,9 @@
     <strong class="dpr-home-dashboard-count">4 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Marginalized planet-to-star radius ratio posteriors for low-SNR transiting planets via dimensionality reduction">Marginalized planet-to-star radius ratio posteriors for low-SNR transiting planets via dimensionality reduction</span></li><li><span class="dpr-home-dashboard-paper-title" title="Exoplanet Detection Techniques: Radial Velocity">Exoplanet Detection Techniques: Radial Velocity</span></li><li><span class="dpr-home-dashboard-paper-title" title="Mechanism-Separated Closed-Form Transition Modeling via Field Inversion and Symbolic Regression">Mechanism-Separated Closed-Form Transition Modeling via Field Inversion and Symbolic Regression</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Mechanism-Aware Ensemble Conditioning for Data-Limited Emulation of Extreme Events">Mechanism-Aware Ensemble Conditioning for Data-Limited Emulation of Extreme Events</span></li><li><span class="dpr-home-dashboard-paper-title" title="Deep-Learning Solvers and Surrogates for Infinity and p-Laplace Problems">Deep-Learning Solvers and Surrogates for Infinity and p-Laplace Problems</span></li><li><span class="dpr-home-dashboard-paper-title" title="Equation discovery with Bayesian tree-adjoining grammars">Equation discovery with Bayesian tree-adjoining grammars</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>3</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>3</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 </div>
 

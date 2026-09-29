@@ -1,0 +1,1081 @@
+Title: Equation discovery with Bayesian tree-adjoining grammars
+
+URL Source: https://arxiv.org/pdf/2609.31368v1
+
+Published Time: Mon, 28 Sep 2026 01:31:28 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# EQUATION DISCOVERY WITH BAYESIAN TREE -ADJOINING GRAMMARS 
+
+Christopher A. Lindley*, Nikolaos Dervilis and Keith Worden 
+
+Dynamics Research Group University of Sheffield Mappin St, Sheffield, UK 
+
+*c.a.lindley@sheffield.ac.uk 
+
+# ABSTRACT 
+
+Tree-Adjoining Grammars (TAGs) have recently been introduced to Nonlinear System Identification (NLSI) as a means of encoding an entire model class as a finite set of grammatical rules, from which candidate models are assembled as trees. Existing TAG-based identifiers rely on evolutionary optimisation and return point estimates of the model structure. This paper instead proposes the TAG framework within a Bayesian setting. A generative prior is defined over tree structures and their parameters, and a Reversible-Jump MCMC sampler with structure-preserving tree moves is used to infer the joint posterior over model structure, parameters and predictions. Two training objectives are considered; that is, a one-step-ahead objective with conjugate parameter proposals, and a simulation-based objective handled by likelihood-free inference. The approach is validated on a simulated polynomial NARX system, the Silverbox benchmark, and wave-loading data from the Christchurch Bay Tower, where embedding Morison’s equation as a fixed initial tree yields a grey-box model that outperforms the physics-driven baseline. The results demonstrate that Bayesian TAGs are well suited to quantifying uncertainty in equation discovery for dynamical systems and to fitting physics-informed models. 
+
+Keywords Nonlinear System Identification (NLSI) · Bayesian Inference · Tree-Adjoining Grammar (TAG) ·
+
+Reversible-Jump MCMC · Grey-Box Models 
+
+# 1 Introduction 
+
+It is perhaps safe to argue that a primary goal in structural dynamics is to develop models from which predictions are consistent with past and future observations. The proof of this statement is evident in the vast and ever-growing literature surrounding this subject. The question of interest here emerges from scrutinising what is meant by making “better” predictions. Concretely, model predictions can be said to be the result of a mathematical construct made to accurately represent a system of interest. Although this definition is given somewhat informally, it is enough to set the stage regarding the issue of model fidelity; that is, how well a model represents reality. What should be acknowledged about modelling is that the outcome is from an approximation of the system itself. The discrepancy between model and reality exists because several factors inherent to the system cannot be seamlessly incorporated into the corresponding model. More precisely, these factors tend to involve random effects or phenomena that are too complex to analyse and/or compute, and are often encompassed as noise in the predictions as a result. It then becomes clear that by minimising sources of noise one can improve the fidelity of a model and, therefore, yield better predictions. However, in practice, the solution is not nearly as straightforward as the manner in which the problem has been posed. While several means to address the issue have been proposed in all areas of science and engineering, the concern in this work is narrowed down to structural system identification in the presence of nonlinearities. In a broader context, the term system identification is sometimes used to refer to the development of models from input and output measurements [1]. The presence of nonlinearities can further complicate identification, given that the principle of superposition does arXiv:2609.31368v1 [stat.ML] 25 Sep 2026 Equation discovery with Bayesian tree-adjoining grammars not generally apply to nonlinear systems [2]. This caveat asserts that the functional that maps the input to the output is not clearly defined, and one is required to detect and determine the type of nonlinearity before attempting to identify the system appropriately. Such an unknown could be considered, for example, a source of epistemic uncertainty that may hinder fidelity if identified incorrectly. When the type of nonlinearity is known, the overall problem can then be broken down into two essential components: 
+
+structure detection 1, and parameter estimation . If unknown, however, the type of nonlinearity may be assumed, but this must be done warily. From the point of view of statistics and machine learning, these components are constituents of the model selection problem , and since system identification is primarily a data-driven approach, both perspectives can be viewed equivalently regarding model development. By posing the problem in a statistical framework, one gains access to the myriad of powerful methods associated with machine learning for structure detection and parameter estimation. While no one method stands out as all-encompassing, two prevalent groups of algorithms have emerged offering the prospect of a general framework; namely, Evolutionary Optimisation and Bayesian Inference . Within the group of algorithms about the former, a promising development in Nonlinear System Identification (NLSI) has been the introduction of Tree-Adjoining Grammars (TAGs) by Khandelwal, Schoukens and Toth [3]. Defined originally by Joshi et al . [4], TAGs are tree-generating systems that build grammatical representations via the composition of smaller elementary trees. The original work of Khandelwal et al . demonstrated that TAGs can be used in the same way to encode model classes as a set of grammatical rules. The promise of this approach for system identification was demonstrated with the development of an appropriate grammar for polynomial NARX (p-NARX) models and nonlinear state-space models, among others. An attractive advantage of using TAGs is that they can unify many nonlinear model structures within a single framework. Moreover, the model class (or grammar) is separated from the numerical tools used for discovering system dynamics (or tree-structure representation), meaning that one is free to use any valid search algorithm as long as the rules defined by the grammar are obeyed. So far, the use of TAGs has only been explored with Evolutionary Algorithms (EA) to automatically determine the structure and complexity of a model from data. While the EA-based approach demonstrated promising capabilities, some limitations remained that a Bayesian-based approach could overcome. One such limitation of the original method was that it produced point estimates of the model structures. A Bayesian algorithm can instead fit distributions over models in terms of both parameters and tree structure, offering a more systematic framework for model selection. The present work aims to explore the benefits of implementing Bayesian inference as a means of determining the best model for a given system with the use of TAGs. The probabilistic nature of Bayesian inference also offers the possibility to introduce prior beliefs about the tree structure, and to quantify uncertainty in the predictions. The outline of this paper is the following. A background on TAGs and Bayesian methods is first covered in Section 2; the methodology employed is then detailed in Section 3, whereby the procedure and application of Bayesian TAGs for dynamical systems are presented. The new approach is demonstrated using the p-NARX grammar and validated on three problems in Section 4. The first case study considers an academic example aimed at determining whether the proposed method is capable of identifying a simulated nonlinear system. The second and third case studies involve experimental data; in particular, they look at the “Silverbox” nonlinear benchmark data and at wave-loading data from the Christchurch Bay Tower experiments. Finally, overall insights and suggestions are provided in Section 5. 
+
+# 2 Background 
+
+2.1 Tree-Adjoining Grammars (TAGs) 
+
+A TAG is a type of generating grammar system used primarily to parse language of strings or sentences. Unlike other types of grammar, TAGs form a special class in which an additional set of rules is outlined to explicitly generate tree structures. In a broader sense, early definitions of a grammar in this context are from Chomsky [5], who defines a grammar, or a phrase-structure grammar , as a tuple comprising the following: 1. an alphabet of non-terminals N
+
+2. an alphabet of terminals T
+
+3. a distinguished start symbol S in N
+
+4. a set of rules P that generate or replace strings in a grammar 
+
+> 1The term “structure” here refers to the functional form of the model formulation, and not the physical structure under investigation.
+
+2Equation discovery with Bayesian tree-adjoining grammars This definition serves as the foundation to more elaborate structured grammars. Within the hierarchy of existing grammars, TAGs form a special class in which parsing computations, while complex, remain manageable. Another characteristic feature of TAGs that sets them apart is that they outline a set of rules that generate tree structures. The generated tree is then a visual representation of the underlying grammar that governs the language. To illustrate, Figure 1a shows an example of such a tree to represent the string: “Naturally, Keith likes cats”. The key aspect of this representation is that it can be generated by defining a set of building blocks together with a set of suitable rules dictating the way in which these can be combined. For this particular example, one may define a set of smaller tree constituents, as shown in Figure 1b. This set is commonly referred to as the elementary trees of the TAG. An elementary tree can be combined with another if, and only if, its root label matches the leaf label of the other. Specifically, the combinatorial nature of TAGs is driven by two distinct operations, or rules, referred to as substitution and adjoining .The set can be further partitioned to differentiate the trees governed by each operation type. The subset I =
+
+{η1, η 2, η 3, η 4} constitutes the initial trees , and A = {α1} the auxiliary trees . The downward arrow and star symbols found in their terminal nodes indicate where substitution and adjunction take place, respectively. sentence adv Naturally sentence sub PN Keith pred Vlikes Ncats                
+
+> (a) sentence sub ↓pred ↓
+> η1:sub PN ↓
+> η2:
+> sub art ↓N↓
+> η3:pred V↓N↓
+> η4:
+> sentence adv ↓sentence ∗
+> α1:
+> (b)
+
+Figure 1: (a) Derived tree structure of string: “Naturally, Keith likes cats”. (b) Tree-adjoining grammar used to parse the string. The “sub” in η2 and η3 means “subject” and not a substitution. The addition of an auxiliary tree enhances the grammar and thus more elaborate sentences can be parsed. Because adjunction is carried out at non-terminal nodes in the tree, an auxiliary tree can be inserted indefinitely. The auxiliary trees and adjunction operation are thus regarded as a set of recursive replacement rules. Similarly, initial trees and the substitution operation can be regarded as a set of non-recursive replacement rules, since the allowable substitutions will eventually reach an end. 
+
+2.2 TAG representation of dynamical systems 
+
+To show how a dynamical system can be represented by a TAG, it is necessary to first formalise the definition of a TAG a little. The interested reader may refer to [6, 7] for a more formal coverage of TAGs and their variants. 
+
+Definition 2.1 (Tree-Adjoining Grammar) A Tree-Adjoining Grammar is a tuple G = ⟨N, T, S, I, A ⟩, where 1. N and T are disjoint alphabets of non-terminals and terminals, respectively: N ∩ T = ∅
+
+2. S ∈ N is a distinguished non-terminal symbol 3. I and A correspond to the finite set of initial trees and auxiliary trees, respectively The set of elementary trees is thus the union I ∪ A.
+
+With this definition at hand, one can now reproduce the proposal of a TAG for dynamical models from [8]. The original work considers the following discrete-time input-output form of a nonlinear model, 
+
+yi = f  ui, . . . , u i−nu , y i−1, . . . , y i−ny , ϵ i−1, . . . , ϵ i−nϵ
+
+ + ϵi (1) where ui, y i ∈ R denote the input-output pair at time instant i, ϵi ∼ N (0 , σ 2 
+
+> ϵ
+
+) denotes the random noise contribution that is independent of the input, constants nu, n y , n ϵ are integers indicating the time lags, and f (·) is an arbitrary nonlinear function belonging to some function space M. Here, the function space under consideration is the set 3Equation discovery with Bayesian tree-adjoining grammars of polynomial NARX functions [9], i.e. with nϵ = 0 in the present work. This function class can approximate any continuous function arbitrarily well [10]. Moreover, polynomial NARX models can be conveniently represented as discrete SISO functions [11]; that is, 
+
+yi =
+
+> p
+
+X
+
+> k=1
+
+θknuY
+
+> j=0
+
+ubk,j 
+
+> i−jny
+
+Y
+
+> m=1
+
+yak,m  
+
+> i−m
+
++ ϵi, (2) where p is the number of terms, θk are the model parameters, ak,m , b k,j ∈ N are the exponents for output and input terms, respectively. The current form for a polynomial NARX facilitates the TAG encoding, since the structural relationship in (2) is defined explicitly by a sum of weighted terms. Referring to Definition 2.1, the corresponding TAG can now be defined as follows, 
+
+Theorem 2.1 (Khandelwal et al. [8]) The TAG for a polynomial NARX model class is defined by the tuple GN =
+
+⟨N, T, S, I, A ⟩ with, 1. N = {expr 0, expr 1, expr 2, op, par }
+
+2. T = {u, y, ϵ, +, θ, ×, q −1}
+
+3. S = expr 0
+
+4. I = {η1}
+
+5. A = {α1, α 2, α 3, α 4, α 5}
+
+where the initial tree η1 and auxiliary trees {αi}5 
+
+> i=1
+
+are depicted in Figure 2. The symbol q−1 denotes a backward time shift. It is then said that the model set M(GN ) is the set of all models that can be expressed as (2) with finite values of 
+
+p, n u, n y and nϵ.
+
+One may note from the TAG GN , that the set of elementary trees can be recursively adjoined with one another, such that the constructed tree can represent any arbitrary p-NARX function of the form (2). The interested reader is referred to [3] for further details. There are a few reasons why one might want to encode a model class using a TAG. The first is that the entire model class is condensed into a finite set of building blocks (i.e. elementary trees). This representation has the additional advantage that the grammar can be readily extended by adding new initial and auxiliary trees. Another noteworthy advantage is that the string language is generated by an underlying tree structure. This tree-based representation allows the function space to be explored by manipulating trees rather than functions directly. Such operations are often more intuitive because of their visual nature and can facilitate efficient model mixing when implementing an MCMC approach for sampling. Finally, since the search space is formulated over the set of elementary trees, the TAG remains independent of any specific model structure and can readily be combined with a wide range of search-based algorithms. 
+
+2.3 Bayesian inference for model selection 
+
+The highly combinatorial nature of TAGs can make equation discovery quite daunting. However, a Bayesian approach lends itself nicely to addressing this problem. From a Bayesian perspective, the model-selection problem is driven by an Occam’s razor philosophy, which proposes the idea that a model should remain simple if higher amounts of complexity are not required to explain the data. Unless favoured explicitly by the prior, Bayesian inference embodies a natural preference towards simpler models [12]. In particular, Occam’s razor is embodied by the evidence, whereby its evaluation automatically incorporates a trade-off between model fit and model complexity [13]. To illustrate this concept, Bayes’ Theorem can be expressed to include the dependencies on a model (or tree structure) Tk. That is, 
+
+p(Θ |D , Tk) = p(D| Θ, Tk)p(Θ |T k)
+
+p(D|T k) (3) with the evidence given by, 
+
+p(D|T k) = 
+
+Z
+
+p(D| Θ, Tk)p(Θ |T k)dΘ (4) where D denotes the observations and Θ = {θ1, θ 2, . . . , θ p} is the vector of parameters. The evidence here can be interpreted as the probability of generating the dataset after having randomly selected parameters from a given tree structure Tk. Because the evidence is a probability distribution, simpler models are unlikely to generate the dataset. On the other hand, models that are too complex are capable of generating a richer variety of datasets besides D, making 4Equation discovery with Bayesian tree-adjoining grammars expr0 expr1 par  
+
+> θ
+> op xexpr2 uop +expr0 ∗
+
+α1: expr0 expr1 par    
+
+> θ
+> op xexpr2 q−1op xexpr2 yop +expr0 ∗
+
+α2: 
+
+> expr1 expr2 uop xexpr1 ∗
+
+α3: expr1 expr2 q −1 op xexpr2 yop xexpr1 ∗
+
+α4:   
+
+> expr2 q−1op xexpr2 ∗
+
+α5: expr0 aff 
+
+> ϵ
+
+η1:
+
+Figure 2: Initial tree η1 and auxiliary tree set A of TAG GN . Symbol notation: “expr” - expression , “par” - parameter ,“op” - operation , “ q−1” - backward time shift . Reproduced from [3]. them less likely to generate this particular dataset at random. The best model is thus the proposal that gives the highest evidence for a given set of observations, which will simultaneously happen to be the one that fits the data without added complexities [14]. Because the TAG GN can encode any p-NARX function, the resulting search space is countably infinite, which makes model identification significantly more challenging. Defining a Bayesian identifier in this setting requires two key components: (1) a joint prior over tree structures and their parameters, and (2) a set of transition kernels. Two prevalent challenges emerge from this framework. The first is that the evidence (4) will likely be defined by an intractable integral, and it is thus hard (if not impossible) to solve analytically. This issue is addressed by resorting to MCMC methods to instead approximate the desired distribution. The second challenge pertains to the possible changes in dimensionality of the parameter space Θk for a given Tk. This outcome would be, for example, a direct consequence of inserting an additional term-branch to the tree. While several variants of MCMC methods exist tailored to tackling this type of challenge, the focus here will be on the Reversible-Jump Markov Chain Monte Carlo (RJ-MCMC) [15], which may be thought of as a generalisation of the ubiquitous Metropolis-Hastings (MH) algorithm [16]. Further details on some of the concepts outlined below can be found in [17, 18, 19]. 
+
+2.4 Reversible-Jump Markov Chain Monte Carlo 
+
+The RJ-MCMC generalises the MH algorithm by adding the possibility to sample across subspaces of varying dimensionalities. That is, the MCMC chain can jump from a subspace Ck = {k} × Rk, to another Ck′ = {k′} × Rk′
+
+,where the dimensionalities may differ (k̸ = k′). The ability to jump across subspaces has powerful implications when inference is carried out over a selection of models that possess parameter sets of different sizes. Green shows in [15] that detailed balance also holds for RJ-MCMC, albeit under the dimension-matching assumption. An explicit intuition about dimension matching is provided by considering the case in which only two subspaces exist, 5Equation discovery with Bayesian tree-adjoining grammars labelled by k = 1 and k = 2 , and that p(Θ 1|k = 1) and p(Θ 2|k = 2) are proper densities in Rm1 and Rm2 . To accomplish the transition from C1 to C2, it is necessary to generate an independent vector u1 ∈ Rn1 , and then set Θ2 to be some deterministic function of Θ1 and u1. Similarly, the same can be done backwards, by which Θ1 is defined by some function of Θ2 and u2, where u2 ∈ Rn2 is generated independently of Θ2.For dimension-matching a bijection must exist between (Θ 1, u1) and (Θ 2, u2). In particular, one requires that the lengths of u1 and u2 satisfy m1 + n1 = m2 + n2. The proposal distributions are then given by the distributions of u1
+
+and u2, which are given by densities q1 and q2, respectively. If j(k, Θk) is the probability of proposing a move from the state (k, Θk), the general acceptance probability becomes, 
+
+A ((1 , Θ1), (2 , Θ2)) = min 
+
+
+
+1, p(2 , Θ2|D )j(2 , Θ2)q2(u2)
+
+p(1 , Θ1|D )j(1 , Θ1)q1(u1)
+
+∂(Θ 2, u2)
+
+∂(Θ 1, u1)
+
+
+
+(5) There is no unique way of defining the deterministic bijection mapping h : (Θ 1, u1) → (Θ 2, u2). Therefore, the implementation of RJ-MCMC can be hard in practice, since one is not only required to define a suitable function, but must also evaluate the Jacobian for each move type. The reverse-move evaluation of the acceptance ratio is given by 
+
+A(z′, z ) = min {1, A (z, z ′)−1}.
+
+2.5 RJ-MCMC for autoregressive time series 
+
+There are two ways in which an autoregressive function can be computed, and the RJ-MCMC scheme may be adapted depending on which computation is employed. In particular, optimisation may be posed in terms of the One-Step Ahead 
+
+(OSA) error or the Model-Predicted Output (MPO) error 2. The former computes the response using measured past observations, whereas the latter estimates the response with previously estimated (or predicted) outputs over time. While either computation could be employed using the general RJ-MCMC scheme, the acceptance ratio (5) can be adapted in each case to enhance the relevance of new proposals and improve model mixing. The following subsections expand on the Bayesian inference methods proposed in each case. 
+
+2.5.1 Approach 1: OSA-based inference 
+
+A convenient simplification of (5) is possible when autoregressive models are linear in the parameters. This condition holds when the objective is based on the OSA error. Given the case, the proposal density can be derived to coincide with the target full conditional, as demonstrated by Troughton and Godsill in [20] for autoregressive time series. The main ideas of their approach can be illustrated by expressing equation (2) in the following matrix form, 
+
+yℓ = Φ T ΘT + ϵ (6) where the terms encoded by T are assembled columnwise into the design matrix ΦT , the corresponding coefficients are collected in ΘT , and the residual vector is ϵ. Since the first ℓ observations cannot be regressed upon, they are treated as fixed initial conditions and the response yℓ is the original record with its first ℓ entries removed, of length nℓ.With the inclusion of additive Gaussian noise in the predictions, the likelihood can be expressed as the probability density of the observations conditioned on the parameters. That is, 
+
+p(yℓ|T , ΘT , σ 2 
+
+> ϵ
+
+) = N (yℓ|ΦT ΘT , σ 2 
+
+> ϵ
+
+Inℓ ) (7) The prior over models and parameters factorises as p(Θ T , T ) = p(Θ T |T ) p(T ), where the parameter prior depends on the tree through its dimension. The parameter prior is defined here by the zero-mean spherical Gaussian, 
+
+p(Θ T |T , σ 2 
+
+> θ
+
+) = N(Θ T | 0, σ 2 
+
+> θ
+
+IdT ) (8) with dT = dim(Θ T ). The posterior density is then given by, 
+
+p(T , ΘT , σ 2 
+
+> ϵ
+
+|D ) ∝ p(yℓ|T , ΘT , σ 2 
+
+> ϵ
+
+) p(Θ T |T , σ 2 
+
+> θ
+
+) p(T ) p(σ2 
+
+> ϵ
+
+) (9) An additional prior distribution on the noise variance σ2 
+
+> ϵ
+
+has been included in the formulation. Here, an inverse-gamma distribution is chosen for the noise variance prior. That is, 
+
+p(σ2 
+
+> ϵ
+
+) = IG (σ2 
+
+> ϵ
+
+|αϵ, β ϵ) (10) which is defined with respect to the positive hyperparameters αϵ and βϵ.   
+
+> 2These are sometimes also referred to as the prediction error and simulation error , respectively
+
+6Equation discovery with Bayesian tree-adjoining grammars The acceptance ratio (5) for a move T → T ′ can then be rewritten as follows, 
+
+A (T , ΘT ), (T ′, ΘT ′ ) = min 
+
+
+
+1, p(T ′, ΘT ′ | . . . ) j(T ′ → T ) q(Θ T |T , ΘT ′ , . . . )
+
+p(T , ΘT | . . . ) j(T → T ′) q(Θ T ′ |T ′, ΘT , . . . )
+
+
+
+(11) where the Jacobian is unity because the proposal is now made directly in the new parameter subspace. For now, the noise variance σ2 
+
+> ϵ
+
+, remains fixed and known. Since the conditional likelihood is Gaussian and linear in the parameters, and the parameter prior (8) is conjugate to it, the proposal distribution may be defined by a full-conditional Gaussian distribution, which can be derived analytically. Concretely, 
+
+ΘT ′ ∼ q(Θ T ′ |T ′, ΘT , D, σ 2 
+
+> ϵ
+
+) = p(Θ T ′ |T ′, D, σ 2 
+
+> ϵ
+
+, σ 2 
+
+> θ
+
+)= N (Θ T ′ |μT ′ , ΣT ′ ) (12) where the mean μT ′ and covariance ΣT ′ of the full-conditional Gaussian are defined as, 
+
+Σ−1  
+
+> T′
+
+= σ−2 
+
+> ϵ
+
+ΦT  
+
+> T′
+
+ΦT ′ + σ−2 
+
+> θ
+
+IdT ′
+
+μT ′ = σ−2 
+
+> ϵ
+
+ΣT ′ ΦT  
+
+> T′
+
+yℓ
+
+(13) which correspond to the updated statistical moments of a posterior Gaussian for linear regression [17, 18]. This simplification greatly improves the effectiveness of the sampler because the proposal density coincides with the target full conditional, and the acceptance is mostly governed by the evidence for the competing model orders. The acceptance ratio can be simplified further by employing the Candidate’s Identity by Besag [21], which marginalises ΘT and ΘT ′
+
+from (11). In this case, a draw from (12) would then need only be performed once a move has been accepted. This last step is not adopted in the present work, since the evaluation of (11) could be conducted without any apparent numerical complications, at the cost of drawing parameter vectors for rejected moves. Finally, to address the remaining noise term, an additional Gibbs move can be included in the sampling strategy. The full conditional posterior distribution on σ2 
+
+> ϵ
+
+can also be defined analytically since the inverse-gamma prior (10) is conjugate to the likelihood. The full conditional posterior is thus another inverse-gamma distribution, 
+
+p(σ2 
+
+> ϵ
+
+|T , ΘT , D) = IG (σ2 
+
+> ϵ
+
+|ˆαϵ, ˆβϵ) (14) where, 
+
+ˆαϵ = αϵ + 12 nℓ, ˆβϵ = βϵ + 12 ∥yℓ − ΦT ΘT ∥2 (15) with nℓ being the length of the truncated response. Each proposed model move is therefore followed by a Gibbs update of the noise variance, drawn directly from (14) while T and ΘT are held at their current values. The moments in (13) are then recomputed with the updated σ2 
+
+> ϵ
+
+before the next model move is proposed. A successful implementation of the scheme outlined here for NLSI can also be found in [22], in which the authors construct a Bayesian framework for the SINDy algorithm. 
+
+2.5.2 Approach 2: MPO-based inference 
+
+Unfortunately, when the predictions are based on the MPO setting, the parameter proposals can no longer be drawn from a full conditional as they can for OSA predictions. A free-run simulation is a nonlinear function of the whole parameter vector, so no conjugacy is available, and the simulation itself is prone to diverge. 
+
+Approximate Bayesian Computation (ABC) [23] offers a way to address this issue. ABC is a rejection-type algorithm designed to overcome complications regarding the likelihood evaluation 3. In addition to circumventing the need to evaluate the evidence, ABC also removes the need to evaluate the likelihood, at the cost of targeting an approximation to the true posterior. Likelihood-free techniques are often used when the likelihood is intractable or unknown, but simulations can be carried out with relative ease. In the present case, likelihood-free techniques also lend themselves to dealing with divergent simulations, since models that produce large discrepancies are rejected during inference. While the current setting, i.e. encoding a NARX model class, and minimising the residual error, could in principle be handled with an explicitly defined likelihood, an ABC approach is adopted here because it generalises more readily to more complex cases. Two considerations motivate this choice: 1. The grammar GN can be extended to include Moving-Average (MA) auxiliary trees, taking the model class from NARX to NARMAX. A likelihood-free scheme adapts to this change without any modification to its implementation, whereas a likelihood-based treatment would have to be re-derived for such an extension.   
+
+> 3This type of algorithm is sometimes referred to as likelihood-free inference , or simulation-based inference .
+
+7Equation discovery with Bayesian tree-adjoining grammars 2. Large datasets may make pointwise comparison prohibitively expensive. In such cases, one may wish to pre-process the data into a set of key dynamical features, and match those features rather than the pointwise error. A likelihood-based approach would then require a sampling distribution over these summary statistics, which ABC avoids. The implementation would simply involve defining the discrepancy on these features. The ABC approximation to the joint posterior over T and the corresponding parameter vector ΘT is, 
+
+p(Θ T , T |D ) ≈ pε(Θ T , T |D ) ∝ p(T ) p(Θ T | T )
+
+Z
+
+p(y∗ | ΘT , T , D) 1{ρ(y∗,y)<ε } dy∗, (16) where p(y∗ | ΘT , T , D) is the distribution of data simulated from the candidate model. The likelihood is thereby replaced by the probability that a simulation from (T , ΘT ) falls within the tolerance around y. In practice, the integral in equation (16) is never explicitly evaluated. Instead, the chain is run over the augmented space, with target, 
+
+pε(T , ΘT , y∗ | D ) ∝ p(T ) p(Θ T | T ) p(y∗ | D , ΘT , T ) 1{ρ(y∗,y)<ε } (17) A move proposes (T , ΘT ) and then simulates y∗ from it, so the simulator density appears both in the target and in the proposal, thereby cancelling from the acceptance ratio and leaving only the priors and the tolerance indicators. Therefore, the acceptance probability is given by, 
+
+A (T , ΘT ), (T ′, ΘT ′ ) = min 
+
+
+
+1, p(T ′, ΘT ′ ) j(T ′ → T ) qT ′→T (u′)
+
+p(T , ΘT ) j(T → T ′) qT →T ′ (u)
+
+
+
+1{ρ(y∗,y)<ε } (18) where u and u′ are the auxiliary vectors of the forward and reverse moves, drawn from the proposal densities qT →T ′
+
+and qT ′→T , respectively, with u ∈ RnT →T ′ and u′ ∈ RnT ′→T . For the jumps employed here, a (birth) move sets the mapping ΘT ′ = [Θ T ; u], with u ∼ qT →T ′ (·), taken here to be a zero-mean Gaussian with standard deviation σu.In the reverse (death) direction, no auxiliary variables are required, so nT ′→T = 0 , qT ′→T ≡ 1, and the Jacobian determinant is, once again, unity. The proposed state is thus accepted with probability given by the min {·} term, but only if the simulated output satisfies ρ(y∗, y) < ε . Otherwise, it is rejected, and the chain remains at (T , ΘT ).The downside of this approach is that the acceptance rate tends to be low. This happens when the posterior diverges away from the prior, so that few prior draws land in regions covered by the posterior mass. Furthermore, ρ(·, ·) and ε
+
+are additional hyperparameters that must be tuned carefully. Concretely, a tolerance that is too large may yield poor posterior approximations, and a tolerance that is too small may prevent a chain from moving at all. The acceptance rate can be improved by introducing a Markov kernel q(Θ ∗ | Θ) , so that a new parameter vector is proposed from the current one rather than drawing them at random from the prior. Marjoram et al . [24] showed that the resulting ABC-MCMC algorithm returns an invariant-density approximation to the target pε(T , ΘT , y∗ | D ), and it is thus a valid adaptation of the standard ABC rejection sampler. Furthermore, the method proposed by [25] suggests refining the ABC-MCMC sampler with a parallel tempering scheme to improve mixing and mitigate the chances of a chain becoming trapped in a local mode. The idea is to run C chains in parallel, each targeting a tempered version of the target distribution. Tempered distributions become flatter at higher “temperatures”, allowing their chain to traverse the space between modes more easily. At intervals, a swap of the states of two chains is proposed and accepted or rejected by a Metropolis rule, so that states discovered by the exploratory chains can propagate down to the chain that targets the distribution of interest. Tempering is enforced here not by explicitly flattening the target, but via the tolerance. In particular, a sequence of levels ε = ( ε0, ε 1, . . . , ε C−1), is defined with ε0 < ε 1 < · · · < ε C−1, and the i-th chain targets pεi (T , ΘT , y∗ | D ).Loosening the tolerance widens the region of non-zero pseudo-likelihood, which raises the acceptance rate of the larger jumps proposed by the higher-order chains. Under the uniform ABC kernel of equation (17), and with a common prior across chains, a swap between chains i and j > i is accepted whenever the state held by the looser chain j also satisfies the tighter tolerance εi. Inference is then based on the “coldest” chain 0, which targets the closest approximation to the true posterior. 
+
+2.6 Prior distribution, p(Θ T , T )
+
+So far, the prior has only been partly defined. The full definition is provided in this section, and it applies to both MCMC approaches covered above. To begin, the model prior component p(T ) is defined through the probabilities assigned to each event in the generative process that produces a given tree structure, following the approaches of [26, 27]. Specifically, the generative process assigns probabilities to the three defining characteristics of a discrete p-NARX function: the number of terms, the term degree, and the time-lag offsets. These characteristics relate directly to the auxiliary trees of the TAG; that is, a new term is introduced by α1 or α2, a new factor by α3 or α4, and a lag offset by 
+
+α5.8Equation discovery with Bayesian tree-adjoining grammars Consider an arbitrary tree T . Let a branch Texpr0 ∈ T , rooted at a node labelled “expr0”, encode a single term of a p-NARX expression. This branch is itself composed of an adjoined collection of Texpr1 subbranches, each encoding one factor of the term, and each Texpr1 subbranch is in turn composed of a collection of α5 auxiliary trees that together encode the lags of that factor. The branch Texpr0 is generated bottom-up. For each factor, the number of α5 trees is first sampled at random, and these are then jointly adjoined to an α{3,4} tree to form the corresponding Texpr1 subbranch. This process is repeated once for each factor in the term, and the resulting collection of Texpr1 subbranches is adjoined together to an α{1,2} tree to complete Texpr0 .Formally, the generative process is defined as follows, where d denotes the term degree (the number of factors in the term) and nl the number of lags in a given factor, drawn respectively from a Poisson rate λd and a Geometric continuation probability λl ∈ (0 , 1) :
+
+nl ∼ Geometric (λl) (d − 1) ∼ Poisson (λd)
+
+α{3,4} ∼ Uniform {α3, α 4} α{1,2} ∼ Uniform {α1, α 2}Texpr2 = α(nl)5
+
+r
+
+expr2 , α (nl−1) 5 Jexpr2 , . . . Kz
+
+Texpr1 = α{3,4}Jexpr2 , Texpr2 K
+
+Texpr0 = α{1,2}
+
+r
+
+expr1 , T (d−1) expr1 Jexpr1 , T (d−1) expr1 Jexpr1 , . . . KK z
+
+(19) where adjoining ψ′ into ψ at node ν is denoted by ψJν, ψ ′K, and α{i,j } ∼ Uniform {αi, α j } denotes a uniform random choice between the two auxiliary trees αi and αj , each selected with probability 1/2. The probability assigned to Texpr0 
+
+is defined as, 
+
+p(Texpr0 ) = 
+
+ 12
+
+d
+
+× λd−1 
+
+> d
+
+e−λd
+
+(d − 1)! × d!
+
+Q ck! × Y
+
+> d
+
+(1 − λl)λn(d) 
+
+> l
+> l
+
+(20) Equation (20) is the product of the probabilities assigned at each stage of the generative process, under the assumption that the factors encoded by each Texpr1 are drawn independently. The multinomial term in the equation corrects for the fact that a term with repeated factors can be encoded by multiple orderings of the adjunction process, as defined in (19). The variable ck is then the multiplicity of each distinct factor type among d factors. For the entire tree structure T , the prior distribution is given by the combined contribution of every Texpr0 branch in T .Under the assumption that the terms are drawn independently, the result yields a Poisson point process of the form, 
+
+p(T ) = λnt 
+
+> t
+
+e−λt
+
+Y
+
+> Texpr0 ∈T
+
+p(Texpr0 ) (21) where λt denotes the expected rate of terms, nt the number of terms in the model, and p(Texpr0 ) the distribution over individual terms defined in (20). Note that the tree is constructed such that no repeated terms are possible, and a correction factor is thus not necessary in this formulation. There is, however, an additional step in the generative process that is necessary to ensure the desired models are sampled more often. The idea is to help promote pure-power terms, such as squared or cubed terms, as these are more likely to be found in equations derived from engineering systems. This bias is introduced here by reformulating the probability assigned to a given term as a mixture, 
+
+p(Texpr0 ) = (1 − λm)qc(Texpr0 ) + λmqp(Texpr0 ) (22) where qc corresponds to the original equation (20) and qp is an additional component responsible for assigning probabilities to pure-power terms, defined as, 
+
+qp(Texpr0 ) = 
+
+ 12
+
+
+
+× λd−1 
+
+> p
+
+e−λp
+
+(d − 1)! × (1 − λl)λnl 
+
+> l
+
+(23) The distribution is now a mixture of these probability measures, which are weighted by the mixing parameter λm. The generative process now chooses to either produce a subbranch for some interaction term, with probability (1 − λm), or one for a pure-power term, with probability λm. If the latter is picked, then the multinomial term returns unity and the factor only needs to be sampled once. In the original formulation, a pure-power term would have been drawn by randomly sampling the same factor d times in a row, making them less likely to emerge. Simultaneously, pure-power terms are preferred over interaction terms by the prior, since the former draws weight from both terms in equation (22), while the latter can only be sampled from qc(Texpr0 ).Overall, the prior on tree structure serves to regularise the complexity of the encoded model. The model size, for example, is regularised by adjusting the expected number of terms λt. Similarly, the term degree and the number of 9Equation discovery with Bayesian tree-adjoining grammars lags in a factor are regularised by λd and λl, respectively. These quantities are hyperparameters that must be specified in advance. Regarding the parameters associated with a given tree structure, the prior distribution is given by the zero-mean spherical Gaussian distribution defined in (8). This Gaussian prior on the parameters was alluded to earlier in deriving the full conditional Gaussian as the proposal distribution. The same prior is also used for the MPO-based inference approach. A (hyper)prior distribution on σ2 
+
+> θ
+
+could also be defined in the same manner as it was done for the noise variance in Equation (10). However, this value was left as a fixed hyperparameter. 
+
+2.7 Transition kernels, j(T → T ′)
+
+A set of transition operations are required to traverse the model space. The transition from one tree to another is conducted by explicitly altering the tree structure. Such transformations are carefully defined to ensure the model space is explored efficiently. A tree alteration may, for example, involve inserting an additional branch to the current structure such that a new term is introduced to the overall expression. Conversely, a branch could be pruned away, thus removing a term from the expression. By recursively employing these alterations, a sequence of tree structures is proposed and evaluated to determine the ones that give the highest evidence given the observations. Since the modifications are explicitly exercised on the tree structure, one can draw operators from other tree-based models that have already been explored in the literature. For example, Jin et al . [26] defined seven different move type operators to transition between structures of linearly-mixed tree representations for Bayesian Linear Regression .Another renowned example is that from Chipman et al . [28, 29], in which the generation of a new tree is conducted by employing one of four different moves; namely, growing, pruning, changing and swapping . These move-type proposals were demonstrated to work successfully for both their Classification And Regression Tree (CART) and Bayesian Additive Regression Tree (BART) models. A slight variation of the latter can be found in [30] for Treed Gaussian Processes (TGPs) [31], in which a rotation move-type is shown to be better suited than swapping for manipulating TGPs. These examples are a few of several tree-based models used in learning problems. It becomes clear that the move-types are application dependent. Inspired by the work above, the following move types are proposed here: 1. Add term: A random subbranch, Texpr0 , is generated via the process defined in (19) and adjoined to the root node labelled “expr0”. If the generated term is already present, the proposal is discarded. This step enforces the absence of repeated terms assumed in (21). 2. Remove term: A branch Texpr0 is chosen uniformly at random. All of its descendants except those in the rightmost subtree are discarded, and the chosen node is then replaced by the remaining rightmost subtree. 3. Add factor: A branch Texpr0 is chosen uniformly at random. A subbranch Texpr1 is then selected with probability proportional to the prior weight of the resulting term, as given in (24), and adjoined to an “expr1” node within Texpr0 .4. Remove factor: A branch Texpr0 with at least two factors is chosen uniformly at random. One of its distinct factor subbranches is then selected with probability proportional to the prior weight of the reduced term. The corresponding node is pruned while retaining the rightmost subtree, which then replaces the chosen node. 5. Add lag: A lag-type auxiliary tree α5 is picked at random from GN . A nonterminal node labelled “expr2” is then chosen uniformly from the current tree, and the auxiliary tree is adjoined to that node. 6. Remove lag: A nonterminal node labelled “expr2” that carries an α5 adjunction is chosen uniformly from the current tree, excluding any node whose reduction would yield yi. The leftmost side of the selected node corresponds to a lag-type auxiliary tree, which is pruned away while retaining the rightmost subtree. The chosen node is then replaced by the remaining rightmost subtree. 7. Swap input: A subtree with yield ui−1 is chosen uniformly from the current tree, and is then replaced by a subtree with yield yi−1.8. Swap output: A subtree with yield yi−1 is chosen uniformly from the current tree. It is then replaced by a subtree with yield ui−1.9. Stay: A new set of parameters is proposed within the current state. It should be highlighted that the “add factor” proposals is a little more subtle than uniformly choosing the relevant auxiliary tree from the TAG. The generative process here is devised to have the prior and proposal distributions cancel in the acceptance ratio. Therefore, a new factor must be drawn with probability propotional to the prior weight of the 10 Equation discovery with Bayesian tree-adjoining grammars resulting term. Concretely, when the “add factor” move is employed, a new tree subbranch is drawn with probability, 
+
+p(Texpr1 ) = p(Texpr0 Jexpr1 , Texpr1 K)
+
+P  
+
+> Texpr1 ′∈F
+
+p(Texpr0 Jexpr1 , Texpr1 ′ K) (24) where F denotes the space of tree structures encoding all possible factors with arbitrary time lags. The new problem here is that the current generative process could propose a factor with any arbitrary number of lags, prior to being subsequently adjoined to some subbranch Texpr0 in the tree. This outcome means dealing with a support of factors that is countably infinite, which complicates the way in which equation (24) can be evaluated. To address this issue, the lag support is capped, thus making F finite. The nomarlising constant in (24) can then be carried out over a finite sum of 
+
+|F| evaluations of p(Texpr0 Jexpr1 , Texpr1 K). One may note that all moves are reversible, so that detailed balance is preserved. These moves are expressed entirely through adjunction, ensuring the proposed structure remains valid with respect to the TAG. Note, however, that “add term” and “add factor” adjoin an auxiliary tree generated from the countably infinite family implied by (19), rather than one selected from the finite set GN . It is this distinction that necessitates the prior-proportional selection described above. The first three sets of moves (add/remove term, add/remove factor, and add/remove lag) ensure that a valid model is sampled, while the fourth set (swap input/output) has been included to enhance model mixing. To illustrate, Figure 3 shows the simplest case of the add/remove term jump, as an example. expr0 expr1 par   
+
+> θ
+> op xexpr2 uop +
+> . . .
+> expr0 expr1 par
+> θ
+> op xexpr2 q−1op xexpr2 yop +expr0 expr1 par
+> θ
+> op xexpr2 uop +
+> . . .
+> Add Term Remove Term
+
+Figure 3: Illustration of the add/remove term move type. 
+
+# 3 Methodology 
+
+The methodology proposed here makes use of all the concepts outlined above. A point worth highlighting at this stage is that one must choose several hyperparameters and address a few practical considerations when adopting this approach. These considerations have a strong influence on the effectiveness of the proposed algorithm. Therefore, it is important to acknowledge that the choices made in the present work may not be optimal, and that one must adapt them to the problem at hand. 
+
+3.1 MCMC adaptation schemes 
+
+Additional measures were required to guarantee the success of the MPO-based sampler. Concretely, the step size of the parameter proposal sc, and the sequence of tolerance levels (ε0, . . . , ε C−1) were made to adapt with respect to the data. An additional annealing phase was thus added prior to running the identifier, during which these variables were adjusted. The step size was adapted via the Robbins-Monro stochastic approximation method [32]. Each parallel chain carried its own width and these were updated only on the stay move. The adaptation was tuned to aim for a target acceptance rate of 0.234 across chains. As for the tolerance ladder, it is suggested in [25] that the sequence of tolerances should be chosen so that they are evenly spaced on a logarithmic scale, or that their inverses are evenly spaced geometrically. The authors also suggest having an adaptive algorithm to adjust the sequence of tolerance levels. Therefore, the approach adopted here employs 11 Equation discovery with Bayesian tree-adjoining grammars Table 1: Hyperparameters of the chosen prior distributions. Hyperparameter Notation Value 
+
+Structure prior (both methods) 
+
+Term rate (prior mean number of terms) λt {1, 5, 20 }
+
+Term degree rate λd 0.3
+
+Lag decay λl 0.6
+
+Pure-power mixture weight λm 0.5
+
+Pure-power degree rate λp 0.7
+
+Parameter prior (both methods) 
+
+Parameter prior std. deviation σθ 1.0
+
+Noise prior (OSA only) 
+
+Noise prior shape αϵ 1 × 10 −6
+
+Noise prior scale βϵ 1.0
+
+Table 2: Default hyperparameters defined for the RJ-MCMC samplers. Hyperparameter Notation Value 
+
+Shared by both methods 
+
+Number of samples (OSA / MPO) ns 30 ,000 / 60 ,000 
+
+Burn-in samples (OSA / MPO) nburn 0.5ns / 0.75 ns
+
+Thinning interval nthin 5
+
+Lag window ℓ 10 
+
+Stay rate po 0.30 
+
+Add/remove term rate pat /p rt 0.12 /0.12 
+
+Add/remove factor rate paf /p rf 0.08 /0.08 
+
+Add/remove lag rate pal /p rl 0.08 /0.08 
+
+Input/output swap rate pis /p os 0.07 /0.07 
+
+MPO only (tolerance ladder) 
+
+Number of steps C 12 
+
+Swap interval nswap 25 
+
+Cold step margin — 1.02 dmin 
+
+MPO only (annealing) 
+
+Annealing stages S 5
+
+Annealing share of budget — 0.5ns
+
+Tightening quantile q 0.2
+
+MPO only (proposals and calibration) 
+
+Auxiliary proposal std. deviation σu 0.1
+
+Initial random-walk width s0 0.1
+
+an adaptive scheme that targets the cold tolerance ε0, followed by adjusting the remaining tolerances such that their inverses are geometrically spaced. This adaptation schedule is in the spirit of [33], whereby a Sequential Monte Carlo 
+
+approach is embedded in the ABC algorithm. The way the adaptation works is by varying ε0 in stages during the annealing phase. The schedule begins with a “loose” tolerance, and at the end of each stage, it is updated with respect to the smallest distance observed so far. The cold tolerance is tightened onto a quantile. In this case, the tolerance was brought to the 20th percentile of the distances visited by the cold chain. The whole ladder could then be adjusted geometrically above the new floor. Once completed, both the step sizes and the tolerances were frozen, and the MCMC sampler was initiated as normal. 
+
+3.2 Hyperparameter selection 
+
+In addition to having established suitable prior distributions and valid move-type proposals, several hyperparameters of the algorithm remained that had to be selected upfront. Among such hyperparameters were those found in the prior distributions. Other hyperparameters belonged to the RJ-MCMC sampler, such as the number of samples and transition probabilities. Unless stated otherwise, the hyperparameters used in the following experiments are the ones listed in Tables 1 and 2. 12 Equation discovery with Bayesian tree-adjoining grammars The term rate in Table 1 presents three values λt = {1, 5, 20 }. These values have been chosen to promote the exploration of models with increasing degrees of complexity, under the assumption that more terms lead to models capable of explaining a wider range of observations. The experiments were thus repeated three times with λt set to each of these values. Concretely, λt = 1 for simpler model structures, λt = 5 for models with moderate complexity, and 
+
+λt = 20 for models with a significantly higher number of terms. As noted in the table, this configuration applies to both OSA and MPO approaches. Another point worth highlighting is on the number of samples assigned to each approach. The reason why the ns
+
+assigned to the MPO approach doubles that of the OSA is to account for the added annealing phase. Overall, the current configuration was devised to yield the same number of post burn-in samples for either approach, and thus aid in making fair comparisons between their results. In addition to these choices, all runs of the algorithm were carried out over four parallel chains, each initiated with a different random seed. 
+
+3.3 Validation criteria 
+
+Whenever possible, the available (or generated) data were partitioned into three independent subsets: a training set 
+
+Dtrain , a validation set Dval , and a test set Dtest . The model structure and parameters were estimated exclusively using the training set, while the independent validation set was used to assess predictive performance and guide model selection. After selecting the configuration that achieved the best performance on the validation set, the final generalisation error was evaluated using predictions on the independent test set. The goodness of fit was calculated here using the Normalised Mean-Square Error (NMSE), which is defined by, 
+
+NMSE = 100 
+
+N σ 2
+
+> yN
+
+X
+
+> i=1
+
+(yi − y∗ 
+
+> i
+
+)2 (25) where the star denotes the estimated quantity. It should be emphasised that the NMSE is always computed with MPO predictions, irrespective of the training objective used. 
+
+3.4 Predictions via MAP and forward integration 
+
+A quick estimate of the response could be computed using the Maximum-A-Posteriori (MAP) estimates of both the model posterior density and parameter posterior densities. This approach simply involves evaluating the most frequent model structure, parameterised by the MAP values of its corresponding parameter posterior. Another more elaborate approach involves propagating the estimated uncertainties forward towards the response predictions. The process for generating these simulations was conducted by following three steps: 1. Sample a model structure from the estimated model posterior. 2. Sample a set of parameters, conditioned on the model structure, from the estimated parameter posterior. 3. Simulate a sequence of response predictions with respect to the sampled model structure and associated parameters. By repeating these steps sufficiently many times, a Monte Carlo approximation of the prediction mean and variance was obtained from the time-series realisations. Step Three, however, was slightly more involved. As it stands, this propagation process underestimates the prediction uncertainties. To get a better estimate, an additional random draw was made explicitly from the predictive distribution at each time instant. This sampling process was then carried out forwards over the entire signal to generate a realisation. 
+
+# 4 Experiments 
+
+The first case study considered in this section consists of an empirical simulation to assess whether the proposed method can recover the true data-generating system from a finite set of measurements and a finite number of MCMC samples. The second case study focuses on the identification of a nonlinear system using a benchmark dataset, namely the “Silverbox” dataset [34]. Finally, the third case study is experimental and investigates measured forces and velocities from the Christchurch Bay Tower [35], an offshore structure designed to study fluid loading models in a real directional sea environment. 13 Equation discovery with Bayesian tree-adjoining grammars 
+
+4.1 Academic case study and simulation 
+
+The following academic example is replicated here from [3]. The data-generating system used was a polynomial SISO model given by, 
+
+yi = 0 .5ui−1 − 0.3u3 
+
+> i−5
+
++ 0 .3yi−1 (26) This structure delineates a NARX model. Although the model is fairly simple, the challenge in identifying this system is mostly provided by the cubic term in the equation. To simulate real measurements, Gaussian noise was added to the response. In particular, 
+
+ˆyi = yi + ϵi (27) The simulated datasets were then generated using a normally-distributed excitation signal ui ∼ N (0 , 1) and i.i.d. Gaussian noise ϵi ∼ N (0 , σ 2 
+
+> ϵ
+
+). The noise variance σ2 
+
+> ϵ
+
+was adjusted such that the resulting signal had a signal-to-noise 
+
+ratio (SNR) of 20dB . The SNR is defined here as, 
+
+SNR dB = 20 log 10 
+
+ σy
+
+σϵ
+
+
+
+, (28) where σy denotes the standard deviation of the original (noise-free) response. For the established scheme, the size of the generated training dataset was limited to 2000 simulated samples. The first 1000 samples were assigned as the training set, the subsequent 500 as the validation set, and the remaining 500 as the test set. 
+
+4.1.1 Results and discussion 
+
+The main results obtained from running the proposed algorithms are listed in Table 3. These results include all the NMSEs computed on the held-out test set. The MAP and FWD notations denote whether the predictions were computed via MAP estimates or forward integration, respectively. Two sets of NMSE results are also listed in Table 3; that is, “selected” or “pooled”. The former indicates that the NMSE was computed from the chain that yielded the lowest error on the validation set, whereas the latter is the result from the union of all four chains. The truth column counts chains whose modal post-burn structure equals the true model, and the mass is the mean posterior probability assigned to that structure. Finally, the time column indicates, in hours per chain, the average time it took for the algorithm to run. Table 3: Results from Case Study 1. All scores are provided by the NMSE on the test set. Selected Pooled Truth Method λt MAP FWD MAP FWD Time (h) Rec. Mass OSA 1 1.154 1.166 1.154 1.160 0.04 3/4 0.747 5 1.154 1.166 1.154 1.165 0.03 4/4 0.987 
+
+20 1.155 1.168 1.155 1.174 0.05 3/4 0.678 MPO 1 3.218 2.667 4.046 2.165 0.64 0/4 0.000 5 1.154 1.164 3.173 1.748 0.71 1/4 0.254 20 1.159 1.171 1.156 1.445 0.83 1/4 0.228 The OSA-based approach managed to discover the correct function on most occasions, even for different values of 
+
+λt. The algorithm is also significantly more efficient computationally, completing the task at a much faster rate. The MPO-based algorithm managed to identify the correct function in two instances. In the failed cases, the trace of proposed models showed that the correct nonlinearity was indeed captured. The problem was that the sampler kept rejecting the yi−1 term whenever it was proposed. This issue was likely caused by the way in which new parameters are proposed. Even when the structure may have been correct, a poor parameter-vector can make the fit worse. The OSA sampler mitigates this rejection since it draws a new set of parameters from the exact conjugate posterior at every move. Table 4 lists the estimated parameter statistics that were taken over the post-burn draws from the validation-selected chain of each training objective, both of which landed at the true model structure. The intervals spanned by the estimated posteriors are shown as equal-tailed 95% credible intervals ( 2.5–97 .5 percentiles). All true parameter values were found within the estimated intervals. The main difference between the two approaches is that the bounds from the MPO-based approach are about 1.6 times wider than those from the OSA-based approach. This outcome is to be expected since the ABC indicator gate discards information that the exact Gaussian likelihood retains, so the MPO posterior is less concentrated even when both samplers agree on the structure. 14 Equation discovery with Bayesian tree-adjoining grammars Table 4: Parameters identified on the validation-selected chain of each training objective, both at λt = 5 .                                   
+
+> OSA MPO Term True Mean 95% CI Mean 95% CI
+> ui−1+0 .500 +0 .5024 [+0 .4847 ,+0 .5196] +0 .5070 [+0 .4776 ,+0 .5333]
+> u3
+> i−5−0.300 −0.3011 [−0.3062 ,−0.2958] −0.3023 [−0.3111 ,−0.2930]
+> yi−1+0 .300 +0 .2961 [+0 .2827 ,+0 .3088] +0 .2924 [+0 .2699 ,+0 .3151]
+> σϵ0.1561 0.1752 [0 .1682 ,0.1829] 0.1663 —
+
+Unlike the term parameters, the σϵ values are not comparable between the two approaches. In the case of the OSA-based approach, σϵ is inferred and defined by an inverse-gamma posterior, whereas for the MPO-based approach, σϵ has no posterior, and it is instead defined by the fixed proxy pε0/100 , which is implied by the cold tolerance. Both approaches seem to have slightly overestimated the measured noise. Upon further inspection, it was found that this bias in the OSA sampler was contributed by setting the scale hyperparameter to βϵ = 1 .0. In the case of the MPO-based approach, however, the cold tolerance may have needed one additional adaptive stage to converge more closely to the true posterior. The forward integration procedure was repeated 100 times to obtain Monte Carlo estimates of the response summary statistics. Figure 4 shows the posterior mean estimate and bounds corresponding to three standard deviations of the realisations. The figure shows that selected chains fit the test data well. Additionally, the observations can be found 
+
+Figure 4: Comparison between response predictions and observations of the academic case study. within the estimated predictive bounds. While both approaches managed to correctly identify the data-generating system, the OSA-based approach clearly outperformed the MPO-based approach in terms of reliability and time consumption. This outcome may not apply to every scenario, as the next two case studies demonstrate. 
+
+4.2 Nonlinear benchmarks: The Silverbox case study 
+
+The Silverbox dataset is common among the datasets made available for benchmarking nonlinear system identifiers. The Silverbox system was proposed in Wigren and Schoukens [34] as an electronic implementation of the Duffing oscillator. 15 Equation discovery with Bayesian tree-adjoining grammars The dataset is conveniently split into two parts for the identification problem. An excitation signal corresponding to a low-pass filtered Gaussian noise with a bandwidth of 200Hz is used for the generation of the first 40 ,000 samples. The excitation signal also presents a linearly increasing amplitude ranging from 0V to 3V . Conversely, in the second part, the excitation signal consists of a stationary random odd multi-sine signal. The dataset was partitioned here in the following manner: The first 80% of the multi-sine signal was used as the training set Dtrain . The remaining 20% of the multi-sine signal was used as a validation set Dval . The Gaussian excitation part of the dataset was used as the test set Dtest , which is independent of Dtrain , and was used to estimate the simulation error once the inference procedure has identified the posteriors over the model candidates together with their associated parameters. A point to note is that the number of samples in this case study was dropped to 10 ,000 /20 ,000 because of the higher computational cost demanded from this large dataset. Based on the information provided about the system in Wigren and Schoukens [34], the nonlinearity in the true system is said to be cubic in nature, and thus the p-NARX grammar GN , can be considered to be a suitable model class for the current identification task. Except for the number of samples and the lag window, the hyperparameters selected in this case study remain the same as those introduced in Section 3.2. The lag window was set to ℓ = 50 , as this is the number of initial samples that is suggested to be treated as transient when reporting results on this dataset. 
+
+4.2.1 Results and discussion 
+
+The results obtained from the Silverbox data are listed in Table 5. The notation in the table is consistent with the one specified in the previous case study. An additional column, however, has been included here listing the Root-Mean-Squared Error (RMSE) derived from the selected chain’s MAP NMSE. The RMSE is given in mV for comparison with the published benchmark. Table 5: Results from Case Study 2. All scores are provided by the NMSE on the test set. The number of terms here corresponds to the median across chains.                                                    
+
+> Selected Pooled Method λtMAP FWD MAP FWD No. Terms Time (h) RMSE (mV) OSA 10.0061 0.0092 0.0061 0.0087 19.5 0.27 0.419 50.0055 0.0080 0.0200 0.0095 20.0 0.38 0.397
+> 20 0.0068 0.0073 0.0065 0.0097 19.5 0.29 0.442 MPO 17.2078 6.9726 8.6794 7.8068 3.0 7.50 14.358 50.7404 0.3286 7.1003 4.1935 3.5 7.66 4.602 20 0.0407 0.0504 0.0479 0.0956 4.5 8.11 1.079
+
+The pooling errors provide some insights into the multimodality of the posterior space. Their departure from the selected MAP gives an indication of the disagreement among the chains. This consequence occurs because pooling takes the modal structure over the union of all post-burn traces, so it is not a simple average of the chains. For example, Table 5 shows that, at OSA λt = 5 , the pooled MAP is almost four times that of the selected chain, perhaps because the mode falls on a structure that is not favoured by all the chains. On the other hand, where the posterior is concentrated, both errors agree closely, as seen for OSA λt = 1 and 20 .The identified model structure that achieved the lowest error (OSA MAP λt = 5 ) was, 
+
+yi = − 2.6143 y3 
+
+> i−1
+
++ 2 .4638 y2
+
+> i−1
+
+yi−2 − 1.8405 yi−1yi−2yi−3 + 1 .7409 yi−1 + 1 .6417 yi−2y2
+
+> i−3
+
+− 1.0511 yi−2 − 0.5677 y3 
+
+> i−2
+
++ 0 .3683 ui−1 + 0 .2961 ui−1yi−1yi−3 + 0 .2410 y3
+
+> i−4
+
++ 0 .1676 yi−5 − 0.1017 ui−3 − 0.0906 ui−4 − 0.0835 ui−2 + 0 .0455 ui
+
++ 0 .0175 ui−5 − 0.0147 yi−7 + 0 .0068 y2 
+
+> i−1
+
+− 0.0049 y2 
+
+> i−3
+
++ 0 .0031 ui−7
+
+(29) which was identified with a model mass of 0.354 . The parameters in (29) correspond to the empirical MAP values estimated from the inferred posterior p(Θ T |T , Dtrain ). Unlike the previous case study, the true parameter values are unknown, so no guarantees can be made about the correctness of these parameters. Nevertheless, the predominant nonlinearity found in the identified model is cubic in nature, which is another characteristic that agrees with the Silverbox system as described in Wigren and Schoukens [34]. Indeed, one may observe that all nonlinear contributions are cubic in (29). 16 Equation discovery with Bayesian tree-adjoining grammars Table 6: Performance of the identified model computed on the Silverbox test data and compared with other results in the literature. Nonlinear identification method Test RMS simulation (mV) 
+
+Proposed method 0.397 
+
+Genetic Programming NARMAX ([3]) 0.360 GP-NARX ([36]) 0.720 p-NARX ([36]) 2.250 
+
+p-NLSS ([37]) 0.260 
+
+Figure 5 (top) shows the residuals from the best MAP model-parameter pair plotted together with the test observations. Additionally, Figure 5 (bottom) shows the estimated means and confidence bounds from 100 realisations of the forward integration scheme. The zoomed-in view of the signal illustrates how well the models agree with the observations. 
+
+Figure 5: Comparison of the observations in the test set Dtest with predictions made by the validation-selected models. To compare these results against the published benchmark, Table 6 lists the results from other nonlinear identification methods proposed in the literature. The best result reported here remains on par with state-of-the-art methods. A few insights are worth highlighting when comparing the performance of these methods. The first is that the proposed approach performs generally better than the simple p-NARX implemented in [36]. This benchmark may serve as an upper bound on the acceptable prediction error that novel methods should improve upon to be worthy of consideration. The fairly large error observed from the p-NARX model derives from restricting the model to a weighted sum of monomials in the polynomial expansion. The inclusion of cross-term multinomials should naturally enhance identification, which is precisely the improvement observed in the present case study. Perhaps more notable is that the proposed method outperformed the Gaussian Process NARX (GP-NARX) model, also implemented in [36]. This result carries important implications, since the combinatorial nature of the lag-structure selection problem can make the GP-NARX a particularly challenging model to cross-validate, despite its flexibility and probabilistic framework. This limitation is somewhat mitigated here because models are evaluated in a symbolic-regression fashion, which is computationally more efficient. In other words, the proposed method not only achieves an 17 Equation discovery with Bayesian tree-adjoining grammars improved performance, but may do so at a reduced computational cost, while still preserving the Bayesian characteristics of the GP-NARX. Finally, it is important to highlight the results presented by Khandelwal et al . [3]. Although both approaches rely on the same TAG representation of dynamical systems, the performance achieved with genetic programming remains slightly better. A possible explanation is that their employed grammar was richer, allowing it also to encode p-NARMAX models. By explicitly modelling the measurement noise, some additional system characteristics may have been captured that would otherwise remain unmodelled. 
+
+4.3 Enhanced modelling with physics knowledge: The Christchurch Bay Tower case study 
+
+The last case study presents the implementation of the proposed approach on a dataset collected from the project known as the Christchurch Bay Tower Compliant Cylinder (CBTCC) [38]. One of the main purposes of this tower was to test fluid-loading models in a real directional sea environment. The structure under investigation is composed of a large central column of 2.80m in diameter and a small rigid cylinder of 0.480m in diameter. The tower was equipped with an array of sensors, including perforated-ball velocity meters, pressure transducers, force sleeves, and wave buoys. The data under consideration correspond to measurements collected exclusively from the smaller rigid cylinder. A region of 3000 data points was selected where the flow was ensured to be mostly unidirectional. From this set, the data were split into three sequential subsets of 1000 points for use as training, validation and test sets. 
+
+4.3.1 Towards a grey-box modelling approach using TAGs 
+
+To achieve a high-fidelity wave-loading quantification, simulations from Computational Fluid Dynamics (CFD) are commonly elicited. The simulations rendered by CFD can be accurate and powerful, especially when modelling wave forces interacting with large and/or complex structures. While these high-fidelity analyses are explored in great detail within research communities, the high computational resources that come with them remain an ongoing issue. In industrial applications, it may be necessary to rely on more simplistic empirical models that provide approximated solutions at a reduced computational cost. An example of one such model is Morison’s equation [39], which has been used extensively to model wave loading on slender members. The original Morison’s equation intentionally simplifies the hydrodynamic forces as the sum of a drag force and an inertial force. Given the kinematic wave velocity u, and acceleration ˙u, the force per unit axial length F is given by, 
+
+F = 12 ρDC du|u| + 14 πρD 2Cm ˙u (30) where ρ is the fluid density, D is the cylinder diameter, Cd is the drag coefficient and Cm the inertia coefficient. Condensing the wave-loading forces down to two terms oversimplifies the physics involved in the wave-structure interaction. Consequently, Morison’s equation struggles to model nonlinear phenomena, such as vortex shedding. The idea here is to demonstrate that a compromise between the high fidelity of CFD and the simplicity of Morison’s equation is possible by employing a grey-box [40] modelling approach. The term grey-box derives from conceptually combining a white-box with a black-box . A model determined completely by physics is termed a white-box, while one determined purely by data is termed a black-box. The key idea here is to enhance the predictive capabilities of Morison’s equation (white-box model) with the addition of a nonlinear p-NARX component (black-box model). Unlike the previous case studies, there are no compelling reasons to believe that the p-NARX model class can parsimoniously explain the data. In fact, it is generally unwise to construct a model driven uniquely by data when some of the physics are known. The current dataset is likely subject to various sources of unaccounted-for uncertainties, making system identification particularly challenging. Enhancing black-box models with physics can be achieved in several ways. The simplest and most common approach is to form a direct sum of a white-box model with that of a black-box model. This approach involves fitting a white-box model first, followed by fitting a black-box on the residuals between the white-box predictions and observed data. The residuals may be interpreted as the physics that the white-box model fails to capture. A more flexible black-box model can then take on the task of identifying the remaining discrepancies. The predictions are hence computed as follows, 
+
+yi = Fi + f (ui, ˙ui) + ϵi (31) The first component on the RHS corresponds to Morison’s equation (30), and the second component to a p-NARX model encoded by a TAG. As stated in the introduction, the TAG framework is well suited to the incorporation of physics. This can be made possible by parsing Morison’s equation into a valid tree representation, as shown in Figure 6. The yield of the tree is a version of Morison’s equation in which the dimension-specific terms have been grouped to 18 Equation discovery with Bayesian tree-adjoining grammars form the constants C′ 
+
+> d
+
+and C′
+
+> m
+
+, relating to the drag and inertial forces of the wave, respectively. One may note that the tree encoding was extended to account for the “abs” (absolute value/norm operation) function as a pre-operation applied to the velocity factor u within the first term. expr0 expr1 expr2 expr3 uop *expr1 par 
+
+> C′
+> d
+> op *expr2 preop abs op xexpr2 expr3 uop +expr0 expr1 par
+> C′
+> m
+> op *expr2 ˙u
+
+Figure 6: Morison’s equation tree representation. The constructed tree representation in Figure 6 can be enforced as the initial tree during the identification process. As a result, the model posterior remains conditioned on Morison’s equation. This condition can be directly incorporated into the RJ-MCMC framework, since the jump kernel can be set to assign a zero probability to move types that could potentially modify the initial tree. By ensuring the initial tree remains fixed during its ramification, the yield is guaranteed to include the terms in Morison’s equation within the overall expression. The question then becomes how the white-box tree and its parameters should be treated during identification. Three possible alternatives are proposed here: • Method 1 (Black-box): Implement the proposed identifier directly using the TAG GN .• Method 2 (Residual): Learn the parameters of the initial tree first. Then freeze the initial tree, along with its parameters, while allowing the remaining tree structure to grow around it during the identification process. • Method 3 (Grey-box TAG): Set Morison’s equation tree representation as the initial tree, and let the identifier grow the remaining tree over it while jointly learning all the parameters. Method 2 ensures that the black-box model learns solely from the residuals. Meanwhile, Method 3 relaxes this condition by letting the white-box parameters be somewhat corrected by the addition of new terms. 
+
+4.3.2 Results and discussion 
+
+The results obtained in this case study are shown in Figure 7. In addition to the NMSE values, the figure also includes the model size that resulted from each run in terms of the median number of terms. All NMSE values are compared against the white-box baseline, which in this case yields an NMSE equal to 19 .463% , as expected given that Morison’s equation will typically have errors in the region of 20% [41]. This result was computed by fitting equation (30) to the training data via least-squares regression. In most cases, the MPO-based approach appeared to have outperformed the OSA-based approach. Furthermore, the latter infers model structures that are larger in every configuration. This outcome may suggest that OSA training on this dataset leads to overfitted models that heavily rely on true measured outputs. Only two cases of the OSA residual modelling managed to clear the Morison’s white-box line. On the other hand, the MPO configuration manages to clear the line in all instances, with the best prediction (NMSE = 13 .730%) provided by the Grey-box MPO with λt = 20 .These results support the idea that a part of the structure found in the residuals could be captured by a more flexible polynomial NARX model. The simulated predictions, alongside the test set observations, are shown in Figure 8. Specifically, the figure shows the simulated force predictions from having identified the system using all methods. In this case, the Monte Carlo approximations were computed using 400 realisations of the forward integration approach. At first glance, and regardless of the modelling approach, the agreement of the predictions with the data seems to be fairly poor. Nevertheless, the main wave-force trend can be seen to have been captured somewhat accurately, and the discrepancies are found within the estimated confidence bounds. To provide a better assessment of these results, Table 7 lists the errors reported from 19 Equation discovery with Bayesian tree-adjoining grammars 
+
+Figure 7: NMSE on the CBT test set and median number of terms for each method, training objective and λt, compared against the Morison’s equation (white-box) baseline. Table 7: Performance estimate comparison from identification methods used on the CBT test set. The proposed methods are reported for the MPO objective with λt = 20 .Identification method NMSE ( %)Morison’s equation (white-box) 19 .463 
+
+Proposed method 1 (black-box MPO) 16 .730 
+
+Proposed method 2 (residual MPO) 14 .600 
+
+Proposed method 3 (grey-box MPO) 13.730 
+
+Polynomial NARMAX [2] 21 .430 
+
+GP-NARX [43] 19 .520 
+
+Morison’s equation + GP-NARX [42] 13 .840 
+
+other studies in which the CBT dataset has been modelled. In particular, the best results from [42, 2, 43] were included for comparison. The relatively high errors reported in the literature demonstrate how hard it is to identify an autoregressive model that can accurately represent the CBT system. It becomes clear that confounded uncertainties contribute towards the ill-posed nature of this system-identification problem. One unaccounted source of uncertainty corresponds to the extent to which the flow is truly unidirectional. The available data-stream was cropped for a time window in which the load contribution from the orthogonal direction was at a minimum. While this is a sensible choice to ensure the effectiveness of Morison’s equation, wave loads from all directions were never truly negligible. An additional source of uncertainty derives from the spatial offset between sensor equipment. The velocities were measured with the perforated-ball velocity meters attached at a distance of 1.228m from the cylinder axis. Hence, these measurements do not provide the exact velocity at the centre of the force sleeve. Above all, however, the dataset may simply not be representative enough of the system. It is, perhaps, necessary to have a much larger dataset to discover an equation that can adequately reflect a complex system, like the CBT. The grey-box model proposed by Pitchforth et al . [42] managed to bring the NMSE down to 13 .840% . In their original work, the same residual-modelling formulation as the one presented here was implemented, but with a GP-NARX regressor used instead as the black-box component. While the performance of the GP-NARX is comparable to that of Method 3, the approach proposed in the present work offers several practical advantages that are similar to those 20 Equation discovery with Bayesian tree-adjoining grammars 
+
+Figure 8: Comparison between observations of the CBT case study and response predictions. highlighted in the Silverbox case study. The most prevalent benefit is that the model structure is autonomously determined by the Bayesian identifier. Conversely, to achieve the best performing GP-NARX for a given problem, an extensive validation scheme is necessary to determine which autoregressive terms, and their lags, should be used. Because of the high computational cost demanded by training a GP, and the complex combinatorial nature of NARX models, such a validation scheme may be too expensive to conduct within a reasonable amount of time. 
+
+# 5 Overall discussion 
+
+The case studies examined above demonstrated the effectiveness of the proposed method in identifying nonlinear systems. An important point touched upon in all the case studies is the capability of the identifier to make predictions in a probabilistic framework. The uncertainty is not only quantified on the response predictions, but also estimated on both the model structure and associated parameters. Consequently, the model selection is no longer limited to a deterministic output that has to be assumed correct with certainty. A posterior mass function is rather estimated over a selection of model structures, each capable of explaining the data to some extent. Quantifying how certain one is about a model can be beneficial in informed decision-making and reliable extrapolation. The previous section also demonstrated that the TAG can be easily augmented to include additional elementary trees. Such an extension was made in the CBT case study, not only by introducing an initial tree encoding the wave-loading physics, but also by introducing additional “input” trees, so that the TAG could parse Multi-Input-Single-Output 
+
+(MISO) autoregressive functions. Although made implicitly, the extension simply involved duplicating α1 and α3 in 
+
+GN to account for both the velocity and acceleration signals. Even after making these changes to the grammar, the implementation of the sampler remained the same, with the small exception of the model prior (20), which required rewriting the factor (1 /2) d as (1 /3) d, since the random choice was made uniformly among three input variables 
+
+{u, ˙u, y }.Regarding the proposed approaches, deciding whether to implement the sampler based on OSA or MPO depends entirely on the application at hand. The OSA objective may be preferred to measure short-term predictions, while the MPO objective may be preferred for long-term predictions [3]. While it has been argued that the MPO objective tends to be a more stringent test of the model [2], including both of these seemingly complementary measures is perhaps necessary. In the examined case studies, each approach displayed advantages over the other in different respects. For 21 Equation discovery with Bayesian tree-adjoining grammars example, the OSA-based approach was easier to implement and significantly faster to compute. However, the model resulting from the MPO-based approach generalised better when the data-generating system did not belong to the model class. In fact, in such a scenario, the OSA-based approach fails to capture the dynamics of the underlying system. This difference was evident when comparing the results obtained from the Silverbox and CBT case studies. A remark worth making on the CBT case study is that employing a polynomial expansion is, perhaps, an unsuitable choice to approximate the nonlinear nature of vortex shedding. While p-NARX models are considered universal approximators, the sampler may have needed to elicit a vast number of monomials to represent the true data-generating system, making the computational demand unfeasibly large. This issue was not experienced in the first two case studies because the nonlinearities in the systems are cubic in nature, and thus possible to identify within the p-NARX function class. Therefore, it may be necessary to explore the use of other TAGs, capable of representing distinct function classes that could be better suited for wave-loading problems. This research avenue is left for future work. Finally, it is reiterated here that the chosen grammar, move types, priors, and hyperparameters are by no means the optimal selection. These configurations should instead be adjusted based on the knowledge one may have about the system being identified. Admittedly, having used the same priors across all three case studies may have defeated this purpose. This somewhat naive approach assumed that the contrasting datasets could be explained by the same underlying mechanisms. These assumptions concerned, for example, the expected level of measurement noise, or whether the model should promote pure-power terms over interaction terms. However, this choice was necessary to ensure the case studies remained as comparable as possible, albeit at the expense of performance on an individual basis. 
+
+# 6 Conclusion 
+
+Overall, the proposed algorithm addresses the nonlinear identification problem using TAGs from a Bayesian perspective. The presented case studies demonstrate that the Bayesian approach offers several advantages over existing methods, particularly via the seamless incorporation of prior information over model structures, and its ability to quantify uncertainty over the choice of suitable model structures, associated parameters, and predictions. This work may be regarded as a humble contribution to the broad range of algorithms developed for NLSI. Despite the promising results, the present study represents an early stage of the method, with the potential for further refinement and improvement. 
+
+# Acknowledgments 
+
+The authors of this paper gratefully acknowledge the support of the Engineering and Physical Sciences Research Council (EPSRC) Open Fellowship via Grant reference EP/X040852/1. The authors would also like to acknowledge Dr. Max Champneys for his insights on this work regarding Bayesian inference and nonlinear system identification. For the purpose of open access, the authors have applied a Creative Commons Attribution (CC BY) licence to any Author Accepted Manuscript version arising. 
+
+# References 
+
+[1] G. Kerschen, K. Worden, A.F. Vakakis, and J. Golinval. Past, present and future of nonlinear system identification in structural dynamics. Mechanical Systems and Signal Processing , 20(3):505–592, 2006. [2] K. Worden. Nonlinearity in Structural Dynamics: Detection, Identification and Modelling . CRC Press, 1st edition, 2001. [3] D. Khandelwal. Automating data-driven modelling of dynamical systems: an evolutionary computation approach .PhD thesis, Electrical Engineering, 2020. [4] A.K. Joshi, L. Levy, and M. Takahashi. Tree adjunct grammars. Journal of computer and system sciences ,10(1):136–163, 1975. [5] N. Chomsky. Three models for the description of language. IRE Transactions on Information Theory , 2(3):113– 124, 1956. [6] L. Kallmeyer. Parsing with tree adjunct grammars. Computational Linguistics , 36(1):1–42, 2010. [7] A.K. Joshi and Y. Schabes. Tree adjoining grammars. Handbook of Formal Languages , 3:69–123, 1997. [8] D. Khandelwal, M. Schoukens, and R. Tóth. A tree adjoining grammar representation for models of stochastic dynamical systems. Automatica , 119:109099, 2020. [9] S.A. Billings and M. Fakhouri. Identification of nonlinear systems using a forward-regression orthogonal estimator. 
+
+International Journal of Control , 41(3):807–837, 1985. 22 Equation discovery with Bayesian tree-adjoining grammars [10] M.H. Stone. The generalized Weierstrass approximation theorem. Mathematics Magazine , 21(5):167–184, 1948. [11] S.A. Billings. Nonlinear system identification: NARMAX methods in the time, frequency, and spatio-temporal domains. Wiley , 2013. [12] W.H. Jefferys. Ockham’s razor and bayesian analysis. American Scientist , 80(1):64–72, 1992. [13] C.E. Rasmussen and C.K.I. Williams. Occam’s razor. Advances in neural information processing systems , 13, 2000. [14] D.J.C. MacKay. Bayesian interpolation. Neural Computation , 4(3):415–447, 1992. [15] P.J. Green. Reversible Jump Markov Chain Monte Carlo computation and Bayesian model determination. 
+
+Biometrika , 82(4):711–732, 1995. [16] N. Metropolis, A.W. Rosenbluth, M.N. Rosenbluth, A.H. Teller, and E. Teller. Equation of state calculations by fast computing machines. The Journal of Chemical Physics , 21(6):1087–1092, 1953. [17] C.M. Bishop. Pattern Recognition and Machine Learning . Springer-Verlag, 2006. [18] K. Murphy. Machine Learning: A Probabilistic Perspective . MIT Press, 2012. [19] S. Rogers and M. Girolami. A First Course in Machine Learning . Chapman and Hall/CRC, 2nd edition, 2016. [20] P.T. Troughton and S.J. Godsill. A reversible jump sampler for autoregressive time series, employing full conditionals to achieve efficient model space moves. 1997. [21] J. Besag. A candidate’s formula: A curious result in Bayesian prediction. Biometrika , 76(1):183–183, 1989. [22] M.D. Champneys and T.J. Rogers. BINDy: Bayesian identification of nonlinear dynamics with reversible-jump Markov-chain Monte Carlo. Proceedings of the Royal Society A: Mathematical, Physical and Engineering Sciences , 481(2319):20240620, 2025. [23] S. Tavaré, D.J. Balding, R.C. Griffiths, and P. Donnelly. Inferring coalescence times from DNA sequence data. 
+
+Genetics , 145(2):505–518, 1997. [24] P. Marjoram, J. Molitor, V. Plagnol, and S. Tavaré. Markov chain Monte Carlo without likelihoods. Proceedings of the National Academy of Sciences , 100(26):15324–15328, 2003. [25] M. Baragatti, A. Grimaud, and D. Pommeret. Likelihood-free parallel tempering, 2012. [26] Y. Jin, W. Fu, J. Kang, J. Guo, and J. Guo. Bayesian symbolic regression, 2020. [27] J. Brence, L. Todorovski, and S. Džeroski. Probabilistic grammars for equation discovery. Knowledge-Based Systems , 224:107077, 2021. [28] H.A. Chipman, E.I. George, and R.E. McCulloch. Bayesian CART model search. Journal of the American Statistical Association , 93, 12 1998. [29] H.A. Chipman, E.I. George, and R.E. McCulloch. BART: Bayesian additive regression trees. The Annals of Applied Statistics , 4(1), 2010. [30] T. Zhang, R.J. Barthorpe, and K. Worden. On treed Gaussian processes and piecewise-linear NARX modelling. 
+
+Mechanical Systems and Signal Processing , 144:106877, 2020. [31] R.B. Gramacy and H.K.H. Lee. Bayesian treed Gaussian process models with an application to computer modeling. 
+
+Journal of the American Statistical Association , 103(483):1119–1130, 2008. [32] P.H. Garthwaite, Y. Fan, and S.A. Sisson. Adaptive optimal scaling of Metropolis–Hastings algorithms using the Robbins–Monro process. Communications in Statistics - Theory and Methods , 45(17):5098–5111, 2016. [33] A. ˜ Del Moral, A. Doucet, and A. Jasra. An adaptive sequential Monte Carlo method for approximate Bayesian computation. Statistics and Computing , 22:1009–1020, 2012. [34] T. Wigren and J. Schoukens. Data for benchmarking in nonlinear system identification. 2013. [35] J.R. Bishop. Aspects of large scale wave force experiments and some early results from Christchurch Bay. 
+
+National Maritime Institute Report , (NMI R57), 1979. [36] M.D. Champneys, G.I. Beintema, R. Tóth, M. Schoukens, and T.J. Rogers. Baseline results for selected nonlinear system identification benchmarks, 2024. [37] J. Paduart, L. Lauwers, J. Swevers, K. Smolders, J. Schoukens, and R. Pintelon. Identification of nonlinear systems using polynomial nonlinear state space models. Automatica , 46(4):647–656, 2010. [38] G. Najafian, R.G. Tickell, R. Burrows, and J.R. Bishop. The uk christchurch bay compliant cylinder project: analysis and interpretation of morison wave force and response data. Applied Ocean Research , 22(3):129–153, 2000. 23 Equation discovery with Bayesian tree-adjoining grammars [39] J.R. Morison, J.W. Johnson, and S.A. Schaaf. The force exerted by surface waves on piles. Journal of Petroleum Technology , 2(05):149–154, 05 1950. [40] E.J. Cross, S.J. Gibson, M.R. Jones, d.J. Pitchforth, S. Zhang, and T.J. Rogers. Physics-Informed Machine Learning for Structural Health Monitoring , pages 347–367. Springer International Publishing, Cham, 2022. [41] A.M.M. Wood and C.A. Fleming. Coastal hydraulics . Macmillan, 2nd ed. edition, 1981. [42] D.J. Pitchforth, T.J. Rogers, U.T. Tygesen, and E.J. Cross. Grey-box models for wave loading prediction. 
+
+Mechanical Systems and Signal Processing , 159:107741, 2021. [43] K. Worden, W.E. Becker, T.J. Rogers, and E.J. Cross. On the confidence bounds of Gaussian process NARX models and their higher-order frequency response functions. Mechanical Systems and Signal Processing , 104:188–223, 2018. 
+
+# A Algorithms 
+
+Algorithm 1 OSA-based Bayesian inference using TAGs for nonlinear system identification. 
+
+Require: Grammar GN , prior parameters {σ2 
+
+> θ
+
+, α ϵ, β ϵ}, reference tree η1 (whose terms are held fixed), jump kernels 
+
+j(T → T ′), and sample number ns. 
+
+> 1:
+
+Initialise T ← η1 with one term adjoined, and σ2 
+
+> ϵ
+
+at the output scale.  
+
+> 2:
+
+Sample ΘT from N (Θ T |μT , ΣT ). 
+
+> 3:
+
+for ns number of samples do  
+
+> 4:
+
+Propose move type T → T ′ with probability j(T → T ′). 
+
+> 5:
+
+if move type is stay then  
+
+> 6:
+
+Retain the current structure, T ′ ← T . 
+
+> 7:
+
+else  
+
+> 8:
+
+Modify current tree structure from T to T ′, according to chosen move type.  
+
+> 9:
+
+if T ′ is unchanged, or any term of η1 is absent from T ′ then  
+
+> 10:
+
+Reject the proposal and continue to line 20.  
+
+> 11:
+
+end if  
+
+> 12:
+
+end if  
+
+> 13:
+
+Sample ΘT ′ from N (Θ T ′ |μT ′ , ΣT ′ ), conditioned on the current σ2 
+
+> ϵ
+
+. 
+
+> 14:
+
+Evaluate acceptance probability given by (11).  
+
+> 15:
+
+if Proposed model and parameters are accepted then  
+
+> 16:
+
+Update current state with proposals.  
+
+> 17:
+
+else  
+
+> 18:
+
+Remain in current state.  
+
+> 19:
+
+end if  
+
+> 20:
+
+Sample new noise variance σ2 
+
+> ϵ
+
+according to the Gibbs update given by (14).  
+
+> 21:
+
+end for 
+
+24 Equation discovery with Bayesian tree-adjoining grammars 
+
+Algorithm 2 MPO-based likelihood-free inference using TAGs for nonlinear system identification. 
+
+Require: Grammar GN , prior parameter {σ2 
+
+> θ
+
+}, auxiliary proposal variance σ2
+
+> u
+
+, reference tree η1 (whose terms are held fixed), jump kernels j(T → T ′), sample number ns, number of steps C, annealing stages S, quantile q, and distance d(T , ΘT ) = ρ(y∗, y) of the free-run simulation of (T , ΘT ).
+
+Ladder calibration  
+
+> 1:
+
+Draw random structures, apply a short greedy descent and polish their parameters; record the smallest distance reached as the floor dmin . 
+
+> 2:
+
+Place tolerances ε0 < · · · < ε C−1 geometrically in the excess ε − dmin , with ε0 just above dmin . 
+
+> 3:
+
+Initialise each step c with a state satisfying d(T , ΘT ) ≤ εc.
+
+Sampling  
+
+> 4:
+
+for ns number of samples do  
+
+> 5:
+
+for each step c = 0 , . . . , C − 1 do  
+
+> 6:
+
+Propose move type T → T ′ with probability j(T → T ′). 
+
+> 7:
+
+if move type is stay then  
+
+> 8:
+
+Retain the current structure, and perturb ΘT ′ ← ΘT + N (0 , s 2 
+
+> c
+
+I). 
+
+> 9:
+
+else  
+
+> 10:
+
+Modify current tree structure from T to T ′, according to chosen move type.  
+
+> 11:
+
+if T ′ is unchanged, or any term of η1 is absent from T ′ then  
+
+> 12:
+
+Reject the proposal and continue to the next step.  
+
+> 13:
+
+end if  
+
+> 14:
+
+Carry coefficients of retained terms across unchanged; draw u ∼ N (0 , σ 2
+
+> u
+
+) for any term gained, and score under the same density any term lost.  
+
+> 15:
+
+end if  
+
+> 16:
+
+Simulate the free run of (T ′, ΘT ′ ) and evaluate the distance d′. 
+
+> 17:
+
+if d′ is not finite or d′ > ε c then  
+
+> 18:
+
+Reject the proposal and continue to the next step.  
+
+> 19:
+
+end if  
+
+> 20:
+
+Evaluate acceptance probability given by (18).  
+
+> 21:
+
+if Proposed model and parameters are accepted then  
+
+> 22:
+
+Update current state of step c with proposals.  
+
+> 23:
+
+else  
+
+> 24:
+
+Remain in current state.  
+
+> 25:
+
+end if  
+
+> 26:
+
+end for  
+
+> 27:
+
+Every nswap samples, for alternating adjacent pairs (c, c + 1) : exchange states if dc+1 ≤ εc. 
+
+> 28:
+
+if still annealing, and at the end of a stage then  
+
+> 29:
+
+Update dmin to the smallest distance seen, tighten ε0 onto the q-quantile of the cold step’s distances, and re-space the remaining steps in the excess over dmin . 
+
+> 30:
+
+Reassign to each step a state satisfying its new tolerance.  
+
+> 31:
+
+end if  
+
+> 32:
+
+if annealing has just finished then  
+
+> 33:
+
+Freeze the ladder and the random-walk widths sc. 
+
+> 34:
+
+end if  
+
+> 35:
+
+After burn-in, record the state of the cold step c = 0 . 
+
+> 36:
+
+end for 
+
+25

@@ -1,0 +1,1719 @@
+Title: Deep-Learning Solvers and Surrogates for Infinity and p-Laplace Problems
+
+URL Source: https://arxiv.org/pdf/2609.30809v1
+
+Published Time: Mon, 28 Sep 2026 00:43:37 GMT
+
+Number of Pages: 46
+
+Markdown Content:
+# Deep-Learning Solvers and Surrogates for Infinity and p-Laplace Problems 
+
+Tak Shing Au Yeung 2, Ka Chun Cheung 2, Hannah Potgieter ∗1, Steven J. Ruuth 1, and Simon See 3
+
+> 1
+
+Department of Mathematics, Simon Fraser University, Burnaby, British Columbia, Canada 
+
+> 2
+
+NVIDIA AI Technology Center, NVIDIA, Hong Kong, China 
+
+> 3
+
+NVIDIA AI Technology Center, NVIDIA, Singapore, Singapore 
+
+September 28, 2026 
+
+Abstract 
+
+We investigate the use of neural network solvers for infinity and p-Laplace problems, which are fundamental in nonlinear analysis and have practical applications. Our approach employs Physics-Informed Neural Networks (PINNs) and Deep Operator Networks (DeepONets) to ad-dress computational challenges associated with large p values, ranging from 2 to 1000, on various 2D and 3D domains. Our method offers advantages over traditional physics-based solvers, es-pecially in three dimensions where mesh-based solvers become very costly for these problems. We also establish conditional convergence results for PINN approximations of both problems and a universal approximation result for DeepONet on the parametric p-Poisson problem. We demonstrate the effectiveness of these neural network solvers through numerical experiments and compare their performance with conventional methods. 
+
+Keywords: p-Laplacian, Infinity Laplacian, Physics-informed neural networks, Deep oper-ator networks, Operator learning, Large-p limit 
+
+# 1 Introduction 
+
+Infinity and p-Laplace problems are of significant interest in both mathematical analysis and for their practical applications. The p-Laplace operator lies at the heart of nonlinear analysis [1]. The infinity Laplace operator is closely related and may be formally derived from taking the p → ∞ 
+
+limit of a p-Laplace problem subject to homogeneous Dirichlet boundary conditions [2, 3]. This limiting process is rigorously understood in a viscosity solution framework. Thus, it is natural to consider infinity and p-Laplace problems jointly. Moreover, many applications call for the use of large p values such as image processing [4, 5], distance function approximation [6, 7], and optimal transport [6]. Neural network solvers for partial differential equations (PDEs) have gained considerable at-tention, see for example [8–10]. Traditional physics-based solvers for p-Laplace problems present unique challenges, and in particular, large p values often give rise to ill-conditioned systems. The infinity Laplacian lacks divergence structure, so accurate numerical computation with nonsmooth data is computationally expensive and slow to converge [11]. Moreover, popular “traditional” solvers such as Oberman’s method [11] become very expensive beyond two-dimensional problems. 
+
+> ∗Corresponding author: hannahpotgieter1@gmail.com
+
+1arXiv:2609.30809v1 [math.NA] 25 Sep 2026 These difficulties motivate the exploration of alternative numerical approaches that may offer im-proved scalability or flexibility, particularly in three dimensions, where mesh-based solvers for the 
+
+p-Laplacian become very costly. We seek to assess the performance of neural network solvers for infinity and p-Laplace problems and determine their potential advantages and limitations relative to established numerical methods. Physics-Informed Neural Networks (PINNs) were first introduced in [10, 12] to approximate solutions of nonlinear partial differential equations by training neural networks that incorporate physical laws through the loss function. The PINN framework embeds the governing PDE as a soft constraint, serving as a regularization mechanism that restricts the admissible solution space. This physics-informed loss can reduce the need for large amounts of training data. Since their introduction, PINNs have been applied to a wide range of problems, including Poisson equations, advection-diffusion systems, high-speed flows, and heat transfer [13–17]. Existing convergence theory for PINNs is primarily restricted to linear elliptic and parabolic equations, with extensions to certain nonlinear systems under strong regularity and stability as-sumptions [18, 19]. Degenerate elliptic operators such as the p-Laplacian and the infinity Laplacian generally fall outside the scope of these results. In this work, we extend the theoretical framework by establishing convergence results for PINN approximations for p-Laplace and the infinity Laplace problems under some assumptions that we will state precisely later. We also assess accuracy and robustness empirically through comparison with reference solutions. Our focus is on the p-Poisson problem, which generalizes the classical Poisson problem recovered when p = 2. In [9], a variant known as physics-informed neural networks with hard constraints (hPINNs) was introduced to address limitations arising from the soft enforcement of constraints in standard PINNs, meaning the solutions may not strictly satisfy the constraints. The authors proposed penalty and augmented Lagrangian strategies in which penalty parameters are increased iteratively, using the solution from the previous stage as an initial guess for subsequent training. These continuation-based ideas inspire the training strategies adopted in the present work, par-ticularly for stabilizing optimization in the large-p regime, although we do not claim theoretical convergence guarantees in this setting. Additionally, but with a different focus, we employ neural networks to learn the p-Laplace op-erator. Operator learning networks map between infinite-dimensional function spaces, taking input functions such as initial conditions, boundary conditions, or PDE coefficients, and producing the corresponding (approximate) PDE solution as the output function. Several operator learning archi-tectures have been proposed, including the Fourier neural operator (FNO) [20], convolutional neural operators (CNO) [21], graph neural operators [22], and deep operator networks (DeepONet) [8]. FNO parameterizes the operator using spectral layers acting on Fourier modes, enabling efficient learning of mappings between function spaces. CNO is a convolutional architecture designed to preserve certain structural properties across discretizations, facilitating the learning of continuous operators. Graph neural operators employ graph-based architectures and message passing mech-anisms to learn operators on discretized domains. Finally, DeepONet is motivated by a universal approximation theorem for nonlinear operators and has demonstrated strong performance in learn-ing operators for a range of parameter-dependent PDEs from relatively small datasets [8, 23]. In this work, DeepONet is employed as a surrogate model trained on solution data generated by conventional numerical solvers or PINNs for fixed values of p. The resulting network is used to in-terpolate solutions across parameter values, rather than as a standalone PDE solver. Based on the generalization behavior of DeepONets observed in [24], we investigate their ability to approximate 
+
+p-Laplace solutions for large p and to capture the p → ∞ limiting behavior. The main contributions of this work are as follows. We provide the first systematic PINN and DeepONet study of infinity and p-Laplace problems over the range p = 2 to 1000, together with 2conditional convergence results for PINN approximations of both problems. We introduce stabi-lization and continuation strategies for training in the large-p regime, including η-normalization or regularization, residual clipping, top-2% outlier removal, gradient-norm clamping, and continuation in p, and quantify the effects of the stabilization components through ablation studies in B and C. We also investigate DeepONet generalization across parameter values and a family of geometries, which provides flexibility over traditional mesh-based solvers. In Section 2, we introduce the infinity and p-Laplace operators and the associated boundary value problems under consideration. Section 3 describes the generation of reference solutions using a Newton-based solver with a finite element method. Section 4 presents the PINN formulation together with a convergence analysis under appropriate structural assumptions, while Section 5 describes the DeepONet approach along with analytical support. Numerical experiments are per-formed in Section 6. Finally, we provide a brief concluding discussion in Section 7. 
+
+# 2 Model problems and boundary value formulations 
+
+We consider the Dirichlet problem associated with the infinity Laplace operator. The homogeneous case is connected to absolutely minimizing Lipschitz extensions, which are useful for inpainting processes [5]. We often approximate problems involving the infinity Laplacian via the p-Laplacian with large p values. This approach is motivated by the variational structure and divergence form of the p-Laplacian, which enable the use of finite element numerical discretizations for finite p.Some applications include geodesic distance approximation [7], optimal transport [6], and shape optimization [25]. The p-Laplace operator is defined as ∆pup = ∇ · Ä|∇ up|p−2 ∇up
+
+ä .
+
+If we consider Dirichlet boundary conditions, we arrive at 
+
+−∆pup = f, in Ω ,up = g, on ∂Ω,
+
+which we refer to as a p-Poisson problem. The infinity Laplacian arises formally in the limit as p → ∞ of the (homogeneous) p-Laplacian. We have ∆∞u∞ = ( ∇u∞)T D2u∞ ∇u∞,
+
+where ∇u denotes the gradient of u and D2u denotes the Hessian matrix of u. We emphasize that this operator does not admit a divergence form and is interpreted in the viscosity sense. Moreover, the infinity Laplacian appears as a limiting equation only under specific assumptions on the source term and boundary conditions. We also consider the application of distance function approximation via the p-Laplacian. Dis-tance function approximation is an important step for a number of applications including surface reconstruction [26], medical imaging [27], and computational mechanics [28]. Further, there are many test problems which may be constructed for distance function approximation. The nons-mooth nature of distance functions, for example the distance to the origin in one dimension given by |x| which is Lipschitz but not differentiable at the origin, also provides insight into the neural network solver robustness against limited regularity. 3Figure 1: Example of a suitable 2D domain: Ω (grey) is an open subset of a rectangle , Γ 1 (orange) is the ‘feature’ set where the Dirichlet condition is imposed, and Γ 2 (black) is where the Neumann condition is imposed. 
+
+The mixed boundary value problem (BVP) for the p-Laplacian is given by 
+
+−∆pup = 1 , in Ω , (1a) 
+
+up = 0 , on Γ 1 ⊆ ∂Ω, (1b) 
+
+∂u p
+
+∂n = 0 , on Γ 2 ⊆ ∂Ω. (1c) where Ω is an open set, Γ 1 denotes the ‘feature’ set to which we want to compute the geodesic dis-tance, and Γ 2 represents the remaining unconstrained portion of the boundary. Figure 1 visualizes an example of a suitable domain. We know that lim  
+
+> p→∞
+
+up(x) = dist( x, Γ1),
+
+where the limit is understood in an appropriate weak or viscosity sense [2, 29]. Hence, large p values are of particular interest for distance approximation. Potgieter et al. [7] report numerical exper-iments suggesting that up approaches dist( x, Γ1) at an empirical rate of O(1 /p ) for the problems considered. Distance approximations obtained from the p-Laplacian exhibit desirable properties such as robustness to geometric noise and adherence to the triangle inequality [7]. However, large p values are highly susceptible to initial guess sensitivity and ill-conditioning in systems arising from iterative solvers, making them challenging to solve using traditional numerical methods [6, 30, 31]. Motivated by these challenges, we investigate neural network based numerical approaches for approximating solutions of p-Laplace and infinity Laplace problems. In this work, neural networks are employed as numerical solvers and surrogate models whose performance is assessed through systematic numerical experiments. In addition, we provide a convergence analysis for the PINN approximations under structural assumptions that are natural from an analytical per-spective, but are not directly enforced in the practical implementation. The practical performance of the methods is therefore also evaluated empirically. In particular, we employ PINNs to approximate solutions of fixed PDE instances using a small number of collocation points, and DeepONets to learn parametric mappings from problem data and parameters (such as p or domain descriptors) to solution fields. Operator learning theory provides universal approximation results for nonlinear operators [8, 23]. In Proposition 5.1, we specialize these results to the parametric p-Poisson problem, showing that, under a continuity assumption on 4the solution map, a DeepONet can approximate the associated operator on compact parameter sets. However, rigorous convergence analyses for degenerate elliptic equations such as the p-Laplacian and the infinity Laplacian remain limited, particularly in the regimes considered here. The primary focus of this work is on numerical evaluation. Newton-based FEM solutions are used to generate training data for DeepONet and to provide numerical comparison baselines. When a known infinity-Laplace solution is available, the neural-network are evaluated against this limiting solution. We study the resulting behavior across a range of p values and geometries, including large p values relevant to distance approximation. 
+
+# 3 Data generation 
+
+Problems involving the infinity Laplacian are often numerically approximated by using the p-Laplacian with large p values. This is largely due to the divergence structure of ∆ p enabling us to implement a variational finite element solver. Pryer [32] shows that finite element approximation of the homogeneous Dirichlet p-Laplace problem converges to the homogeneous Dirichlet infinity Laplace problem as p → ∞ . Accordingly, we employ a p-Laplacian finite element solver to generate reference solutions for both finite p and limiting p → ∞ cases. Using a finite element method (FEM) is advantageous over finite differences for nonsmooth problems. Accordingly, we use a p-Laplacian FEM solver for both p-Laplace and homogeneous infinity Laplace problems. This approach is widely regarded as a standard one for solving nonlinear elliptic PDEs such as those involving the p-Laplacian in the variational regime (see, e.g., [32–34]). Another numerical approach is Oberman’s [11] monotone scheme which is shown to converge to the unique weak ( p-Laplacian) or viscosity (infinity Laplacian) solution. While Oberman’s [11] method may be advantageous over Newton-based FEM when a mesh is not available, the convergence rate is dependent on angular resolution of the computational grid stencil making it prohibitively expensive at the angular resolutions required in 3D. Let Ω h be a discrete representation of the domain Ω ⊂ Rd, with associated mesh Th and mesh size h := max K∈T h diam( K). We define the finite element space 
+
+Vh := {vh ∈ C0(Ω h) | vh|K ∈ Q1(K), K ∈ T h},
+
+where Q1(K) denotes bilinear elements in two dimensions and trilinear elements in three dimen-sions. When Dirichlet boundary conditions are present, the finite element space is understood to incorporate these in the usual way. We restrict our attention to first-order elements, as solutions of the p-Laplace equation and related problems are generally not C2 for p > 2. Since our p-Laplace problem is nonlinear, we need an iterative method for approximating solu-tions. We use a damped Newton iteration in order to solve the nonlinear p-Poisson problem. Our implementation is very similar to those shown in [33], [34], and [35]. We implement the code in C++ using the deal.II [36] (version 9.6.1) finite element library and generate quadrilateral meshes (in 2D) or hexahedral (in 3D) elements using the built-in GridGenerator utilities. For the iteration updates, we seek solutions of 
+
+F (u) := ∇ · (γ(u; η)∇u) + f = 0 ,
+
+where the coefficient with small regularization constant η > 0 is given by 
+
+γ(u; η) := ( η2 + |∇ u|2) p−22 > 0. (2) 5We solve for the update at Newton iteration n + 1 (denoted by superscripts) via 
+
+F ′(un)[ δu n] = −F (un),un+1 = un + βnδu n,
+
+where F ′(u)[ δu ] is the derivative of F in direction of δu . Here, η is a small regularization constant which ensures positive-definiteness of the generalized stiffness matrix appearing in the resulting linearized problem, allowing a conjugate gradient (CG) solver to be used. In our experiments we take η = 10 −5. The damping parameter, 0 < β n ≤ 1, is chosen at each iteration via a quadratic interpolation line search with a sufficient decrease condition [37]. That is, we find 0 < β n ≤ 1 such that 
+
+Ep(un + βnδu n; Ω h) ≤ Ep(un; Ω h) + c1βnE′
+
+> p
+
+(un; Ω h)[ δu n], (3) where c1 = 10 −3 is the prescribed tolerance, Ep is the discrete p-Poisson energy given by 
+
+Ep(u; Ω h) = 1
+
+p
+
+Z
+
+> Ωh
+
+|∇ u|pdx h −
+
+Z
+
+> Ωh
+
+f u dx h,
+
+and E′
+
+> p
+
+(u)[ δu ] is the derivative of Ep in the direction of δu .This gives the Newton iteration equations as 
+
+∇ · 
+
+Å
+
+γ(un; η)∇δu n + ( p − 2) γ(un; η) ∇un · ∇ δu n
+
+η2 + |∇ un|2 ∇un
+
+ã
+
+= −∇ · 
+
+Å
+
+γ(un; η)∇un
+
+ã
+
+− f, (4a) 
+
+un+1 = un + βnδu n. (4b) The weak formulation of (4a) is obtained by multiplying with a test function ϕ and integrating by parts on both sides. Reducing to a finite dimensional space with basis {ϕ0
+
+> h
+
+, ..., ϕ N −1 
+
+> h
+
+} ∈ Vh, we can write the update δu n ∈ H1(Ω), as 
+
+δu n = 
+
+> N−1
+
+X
+
+> j=0
+
+δU nj ϕjh.
+
+Similarly to [33], we find the resulting linear system for the update coefficients δU n vector at each iteration to be 
+
+KnδU n = bn, (5) with the entries of the generalized stiffness matrix Kn given by 
+
+Knij := 
+
+Z
+
+> Ωh
+
+∇ϕih · γ(un; η)
+
+Å
+
+I + (p − 2) 
+
+η2 + |∇ un|2 [∇un] ⊗ [∇un]
+
+ã
+
+∇ϕjhdx h,
+
+and the entries of the right hand side bn given by 
+
+bni := 
+
+Z
+
+> Ωh
+
+ f ϕ ih − ∇ ϕih · (γ(un; η)∇un) dx h.
+
+The regularization parameter η > 0 ensures that the linearized operator at each Newton step is uniformly elliptic. In particular, the generalized stiffness matrix Kn is symmetric positive def-inite, which allows the use of a conjugate gradient solver for the linear system (5). In practice, we accelerate the conjugate gradient solver using a symmetric successive over-relaxation (SSOR) preconditioner as implemented in the deal.II [36] finite element library. Specifically, we use the relaxation parameter ω = 1 .2, initialized at each Newton step with the current system matrix Kn.6Continuation in p, together with line search damping, significantly improve robustness of the solver, particularly for large values of p. Starting from p0 = 2, we solve the corresponding problem using Newton’s method with initial guess u0 
+
+> p0,h
+
+= 1. Once convergence is achieved, the solution is used as the initial guess for the next value of p. That is, for a sequence {pi}, we perform: 
+
+• Solve for uNi 
+
+> pi,h
+
+such that 
+
+∥uNi 
+
+> pi,h
+
+− uNi−1 
+
+> pi,h
+
+∥2
+
+∥uNi
+
+> pi,h
+
+∥2
+
+≤ tol .
+
+• Increment p via pi+1 = pi + ( δp )i+1 .
+
+• Initialize the next solve with u0 
+
+> pi+1 ,h
+
+= uNi
+
+> pi,h
+
+.In all experiments, we take p0 = 2, ( δp )i = 1, and tol = 10 −8. We will continue incrementing in 
+
+p until the algorithm fails to converge, usually due to failure to find a suitable descent direction according to the decrease condition (3). Typically we can take p up to approximately 200 before the latter occurs. The approximate solutions computed using this method serve as high-fidelity reference data for the neural network experiments presented in subsequent sections. These solutions provide numerical comparison baselines for the PINN experiments and training data for the DeepONet models. 
+
+# 4 Physics-Informed Neural Networks 
+
+We employ physics-informed neural networks (PINNs) with a penalty method [9] as numerical solvers for fixed instances of p-Laplace and infinity Laplace type boundary value problems. The foundational convergence analysis for PINNs was established by Shin et al. [18], who proved con-sistency and convergence results for linear second-order elliptic and parabolic PDEs under suitable regularity assumptions. These results provide a theoretical framework demonstrating that, with sufficiently expressive neural network architectures and appropriate sampling strategies, PINNs can approximate solutions of classical PDEs. Extensions of PINN analysis to nonlinear PDEs remain significantly more challenging. For example, De Ryck et al. [19] derived rigorous a priori error bounds for PINNs applied to the Navier-Stokes equations. The p-Laplacian and infinity Laplacian considered in this work fall outside the scope of these existing theoretical results. In particular, these operators are nonlinear, degenerate elliptic, and solutions may exhibit limited regularity, especially in the large-p regime. In this work, we provide a convergence analysis for the PINN approximations in the p-Laplace setting under assumptions motivated by the analytical structure of the problem, though these are not explicitly enforced in the practical implementation. Nevertheless, the theory provides important motivation for using PINNs as numerical solvers and suggests that, with sufficiently rich training data and network capacity, accurate approximations may be obtained in practice. 
+
+4.1 Network architecture 
+
+The network architecture is illustrated in Figure 2. It is defined by a series of linear blocks; the linear blocks consists of four linear layers and activation functions with 128 neurons and the final output layers gives one prediction, uθ. We use tanh as the activation function, so that the network outputs are smooth. However, the target solutions of the p-Laplace and infinity Laplace problems may exhibit limited regularity, and thus the network approximates potentially nonsmooth data using smooth functions. 7Figure 2: PINN architecture and training logic for the two dimensional setting. The three dimensional case is analogous. 
+
+4.2 Collocation sets and loss terms 
+
+The PINNs are trained using two types of collocation points: boundary points xi ∈ ∂Ω and interior points xj ∈ Ω. Let N∂Ω denote the number of boundary samples and Nint the number of interior samples. 
+
+Boundary loss For Dirichlet conditions u = g on ∂Ω, we define MSE ∂Ω = 1
+
+N∂Ω
+
+> N∂Ω
+
+X
+
+> i=1
+
+ uθ(xi) − g(xi)2. (6) For the mixed problem (1a)-(1c) with u = 0 on Γ 1 and ∂u/∂n = 0 on Γ 2, we use MSE ∂Ω,mixed = 1
+
+NΓ1
+
+> NΓ1
+
+X
+
+> i=1
+
+ uθ(xi)2 + 1
+
+NΓ2
+
+> NΓ2
+
+X
+
+> i=1
+
+Å ∂u θ
+
+∂n (xi)
+
+ã2
+
+. (7) All boundary derivatives are computed using PyTorch automatic differentiation [38]. 
+
+PINNs loss To enforce the governing equation at interior collocation points, we define the interior PDE residual loss MSE PINNS = 1
+
+Nint 
+
+> Nint
+
+X
+
+> j=1
+
+(Np[uθ]( xj ) − f (xj )) 2 , (8) where Np denotes the differential operator. For finite p, we take Np[u] := −∆pu, while for the infinity Laplacian or limiting type tests (see Section 2) we use the appropriate operator evaluated through automatic differentiation. 8Total loss The total training objective is MSE = MSE ∂Ω + α MSE PINNS , (9) (or MSE ∂Ω,mixed in the mixed-boundary case), where α > 0 balances boundary enforcement and PDE residual minimization. The total loss (9) is minimized using the Adam optimizer [39] with an initial learning rate of 10 −3.For large p, the |∇ u|p−2 term in the PDE loss will be prone to blow up. When p tends to infinity, this term will blow up to infinity if |∇ u| is bigger than 1. To make the training more stable, |∇ u|
+
+is clamped to at most 1 in the PDE loss for all values of p. In the case of the distance-to-boundary problem, where the limiting equation is the Eikonal equation |∇ u| = 1, this strategy is particularly natural, as the true solution has unit gradient norm almost everywhere. Another key ingredient for stable training of the p-Laplace operator is an adaptive schedule for the loss-balancing weight α. In the simple (single-p) training and the first band of the iterative training, we employ the same adaptive plateau scheduler used for the infinity Laplacian experiments (Section 6.2): α is initialized to 10 −5 and multiplied by 10 whenever the boundary loss plateaus, up to a maximum of 10 −1. This staged strategy ensures that the boundary condition is satisfied first, after which the PDE residual is progressively enforced with increasing weight. 
+
+4.3 PINNs convergence under structural assumptions 
+
+We now present conditional convergence results for sequences of PINN approximations for the Dirichlet p-Laplace and (homogeneous) infinity Laplace problems. These results provide analytical support for the continuum residual formulation, but should not be interpreted as convergence guarantees for the discrete optimization algorithm used in the numerical experiments. In particular, the theorems presented here are based on assumptions inspired by the universal approximation and PINN convergence frameworks of [18, 40], adapted here to the nonlinear setting. The assumptions are natural from the perspective of PDE analysis. The use of (at least) 
+
+C2 activation functions is consistent with the PINN architecture considered above, since smooth activations such as tanh yield sufficiently regular network outputs for evaluation of the differential operator. Additionally, the requirement that the PDE residual and boundary mismatch vanish reflects the intended objective of PINN training. That is, the network should approximately satisfy the governing equation in the interior Ω and the boundary condition on ∂Ω. These assumptions may therefore be viewed as idealized expressions of successful training. However, these hypotheses are not enforced directly in the loss function in the exact form ap-pearing in the theorem. In practice, the PINN loss is minimized only over finitely many collocation and boundary points, and the training process does not explicitly guarantee convergence of the residual in W −1,p ′
+
+(Ω) or convergence of the trace in W 1−1/p,p (∂Ω). Thus, the theorem is more appropriately understood as an analytical statement concerning sequences of PINN approxima-tions whose residual and boundary errors converge to zero asymptotically in suitable norms, rather than as a direct implication of the specific numerical optimization procedure employed. Nonethe-less, these assumptions are closely aligned with the structure of the method and help explain why the PINN formulation is a reasonable approximation framework for p-Laplace problems. We now present the convergence result for the Dirichlet p-Laplace problem. 
+
+Theorem 4.1 (Convergence of PINNs for p-Laplace Problems) . Let Ω ⊂ Rd be a bounded domain with Lipschitz boundary. Consider the boundary value problem 
+
+−∆pu = f in Ω, (10a) 
+
+u = g on ∂Ω, (10b) 9where 2 ≤ p < ∞. Assume the source term satisfies f ∈ Lp′
+
+(Ω) , with p′ = p/ (p − 1) , and the boundary data satisfies g ∈ W 1−1/p,p (∂Ω) . Let u∗ ∈ W 1,p (Ω) denote the unique weak solution of (10) and let {un}∞ 
+
+> n=1
+
+be a sequence of PINN approximations. Assume the activation functions are of class C2, imposed only so that −∆pun is defined pointwise. Additionally, assume that 
+
+Rn := −∆pun − f
+
+satisfies 
+
+∥Rn∥W −1,p ′ (Ω) → 0 as n → ∞ ,
+
+and that 
+
+T (un) − g → 0 in W 1−1/p,p (∂Ω) ,
+
+where T : W 1,p (Ω) → W 1−1/p,p (∂Ω) denotes the trace operator. Under the assumptions provided above, the following hold: 1. The sequence {un} converges weakly to u∗ in W 1,p (Ω) .2. If, in addition, the boundary condition is enforced exactly, i.e., 
+
+T (un) = g on ∂Ω for all n, 
+
+then the convergence is strong in W 1,p (Ω) .Proof. We proceed in several steps. First, we establish uniform boundedness of the sequence {un}
+
+in W 1,p (Ω) and extract a weakly convergent subsequence using reflexivity. Next, we show that the weak limit satisfies the boundary condition and identify it as the unique weak solution via a monotonicity argument. Finally, we prove strong convergence under exact boundary enforcement. The argument relies on the weak formulation of the p-Laplace equation, properties of reflexive Banach spaces, and the theory of monotone operators. We denote by ⟨· , ·⟩ the duality pairing between W −1,p ′
+
+(Ω) and W 1,p  
+
+> 0
+
+(Ω). Since u∗ ∈ W 1,p (Ω) denotes the unique weak solution of (10), it satisfies the boundary condition 
+
+T (u∗) = g on ∂Ω,
+
+and the weak formulation 
+
+Z
+
+> Ω
+
+|∇ u∗|p−2∇u∗ · ∇ v dx =
+
+Z
+
+> Ω
+
+f v dx, ∀v ∈ W 1,p  
+
+> 0
+
+(Ω) . (11) 
+
+1. Weak convergence. 
+
+We first consider the general setting where boundary conditions are enforced through a penalty term in the loss function. Our initial objective is to establish uniform boundedness of the sequence 
+
+{un} in W 1,p (Ω). To handle the approximate boundary condition, we introduce a correction term that removes the boundary mismatch. To correct the boundary mismatch, we use a bounded right inverse of the trace operator. Let 
+
+E : W 1−1/p,p (∂Ω) → W 1,p (Ω) be a bounded right inverse of the trace operator satisfying T (Eψ) = ψ on ∂Ω (see [41, Sec. 2.5.7, Thm. 5.7]). Define 
+
+En := E(T (un) − g).
+
+10 Then 
+
+T (En) = T (un) − g
+
+and, by continuity of E, there exists C > 0 such that 
+
+∥En∥W 1,p (Ω) ≤ C∥T (un) − g∥W 1−1/p,p (∂Ω) → 0.
+
+Let ¯ g ∈ W 1,p (Ω) be a fixed extension of g, and define 
+
+vn = un − En − ¯g. 
+
+By construction, T (vn) = 0, hence vn ∈ W 1,p  
+
+> 0
+
+(Ω) and may be used as a test function for the residual. Using the definition of the residual Rn, we obtain 
+
+⟨Rn, v n⟩ =
+
+Z
+
+> Ω
+
+|∇ un|p−2∇un · ∇ vn dx −
+
+Z
+
+> Ω
+
+f v n dx 
+
+=
+
+Z
+
+> Ω
+
+|∇ un|p dx −
+
+Z
+
+> Ω
+
+|∇ un|p−2∇un · ∇ (En + ¯ g) dx −
+
+Z
+
+> Ω
+
+f v n dx. 
+
+Rearranging then yields 
+
+∥∇ un∥pLp(Ω) = ⟨Rn, v n⟩ +
+
+Z
+
+> Ω
+
+|∇ un|p−2∇un · ∇ (En + ¯ g) dx +
+
+Z
+
+> Ω
+
+f v n dx. (12) We now estimate each term in (12) to obtain a uniform Lp bound on the gradients. Using Poincar´ e’s inequality for vn ∈ W 1,p  
+
+> 0
+
+(Ω), there exists constant C1 > 0 such that 
+
+∥vn∥W 1,p (Ω) ≤ C1∥∇ vn∥Lp(Ω) ≤ C1
+
+ ∥∇ un∥Lp(Ω) + ∥∇ En∥Lp(Ω) + ∥∇ ¯g∥Lp(Ω) 
+
+,
+
+and so first term in (12) satisfies 
+
+|⟨ Rn, v n⟩| ≤ ∥ Rn∥W −1,p ′ (Ω) ∥vn∥W 1,p (Ω) 
+
+≤ C1∥Rn∥W −1,p ′ (Ω) 
+
+ ∥∇ un∥Lp(Ω) + ∥∇ En∥Lp(Ω) + ∥∇ ¯g∥Lp(Ω) 
+
+,
+
+where for the first inequality we have used the definition of the dual norm. Similarly, for the third term in (12), H¨ older’s inequality and Poincar´ e’s inequality give 
+
+Z
+
+> Ω
+
+f v n dx ≤ ∥ f ∥Lp′ (Ω) ∥vn∥Lp(Ω) 
+
+≤ C2∥f ∥Lp′ (Ω) ∥∇ vn∥Lp(Ω) 
+
+≤ C2∥f ∥Lp′ (Ω) 
+
+ ∥∇ un∥Lp(Ω) + ∥∇ En∥Lp(Ω) + ∥∇ ¯g∥Lp(Ω) 
+
+,
+
+for some constant C2 > 0. For the middle term in (12), H¨ older’s inequality gives 
+
+Z
+
+> Ω
+
+|∇ un|p−2∇un · ∇ (En + ¯ g) dx ≤
+
+Z
+
+> Ω
+
+|∇ un|p−1|∇ (En + ¯ g)| dx 
+
+≤ ∥|∇ un|p−1∥Lp′ (Ω) ∥∇ (En + ¯ g)∥Lp(Ω) 
+
+= ∥∇ un∥p−1
+
+> Lp(Ω)
+
+∥∇ (En + ¯ g)∥Lp(Ω) .
+
+11 Substituting these bounds back into (12) gives 
+
+∥∇ un∥pLp(Ω) = ⟨Rn, v n⟩ +
+
+Z
+
+> Ω
+
+|∇ un|p−2∇un · ∇ (En + ¯ g) dx +
+
+Z
+
+> Ω
+
+f v n dx 
+
+≤ C ∥Rn∥W −1,p ′ (Ω) + ∥f ∥Lp′ (Ω) 
+
+  ∥∇ un∥Lp(Ω) + ∥∇ En∥Lp(Ω) + ∥∇ ¯g∥Lp(Ω) 
+
+
+
++ ∥∇ un∥p−1
+
+> Lp(Ω)
+
+∥∇ (En + ¯ g)∥Lp(Ω) ,
+
+(13) where C = max {C1, C 2}.Let ϵ > 0. By ϵ-Young’s inequality, there exist constants Cϵ, C ′ 
+
+> ϵ
+
+> 0 such that 
+
+ab ≤ ϵa p + Cϵbp′
+
+, ab ≤ ϵa p′
+
++ C′
+
+> ϵ
+
+bp,
+
+for all a, b ≥ 0. Applying these inequalities to the terms involving ∥∇ un∥Lp(Ω) on the right-hand side of (13), we obtain 
+
+∥∇ un∥pLp(Ω) ≤ C ∥Rn∥W −1,p ′ (Ω) + ∥f ∥Lp′ (Ω) 
+
+  ∥∇ En∥Lp(Ω) + ∥∇ ¯g∥Lp(Ω) 
+
+
+
++ ϵ∥∇ un∥pLp(Ω) + CϵCp′  ∥Rn∥W −1,p ′ (Ω) + ∥f ∥Lp′ (Ω) 
+
+p′
+
++ ϵ∥∇ un∥pLp(Ω) + C′
+
+> ϵ
+
+∥∇ (En + ¯ g)∥pLp(Ω) .
+
+(14) Choosing ϵ < 1/2 and absorbing the terms ϵ∥∇ un∥pLp(Ω) into the left-hand side yields (1 − 2ϵ)∥∇ un∥pLp(Ω) ≤ C ∥Rn∥W −1,p ′ (Ω) + ∥f ∥Lp′ (Ω) 
+
+  ∥∇ En∥Lp(Ω) + ∥∇ ¯g∥Lp(Ω) 
+
+
+
++ CϵCp′  ∥Rn∥W −1,p ′ (Ω) + ∥f ∥Lp′ (Ω) 
+
+p′
+
++ C′
+
+> ϵ
+
+∥∇ (En + ¯ g)∥pLp(Ω) .
+
+Since ∥Rn∥W −1,p ′ (Ω) → 0, ∥f ∥Lp′ (Ω) is fixed, ∥En∥W 1,p (Ω) → 0 implies ∥∇ En∥Lp(Ω) is bounded, and ¯g is fixed in W 1,p (Ω), the right-hand side is bounded independently of n. Therefore, there exists a constant K > 0 such that (1 − 2ϵ)∥∇ un∥pLp(Ω) ≤ K for all n. 
+
+Because 1 − 2ϵ > 0, it follows that 
+
+∥∇ un∥pLp(Ω) ≤ K
+
+1 − 2ϵ ,
+
+and so ∥∇ un∥Lp(Ω) is uniformly bounded. We now extend this to a full W 1,p (Ω) bound on {un}. Recall that vn = un − En − ¯g, with 
+
+vn ∈ W 1,p  
+
+> 0
+
+(Ω). By Poincar´ e’s inequality, for some constant ˜C > 0 we have 
+
+∥vn∥Lp(Ω) ≤ ˜C∥∇ vn∥Lp(Ω) .
+
+Moreover, 
+
+∇vn = ∇un − ∇ En − ∇ ¯g, 
+
+so 
+
+∥∇ vn∥Lp(Ω) ≤ ∥∇ un∥Lp(Ω) + ∥∇ En∥Lp(Ω) + ∥∇ ¯g∥Lp(Ω) .
+
+Since ∥∇ un∥Lp(Ω) is uniformly bounded, ∥En∥W 1,p (Ω) → 0, and ¯ g is fixed, it follows that ∥∇ vn∥Lp(Ω) 
+
+is uniformly bounded. Therefore, by Poincar´ e’s inequality, ∥vn∥Lp(Ω) is also uniformly bounded, and therefore {vn} is uniformly bounded in W 1,p (Ω). Thus, from 
+
+un = vn + En + ¯ g, 
+
+12 and the triangle inequality, we conclude that {un} is uniformly bounded in W 1,p (Ω). Having established uniform boundedness, the bounded sequence {un} in W 1,p (Ω) admits a subsequence, which we denote by {unk }, and a function ˜ u ∈ W 1,p (Ω) such that unk converges weakly to ˜ u in W 1,p (Ω), since W 1,p (Ω) is reflexive for 1 < p < ∞.We now show that the weak limit ˜ u satisfies the boundary condition. The trace operator is continuous, and therefore T (unk ) converges weakly to T (˜ u) in W 1−1/p,p (∂Ω). Also, by assumption, the boundary loss implies that 
+
+T (unk ) → g strongly in W 1−1/p,p (∂Ω) .
+
+Since weak and strong limits must coincide, it follows that 
+
+T (˜ u) = g. 
+
+In particular, ˜ u satisfies the boundary condition in the trace sense and we have ˜ u − ¯g ∈ W 1,p  
+
+> 0
+
+(Ω). It remains to verify that the weak limit ˜ u solves the p-Laplace problem. To achieve this we will use a Minty argument, which utilizes the framework of monotone operators [42, 43]. Let 
+
+v ∈ W 1,p (Ω) be fixed and satisfy v − ¯g ∈ W 1,p  
+
+> 0
+
+(Ω). By monotonicity of the map ξ 7 → | ξ|p−2ξ, we have Z
+
+> Ω
+
+ |∇ unk |p−2∇unk − |∇ v|p−2∇v · ∇ (unk − v) dx ≥ 0. (15) Write the decomposition 
+
+unk − v = ( unk − v − Enk ) + Enk ,
+
+and define 
+
+wnk := unk − v − Enk .
+
+Since T (Enk ) = T (unk ) − g and T (v) = g, we obtain 
+
+T (wnk ) = T (unk ) − T (v) − T (Enk ) = T (unk ) − g − (T (unk ) − g) = 0 .
+
+Thus, we get wnk ∈ W 1,p  
+
+> 0
+
+(Ω) which permits its use as a test function. Then 
+
+Z
+
+> Ω
+
+|∇ unk |p−2∇unk · ∇ (unk − v) dx =
+
+Z
+
+> Ω
+
+|∇ unk |p−2∇unk · ∇ (wnk + Enk ) dx 
+
+= ⟨− ∆punk , w nk ⟩ +
+
+Z
+
+> Ω
+
+|∇ unk |p−2∇unk · ∇ Enk dx 
+
+= ⟨f + Rnk , w nk ⟩ +
+
+Z
+
+> Ω
+
+|∇ unk |p−2∇unk · ∇ Enk dx. 
+
+= ⟨f + Rnk , u nk − v − Enk ⟩ +
+
+Z
+
+> Ω
+
+|∇ unk |p−2∇unk · ∇ Enk dx. 
+
+Substituting this into (15), we get 
+
+⟨f + Rnk , u nk − v − Enk ⟩ +
+
+Z
+
+> Ω
+
+|∇ unk |p−2∇unk · ∇ Enk dx ≥
+
+Z
+
+> Ω
+
+|∇ v|p−2∇v · ∇ (unk − v) dx. (16) Since ∥∇ unk ∥Lp is uniformly bounded and ∥Enk ∥W 1,p (Ω) → 0, for the second term on the left-hand side of (16) it follows from H¨ older’s inequality that 
+
+Z
+
+> Ω
+
+|∇ unk |p−2∇unk · ∇ Enk dx ≤ ∥∇ unk ∥p−1
+
+> Lp(Ω)
+
+∥∇ Enk ∥Lp(Ω) → 0.
+
+13 Next, we split 
+
+⟨f + Rnk , u nk − v − Enk ⟩ = ⟨f, u nk − v − Enk ⟩ + ⟨Rnk , u nk − v − Enk ⟩.
+
+Since {unk } is bounded in W 1,p (Ω), v is fixed, and Enk → 0 in W 1,p (Ω), it follows that {unk − v −
+
+Enk } is bounded in W 1,p (Ω). Further, since Rnk → 0 in W −1,p ′
+
+(Ω), we have 
+
+⟨Rnk , u nk − v − Enk ⟩ → 0.
+
+Moreover, unk converges weakly to ˜ u in W 1,p (Ω), hence also weakly in Lp(Ω) by continuity of the embedding W 1,p (Ω) ,→ Lp(Ω), while Enk → 0 in Lp(Ω). Therefore 
+
+⟨f, u nk − v − Enk ⟩ → ⟨ f, ˜u − v⟩.
+
+Finally, since v is fixed and |∇ v|p−2∇v ∈ Lp′
+
+(Ω), weak convergence of ∇unk in Lp(Ω) yields 
+
+Z
+
+> Ω
+
+|∇ v|p−2∇v · ∇ (unk − v) dx →
+
+Z
+
+> Ω
+
+|∇ v|p−2∇v · ∇ (˜ u − v) dx. 
+
+Passing to the limit in (16) therefore gives 
+
+⟨f, ˜u − v⟩ ≥ 
+
+Z
+
+> Ω
+
+|∇ v|p−2∇v · ∇ (˜ u − v) dx = ⟨− ∆pv, ˜u − v⟩. (17) Now pick v = ˜ u − tϕ , where t > 0 and ϕ ∈ W 1,p  
+
+> 0
+
+(Ω). Then ˜u − tϕ − ¯g = (˜ u − ¯g) − tϕ ∈ W 1,p  
+
+> 0
+
+(Ω) ,
+
+so substituting into (17) gives 
+
+t⟨− ∆p(˜ u − tϕ ), ϕ ⟩ ≤ t⟨f, ϕ ⟩.
+
+Dividing by t > 0, we obtain 
+
+⟨− ∆p(˜ u − tϕ ), ϕ ⟩ ≤ ⟨ f, ϕ ⟩. (18) We will now use the hemicontinuity of the operator −∆p : W 1,p (Ω) → W −1,p ′
+
+(Ω). The operator 
+
+−∆p is monotone and hemicontinuous; see [42, Ch. II]. In particular, hemicontinuity ensures that 
+
+t 7 → ⟨− ∆p(˜ u − tϕ ), ϕ ⟩
+
+is continuous. Thus, letting t → 0+ in (18), it follows that 
+
+⟨− ∆p ˜u, ϕ ⟩ ≤ ⟨ f, ϕ ⟩.
+
+Replacing ϕ by −ϕ yields the reverse inequality, and therefore 
+
+⟨− ∆p ˜u, ϕ ⟩ = ⟨f, ϕ ⟩ ∀ϕ ∈ W 1,p  
+
+> 0
+
+(Ω) .
+
+Thus, ˜ u is a weak solution. By uniqueness of the Dirichlet p-Laplace problem [44], ˜ u = u∗. Since every weakly convergent subsequence has the same limit, the entire sequence {un} converges weakly to u∗ in W 1,p (Ω). This concludes the proof of the first statement. 
+
+2. Strong convergence. 
+
+14 For the second statement, it is part of our hypotheses that 
+
+T (un) = g on ∂Ω for all n. 
+
+Also, T (u∗) = g because u∗ is the weak solution of (10), linearity of the trace operator gives 
+
+T (un − u∗) = T (un) − T (u∗) = g − g = 0 .
+
+Therefore, we have un − u∗ ∈ W 1,p  
+
+> 0
+
+(Ω) meaning the difference un − u∗ is a valid test function. Using the uniform monotonicity of the map ξ 7 → | ξ|p−2ξ,
+
+Z
+
+> Ω
+
+ |∇ un|p−2∇un − |∇ u∗|p−2∇u∗ · ∇ (un − u∗) dx ≥ cp∥∇ (un − u∗)∥pLp .
+
+Therefore, 
+
+∥∇ (un − u∗)∥pLp(Ω) ≤ 1
+
+cp
+
+Z
+
+> Ω
+
+ |∇ un|p−2∇un − |∇ u∗|p−2∇u∗ · ∇ (un − u∗) dx 
+
+= 1
+
+cp
+
+
+
+⟨− ∆pun, u n − u∗⟩ − ⟨− ∆pu∗, u n − u∗⟩
+
+
+
+= 1
+
+cp
+
+⟨Rn, u n − u∗⟩,
+
+(19) where we have used that un − u∗ ∈ W 1,p  
+
+> 0
+
+(Ω). Poincar´ e’s inequality then gives 
+
+∥un − u∗∥pW 1,p (Ω) ≤ (1 + Cpp )∥∇ (un − u∗)∥pLp(Ω) ,
+
+for some constant Cp > 0. Substituting this bound into (19) and using H¨ older’s inequality, we arrive at 
+
+∥un − u∗∥pW 1,p (Ω) ≤ (1 + Cpp )
+
+cp
+
+∥Rn∥W −1,p ′ (Ω) ∥un − u∗∥W 1,p (Ω) ,
+
+and therefore 
+
+∥un − u∗∥p−1  
+
+> W1,p (Ω)
+
+≤ (1 + Cpp )
+
+cp
+
+∥Rn∥W −1,p ′ (Ω) .
+
+Since ∥Rn∥W −1,p ′ (Ω) → 0 and p > 1, we conclude that 
+
+∥un − u∗∥W 1,p (Ω) → 0.
+
+Thus the convergence is strong when the boundary condition is enforced exactly. The above result establishes conditional convergence for sequences satisfying the stated contin-uum residual and trace assumptions. We now turn to the infinity Laplace problem, where solutions are understood in the viscosity sense as opposed to the weak sense. 
+
+Theorem 4.2 (Convergence of PINNs for infinity Laplace Problems) . Let Ω ⊂ Rd be a bounded domain with Lipschitz boundary. Consider the boundary value problem 
+
+−∆∞u = 0 in Ω, (20a) 
+
+u = g on ∂Ω, (20b) 15 where g ∈ Lip( ∂Ω) . Let u∗ ∈ W 1,∞(Ω) ∩ C( ¯Ω) denote the unique viscosity solution of (20) and let 
+
+{un}∞ 
+
+> n=1
+
+be a sequence of PINN approximations. Assume the activation functions are of class C2.Additionally, assume that 
+
+∥ − ∆∞un∥L∞(Ω) → 0 as n → ∞ ,
+
+and that 
+
+∥un − g∥L∞(∂Ω) → 0.
+
+Further, assume that the sequence {un} is uniformly Lipschitz in Ω. Then, the sequence {un}
+
+converges uniformly to u∗ in C( ¯Ω) , that is, 
+
+∥un − u∗∥C( ¯Ω) → 0.
+
+Proof. We proceed in several steps. First, we establish uniform boundedness and equicontinuity of the sequence {un} and invoke Arzel` a-Ascoli to extract a uniformly convergent subsequence. Next, we show that the limit function satisfies the boundary condition and is a viscosity solution of the infinity Laplace equation. Finally, we use uniqueness to conclude convergence of the full sequence. We first establish a uniform bound on the sequence {un}. By assumption, there exists a constant 
+
+C > 0 such that each un is Lipschitz continuous on Ω with Lipschitz constant at most C. Therefore, for any x0 ∈ Ω and any x ∈ ∂Ω, we have 
+
+|un(x0)| ≤ | un(x0) − un(x)| + |un(x)|≤ C|x0 − x| + ∥un∥L∞(∂Ω) 
+
+≤ C diam(Ω) + ∥un∥L∞(∂Ω) .
+
+(21) By the convergence of the boundary loss, ∥un − g∥L∞(∂Ω) → 0, there exists N such that for all 
+
+n ≥ N , ∥un − g∥L∞(∂Ω) ≤ 1. Therefore, for all n ≥ N ,
+
+∥un∥L∞(∂Ω) ≤ ∥ un − g∥L∞(∂Ω) + ∥g∥L∞(∂Ω) 
+
+≤ 1 + ∥g∥C(∂Ω) .
+
+Substituting this back into (21), we obtain 
+
+∥un∥L∞(Ω) ≤ C diam(Ω) + 1 + ∥g∥C(∂Ω) .
+
+This shows that {un} is uniformly bounded in L∞(Ω). Furthermore, the uniform Lipschitz bound implies that {un} is equicontinuous on ¯Ω. Combined with the uniform L∞(Ω) bound established above, the sequence {un} is uniformly bounded and equicontinuous on the compact set ¯Ω. Therefore, by the Arzel` a-Ascoli theorem, there exist a subsequence {unk } and a function ˜ u ∈ C( ¯Ω) such that 
+
+unk → ˜u uniformly on ¯Ω.
+
+We now show that ˜ u is Lipschitz continuous. For any x, y ∈ ¯Ω, each unk satisfies 
+
+|unk (x) − unk (y)| ≤ C |x − y|.
+
+Passing to the limit as k → ∞ and using the uniform convergence of unk to ˜ u on ¯Ω, we obtain 
+
+|˜u(x) − ˜u(y)| = lim  
+
+> k→∞
+
+|unk (x) − unk (y)| ≤ C |x − y|.
+
+16 Therefore ˜ u is Lipschitz continuous on ¯Ω. In particular, ˜ u ∈ W 1,∞(Ω) and 
+
+∥∇ ˜u∥L∞(Ω) ≤ C. 
+
+Next, we verify that the limit function satisfies the boundary condition. For any x ∈ ∂Ω, the triangle inequality gives 
+
+|˜u(x) − g(x)| ≤ | ˜u(x) − unk (x)| + |unk (x) − g(x)|≤ ∥ unk − ˜u∥C( ¯Ω) + ∥unk − g∥L∞(∂Ω) .
+
+As k → ∞ , both terms on the right-hand side tend to 0, which implies ˜u(x) = g(x) for all x ∈ ∂Ω.
+
+Therefore, ˜ u ∈ W 1,∞(Ω) ∩ C( ¯Ω) and satisfies the boundary condition ˜ u = g on ∂Ω. We will now identify ˜ u as a viscosity solution of −∆∞ ˜u = 0. We first show that ˜ u is a viscosity subsolution. Let ϕ ∈ C2(Ω) be a test function such that ˜ u − ϕ attains a strict local maximum at a point x0 ∈ Ω. Since unk → ˜u uniformly on ¯Ω, there exist points xk → x0 such that unk −ϕ attains a local max-imum at xk for each k. We know unk − ϕ attains a local maximum at xk, and since the activation functions are of class C2, each unk is C2 and the classical optimality conditions apply. There-fore, we have ∇unk (xk) = ∇ϕ(xk) and D2unk (xk) ≤ D2ϕ(xk), meaning that vT D2unk (xk)v ≤
+
+vT D2ϕ(xk)v for all v ∈ Rd.Using the definition of the infinity Laplacian and the optimality conditions, 
+
+−∆∞ϕ(xk) = −∇ ϕ(xk)T D2ϕ(xk) ∇ϕ(xk)
+
+≤ −∇ ϕ(xk)T D2unk (xk) ∇ϕ(xk)= −∇ unk (xk)T D2unk (xk) ∇unk (xk)= −∆∞unk (xk). (22) Since the PDE residual satisfies 
+
+∥ − ∆∞unk ∥L∞(Ω) → 0,
+
+we have, in particular, 
+
+| − ∆∞unk (xk)| ≤ ∥ − ∆∞unk ∥L∞(Ω) → 0 as k → ∞ .
+
+Since ϕ ∈ C2(Ω) and xk → x0, it follows that 
+
+−∆∞ϕ(xk) → − ∆∞ϕ(x0) as k → ∞ .
+
+Passing to the limit in (22), we conclude that 
+
+−∆∞ϕ(x0) ≤ 0,
+
+showing that ˜ u is a viscosity subsolution. Similarly, let ψ ∈ C2(Ω) be a test function such that ˜ u − ψ attains a strict local minimum at a point y0 ∈ Ω. Since unk → ˜u uniformly on ¯Ω, there exist points yk → y0 such that unk − ψ attains a local minimum at yk for each k.17 At the point yk, the function ψ touches unk from below, so it follows that 
+
+−∆∞ψ(yk) = −∇ ψ(yk)T D2ψ(yk) ∇ψ(yk)
+
+≥ − ∆∞unk (yk). (23) Since ∥ − ∆∞unk ∥L∞(Ω) → 0, we have 
+
+−∆∞unk (yk) ≥ −∥ − ∆∞unk ∥L∞(Ω) → 0 as k → ∞ .
+
+Moreover, since ψ ∈ C2(Ω) and yk → y0, we have 
+
+−∆∞ψ(yk) → − ∆∞ψ(y0) as k → ∞ .
+
+Passing to the limit yields 
+
+−∆∞ψ(y0) ≥ 0,
+
+showing that ˜ u is a viscosity supersolution. Therefore, ˜ u is a viscosity solution. By Jensen’s theorem [3], the Dirichlet problem for −∆∞u = 0 admits a unique viscosity solution. Hence, we may conclude ˜ u = u∗.Finally, we show convergence of the entire sequence. We have shown that every subsequence of 
+
+{un} admits a further subsequence that converges uniformly on ¯Ω to the same limit u∗. It follows that the whole sequence {un} converges uniformly to u∗ in C( ¯Ω), that is, 
+
+∥un − u∗∥C( ¯Ω) → 0 as n → ∞ .
+
+This completes the proof. These results provide analytical support for the PINN framework at the level of continuum residuals and boundary errors. In each case, convergence is conditional on assumptions that reflect the intended outcome of training, but which are not directly enforced by the finite-sample, clipped, and outlier-filtered loss used in the implementation. 
+
+# 5 DeepONet 
+
+In addition to PINNs, we investigate Deep Operator Networks (DeepONet) [8] as a surrogate modeling approach for families of p-Laplace and infinity Laplace type problems. Unlike PINNs, which are trained to approximate the solution of a single PDE instance, DeepONet aims to learn a parametric mapping from problem inputs to solution fields. Once trained, a single DeepONet model can be asked to produce approximate solutions for a range of parameter values without retraining. In the present work, DeepONet is used to learn the dependence of the solution on the p value and, when applicable, on geometric parameters describing the computational domain. This allows us to efficiently explore the p parameter landscape in the p-Laplace solutions, including the large 
+
+p regime associated with distance function approximation. We emphasize that DeepONet is not used here as a direct PDE solver, but rather as a surrogate model trained on high-fidelity numerical data. The ability of DeepONet to generalize across parameter values is therefore governed by the coverage and quality of the training dataset, as well as properties of the operator itself. Universal approximation results for nonlinear operators provide theoretical justification for the expressive power of DeepONet [8, 23]. In Section 5.3, we specialize these results to the parametric 18 p-Poisson problem, showing that, under a continuity assumption on the solution operator, Deep-ONet can approximate the associated mapping uniformly on compact parameter sets. However, quantitative error estimates and rigorous convergence guarantees for degenerate elliptic operators such as the p-Laplacian and the infinity Laplacian are generally unavailable. Accordingly, the performance of the DeepONet models is evaluated empirically in Section 6 by comparison with reference solutions and by examining their behavior for large p values. 
+
+5.1 DeepONet architecture 
+
+DeepONet consists of a trunk network and a branch network. The trunk network, denoted by 
+
+ft(x; θt), encodes the spatial dependence of the solution, while the branch network, denoted by 
+
+fb(μ; θb), encodes problem parameters. Here, θt and θb denote the trainable parameters of the trunk and branch networks, respectively, and μ represents the input parameter vector. In our setting, the trunk network takes spatial coordinates x ∈ Ω as input and outputs a Kl-dimensional vector 
+
+t = ( t1, . . . , t Kl ).
+
+The branch network takes as input p and, when relevant, additional geometric parameters aΩ
+
+describing the domain (e.g., ellipse semi-axis lengths), and outputs a Kl-dimensional vector 
+
+b = ( b1, . . . , b Kl ).
+
+The network output is given by 
+
+uθ(x; μ) = 
+
+> Kl
+
+X
+
+> k=1
+
+wk bktk,
+
+where Kl is the latent dimension and wk are trainable weights. The architecture is illustrated in Figure 3. In our experiments, the trunk network consists of three hidden fully connected layers with 512 neurons each, followed by an output layer of dimension 
+
+Kl = 128. The branch network consists of three hidden fully connected layers with 128 neurons each, also followed by an output layer of dimension Kl = 128. Both networks use tanh activation functions. 
+
+Figure 3: DeepONet architecture used in this work. 
+
+19 5.2 Training data and loss function 
+
+DeepONet is trained using solution data generated by the numerical method described in Section 3. Specifically, for each selected value of p, we generate reference solutions using the Newton-based finite element solver. For problems involving the infinity Laplacian limit, additional training data is obtained from PINNs approximations, which offer a practical way of generating solutions where traditional solvers become prohibitive. Let Nt denote the number of training samples associated with a fixed parameter instance μ, and let {uref 
+
+> μ,i
+
+}Nt 
+
+> i=1
+
+denote the corresponding reference solution values evaluated at spatial points {xi}.For a fixed parameter instance μ, the DeepONet is trained by minimizing the mean squared error MSE DeepONet (μ) = 1
+
+NtNtX
+
+> i=1
+
+Äuθ(xi; μ) − uref 
+
+> μ,i
+
+ä2 . (24) In practice, training data is assembled across multiple parameter instances μ, enabling the model to learn the parametric dependence of the solution on both p and the domain geometry. Once trained, the DeepONet can be called for previously unseen values of p. The loss (24) is minimized using the Adam optimizer [39] with an initial learning rate of 10 −4 and cosine-annealed to 10 −6
+
+over 20 epochs. 
+
+5.3 Universal approximation for p-Laplace Problems 
+
+Proposition 5.1 (Universal approximation of DeepONet for parametric p-Poisson problems) . Let 
+
+σ : R → R be a continuous non-polynomial activation function, and let 
+
+Z := K × [2 , P ] ⊂ Rm+1 ,
+
+where K ⊂ Rm is compact. For each z = ( μ, p ) ∈ Z, consider the boundary value problem 
+
+−∆puμ,p = fμ, in Ωμ,uμ,p = gμ, on ∂Ωμ,
+
+where Ωμ ⊂ Rd is a bounded domain with ∂Ωμ ∈ C1,β for some β > 0 and 2 ≤ p ≤ P < ∞.Assume that for each (μ, p ) ∈ Z, the problem admits a unique weak solution uμ,p ∈ W 1,p (Ω μ) ∩
+
+C(Ω μ). Assume further that there exists a fixed bounded reference domain bΩ ⊂ Rd such that, for each μ ∈ K, there is a bijective C1 map 
+
+Tμ : bΩ → Ωμ.
+
+Define the pullback 
+
+ˆuμ,p (x) := uμ,p (Tμ(x)) , x ∈ bΩ,
+
+and the solution operator 
+
+G : Z → C(bΩ) , G(z) = ˆ uμ,p .
+
+Assume that G is continuous. Then, for every ϵ > 0, there exists a DeepONet 
+
+Gθ : Z × bΩ → R,
+
+with branch input z = ( μ, p ) and trunk input x ∈ bΩ, such that 
+
+sup 
+
+> z∈Z
+
+∥G (z) − G θ(z, ·)∥C( bΩ) < ϵ. 
+
+20 Proof. Since K is compact and [2 , P ] is compact, the parameter space 
+
+Z = K × [2 , P ] ⊂ Rm+1 
+
+is compact. By assumption, for each z = ( μ, p ) ∈ Z, the pullback ˆ uμ,p is a continuous function on 
+
+bΩ, so the operator 
+
+G : Z → C(bΩ) , G(z) = ˆ uμ,p ,
+
+is well-defined and continuous. Then Z is a compact subset of the Banach space Rm+1 . We set 
+
+K1 := Z, K2 := bΩ.
+
+Then G is a continuous operator from the compact set K1 into C(K2). Hence, by the universal approximation theorem for nonlinear operators [23], and its branch-trunk realization in DeepONet form as stated in [8], for any ϵ > 0 there exists a DeepONet Gθ(z, x) such that sup 
+
+> z∈Z
+
+sup  
+
+> x∈bΩ
+
+G(z)( x) − G θ(z, x) < ϵ. 
+
+Taking the supremum over x ∈ bΩ yields sup 
+
+> z∈Z
+
+∥G (z) − G θ(z, ·)∥C( bΩ) < ϵ, 
+
+which establishes the desired result. 
+
+# 6 Numerical experiments 
+
+In this section, we present numerical experiments for the p-Laplacian and related infinity Laplacian problems using PINNs and DeepONets. The primary objective of these experiments is to assess the empirical performance of these neural network approaches in approximating solutions of non-linear and degenerate elliptic problems, particularly in regimes where traditional numerical solvers become challenging. In particular, we investigate robustness under reduced regularity, which is characteristic of both p-Laplace and infinity Laplace problems, where solutions often exhibit C1,α 
+
+regularity for finite p with α → 0 as p → ∞ , and degenerate to only Lipschitz continuous solutions in the limit. To this end, we deliberately probe the large-p regime. We use continuation in p and partial training strategies, allowing us to examine how well these methods capture limiting behavior. The results presented are representative of the observed behavior across our experiments, although quantitative performance may vary depending on initialization, sampling, and hyperparameter choices. Except for the direct finite-p unit-disc validations reported in Section 6.3.3 and Table 9, the solution error is measured against the known p → ∞ limiting solution u∞, rather than against the corresponding finite-p solution up. These errors therefore measure recovery of the limiting profile, not the accuracy of the neural network as a solver or surrogate for the finite-p problem. For the unit-disc problem, where the exact finite-p solution is available, we additionally report the direct error MSE p for both the iterative PINN and DeepONet approximations. The FEM errors reported alongside them are convergence-to-limit baselines computed using the same reference solution u∞.For the remaining DeepONet experiments, finite-p FEM solutions are still used as training data, but the reported testing error is evaluated against u∞. Training losses and PDE residuals are reported 21 separately. In all tables,“ −” denotes failure to converge or compute, typically due to numerical instability or loss blow-up for large values of p.Table 1 summarizes the mesh statistics used to generate the FEM reference solutions. Mesh construction and refinement are carried out using the deal.II library’s built-in GridGenerator 
+
+namespace functions [36]. Example Equation of domain Cell edge length Mesh size mean max min # cells # vertices # faces 2D disc x2 + y2 ≤ 1 2.5132e-02 4.9083e-02 1.8043e-02 6825 5185 13776 Ellipse 1 x2 + 16 y2 ≤ 1 1.1645e-02 1.5783e-02 6.4314e-03 7644 6025 15638 Ellipse 2 8.5x2 + 8 .5y2 − 15 xy ≤ 1 1.1645e-02 1.5783e-02 6.4314e-03 7644 6025 15638 Ellipse 3 4x2 + y2 ≤ 1 6.6203e-03 1.8764e-02 1.4471e-03 46704 35785 93758 3D ball x2 + y2 + z2 ≤ 1 2.0717e-02 4.9105e-02 9.1529e-03 224694 201857 680907 3D cylinder y2 + z2 ≤ 1, −1 ≤ x ≤ 1 3.7588e-02 6.2500e-02 1.8043e-02 374490 337025 1135755 3D torus (2 − √x2 + z2)2 + y2 ≤ 1,               
+
+> −3≤x, z ≤3,−1≤y≤17.7294e-02 1.9631e-01 3.6612e-02 140430 126048 425382
+
+Table 1: Summary of mesh statistics for training data used in the FEM scheme. All meshes are composed of quadrilateral or hexahedral elements and were generated with deal.II [36]. We report the average, maximum, and minimum cell edge lengths, as well as the total number of cells, vertices, and faces for each domain geometry. 
+
+6.1 Testing error 
+
+To assess approximation accuracy, we evaluate all learned models on a fixed set of test points. For the 2D PINN experiments, these consist of a uniform 100 × 100 grid over the computational domain, restricted to points in Ω together with boundary points on ∂Ω. For the 3D Eikonal PINN experiments used to generate limiting DeepONet data, the test set is constructed from a uniform 50 × 50 × 50 grid and restricted to the computational domain. Let Ntest denote the total number of testing points. For a reference solution uref , we define its normalized discrete L2 norm on the test set by 
+
+∥uref ∥2,N test = 1
+
+Ntest 
+
+> Ntest
+
+X
+
+> k=1
+
+|uref (xk)|2
+
+!1/2
+
+. (25) For a learned approximation uθ(x), the test error with respect to the exact infinity Laplace solution u∞ is defined by MSE ∞ = 1
+
+Ntest 
+
+> Ntest
+
+X
+
+> k=1
+
+ uθ(xk) − u∞(xk)2. (26) For finite p examples, we measure the discrepancy with respect to the limiting infinity solution via MSE ∞,p = 1
+
+Ntest 
+
+> Ntest
+
+X
+
+> k=1
+
+ uθ(xk; p) − u∞(xk)2, (27) which quantifies the discrepancy between the network prediction evaluated at parameter p and the limiting solution u∞, not the finite-p solution error. When an exact finite-p solution is available, 22 we also report the direct finite-p solution error MSE p = 1
+
+Ntest 
+
+> Ntest
+
+X
+
+> k=1
+
+ uθ(xk; p) − up(xk)2. (28) Unlike MSE ∞,p , this quantity directly evaluates the learned approximation against the solution of the corresponding finite-p problem. Here, uθ(x; p) denotes a learned approximation at parameter value p. In the PINN setting, a separate network is trained for each p, so the dependence on p is implicit, whereas in the DeepONet setting the network explicitly takes p as an input parameter. We additionally consider the residual error associated with the infinity Laplacian, MSE ∆∞ = 1
+
+Ntest 
+
+> Ntest
+
+X
+
+> k=1
+
+ ∆∞uθ(xk; p)2, (29) which measures how well the learned solution satisfies the homogeneous infinity Laplace equation. Table 2 summarizes the training and testing mean squared error quantities used throughout the PINN experiments. Similarly, Table 3 summarizes the corresponding quantities for the DeepONet experiments. 
+
+Training: 
+
+MSE ∂Ω (6) Enforces Dirichlet boundary data MSE ∂Ω,mixed (7) Enforces mixed Dirichlet-Neumann boundary data MSE PINNs (8) Enforces governing equation MSE (9) Total training objective 
+
+Testing: 
+
+MSE ∞ (26) Infinity Laplacian: error vs infinity solution MSE ∞,p (27) p-Laplacian: error vs limiting infinity solution MSE p (28) p-Laplacian: error vs exact finite-p solution MSE ∆∞ (29) Residual for infinity Laplacian Table 2: Mean squared error quantities used for PINN training and evaluation. 
+
+Training: 
+
+MSE DeepONet (24) Data-driven training objective 
+
+Testing: 
+
+MSE ∞,p (27) p-Laplacian: error vs limiting infinity solution Table 3: Mean squared error quantities used for DeepONet training and evaluation. 
+
+6.2 2D infinity Laplace equation with Dirichlet boundary conditions 
+
+The first set of experiments considers two-dimensional infinity Laplace boundary value problems with Dirichlet boundary conditions. For each problem, a separate PINN model is trained to assess its ability to approximate solutions of the infinity Laplacian. The training process employs interior points for the PDE residual loss and boundary points for the data-driven loss. For square domains, 10 ,000 evenly spaced points are placed along each edge, giving 40 ,000 boundary points in total. For the unit disc, 10 ,000 points are placed uniformly in angle on the 23 circle. Interior points ( ∼ 10 6) are resampled uniformly at random within the domain at each epoch. The models are trained for 100 epochs. The training boundary loss (blue) corresponds to the mean squared error evaluated on boundary points, the training PINNs loss (orange) corresponds to the mean squared PDE residual evaluated at interior points, and the testing loss (green) is the mean squared error computed on a 100 × 100 uniform grid (10 ,000 points for the square domain, 7 ,668 points after disc masking). For the infinity Laplacian ∆ ∞u = ( ∇u)T D2u ∇u, the PDE residual of a neural network ap-proximation uθ satisfies 
+
+|r(x)| = |(∇uθ)T D2uθ ∇uθ| ≤ ∥∇ uθ∥2 ∥D2uθ∥, (30) in a pointwise sense. Convergence analysis requires the PDE residual to be bounded; however, the bound (30) scales quadratically in the gradient norm ∥∇ uθ∥, which can become large during training. To obtain a tighter bound, we employ the η-normalized formulation (∇u)T D2u ∇uη2 + ∥∇ u∥2 = 0 ,
+
+with η = 10 −5. Since the numerator vanishes for any solution of ∆ ∞u = 0, this defines the same solution set. This normalized residual satisfies 
+
+(∇uθ)T D2uθ ∇uθ
+
+η2 + ∥∇ uθ∥2 ≤ ∥ D2uθ∥, (31) which removes the bound dependence on ∥∇ uθ∥ entirely, making it more stable during training. To further enforce this bound during training, we apply outlier removal, excluding the top 2% of extreme PDE residuals at each optimization step. This ensures that the empirical PDE loss MSE PINNS is not dominated by a small set of points where the network’s approximation temporarily violates the regularity assumptions underlying (31). In addition, the PDE residual is clamped to the interval [ −10 , 10] before computing the MSE loss, preventing isolated large residuals from destabilizing early training. Together, the η-normalization addresses the operator-level scaling of the residual, while residual clipping and outlier removal pro-vide robustness at the optimization level. The remaining training hyperparameters are chosen as follows and are shared across all three test cases. The PDE loss weight α is controlled by an adaptive plateau scheduler: α is initialized at 10 −5 and multiplied by 10 whenever the epoch-averaged boundary loss fails to improve by at least 20% over 5 consecutive epochs, up to a maximum of 10 −1. This curriculum ensures that the network first fits the boundary data before gradually increasing the PDE residual’s influence. A 20% validation split with best-model checkpointing is used to select the model with the lowest boundary validation loss. See A for full training details and B for an ablation study of these choices. To examine seed sensitivity, we repeated each of the three PINN experiments using five fixed random seeds: 1234, 3456, 5678, 6789, and 8765. The resulting means and sample standard deviations are reported in Table 4. The mean test errors remain of order 10 −7 for all three problems. The FEM errors reported are computed on the fixed meshes used in these experiments. The comparison represents accuracy at a representative reference resolution. The PINN computations were performed on an NVIDIA RTX 5880 Ada GPU, whereas the Newton FEM computations were performed on an Intel Xeon Gold 5420+ CPU deal.II configured to use up to 112 threads. Table 4 summarizes the testing MSE values, training and inference times for the considered test cases. Both the PINN and FEM errors are computed against the known exact solution. The FEM results 24 Example Exact solution ∥u∞∥2,N test                                      
+
+> MSE Runtime Our method Newton PINN inference Newton (mean ±s.d.) (+training) Arctan, Fig 4 arctan( y/x )8.862e-01 (3 .118 ±2.327)e-07 5.892e-05 1.456e-04s (+1453s) 2776s Aronsson (square), Fig 5 |x|43− | y|434.277e-01 (4 .468 ±1.696)e-07 9.511e-05 7.719e-05s (+1064s) 6955s Aronsson (disc), Fig 6 |x|43− | y|434.284e-01 (6 .247 ±2.805)e-07 2.522e-04 7.608e-05s (+905s) 17447s
+
+Table 4: Comparison of our PINN method and the Newton FEM method for solving the two-dimensional infinity-Laplacian equation subject to Dirichlet boundary conditions. The PINN MSE is reported as the mean ± sample standard deviation over five runs with random seeds 1234, 3456, 5678, 6789, and 8765. The reported PINN timings and loss histories in Figures 4-6 correspond to the seed-1234 runs. The Newton FEM results are deterministic results computed on the fixed meshes described in Table 1. 
+
+provide a numerical baseline for the same test problems. The PINN models provide fast inference once training is complete. Detailed results for each example are discussed in the subsections that follow. Training error evolution is illustrated in the corresponding figures. 
+
+6.2.1 Arctan example (homogeneous, Dirichlet) 
+
+Consider the following boundary value problem: 
+
+−∆∞u = 0 , in Ω ,u(x, y ) = arctan( y/x ), on ∂Ω.
+
+The computational domain is defined as [0 .01 , 1] × [0 .01 , 1]. This example admits a smooth solution on the given computational domain, which excludes the coordinate singularity at the origin. It therefore provides a convenient test case for evaluating the accuracy of the PINNs approximations. For the seed-1234 run, the achieved training boundary loss is 1 .395 × 10 −7 and the training PINNs loss is 9 .338 ×10 −6. Averaged over five random seeds, the test MSE is (3 .118 ±2.327) ×10 −7,where the reported variation is the sample standard deviation. Figure 4 shows that the PINN prediction closely matches the exact solution. The total training time is approximately 1453s for 100 epochs. The inference time is 1 .456 ×
+
+10 −4s for evaluation over the entire domain. In comparison, the Newton-based FEM solver requires approximately 2776s to compute the reference solution. At the fixed FEM resolution used in this experiment, the mean PINN test error, (3 .118 ± 2.327) × 10 −7 over five random seeds, is more than two orders of magnitude below the FEM error of 5 .892 × 10 −5.
+
+6.2.2 Aronsson example (homogeneous, Dirichlet) 
+
+The Aronsson problem for the infinity Laplacian is given by 
+
+−∆∞u = 0 , in Ω ,u(x, y ) = |x| 43 − | y| 43 , on ∂Ω.
+
+This example is a canonical test case for the infinity Laplacian, as the solution is only C1, 13 ,with nonsmoothness occurring along coordinate axes. For this example, we evaluate the model on two different domains. In the first square domain, [−1, 1] × [−1, 1], the seed-1234 run achieves a training boundary loss of 4 .111 × 10 −7 and a training PINNs loss of 9 .810 ×10 −5. Averaged over five random seeds, the test MSE is (4 .468 ±1.696) ×10 −7,25 (a) (b) (c) 
+
+Figure 4: Arctan example 6.2.1. (a) Loss histories versus epoch: training boundary loss MSE ∂Ω, training PINNs loss MSE PINNs , testing loss MSE ∞, and validation boundary loss MSE val 
+
+> ∂Ω, evaluated on the validation subset of boundary points. The dashed vertical line marks the checkpoint selected by the minimum validation boundary loss. (b) PINN prediction. (c) Exact solution.
+
+which remains more than two orders of magnitude below the FEM error of 9 .511 × 10 −5 at the fixed resolution used here. On the unit disc domain, {(x, y ) ∈ R2 | x2 + y2 ≤ 1}, the seed-1234 run achieves a training boundary loss of 4 .150 ×10 −7 and a training PINNs loss of 8 .966 ×10 −5. Averaged over five random seeds, the test MSE is (6 .247 ± 2.805) × 10 −7. This mean error remains more than two orders of magnitude below the FEM error of 2 .522 × 10 −4 at the fixed resolution listed in Table 1. Figures 5 and 6 illustrate that the PINNs predictions capture the qualitative structure of the exact solution on both domains. The training time is approximately 1064s and 905s for 100 epochs on the square and unit disc domains, respectively. The inference time for evaluation over the entire domain is 7 .719 × 10 −5sand 7 .608 × 10 −5s, respectively. This is significantly faster than the Newton-based FEM solver, which requires approximately 6955s and 17447s for the square and unit disc domains. 
+
+6.3 p-Laplace equation with Dirichlet boundary conditions 
+
+In the second set of experiments, we investigate the use of PINNs to approximate solutions of the 
+
+p-Laplacian with Dirichlet boundary conditions. We seek to empirically assess the performance of PINNs for nonlinear elliptic problems as the nonlinearity parameter p increases. We specifically train PINN models for p-Laplacian equations with varying values of p, ranging from 2 to 1000. Our primary interest is to examine whether the computed PINNs solutions exhibit a systematic trend toward the corresponding infinity Laplacian solution as p increases. We also compare two different training strategies: simple training and iterative training. In addition to the Aronsson example, we consider an inhomogeneous problem on the unit disc, where the exact solution is known for finite p > 1. This provides a direct validation of the iterative PINN approximation against up, rather than only an assessment of convergence toward the limiting profile u∞.In the simple training strategy, independent PINN models are trained from scratch for each value of p, using only the corresponding PDE residual and boundary losses. In contrast, the iterative training strategy involves initializing the PINN model for a given value of p using the pretrained network weights obtained for a smaller value of p, and then fine-tuning the model for the next p
+
+value. This continuation-based approach is motivated by the strong dependence of the p-Laplace 26 (a) (b) (c) 
+
+Figure 5: Aronsson example 6.2.2 on square domain. (a) Loss histories versus epoch: training boundary loss MSE ∂Ω, training PINNs loss MSE PINNs , testing loss MSE ∞, and validation boundary loss MSE val 
+
+> ∂Ω
+
+, evaluated on the validation subset of boundary points. The dashed vertical line marks the checkpoint selected by the minimum validation boundary loss. (b) PINN prediction. (c) Exact solution. 
+
+(a) (b) (c) 
+
+Figure 6: Aronsson example 6.2.2 on unit disc. (a) Loss histories versus epoch: training boundary loss MSE ∂Ω, training PINNs loss MSE PINNs , testing loss MSE ∞, and validation boundary loss MSE val 
+
+> ∂Ω
+
+, evaluated on the validation subset of boundary points. The dashed vertical line marks the checkpoint selected by the minimum validation boundary loss. (b) PINN prediction. (c) Exact solution. 
+
+operator on p and mirrors continuation strategies commonly employed in traditional numerical methods. The network architecture, optimizer, learning rate, grid sizes, and batch sizes are the same as those used for the infinity-Laplacian experiments described in Section 6.2. The same stabiliza-tion framework is used, except that the regularized p-Laplacian residual is clipped to [ −100 , 100], whereas the infinity-Laplacian residual is clipped to [ −10 , 10]. See A for the remaining hyperpa-rameters. In addition to the gradient-norm clamping described above, we regularize the singular prefactor in the expanded p-Laplacian. Writing ∆ pu = |∇ u|p−4|∇ u|2 ∆u + ( p − 2) ∇uT D2u ∇u,we replace only the prefactor |∇ u|p−4 to obtain ˜∆pu = ( η2 + |∇ u|2)(p−4) /2|∇ u|2 ∆u + ( p − 2) ∇uT D2u ∇u, η = 10 −5,
+
+which avoids the singularity at |∇ u| = 0 and numerical blow-up for large p. This modification should be interpreted as a residual-reweighting device for the homogeneous equation, rather than as the flux-based regularization used in the Newton formulation of Section 3. Away from points where |∇ u| = 0, it differs from the original homogeneous p-Laplacian residual only by a positive multiplicative factor and therefore preserves its zero set. 27 6.3.1 p-Laplacian: Aronsson example with simple PINNs training 
+
+In this experiment, we utilize the Aronsson example to examine the behavior of PINNs when applied to the p-Laplacian for increasing values of p. The goal is to assess whether independently trained PINN models recover the expected asymptotic behavior as p → ∞ .The Aronsson problem is given by 
+
+−∆pu = 0 , in Ω ,u(x, y ) = |x| 43 − | y| 43 , on ∂Ω.
+
+Note that u(x, y ) = |x| 43 − | y| 43 is an exact solution of the homogeneous infinity Laplacian [45]. This solution is nonsmooth, with reduced regularity along coordinate axes, which is known to cause difficulties for many numerical methods, including standard finite difference schemes [11]. For this experiment, we employ the simple PINNs training strategy, in which independent models are trained from scratch for each value of p. The total training loss is defined as the sum of the mean squared error evaluated on boundary points (training boundary loss) and the PDE residual loss (PINNs loss). We observe that the mean squared error with respect to the infinity Laplacian solution does not decrease monotonically as p increases. Specifically, we measure the error using MSE ∞ as defined in equation (26). This behavior suggests that, when trained independently, the PINNs formulation for the p-Laplacian may become unstable for large values of p. In particular, the p-dependent nonlinearities in the PDE residual can lead to numerical instabilities and loss imbalance when the network ini-tialization is far from the true solution. The training time is approximately 2 ,962 s for 100 epochs, and the inference time for evaluation over the entire domain is 2 .582 × 10 −4 s. 
+
+6.3.2 p-Laplacian: Aronsson example with iterative PINNs training 
+
+In this experiment, we consider both the mean squared error MSE ∞ between the predicted solution and the infinity Laplacian limit, and the residual error MSE ∆∞ associated with the homogeneous infinity Laplace operator, defined in equation (29). The purpose of this experiment is to study how these two error measures depend on the pa-rameter p when PINNs are trained using an iterative, continuation-based strategy. The iterative training is organized as a five-band continuation pipeline. The first band trains the model from scratch for p ∈ { 2, 3, . . . , 10 , 15 , 20 } using the adaptive plateau scheduler and a cosine-annealed learning rate, with early stopping in this first band only when both the validation boundary loss and PDE residual drop below prescribed thresholds. Each subsequent band loads the best-model checkpoint from the previous band and fine-tunes for the next group of p values using a fixed α and a fixed learning rate of 10 −5. The value of α decreases across the successive bands to compensate for the increasing magnitude of the unweighted PDE residual at larger p and to prevent the PDE term from dominating the total loss. The full band-by-band schedule is listed in D. By training the PINN models iteratively from p = 2 to p = 1000, we study whether the continuation procedure can track the limiting infinity-Laplacian profile in the large-p regime. The total training loss is defined as the sum of the mean squared error evaluated on boundary points (boundary training loss) and the PDE residual loss (PINNs loss). When p increases from 2 to 1000, the testing error MSE ∞ initially decreases with increasing p.For values of p larger than approximately 100, the testing error and PDE residual error MSE ∆∞
+
+28 continue to decrease as p increases, which is consistent with the expected convergence of the p-Laplacian operator toward the infinity Laplacian in the p → ∞ limit. These results indicate that iterative PINNs training improves stability as a large-p continuation procedure compared to simple training. The total training time for the five-band iterative pipeline is approximately 11 ,769 s (1 ,169 total epochs across all bands and p values), and the inference time for evaluation over the entire domain is 7 .651 × 10 −5 s. Table 5 compares the simple and iterative PINNs training strategies. Under simple training, both the training loss and MSE ∞ increase with p, eventually leading to failure for large values of 
+
+p. In contrast, iterative training stabilizes the boundary loss and the error to the limiting solution across a wide range of p, allowing us to continue the network profile up to the diagnostic value 
+
+p = 1000. We emphasize that the largest-p entries should be interpreted as large-p continuation diagnostics rather than fully verified finite-p PINN solves. In the final continuation band, the PDE residual weight is reduced to α = 10 −5 for stability, see D. Thus, the total loss may remain small even when the unweighted p-Laplacian residual is large. The small MSE ∞ and MSE ∆∞ values indicate accuracy with respect to the limiting infinity-Laplacian solution, not a separate verification of the finite-p equation at p = 1000. Figure 7(a) visualizes the dependence of the total training loss, MSE ∞, and MSE ∆∞ on p for the Aronsson example 6.2.2 on square. Simple training Iterative training                                                                                                     
+
+> ptotal loss MSE ∂ΩPINNs loss MSE ∞total loss MSE ∂ΩPINNs loss MSE ∞MSE ∆∞∥u∞∥2,N test
+> 24.455e-05 1.371e-05 3.083e-03 4.429e-03 4.455e-05 1.371e-05 3.083e-03 4.429e-03 2.142e+01 4.277e-01 34.561e-05 1.192e-05 3.369e-03 1.499e-03 3.818e-05 9.955e-06 2.823e-03 1.466e-03 3.455e+00 4.277e-01 45.200e-07 1.685e-07 3.516e-03 7.125e-04 4.501e-05 8.129e-06 3.688e-03 7.756e-04 1.294e+00 4.277e-01 55.026e-07 1.686e-07 3.340e-03 4.253e-04 6.131e-05 1.216e-05 4.914e-03 4.592e-04 6.440e-01 4.277e-01 10 1.443e-05 2.332e-06 1.210e-03 1.057e-04 1.301e-04 1.164e-05 1.185e-02 1.449e-04 1.317e-01 4.277e-01 50 4.726e-04 2.545e-05 4.471e-02 2.712e-05 1.998e-04 1.108e-05 1.888e-02 1.034e-05 1.052e-02 4.277e-01 100 3.674e-04 1.458e-05 3.528e-02 1.194e-05 6.388e-05 2.761e-06 6.112e-02 3.754e-06 3.804e-03 4.277e-01 200 6.930e-03 5.296e-03 1.634e-02 1.652e-02 2.771e-05 1.850e-06 2.586e-01 1.808e-06 1.835e-03 4.277e-01 1000 4.287e+01 5.172e-04 4.287e+02 1.085e-01 6.812e-05 1.762e-06 6.635e+00 1.056e-06 7.236e-04 4.277e-01
+
+Table 5: Comparison of simple and iterative PINNs training for the Aronsson example on the square domain. For both methods, we report the total training loss, boundary loss MSE ∂Ω, PINNs physical loss, and solution error MSE ∞. For iterative training, we additionally report the residual error MSE ∆∞ under the homogeneous infinity Laplacian operator. 
+
+6.3.3 Finite-p validation on the unit disc 
+
+To directly validate the iterative PINN method for finite values of p, let Ω ⊂ R2 be the unit disc centered at the origin. We consider the p-Poisson problem 
+
+−∆pup = 1 , in Ω ,up = 0 , on ∂Ω.
+
+A direct radial calculation gives the exact solution 
+
+up(x) = p − 1
+
+p 2−1/(p−1) Ä1 − ∥ x∥p/ (p−1) 2
+
+ä , p > 1.
+
+Moreover, 
+
+up(x) −→ u∞(x) = 1 − ∥ x∥2 as p → ∞ ,
+
+29 (a) Aronsson example. (b) Direct finite-p validation on the unit disc. 
+
+Figure 7: Iterative PINN continuation results over increasing values of p. In both panels, the blue curve represents the total training loss and the orange curve represents MSE ∞. In panel (a), the green curve represents MSE ∆∞ for the Aronsson example. In panel (b), the green curve represents the direct finite-p  
+
+> error MSE pagainst the exact solution up.
+
+where u∞ is the distance to the boundary of the unit disc. The PINN is trained using continuation in p, with the network weights from one value of p
+
+used to initialize the next continuation stage. Unlike the homogeneous Aronsson experiments, this problem has a nonzero right-hand side. We therefore use the flux-based regularization 
+
+−∆p,η u = −∇ · 
+
+h η2 + |∇ u|2(p−2) /2 ∇u
+
+i
+
+, η = 10 −5,
+
+together with the gradient-norm and residual stabilization used in the preceding PINN experiments. The exact comparison target up remains the solution of the original unregularized finite-p problem. The complete continuation schedule and sampling configuration are reported in D. For each saved continuation checkpoint, we report the total training loss MSE total = MSE ∂Ω + α MSE PINNs ,
+
+where MSE ∂Ω is the training boundary loss and MSE PINNs is the mean squared regularized p-Poisson residual at the training collocation points. We additionally report the direct finite-p error MSE p defined in (28), and the error MSE ∞ against the limiting distance function. These two quantities are evaluated on the fixed 100 × 100 test grid restricted to the unit disc, containing 
+
+Ntest = 7 ,668 points. Table 6 shows that the direct finite-p error remains below 3 × 10 −5 for all reported values of 
+
+p and equals 1 .922 × 10 −6 at p = 1000. At the same time, MSE ∞ decreases from 7 .145 × 10 −2
+
+at p = 2 to 2 .385 × 10 −6 at p = 1000, consistently capturing convergence toward the distance-to-boundary limit. The training PINNs loss becomes larger at the largest values of p, while the direct comparison with the known finite-p solution remains accurate. Figure 7(b) shows the corresponding continuation history over all trained values of p. MSE ∞ decreases as p increases, while the direct finite-p error MSE p remains small despite the increase in the total training loss at large p.30 p total loss MSE ∂Ω PINNs loss MSE ∞ ∥u∞∥2,N test MSE p ∥up∥2,N test                                                                
+
+> 21.287e-05 1.203e-05 8.403e-04 7.145e-02 4.090e-01 8.861e-07 1.446e-01 31.930e-05 9.691e-06 9.607e-04 3.070e-02 4.090e-01 1.645e-05 2.395e-01 41.366e-05 7.840e-06 5.816e-04 1.696e-02 4.090e-01 2.982e-05 2.851e-01 51.173e-05 4.237e-06 7.498e-04 1.033e-02 4.090e-01 1.284e-05 3.116e-01 10 1.090e-05 1.296e-06 9.608e-04 2.507e-03 4.090e-01 9.213e-06 3.620e-01 50 5.152e-06 2.383e-07 4.914e-04 9.981e-05 4.090e-01 1.740e-06 3.999e-01 100 1.346e-05 2.560e-07 1.320e-03 2.672e-05 4.090e-01 1.350e-06 4.045e-01 200 4.942e-05 3.388e-07 4.908e-03 8.748e-06 4.090e-01 1.395e-06 4.068e-01 1000 5.674e-04 8.495e-07 5.665e-02 2.385e-06 4.090e-01 1.922e-06 4.086e-01
+
+Table 6: Direct finite-p validation of the iterative PINN method for the distance-to-boundary problem on the unit disc. We report the total training loss, the boundary loss MSE ∂Ω, the PINNs physical loss, the solution error MSE ∞ against the limiting distance function u∞, and the direct solution error MSE p against the exact finite-p solution up.
+
+6.4 DeepONet example 
+
+In the third set of experiments, we use DeepONet to learn from finite-p solution data and evaluate how well the resulting predictions recover the corresponding p → ∞ limiting solution. In some cases, a PINN approximation of the limiting solution is included as an auxiliary input for p = 500. Furthermore, we extend the training data by including parameters describing the domain geometry, allowing the trained DeepONet to generalize across both the parameter p and a family of domains. As a reference baseline, we measure the convergence of the FEM solutions toward the infinity Laplacian limit using MSE FEM  
+
+> ∞,p
+
+= 1
+
+Ntest 
+
+> Ntest
+
+X
+
+> k=1
+
+ uFEM  
+
+> p
+
+(xk) − u∞(xk)2
+
+where uFEM  
+
+> p
+
+is the Newton FEM solution at parameter p and u∞ is the exact solution of the corresponding infinity Laplacian problem. This resembles (27) but with the FEM solution rather than the network prediction being compared to u∞. This is a convergence-to-limit baseline for the FEM solution at finite p, rather than an estimate of FEM discretization error. The trained model is evaluated using the mean squared error between the DeepONet prediction and the limiting infinity Laplacian solution given by (27). This error metric allows us to assess how well the DeepONet predictions recover the asymptotic 
+
+p → ∞ behavior across different values of p and different domain configurations. We emphasize that this metric is not a finite-p error ∥bup − up∥2. Instead, MSE ∞,p measures the discrepancy between the DeepONet prediction at parameter p and the limiting solution u∞. Thus, except for the direct unit-disc finite-p validation reported in Table 9, the DeepONet errors assess accuracy for recovering the limiting distance profile rather than directly verifying the finite-p solution operator. 
+
+6.4.1 Distance-to-origin DeepONet example 
+
+In this experiment, we consider the distance-to-origin problem on both disc and square domains and use the corresponding p-Laplacian solutions as training data for the DeepONet model. The goal is to assess whether DeepONet can learn the parametric dependence of the solution on p and 31 recover the correct p → ∞ limiting behavior. The boundary value problem is given by 
+
+−∆pup = 1 , in Ω ,up = 0 , on Γ 1 = (0 , 0) ,∂u p
+
+∂n = 0 , on Γ 2 = ∂Ω \ (0 , 0) .
+
+We have the limiting behavior lim  
+
+> p→∞
+
+up = u∞ = dist( x, (0 , 0)) .
+
+For each testing configuration, the range of p values used in the training data spans from p = 5 to p = 200. In addition, we include the PINNs-predicted p = ∞ solution as an auxiliary input by associating it with p = 500 in the training set. This allows us to explicitly incorporate information about the limiting solution into the operator-learning process. Numerical evidence [7] suggests that the limiting solution u∞ satisfies the Eikonal equation 
+
+|∇ u∞| = 1 , in Ω , (32a) 
+
+u∞ = 0 , on Γ 1, (32b) Note that the Neumann condition vanishes in the p → ∞ limit. We evaluate the DeepONet predictions for p values ranging from 5 to 500 and compute the mean squared errors as an error metric. The results reported in Table 7 and Figure 8 for both the disc and square domains demonstrate that including the PINNs-predicted p = ∞ solution in the training data significantly improves accuracy with respect to the limiting-solution metric MSE ∞,p .In particular, when the p = ∞ information is included, the error remains more controlled over the augmented parameter range. In contrast, when the p = ∞ solution is omitted from the training inputs, the MSE continues to increase for p > 200, which coincides with the upper limit of the available training data. These observations indicate that incorporating information about the limiting solution can substantially improve DeepONet predictions in the large-p regime. Since the limiting solution is included as a training label at the surrogate value p = 500, predictions for 200 < p < 500 should be interpreted as interpolation within an augmented parameter range, rather than extrapolation beyond the available training data. 
+
+6.4.2 Distance-to-boundary DeepONet 2D and 3D examples 
+
+Bhattacharya et al. [2] show that solutions of the p-Laplacian can be used to approximate the distance-to-boundary function in the large p limit. Unfortunately, large values of p lead to increas-ingly ill-conditioned problems and are therefore numerically challenging to solve. The boundary value problem is given by 
+
+−∆pup = 1 , in Ω ,up = 0 , on ∂Ω.
+
+It is shown analytically in [2] that lim  
+
+> p→∞
+
+up = u∞ = dist( x, ∂ Ω) .
+
+32 Disc domain Square domain                                               
+
+> pMSE FEM
+> ∞,p
+> MSE ∞,p
+> (no limit reference) MSE ∞,p MSE FEM
+> ∞,p
+> MSE ∞,p
+> (no limit reference) MSE ∞,p
+> 51.575e-02 1.289e-02 1.288e-02 2.377e-02 2.337e-02 2.328e-02 50 4.022e-05 4.009e-05 4.172e-05 6.865e-05 6.628e-05 6.834e-05 100 5.610e-06 5.250e-06 6.804e-06 1.180e-05 1.177e-05 1.193e-05 200 1.136e-06 3.251e-06 5.656e-06 1.523e-06 2.126e-06 2.216e-06 300 −8.135e-05 5.098e-05 −2.603e-05 6.411e-06 400 −9.493e-04 5.605e-05 −1.861e-04 5.638e-06 500 −3.549e-03 2.872e-06 −5.527e-04 7.148e-07
+
+Table 7: Error evaluation for the distance to origin DeepONet example 6.4.1 on the disc and square domains. For each p value, we show the FEM convergence-to-limit baseline MSE FEM               
+
+> ∞,p . We also show the DeepONet error MSE ∞,p which compares against the exact p→ ∞ limiting solution both without including p=∞
+> training data and with PINNs-predicted p=∞data added as a surrogate for p= 500.
+
+There exists a substantial body of work on numerical methods for approximating solutions of this problem, including finite element and finite difference approaches [6, 30, 31]. In contrast to these methods, our goal is to assess whether DeepONet can learn the parametric dependence of the solution on p and accurately recover the limiting distance function without directly solving highly ill-conditioned problems for large p.To address the reliance on exact p = ∞ solutions as training data, we employ a PINN model to approximate the limiting distance function by solving the corresponding Eikonal equation. For the distance-to-boundary problem, the large-p limit is the distance function u∞ = dist( x, ∂ Ω), which satisfies the Eikonal problem (32a)-(32b). Table 8 demonstrates that the DeepONet model can recover the large-p limiting profile with er-rors comparable to the FEM convergence-to-limit baseline. Thus, the proposed approach is capable of accurately approximating the limiting distance profile on 2D geometries and remains effective for substantially more challenging 3D domains. The DeepONet training time is approximately 17500s (4 .86h). This is higher than the Newton computation times in 2D, 8667s (2 .41h) for the disc and approximately 3 .5h for the ellipses. The computational gain is more pronounced in three dimensions, where the Newton computations require up to approximately 5 days. Once trained, the DeepONet model can be evaluated efficiently for multiple values of p and family of geometries without repeating the training procedure. Figure 9 illustrates how the errors for the 2D examples vary with p when evaluated against the true distance function, corresponding to the p → ∞ limit. In all cases, the MSE ∞,p curves decay comparably to the MSE FEM  
+
+> ∞,p
+
+curves within the finite-p training range. Including the PINNs-predicted solution at p = 500 in the training data enables interpolation between the upper end of the training range and larger values of p. However, we note that there is some non-monotonicity for the p values beyond the FEM training range particularly pronounced for ellipse 2. Here, the MSE ∞,p curve increases, contrary to theoretical expectations. Recall that convergence to the distance function is expected at a rate of O(1 /p ). For sufficiently large p, discretization error and network approximation error are therefore expected to dominate the asymptotic 1 /p convergence behavior. For the unit-disc example, the exact finite-p solution is available for every p > 1, as described in Section 6.3.3. This allows us to supplement the convergence-to-limit comparison with a direct evaluation of the DeepONet prediction against up. Table 9 shows finite-p error remains below 33 (a) unit disc (b) square 
+
+Figure 8: Distance to origin DeepONet example 6.4.1 (a) on unit disc domain (b) on square domain. The blue curves show the FEM convergence-to-limit baseline MSE FEM  
+
+> ∞,p
+
+, the orange curves show the DeepONet error MSE ∞,p against the exact p → ∞ limiting solution without including p = ∞ training data, and the green curves show the DeepONet error MSE ∞,p with the PINNs-predicted solution at p = ∞ added as a surrogate for p = 500. All DeepONet errors in this figure are measured against the limiting solution u∞, not against the finite-p FEM solution up.
+
+1.6 × 10 −6 at all p values. Small errors are obtained at both the finite-p training inputs and unseen interpolation points, directly validating the DeepONet predictions against the corresponding exact solutions up.Figure 10 shows a similar evolution of the errors with respect to p for the 3D examples when compared against the true distance function. The most consistent behavior is observed for the spherical domain. In the cylindrical case, the decay of MSE ∞,p becomes more pronounced after the FEM training range. For the torus, MSE ∞,p remains larger than MSE FEM  
+
+> ∞,p
+
+even at p = 500. Example Equation of domain ∥u∞∥2,N test                                                                                        
+
+> At largest training data pRuntime MSE FEM
+> ∞,p MSE ∞,p
+> DeepONet Newton inference 2D disc, Fig 9(a) x2+y2≤14.085e-01 8.468e-06 5.248e-06 2.265e-04s 8667s Ellipse 1, Fig 9(b) x2+ 16 y2≤11.239e-01 7.079e-06 1.313e-05 1.414e-04s
+> ∼3.5 hours Ellipse 2, Fig 9(c) 8.5x2+ 8 .5y2−15 xy ≤11.237e-01 7.079e-06 1.066e-05 1.406e-04s Ellipse 3, Fig 9(d) 4x2+y2≤12.398e-01 5.711e-06 4.435e-06 1.416e-04s 3D ball, Fig 10(a) x2+y2+z2≤13.167e-01 1.894e-05 5.995e-06 2.948e-03s
+> ∼5 days 3D cylinder, Fig 10(b) y2+z2≤1,−1≤x≤13.133e-01 6.741e-05 5.165e-05 4.576e-03s 3D torus, Fig 10(c) (2 − √x2+z2)2+y2≤1,
+> −3≤x, z ≤3,−1≤y≤14.076e-01 1.136e-05 3.618e-05 7.401e-04s
+
+Table 8: Distance to boundary DeepONet example 6.4.2 results across various 2D and 3D domains. The second column includes the equation for each domain and the third column shows normalized discrete norm of u∞. The fourth and fifth columns show MSE FEM  
+
+> ∞,p
+
+and MSE ∞,p errors respectively, at the largest training p
+
+value. Lastly, the sixth and seventh columns show DeepONet inference times and total Newton FEM solver times. Both errors are measured against the limiting distance function, not against finite-p solutions. 
+
+34 (a) 2D disc: x2 + y2 ≤ 1 (b) Ellipse 1: x2 + 16 y2 ≤ 1          
+
+> (c) Ellipse 2: 8 .5x2+ 8 .5y2−15 xy ≤1(d) Ellipse 3: 4 x2+y2≤1
+
+Figure 9: Distance to boundary DeepONet results for various 2D domains. (a)–(d) show MSE FEM          
+
+> ∞,p and MSE ∞,p over increasing pvalues for: (a) the unit disc, (b) an elongated ellipse, (c) a rotated ellipse, and (d) a compressed ellipse. All predictions are compared against the p=∞solution which is the true distance function.
+
+6.4.3 Distance-to-boundary DeepONet over family of ellipses 
+
+In this experiment, we incorporate geometric parameters defining an elliptical domain as inputs to the DeepONet model in order to assess its ability to generalize across a family of domains. The domain is defined by Ω = 
+
+ß
+
+(x, y ) ∈ R2 : (x cos θ + y sin θ)2
+
+a2 + (−x sin θ + y cos θ)2
+
+b2 < 1
+
+™
+
+.
+
+We select the parameter ranges a ∈ [0 .9, 1.1], b ∈ [0 .2, 0.3], and θ ∈ [0 , π 
+
+> 2
+
+]. The rotation angle θ
+
+is sampled at 11 evenly spaced values (10 rotations plus the base ellipse at θ = 0). The semi-axis parameters a and b are each sampled at 10 evenly spaced values within their respective ranges. The model is trained for 20 epochs with a total training time of approximately 6 ,454 s. The resulting solutions serve as the training data for the DeepONet model. The mean squared error (MSE) across different parameter values is shown in Figure 11. To assess the generalization of the trained DeepONet across the parameter space, we evaluate two aggregate error measures derived from a full three-dimensional sweep over ( θ, a, b ) at p = 500. Let {xn}Nn=1 denote the set of N test points obtained from the FEM mesh of the reference ellipse (after applying the validity filter and a stride of 10). For each triplet ( θi, a j , b k) on a uniform grid 35 (a) 3D ball (b) 3D cylinder (c) 3D torus 
+
+Figure 10: Distance to boundary DeepONet results for various 3D domains. (a)–(c) show MSE FEM          
+
+> ∞,p and MSE ∞,p over increasing pvalues for: (a) the unit ball, (b) cylinder with radius 1 and length 2, and (c) a torus with major radius 2 and minor radius 1. All predictions are compared against the p=∞solution which is the true distance function.
+
+θi ∈ [0 , π/ 2], aj ∈ [0 .9, 1.1], bk ∈ [0 .2, 0.3], we compute MSE( θi, a j , b k) = 1
+
+N
+
+> N
+
+X
+
+> n=1
+
+ ˆu(Rθi xn, p =500 , θ i, a j , b k) − u∞(xn; aj , b k)2, (33) where ˆ u is the DeepONet prediction, Rθ denotes counter-clockwise rotation by θ, and u∞(x; a, b ) = dist( x, ∂ Ωa,b ) is the exact infinity-Laplacian solution on the (unrotated) ellipse Ω a,b = {(x, y ) : 
+
+x2/a 2 + y2/b 2 < 1}. Note that u∞ is evaluated at the original (unrotated) coordinates because the distance to the boundary is invariant under simultaneous rotation of the point and the do-main, i.e. dist( Rθx, ∂R θΩa,b ) = dist( x, ∂ Ωa,b ). The two aggregate measures are then obtained by marginalizing over the complementary variables: MSE( θi) = 1
+
+Na NbNaX
+
+> j=1
+> Nb
+
+X
+
+> k=1
+
+MSE( θi, a j , b k), (34) MSE( aj , b k) = 1
+
+NθNθX
+
+> i=1
+
+MSE( θi, a j , b k). (35) Equation (34) quantifies the model’s ability to maintain rotational equivariance across the full range of ellipse shapes, while equation (35) measures the prediction accuracy over varying axis lengths for a given ( a, b ) pair, averaged over all orientations. The testing configurations are not included in the training set and therefore assess the interpo-lation performance of the learned operator with respect to domain geometry. Figure 11(a) shows that the MSE( θ) evaluated at p = 500 is generally of order 10 −4 across the full θ range, indicating that the DeepONet model can accurately approximate the limiting distance profile on previously unseen ellipse geometries. This confirms that the model is able to learn a meaningful parametric representation of the distance-to-boundary problem across a continuous family of domains. Furthermore, we investigate the effect of the number of training parameter samples on the performance of the DeepONet model. Specifically, we repeat the experiment using 3, 5, 7, and 9 evenly spaced values of θ within the prescribed range while keeping the remaining parameters 36 p Evaluation MSE p MSE ∞,p                                                    
+
+> 5Training 5.340e-08 9.704e-03 7Interpolation 1.584e-06 4.940e-03 10 Training 4.621e-08 2.269e-03 12 Interpolation 9.675e-08 1.540e-03 25 Training 6.696e-08 3.492e-04 37 Interpolation 7.756e-08 1.562e-04 50 Training 8.080e-08 8.571e-05 77 Interpolation 8.697e-08 3.613e-05 100 Training 8.990e-08 2.120e-05 137 Interpolation 9.240e-08 1.135e-05 150 Training 9.299e-08 9.505e-06 177 Interpolation 9.433e-08 6.820e-06 200 Training 9.758e-08 5.248e-06 250 Augmented interp. 1.299e-07 3.043e-06 300 Augmented interp. 2.159e-07 1.788e-06 400 Augmented interp. 5.356e-07 6.456e-07 500 Auxiliary input 1.179e-06 4.780e-07
+
+Table 9: Finite-p validation of the unit-disc DeepONet model. The error MSE p compares the DeepONet prediction with the exact finite-p solution up, while MSE ∞,p compares it with the limiting solution u∞.
+
+fixed. This experiment isolates the influence of sampling density in the parameter space on the interpolation quality of the learned operator. The results in Figure 12 show that when the number of training points is too small, the Deep-ONet model tends to overfit the available data, leading to poor predictions at intermediate values of θ. As the number of training points increases, the approximation improves and the error profile becomes smoother across the parameter range. These observations highlight the importance of sufficient parameter sampling when training operator-learning models on families of geometries. 
+
+# 7 Conclusions 
+
+Our numerical experiments demonstrate that PINNs and DeepONet can accurately recover infinity-Laplace solutions and capture the limiting behavior of p-Laplace solutions as p → ∞ . Across the finite-p experiments, the neural-network predictions reproduce the limiting profiles with errors comparable to the corresponding FEM convergence-to-limit baselines, while remaining effective over a substantially wider range of p values. In particular, for the PINNs approach, we observe that an iterative training strategy in p, combined with u-gradient norm clipping, significantly improves stability and robustness of the optimization as p increases. DeepONet offers distinct advantages. Unlike PINNs, a single DeepONet model can incorporate both the parameter p and geometric parameters describing the domain, allowing solutions across a family of PDEs and domains to be represented within one trained operator. This capability is especially well suited to distance approximation problems, where we may wish to evaluate p-Poisson distances via the p-Laplacian for many values of p and across multiple geometries. Additionally, we find that explicitly incorporating information from the p → ∞ limiting problem can improve performance in the large p regime, leading to more reliable interpolation/extrapolation in the p
+
+parameter space beyond the range of available finite p training data. At the same time, PINNs retain the important practical advantage that precomputed solution data in the interior of the computational domain is not required and can be trained directly from the governing equations and boundary conditions alone. This makes PINNs particularly attractive 37 (a) (b) 
+
+Figure 11: Distance to boundary DeepONet for all 2D ellipse examples. (a) MSE( θ) (34) as a function of the rotation angle θ, evaluated at p = 500. Blue points indicate θ values included in the training data. (b) MSE( a, b ) (35) over varying semi-axis lengths a and b, evaluated at p = 500. The DeepONet model is trained over sampled values of ( a, b, θ ) and tested on unseen configurations within the parameter range. 
+
+(a) 3 points (b) 5 points (c) 7 points (d) 9 points 
+
+Figure 12: Distance to boundary DeepONet for all 2D ellipse examples. (a)–(d) show MSE( θ) (34) using 3, 5, 7, and 9 training θ values, respectively. Blue points indicate θ values included in the training data. 
+
+in settings where generating high-quality training data is expensive or infeasible. The success of the neural network solvers provides exciting avenues for future studies. One natural extension is the transition from Euclidean domains to surface formulations involving intrin-sic differential operators, which would enable the approximation of p-Poisson geodesic distances as studied in [7]. Additional applications include image processing [5], elastoplastic torsion [35], and non-Newtonian fluid models [46], where nonlinear and degenerate elliptic operators pose significant challenges for classical numerical solvers. 
+
+# Code and data availability 
+
+The code, data-generation scripts, plotting scripts, and experiment configuration files used in this work are available at https://github.com/hannah-potgieter/infinity-and-p-Laplace-solvers .The repository includes fixed random-seed settings for the neural-network experiments so that the reported runs and figures can be reproduced from the same scripts and input data. 38 Funding/Acknowledgments 
+
+We acknowledge the support of the Natural Sciences and Engineering Research Council of Canada (NSERC), RGPIN-2022-03302. 
+
+# Author contributions 
+
+Tak Shing Au Yeung: Writing – original draft, Writing – review & editing, Software, Formal analysis, Visualization. 
+
+Ka Chun Cheung: Writing – review & editing, Conceptualization, Methodology. 
+
+Hannah Potgieter: Writing – original draft, Writing – review & editing, Software, Formal anal-ysis, Data curation. 
+
+Steven J. Ruuth: Writing – review & editing, Conceptualization, Methodology, Supervision. 
+
+Simon See: Writing – review & editing, Conceptualization. 
+
+# Declaration of competing interests 
+
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper. 
+
+# Declaration of generative AI and AI-assisted technologies in the manuscript preparation process 
+
+During the preparation of this work, the authors used ChatGPT (OpenAI) and Claude (Anthropic) to assist with language editing, including improvements to grammar and phrasing, and to assist in checking mathematical calculations. After using these tools/services, the authors reviewed and edited the content as needed and take full responsibility for the content of the published article. 
+
+# References 
+
+[1] P. Dr´ abek, The p-Laplacian—mascot of nonlinear analysis, Acta Math. Univ. Comenian. (N.S.) 76 (2007) 85–98. [2] T. Bhattacharya, E. DiBenedetto, J. Manfredi, Limits as p → ∞ of ∆ pup = f and related extremal problems, Rend. Sem. Mat. Univ. Politec. Torino (1989) 15–68. Some topics in nonlinear PDEs (Turin, 1989). [3] R. Jensen, Uniqueness of Lipschitz extensions: minimizing the sup norm of the gradient, Arch. Rational Mech. Anal. 123 (1993) 51–74. doi: 10.1007/BF00386368 .[4] P. Blomgren, T. Chan, P. Mulet, C. Wong, Total variation image restoration: Numerical methods and extensions, in: Institute of Electrical and Electronics Engineers International Conference on Image Processing, volume 3, 1997, pp. 384 – 387. doi: 10.1109/ICIP.1997. 632128 .[5] Y. Chen, S. Levine, M. Rao, Variable exponent, linear growth functionals in image restoration, Society for Industrial and Applied Mathematics Journal on Applied Mathematics 66 (2006) 1383–1406. doi: 10.1137/050624522 .39 [6] P.-A. Fayolle, A. G. Belyaev, p-Laplace diffusion for distance function estimation, optimal transport approximation, and image enhancement, Comput. Aided Geom. Design 67 (2018) 1–20. doi: 10.1016/j.cagd.2018.09.003 .[7] H. Potgieter, R. C. Fetecau, S. J. Ruuth, Geodesic distance approximation using a surface finite element method for the p-Laplacian, Comput. Aided Geom. Design 120 (2025) Paper No. 102458, 14. doi: 10.1016/j.cagd.2025.102458 .[8] L. Lu, P. Jin, G. Pang, Z. Zhang, G. E. Karniadakis, Learning nonlinear operators via deeponet based on the universal approximation theorem of operators, Nature machine intelligence 3 (2021) 218–229. [9] L. Lu, R. Pestourie, W. Yao, Z. Wang, F. Verdugo, S. G. Johnson, Physics-informed neural networks with hard constraints for inverse design, SIAM J. Sci. Comput. 43 (2021) B1105– B1132. doi: 10.1137/21M1397908 .[10] M. Raissi, P. Perdikaris, G. E. Karniadakis, Physics-informed neural networks: a deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations, J. Comput. Phys. 378 (2019) 686–707. doi: 10.1016/j.jcp.2018.10.045 .[11] A. M. Oberman, Finite difference methods for the infinity Laplace and p-Laplace equations, J. Comput. Appl. Math. 254 (2013) 65–80. doi: 10.1016/j.cam.2012.11.023 .[12] M. Raissi, P. Perdikaris, G. E. Karniadakis, Physics Informed Deep Learning (part I): Data-driven solutions of nonlinear partial differential equations, arXiv preprint arXiv:1711.10561 (2017). [13] S. Cai, Z. Wang, S. Wang, P. Perdikaris, G. E. Karniadakis, Physics-informed neural networks for heat transfer problems, J. Heat Transfer 143 (2021) 060801. doi: 10.1115/1.4050542 .[14] E. Kharazmi, Z. Zhang, G. E. M. Karniadakis, hp -VPINNs: variational physics-informed neural networks with domain decomposition, Comput. Methods Appl. Mech. Engrg. 374 (2021) Paper No. 113547, 25. doi: 10.1016/j.cma.2020.113547 .[15] L. Lu, X. Meng, Z. Mao, G. E. Karniadakis, DeepXDE: a deep learning library for solving differential equations, SIAM Rev. 63 (2021) 208–228. doi: 10.1137/19M1274067 .[16] Z. Mao, A. D. Jagtap, G. E. Karniadakis, Physics-informed neural networks for high-speed flows, Comput. Methods Appl. Mech. Engrg. 360 (2020) 112789, 26. doi: 10.1016/j.cma. 2019.112789 .[17] S. Wang, Y. Teng, P. Perdikaris, Understanding and mitigating gradient flow pathologies in physics-informed neural networks, SIAM J. Sci. Comput. 43 (2021) A3055–A3081. doi: 10. 1137/20M1318043 .[18] Y. Shin, J. Darbon, G. E. Karniadakis, On the convergence of physics informed neural networks for linear second-order elliptic and parabolic type PDEs, Comm. Comput. Phys. 28 (2020) 2042–2074. doi: 10.4208/cicp.oa-2020-0193 .[19] T. De Ryck, A. D. Jagtap, S. Mishra, Error estimates for physics-informed neural networks approximating the Navier-Stokes equations, IMA J. Numer. Anal. 44 (2024) 83–119. doi: 10. 1093/imanum/drac085 .40 [20] Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar, Fourier neural operator for parametric partial differential equations, arXiv:2010.08895 (2021). [21] B. Raonic, R. Molinaro, T. De Ryck, T. Rohner, F. Bartolucci, R. Alaifari, S. Mishra, E. de B´ ezenac, Convolutional neural operators for robust and accurate learning of pdes, in: A. Oh, T. Naumann, A. Globerson, K. Saenko, M. Hardt, S. Levine (Eds.), Advances in Neural Information Processing Systems, volume 36, Curran Associates, Inc., 2023, pp. 77187–77200. [22] Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar, Neural operator: Graph kernel network for partial differential equations, arXiv:2003.03485 (2020). [23] T. Chen, H. Chen, Universal approximation to nonlinear operators by neural networks with arbitrary activation functions and its application to dynamical systems, IEEE Trans. Neural Netw. 6 (1995) 911–917. doi: 10.1109/72.392253 .[24] M. Zhu, H. Zhang, A. Jiao, G. E. Karniadakis, L. Lu, Reliable extrapolation of deep neural operators informed by physics or sparse observations, Comput. Methods Appl. Mech. Engrg. 412 (2023) Paper No. 116064, 36. doi: 10.1016/j.cma.2023.116064 .[25] P. M. M¨ uller, N. K¨ uhl, M. Siebenborn, K. Deckelnick, M. Hinze, T. Rung, A novel p-harmonic descent approach applied to fluid dynamic shape optimization, Struct. Multidiscip. Optim. 64 (2021) 3489–3503. doi: 10.1007/s00158-021-03030-x .[26] F. Calakli, G. Taubin, SSD: Smooth signed distance surface reconstruction, Comput. Graph. Forum 30 (2011) 1993–2002. doi: 10.1111/j.1467-8659.2011.02058.x .[27] M. W. Jones, J. A. Baerentzen, M. Sramek, 3D distance fields: A survey of techniques and applications, IEEE Trans. Vis. Comput. Graph. 12 (2006) 581–599. [28] A. Biswas, V. Shapiro, I. Tsukanov, Heterogeneous material modeling with distance fields, Comput. Aided Geom. Design 21 (2004) 215–242. doi: 10.1016/j.cagd.2003.08.002 .[29] J. Garcia-Azorero, J. J. Manfredi, I. Peral, J. D. Rossi, Partial differential equations—the limit as p → ∞ for the p-Laplacian with mixed boundary conditions and the mass transport problem through a given window, Atti Accad. Naz. Lincei Rend. Lincei Mat. Appl. 20 (2009) 111–126. doi: 10.4171/RLM/536 .[30] M. Caliari, S. Zuccher, Quasi-Newton minimization for the p(x)-Laplacian problem, J. Com-put. Appl. Math. 309 (2017) 122–131. doi: 10.1016/j.cam.2016.06.026 .[31] I. Toulopoulos, T. Wick, Numerical methods for power-law diffusion problems, SIAM J. Sci. Comput. 39 (2017) A681–A710. doi: 10.1137/16M1067792 .[32] T. Pryer, On the finite-element approximation of ∞-harmonic functions, Proc. Roy. Soc. Edinburgh Sect. A 148 (2018) 819–834. doi: 10.1017/S0308210517000294 .[33] J. W. Barrett, W. B. Liu, Finite element approximation of the parabolic p-Laplacian, SIAM J. Numer. Anal. 31 (1994) 413–428. doi: 10.1137/0731022 .[34] Y. Q. Huang, R. Li, W. Liu, Preconditioned descent algorithms for p-Laplacian, J. Sci. Comput. 32 (2007) 343–371. doi: 10.1007/s10915-007-9134-z .41 [35] F. Alvarez, S. Flores, Existence and approximation for variational problems under uniform constraints on the gradient by power penalty, SIAM J. Math. Anal. 47 (2015) 3466–3487. doi: 10.1137/140988619 .[36] P. C. Africa, D. Arndt, W. Bangerth, B. Blais, M. Fehling, R. Gassm¨ oller, T. Heister, L. Heltai, S. Kinnewig, M. Kronbichler, M. Maier, P. Munch, M. Schreter-Fleischhacker, J. P. Thiele, B. Turcksin, D. Wells, V. Yushutin, The deal.II library, version 9.6, Journal of Numerical Mathematics 32 (2024) 369–380. doi: 10.1515/jnma-2024-0137 .[37] J. Nocedal, S. J. Wright, Numerical optimization, Springer Series in Operations Research and Financial Engineering, second ed., Springer, New York, 2006. [38] A. Paszke, S. Gross, S. Chintala, G. Chanan, E. Yang, Z. DeVito, Z. Lin, A. Desmaison, L. Antiga, A. Lerer, Automatic differentiation in pytorch , in: NIPS-W, 2017. [39] D. P. Kingma, J. Ba, Adam: A method for stochastic optimization, International Conference on Learning Representations (ICLR) (2015). [40] S. Mishra, R. Molinaro, Estimates on the generalization error of physics-informed neural networks for approximating a class of inverse problems for PDEs, IMA J. Numer. Anal. 42 (2022) 981–1022. doi: 10.1093/imanum/drab032 .[41] J. Neˇ cas, Direct methods in the theory of elliptic equations, Springer Monographs in Math-ematics, Springer, Heidelberg, 2012. doi: 10.1007/978-3-642-10455-8 , translated from the 1967 French original by Gerard Tronel and Alois Kufner, Editorial coordination and preface by ˇS´ arka Neˇ casov´ a and a contribution by Christian G. Simader. [42] R. E. Showalter, Monotone operators in Banach space and nonlinear partial differential equa-tions, volume 49 of Mathematical Surveys and Monographs , American Mathematical Society, Providence, RI, 1997. doi: 10.1090/surv/049 .[43] H. Brezis, Functional analysis, Sobolev spaces and partial differential equations, Universitext, Springer, New York, 2011. [44] P. Lindqvist, Notes on the p-Laplace equation, volume 102 of Report. University of Jyv¨ askyl¨ aDepartment of Mathematics and Statistics , University of Jyv¨ askyl¨ a, Jyv¨ askyl¨ a, 2006. [45] G. Aronsson, On certain singular solutions of the partial differential equation u2
+
+> x
+
+uxx +2uxuyuxy + u2
+
+> y
+
+uyy = 0, Manuscripta Math. 47 (1984) 133–151. doi: 10.1007/BF01174590 .[46] M. R˚ uˇ ziˇ cka, Electrorheological fluids: modeling and mathematical theory, volume 1748 of 
+
+Lecture Notes in Mathematics , Springer-Verlag, Berlin, 2000. doi: 10.1007/BFb0104029 .[47] R. Bischof, M. A. Kraus, Multi-objective loss balancing for physics-informed deep learning, Comput. Methods Appl. Mech. Engrg. 439 (2025) Paper No. 117914, 28. doi: 10.1016/j.cma. 2025.117914 .42 Hyperparameter Value Optimizer Adam Learning rate 10 −3
+
+LR schedule Cosine, 10 −3 → 10 −5
+
+Epochs 100 Validation 20% split Grad clipping max norm = 1 .0Batch sizes BC: 400, PDE: 1000 Initialization Xavier normal, zero biases Hardware Xeon Gold 5420+, RTX 5880 Ada Table 10: PINNs training hyperparameters. 
+
+Hyperparameter Value Trunk network [input , 512 , 512 , 512 , 128], tanh Branch network [input , 128 , 128 , 128 , 128], tanh Combination Elementwise product → Linear(128 , 1) Optimizer Adam, lr = 10 −4
+
+LR schedule Cosine, 10 −4 → 10 −6
+
+Epochs 20 Batch size 2048 Grad clipping max norm = 1 .0Hardware Xeon Gold 5420+, RTX 5880 Ada Table 11: DeepONet training hyperparameters. 
+
+# A Training hyperparameters 
+
+Tables 10 and 11 list the training hyperparameters used for the PINN experiments in Sections 6.2– 6.3 and the DeepONet experiments in Sections 6.4.1–6.4.2 respectively. All PINN and DeepONet inference times reported in Section 6 are measured using a batched forward pass over the complete test set. Ten warm-up passes are excluded, the elapsed time is averaged over 100 forward passes, and CUDA is synchronized immediately before and after each timed loop. Input transfer to the GPU and postprocessing are excluded. 
+
+# B Ablation study for infinity Laplacian PINNs 
+
+We perform the ablation study on three test configurations: the Arctan example and the Aronsson example on the square and disc domains. Table 12 reports the best-model test MSE for each configuration. Lower values indicate better accuracy. Single-network (4 × 128 reference) Variant Arctan Aronsson (square) Aronsson (disc) normal (baseline) 2.42e-07 5.74e-07 4.77e-07 
+
+Stabilization ablations 
+
+clip0 1.26e-07 5.74e-07 4.77e-07 out0 1.84e-06 6.17e-06 1.00e-04 eta0 9.47e-06 4.01e-07 3.14e-07 clip0 out0 1.90e-06 5.35e-05 1.74e-04 clip0 out0 eta0 2.69e-04 3.51e-06 6.09e-06 
+
+Loss balancing ablations 
+
+alpha0 3.06e-04 4.80e-02 4.06e-02 alpha fixed 1e-1 1.27e-06 1.62e-07 1.47e-07 alpha fixed 1e-5 1.67e-06 7.73e-06 6.62e-06 relobralo 2.93e-06 8.85e-01 1.71e+00 
+
+LR schedule ablation 
+
+nosched 3.19e-07 1.14e-06 2.36e-06 
+
+Network width ablations 
+
+smaller (h32) 1.22e-06 8.01e-07 1.44e-06 larger (h256) 8.31e-07 5.57e-07 5.70e-07 
+
+Network depth ablations 
+
+depth2 1.68e-04 2.12e-06 1.35e-06 depth3 2.20e-06 7.24e-07 6.04e-07 depth5 1.80e-07 4.54e-07 4.60e-07 Table 12: Ablation study: best-model test MSE for the infinity Laplacian PINNs. 
+
+43 Stabilization The baseline uses three stabilization techniques: η-normalization (31), residual clipping to [ −10 , 10], and top-2% outlier removal. We assess the importance of these components by disabling them individually and in combination. Disabling outlier removal has the largest adverse effect, increasing the error by approximately 200 × for the Aronsson disc example because high-residual outliers strongly influence the PINN loss. The effect of η-normalization is problem-dependent: it improves the Arctan result but slightly degrades the Aronsson results. Residual clipping has little additional effect when outlier removal is active. Disabling all three components increases the errors in all three test configurations. 
+
+Loss balancing Setting α = 0 disables the PDE loss and causes the errors to increase substan-tially in all cases because the boundary loss alone does not enforce the governing equation. We also test a fixed high weight ( α = 10 −1) and a fixed low weight ( α = 10 −5). The high weight improves some cases but degrades the Arctan result, whereas the low weight degrades all cases. ReLoBRaLo [47] produces substantially larger errors for all three test configurations. 
+
+LR schedule Disabling cosine annealing ( nosched ) causes a slight degradation, although its effect is smaller than that of the other ablations. 
+
+Width and depth Network width has a limited effect: a width of 32 performs similarly to widths of 128 and 256 in most cases. Increasing the network depth improves performance for the smooth examples, but the four- and five-layer networks perform similarly. 
+
+# C Ablation study for simple p-Laplacian PINNs 
+
+We test four stabilization techniques for simple p-Laplacian PINNs at p = 10 and p = 200, including residual clipping ( clip0 ), gradient norm clamping ( gradclip0 ), top-2% outlier removal ( out0 ), and 
+
+η-regularization ( eta0 ). Table 13 reports the best-model MSE ∞ for each configuration. Configuration p = 10 p = 200 baseline (all enabled) 1.057e-04 1.652e-02                        
+
+> Single component disabled
+> clip0 (no residual clipping) 1.057e-04 3.159e-03 out0 (no outlier removal) 1.539e-04 1.692e-02 eta0 (no η-regularization) 1.057e-04 1.652e-02 gradclip0 (no gradient norm clipping) 1.931e-04 −
+> Two components disabled
+> clip0 gradclip0 1.757e-04 −
+> gradclip0 out0 1.894e-04 −
+> gradclip0 eta0 1.931e-04 −
+> Three or more components disabled
+> clip0 gradclip0 out0 1.870e-04 −
+> clip0 gradclip0 eta0 1.757e-04 −
+> gradclip0 out0 eta0 1.894e-04 −
+> clip0 gradclip0 out0 eta0 1.870e-04 −
+
+Table 13: Ablation study for the simple p-Laplacian PINNs (Aronsson example on square domain). Each row disables one or more stabilization techniques. ” −” indicates that training diverged and therefore produced no finite MSE value. 
+
+44 Gradient-norm clamping is the most critical component. Disabling it causes training to diverge at p = 200. At p = 10, disabling gradient-norm clamping degrades performance in every tested combination that omits it. Outlier removal has a modest effect at p = 10 but becomes more important at p = 200. In contrast, η-regularization has little effect at either value of p.
+
+# D Iterative training schedule for the p-Laplacian 
+
+Table 14 details the five-band continuation strategy used for the iterative p-Laplacian experiments in Section 6.3. The finite-p validation on the unit disc uses the separate continuation schedule reported in Table 15. Each band loads the best-model checkpoint produced by the previous band and trains on the next group of p values. The first band uses the same scheduler as the infinity-Laplacian experiments and may terminate early when both the validation boundary loss falls below 10 −4 and the PDE residual loss falls below 10 −3. Bands 2–5 use fixed values of α and a constant learning rate of 10 −5
+
+for a prescribed number of epochs at each value of p.Band p values Epochs/ p LR schedule α schedule 1 2, 3, . . . , 10 , 15 , 20 (11 values) 100 Cosine 10 −3 → 10 −5 AlphaPlateauScheduler (adaptive) 2 25 , 30 , 40 , 50 20 Constant 10 −5 Fixed α = 10 −2                              
+
+> 360 ,70 ,80 ,90 ,100 20 Constant 10 −5Fixed α= 10 −3
+> 4150 ,200 ,300 ,400 ,500 20 Constant 10 −5Fixed α= 10 −4
+> 5600 ,700 ,800 ,900 ,1000 20 Constant 10 −5Fixed α= 10 −5
+
+Table 14: Five-band iterative training schedule for the homogeneous p-Laplacian experiments. Band 1 uses early stopping; bands 2–5 run for a fixed number of epochs per p value. 
+
+The unit-disc experiment in Section 6.3.3 uses the same four-hidden-layer network with 128 neurons per layer, tanh activation, Adam optimizer, and boundary and PDE batch sizes of 400 and 1000, respectively. The training residual is based on the flux-regularized p-Poisson operator with 
+
+η = 10 −5. The residual is clipped to [ −100 , 100], the largest 2% of the pointwise PDE losses are removed, and both the solution-gradient cap and parameter-gradient clipping threshold are set to 1. The first continuation stage uses a 20% boundary-validation split and may terminate early when the boundary and PDE loss thresholds are satisfied. Subsequent stages use all boundary points and the final checkpoint from the preceding stage. Interior collocation points are resampled at every epoch. Stage p values Epochs/ p Interior points LR schedule α schedule 1 2, 3, . . . , 10 up to 100 783 ,764 Cosine 10 −3 → 10 −5 AlphaPlateauScheduler 2 11 , 12 , . . . , 20 50 195 ,496 Cosine 10 −4 → 10 −5 Fixed 10 −2                                              
+
+> 320 (refinement) 50 783 ,764 Cosine 10 −4→10 −5Fixed 10 −2
+> 425 ,30 ,40 ,50 50 195 ,496 Cosine 10 −4→10 −5Fixed 10 −2
+> 560 ,70 ,80 ,90 ,100 50 195 ,496 Cosine 10 −4→10 −5Fixed 10 −2
+> 6150 ,200 ,300 ,400 ,500 50 195 ,496 Constant 10 −5Fixed 10 −2
+> 7600 ,700 ,800 ,900 ,1000 50 195 ,496 Constant 10 −5Fixed 10 −2
+
+Table 15: Continuation schedule used for the direct finite-p iterative PINN validation on the unit disc. The experiment uses 10 ,000 boundary points. Stage 1 uses 8 ,000 training and 2 ,000 validation boundary points; subsequent stages use all 10 ,000 boundary points. 
+
+45 E Eikonal PINNs training for DeepONet data generation 
+
+The DeepONet examples in Sections 6.4.1 and 6.4.2 use the limiting solution u∞ as the training data for p = ∞. When the exact solution is unavailable, we train a PINN to solve the Eikonal equation 
+
+|∇ u|2 = 1 in Ω .
+
+For the distance-to-origin examples on the disc and square, we impose u = 0 at the origin. For the distance-to-boundary examples, including the 2D and 3D domains, we impose u = 0 on ∂Ω. 
+
+Positivity constraint Since we know the distance solution must satisfy u ≥ 0, we add a soft positivity constraint 
+
+rpos = wpos ReLU( −uθ),
+
+where wpos is listed in Table 16. Top-2% outlier removal is applied only to the Eikonal residual, while the positivity residual is not affected by stabilization techniques. 
+
+Shared hyperparameters The Eikonal PINNs use the same configuration as the infinity- and 
+
+p-Laplacian PINNs listed in A. The network has four hidden layers with 128 neurons each and uses the tanh activation function and Xavier normal initialization. Training uses Adam with an initial learning rate of 10 −3, cosine-annealed to 10 −5 over 100 epochs, together with a 20% boundary-validation split. The boundary and PDE batch sizes are 400 and 1000, respectively, and the gradient norm is clipped to 1 .0. The loss weight α uses the same adaptive scheduler. We also clip the PDE residual to [ −10 , 10] and remove the largest 2% of the PDE losses. Table 16 reports the grid sizes, positivity weight, training time, and best test MSE for each domain. Domain Interior Boundary Test wpos Time (s) Test MSE                                                                                 
+
+> Distance-to-origin (2D)
+> Disc 783,764 1,100 7,668 1.0 524 5.948 ×10 −7
+> Square 1,000,000 1,100 10,000 1.0 691 2.985 ×10 −7
+> Distance-to-boundary (2D)
+> Disc 783,764 10,000 7,668 1.0 523 5.749 ×10 −7
+> Square 1,000,000 40,000 10,000 1.0 681 1.713 ×10 −6
+> Ellipse 1 998,912 10,000 1,588 100.0 682 2.395 ×10 −6
+> Ellipse 2 998,852 10,000 1,588 100.0 753 5.838 ×10 −6
+> Ellipse 3 998,511 10,000 3,172 100.0 694 1.077 ×10 −5
+> Distance-to-boundary (3D)
+> Ball 507,376 20,000 61,432 0.5 320 1.267 ×10 −6
+> Cylinder 766,800 19,998 90,048 0.5 524 2.865 ×10 −5
+> Torus 453,208 20,000 54,856 0.5 312 3.974 ×10 −6
+
+Table 16: Eikonal PINNs training configuration per domain. Interior and boundary columns give the total number of points before the 80 /20 train/validation split. Test MSE is the best-checkpoint mean squared error against the exact distance function on the listed test grid. 
+
+46

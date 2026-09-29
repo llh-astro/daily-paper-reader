@@ -1,0 +1,370 @@
+Title: ALF: An Active Learning Framework for Scientific Discovery
+
+URL Source: https://arxiv.org/pdf/2609.31197v1
+
+Published Time: Mon, 28 Sep 2026 01:01:54 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# ALF: An Active Learning Framework for Scientific Discovery 
+
+Shikha Surana ∗
+
+InstaDeep 
+
+Alex Hawkins-Hooker †
+
+University College London 
+
+Olivia Gallup †
+
+University of Oxford 
+
+Christoph Brunken 
+
+InstaDeep 
+
+Jules Tilly 
+
+InstaDeep 
+
+Paul Duckworth 
+
+InstaDeep 
+
+## Abstract 
+
+Machine learning for scientific discovery is almost systematically data bound. Producing relevant high quality data, under budget constraints, is amongst the most promising ways to advance the field. Active learning (AL) offers promise wherever labelling requires expensive experiment, measurement, or simulation. Most existing tools cover only part of the data acquisition loop, and typically focus on either offline benchmarking or online deployment, but not both. We present ALF, a modular AL Framework that runs the full data acquisition loop via five modular components. One clear API for both settings: offline , against an existing dataset for controlled and reproducible experimentation; and online ,against an oracle for acquiring new candidates in real-world deployments. ALF is open-source and available at https://github.com/instadeepai/alf .
+
+## 1 Introduction 
+
+Across many scientific domains, large combinatorial search-spaces mean that exhaustive data screen-ing is rarely possible. Coupled with potentially high cost of acquiring new measurements, e.g. wet-lab assays or MD simulations, the practical problem becomes one of targeted data acquisition. That is, given budget constraints, what new data should we acquire to maximally learn about our objective? 
+
+Active learning (AL) [Settles, 2011] aims to address this question through an iterative campaign. In each round, a surrogate model is fit on the current (labelled) dataset. Next, an acquisition function uses the model’s posterior predictive distribution to score how informative future candidates (unlabelled data) are expected to be on the objective. An oracle then labels those selected candidates, and they, along with their labels, are added to the training dataset for the next round. The oracle is the reference the campaign treats as ground truth. The goal of the campaign is to maximally utilise its constrained measurement budget to best serve the objective. Through careful treatment of acquisition strategies, the same data acquisition loop can support Bayesian optimisation (BO) objectives also [Rasmussen and Williams, 2006, Garnett, 2023], scoring unlabelled candidates under the posterior most likely to maximise an unknown function, rather than AL information gain strategies. In practice, data acquisition is typically benchmarked offline against an available labelled dataset, then deployed online against an expensive oracle of interest. Yet, these two settings are usually served by different and incompatible tools. Offline, the possible search space is derived from a static  
+
+> ∗Correspondence: s.surana@instadeep.com
+> †Work completed during an internship at InstaDeep. Preprint. arXiv:2609.31197v1 [cs.LG] 25 Sep 2026
+
+(labelled) dataset, and search is reduced to evaluating over the dataset and the oracle is a simple lookup table. Online however, a search function or generative model is required to propose new candidates each round, and the oracle is queried to score those selected by the acquisition function. We posit that the same data acquisition loop can be utilised for both settings. We present ALF, an ask/tell framework for scientific discovery and make the following technical contributions: 1. Single offline and online API . ALF provides a single, clean API for offline campaigns (against a dataset), as for online campaigns (against an oracle). This allows for detailed benchmarking and rapid real-world deployment. 2. Modular architecture. ALF provides five modular and interchangeable components: datasets, surrogates, acquisition functions, search functions, and oracle classes. Each with standard, lightweight interfaces, allowing for extensions and plug-and-play experimentation. 3. Data type agnostic. ALF is build invariant to data modality, which means the same clean API can be utilised across multiple scientific domains as we show in section 4. 
+
+## 2 Related Work 
+
+Active learning [Settles, 2011] and Bayesian optimisation [Rasmussen and Williams, 2006, Garnett, 2023] are popular methods for guided data acquisition, however current frameworks address a subset of the typical scientific discovery loop. Ax [Bakshy et al., 2018], built on the BoTorch [Balandat et al., 2020] acquisition backend that ALF also uses, targets continuous parameter and hyperparameter optimisation. General AL libraries such as modAL [Danka and Horvath] does provide model wrappers and queryable strategies for tabular data, however, neither Ax nor modAL ship surrounding scientific data acquisition tools such as data handling, labelling, and multi-round framework. ALF supplies these features as interchangeable components, utilising a single and clean API for both offline and online data acquisition tasks. FLEXS [Sinai et al., 2020], MolPAL [Graff et al., 2021] and ALDE [Yang et al., 2025] provide a sequential AL loop but are limited to biological sequences and small-molecule screening respectively, i.e. neither is domain-agnostic. GAUCHE [Griffiths et al., 2023] contributes GP kernels over sequences, molecular graphs and strings; however its focus is surrogate design rather than sequential campaigns, and Benjamins et al. [2024] demonstrates that such kernels can be seamlessly incorporated into ALF’s surrogate class. Domain toolkits such as TorchDrug [Zhu et al., 2022] and DeepChem [Ramsundar et al., 2019] pair curated datasets with model implementations and training engines, but do not provide acquisition functions or oracle abstractions to close the feedback loop. Closest to ALF, MADE [Malik et al., 2026] runs closed-loop discovery with composable components, but is specific to material domains and is built to evaluate discovery agents under budget constraints. These libraries do not provide modular components spanning the full discovery loop that can be run unchanged across modalities and in both offline and online settings. 
+
+## 3 ALF: Active Learning Framework 
+
+3.1 Framework 
+
+ALF runs a data acquisition campaign via a modular ask/tell framework, shown in fig. 1, where each component can be easily interchanged. A design campaign is orchestrated by the DesignTask , and comprises of a fixed number of rounds. Each round comprises of the following steps: (1) the surrogate is fit to the dataset collected so far, (2) an acquisition function scores new candidates, (3) the oracle 
+
+evaluates the top-scoring candidates, and finally, (4) the train dataset is augmented with these newly labelled candidates. The State object is updated each round and manages the dataset (including train, validation, test, and candidate pool splits), the surrogate, round index, acquisition history, and all recorded metrics. Fig 2 shows the minimal code to run a design campaign on GFP protein sequences. 2Figure 1: ALF: Data acquisition loop. At each round, a surrogate model is first fit then queried 
+
+(ask) to iteratively approximate an oracle of interest. 
+
+3.2 Components 
+
+ALF is shipped as two complementary packages: alf-core contains all the base classes, with ready-to-use example implementations in alf-tools . We go into more detail of each component next, and Appendix A further describes the library, the package structure, the component base classes, task types, offline-to-online transition, extending ALF, and available tutorials and documentation. • Dataset class maintains and manages the candidate data. It implements train/valida-tion/test/pool splits that the design loop draws from. It is data-type agnostic, and new datasets require only a lightweight data loader. We provide implementations in alf-tools 
+
+for protein sequences: GFP Sarkisyan et al. [2016], ProteinGym Notin et al. [2023], and FLIP Dallago et al. [2021]; small molecules: GuacaMol Brown et al. [2019]; and materials: MatBench Dunn et al. [2020]. • Surrogate class is responsible for featurising and modelling the currently available labelled train dataset via wrapping a BaseModel . Once fit, it is then used to predict target values for unlabelled test candidates. alf-tools includes example implementations of CNN, MLP, GP, ESM-2 Lin et al. [2023], Chemprop MPNN Yang et al. [2019], MLIP ( mlip 
+
+library [Brunken et al., 2026] & MACE Batatia et al. [2022]), and EnsembleWrapper .• Search function is the class responsible for populating the candidate pool at each round. In the offline setting, this function reduces to a simple DatasetSearch . However, in the online 
+
+setting, it is responsible for generating new unlabelled candidates with which to score and select from. We provide a framework for popular approaches to: 1) ProtocolSearch 
+
+augment known candidates via a protocol, and 2) GeneratorSearch utilise a gener-ative model to propose new candidates directly. Both are supported through a single API. In alf-tools we provide implementations for SingleMutantSearch (sequences), 
+
+SmilesMutationSearch (molecules), and ElementSubstitutionSearch (materials). • Acquisition function scores each candidate in the candidate pool by its utility: an estimate, under the surrogate model, of how valuable it would be to acquire the ground truth value. Implementations available include Greedy, UCB Srinivas et al. [2010], EI Jones et al. [1998], Thompson sampling (TS) Russo et al. [2018], and CoreSet Sener and Savarese [2018], alongside a BoTorch backend for easy integration of new acquisition functions. • Oracle class provides ground truth labels for each of the acquired candidates. In the offline 
+
+setting it wraps a BaseDataset object to return the relevant recorded values, and in the 
+
+online setting it wraps a BaseModel to compute the labels on the fly. Model implementations include ESMFold Lin et al. [2023], PyRosetta Chaudhury et al. [2010], and an RDKit molecular property predictor RDKit. 3config = BaseDatasetConfig ( name = " gfp " , modality = " sequence " , ...) dataset = GFP ( config ) surrogate = Surrogate ( model = ESM2Model () ) optimizer = Optimizer ( acquisition_fn = Greedy () , search_fn = DatasetSearch () ) oracle = Oracle ( scorer = dataset ) # offline : dataset lookup         
+
+> task =DesignTask ( num_acq_rounds =5 , acq_batch_size =100) state =task . setup ( dataset = dataset , surrogate = surrogate ) task . run ( state = state , optimizer = optimizer , oracle = oracle )
+
+Figure 2: An offline, 5-round, DesignTask implemented in ALF utilising pre-trained ESM2 surro-gate. To switch to online mode, only the search and oracle lines need changing (see Appendix A.4). 
+
+## 4 Case Studies 
+
+4.1 Experimental Setup 
+
+In this section we demonstrate ALF’s current capabilities. We present three popular multi-round design tasks and demonstrate each as an offline data acquisition benchmark, and then directly adapt them to an online campaign for real-world deployment. We highlight the modality-agnostic flexibility, and present results across both active learning and Bayesian optimisation objectives. 
+
+Design Tasks : 1) Protein sequence design: HIS7_YEAST a multi-mutant protein-landscape taken from the ProteinGym benchmark [Notin et al., 2023]; 2) Small molecule design: GuacaMol 
+
+osimertinib_mpo objective [Brown et al., 2019], and 3) Material design: matbench_mp_e_form 
+
+taken from MatBench [Dunn et al., 2020]. Each design campaign begins with an initial 5,000 labelled candidates as “train” dataset, runs for 10 acquisition rounds and acquires 25 new candidates per round. We use a Gaussian process (GP) surrogate model ( GPModel ), and only the input data featuriser varies with modality (details in section B). For AL objectives, we highlight two entropy-based acquisition strategies (Uncertainty sampling [Settles, 2011] and CoreSet [Sener and Savarese, 2018]), and report mean RMSE at each round (lower is better). For BO objectives, four utility-based acquisition strategies (UCB, EI, TS and Greedy), and report the max score acquired so far at each round (higher is better). All experiments are repeated for 5 random seeds. 
+
+4.2 Offline Benchmarking 
+
+We highlight ALF’s offline benchmark capabilities across seven acquisition strategies for AL and BO objectives. Here, the offline dataset provides both the initial training dataset and the candidate pool with which to acquire new ground truth data from – helping to facilitate clear and actionable insights across methodologies. Figure 3 presents the results for the small molecule design task; with additional experiments on proteins and material design in Appendix C. 0 2 4 6 8 10 
+
+Acquisition Round 
+
+> 0.195 0.210 0.225
+> Test Set RMSE
+
+Active Learning     
+
+> Random Uncertainty Sampling CoreSet
+> 246810
+
+Acquisition Round 
+
+> 0.65 0.70 0.75 0.80
+> Max Score Acquired
+
+Bayesian Optimisation 
+
+> Thompson Sampling Expected Improvement Greedy UCB Random
+
+Figure 3: Small molecule design . Offline benchmarking of Active learning objective (left) and Bayesian optimisation (right). Results are the mean over 5 random seeds; error bars are ±1 std. 44.3 Online Data Acquisition 
+
+In the online data acquisition setting, we additionally require an oracle (to score newly proposed candidates), and a search strategy (to propose new candidates). For the small molecule design task we use RDKit scorer [RDKit] as oracle, and a single-edit SMILES search function that mutates the best candidate found so far. We demonstrate the same seven acquisition strategies run unchanged from the offline benchmark. Figure 4 presents the results for the small molecule design task; with additional experiments on proteins and material design in Appendix D, which use P YROSETTA [Chaudhury et al., 2010] and a MACE [Batatia et al., 2022] model as oracles, respectively. 2 4 6 8 10 
+
+Acquisition Round 
+
+> 0.08 0.16 0.24
+> Probe Set RMSE
+
+Active Learning      
+
+> Random Uncertainty Sampling CoreSet
+> 0246810
+
+Acquisition Round 
+
+> 0.80 0.84 0.88
+> Max Score Acquired
+
+Bayesian Optimisation 
+
+> Thompson Sampling UCB Expected Improvement Random Greedy
+
+Figure 4: Small molecule design . Online data acquisition for Active Learning objective (left) and Bayesian optimisation (right), against an RDK IT oracle, with single-mutation search. Results are the mean over 5 random seeds; error bars are ±1 std. 
+
+4.4 Impact 
+
+We highlight ALF’s value to cutting edge research across scientific domains for both active learning and Bayesian optimisation objectives. 
+
+Active learning for interatomic potentials. Machine learning interatomic potentials (MLIP) can surrogate for expensive quantum chemistry calculations. In Varga-Umbrich et al. [2026a,b], authors used ALF to run offline active learning and compare data-acquisition strategies for reactive chemistry (Appendix E, fig. 7a). The approach demonstrates applying the neural tangent kernel as an acquisition signal and obtains lower energy and force error per round than prior state-of-the-art methods. The acquisition functions were added by extending the AcquisitionFunction base class, and utilising the surrogate, search, and design task classes. 
+
+Preference based protein sequence design. In protein design, the aim is to find high-fitness sequences. In Hawkins-Hooker et al. [2026], authors used an early version of ALF for multi-round BO, extensively extending the Surrogate classes with pre-trained protein language models (PLM) ESM2, ProteinNPT [Notin et al., 2023] and other baselines shown in (fig. 7c). Their results show that fine-tuning a PLM with a ranking-based loss function directly on model likelihoods can retrieve higher scoring candidates per round than traditional MSE losses (Appendix E, fig. 7b). 
+
+## 5 Conclusion 
+
+We present ALF, an ask/tell framework for scientific data acquisition and discovery. It utilises a single, clean API for offline design tasks – to validate methods against an existing known dataset, and 
+
+online acquisition campaigns against an oracle computing ground truth values on the fly. ALF is built from five easily extendible, data-agnostic components: datasets, surrogates, acquisition functions, search functions, and oracles. In this paper we highlight ALF’s current capabilities, comparing a range of acquisition strategies under both active learning and Bayesian optimisation objectives, across protein sequences, small molecules, and materials, and celebrated it’s adoption in recent cutting edge 5research. Appendix F discusses the limitations of the framework and the campaigns reported here, and Appendix G the broader impacts of the work. ALF is open source and available for the scientific community. We hope that it makes answering the question of "what data to acquire next?" easier across scientific domains. 
+
+## 6 Acknowledgments 
+
+We thank Conor Finlay and Manus McAuliffe for their help during the development of the codebase; Akash Sinha for supporting the Bayesian optimisation pytorch implementations; Jack Simons, Zachary Weller-Davies, Jakob Kmec, Oliver Bent and Eszter Varga-Umbrich for using, reviewing and providing feedback on the codebase. 6References 
+
+Eytan Bakshy, Lili Dworkin, Brian Karrer, Konstantin Kashin, Benjamin Letham, Ashwin Murthy, and Shaun Singh. AE: A domain-agnostic platform for adaptive experimentation. In NeurIPS Workshop on Systems for Machine Learning , 2018. URL https://eytan.github.io/papers/ ae_workshop.pdf .Maximilian Balandat, Brian Karrer, Daniel R Jiang, Samuel Daulton, Ben Letham, Andrew G Wilson, and Eytan Bakshy. BoTorch: A framework for efficient Monte-Carlo Bayesian optimization. In 
+
+Advances in Neural Information Processing Systems , volume 33, 2020. Ilyes Batatia, Dávid Péter Kovács, Gregor N. C. Simm, Christoph Ortner, and Gábor Csányi. MACE: Higher order equivariant message passing neural networks for fast and accurate force fields. In 
+
+Advances in Neural Information Processing Systems , volume 35, 2022. Carolin Benjamins, Shikha Surana, Oliver Bent, Marius Lindauer, and Paul Duckworth. Bayesian optimisation for protein sequence design: Gaussian processes with zero-shot protein language model prior mean. In Machine Learning in Structural Biology Workshop at NeurIPS , volume 2024, page 4, 2024. Nathan Brown, Marco Fiscato, Marwin H S Segler, and Alain C Vaucher. GuacaMol: Benchmarking models for de novo molecular design. Journal of Chemical Information and Modeling , 59(3): 1096–1108, 2019. Christoph Brunken, Titouan Cormier, Lucien Walewski, Marco Carobene, Yessine Khanfir, Zachary Weller-Davies, Miguel Bragança, Armand Picard, Adrien Pichard, Leon Wehrhan, Heloise Chomet, Eszter Varga-Umbrich, Marie Bluntzer, Massimo Bortone, Valentin Heyraud, Silvia Acosta-Gutiérrez, Jules Tilly, and Olivier Peltre. Machine learning interatomic potentials: Advancing open-source software for efficient and scalable molecular simulation, 2026. URL https://arxiv. org/abs/2605.22698 .Sidhartha Chaudhury, Sergey Lyskov, and Jeffrey J. Gray. PyRosetta: A script-based interface for implementing molecular modeling algorithms using Rosetta. Bioinformatics , 26(5):689–691, 2010. Christian Dallago, Jody Mou, Kadina Johnston, Bruce Wittmann, Nicholas Bhattacharya, Samuel Goldman, Ali Madani, and Kevin Yang. FLIP: Benchmark tasks in fitness landscape inference for proteins. In Advances in Neural Information Processing Systems (Datasets and Benchmarks Track) , 2021. Tivadar Danka and Peter Horvath. modAL: A modular active learning framework for Python. URL 
+
+https://github.com/modAL-python/modAL . available on arXiv at https://arxiv.org/ abs/1805.00979 .Alexander Dunn, Qi Wang, Alex Ganose, Daniel Dopp, and Anubhav Jain. Benchmarking materials property prediction methods: The Matbench test set and Automatminer reference algorithm. npj Computational Materials , 6(1):138, 2020. Roman Garnett. Bayesian optimization . Cambridge University Press, 2023. David E. Graff, Eugene I. Shakhnovich, and Connor W. Coley. Accelerating high-throughput virtual screening through molecular pool-based active learning. Chemical Science , 12, 2021. Ryan-Rhys Griffiths, Leo Klarner, Henry B. Moss, Aditya Ravuri, Sang Truong, Samuel Stanton, Gary Tom, Bojana Rankovic, Yuanqi Du, Arian Jamasb, Aryan Deshwal, Julius Schwartz, Austin Tripp, Gregory Kell, Simon Frieder, Anthony Bourached, Alex Chan, Jacob Moss, Chengzhi Guo, Johannes Durholt, Saudamini Chaurasia, Felix Strieth-Kalthoff, Alpha A. Lee, Bingqing Cheng, Alan Aspuru-Guzik, Philippe Schwaller, and Jian Tang. GAUCHE: A library for Gaussian processes in chemistry. In Advances in Neural Information Processing Systems , volume 36, 2023. 7Alex Hawkins-Hooker, Shikha Surana, Jack Simons, Jakub Kmec, Oliver Bent, and Paul Duckworth. Likelihood-based fine-tuning of protein language models for few-shot fitness prediction and design. 
+
+bioRxiv , 2026. URL https://doi.org/10.1101/2024.05.28.596156 .Carl Hvarfner, Erik Orm Hellsten, and Luigi Nardi. Vanilla bayesian optimization performs great in high dimensions. arXiv preprint arXiv:2402.02229 , 2024. Donald R. Jones, Matthias Schonlau, and William J. Welch. Efficient global optimization of expensive black-box functions. Journal of Global Optimization , 13(4):455–492, 1998. Zeming Lin, Halil Akin, Roshan Rao, Brian Hie, Zhongkai Zhu, Wenting Lu, Nikita Smetanin, Robert Verkuil, Ori Kabeli, Yaniv Shmueli, et al. Evolutionary-scale prediction of atomic-level protein structure with a language model. Science , 379(6637):1123–1130, 2023. Shreshth A Malik, Tiarnan Doherty, Panagiotis Tigas, Muhammed Razzak, Stephen J Roberts, Aron Walsh, and Yarin Gal. Made: Benchmark environments for closed-loop materials discovery. arXiv preprint arXiv:2601.20996 , 2026. Pascal Notin, Aaron Kollasch, Daniel Ritter, Lood van Niekerk, Steffanie Paul, Hansen Spinner, Nathan Rollins, Ada Shaw, Rose Orenbuch, Ruben Weitzman, Jonathan Frazer, Mafalda Dias, Dinko Franceschi, Yarin Gal, and Debora Marks. ProteinGym: Large-scale benchmarks for protein fitness prediction and design. In Advances in Neural Information Processing Systems (Datasets and Benchmarks Track) , 2023. Bharath Ramsundar, Peter Eastman, Patrick Walters, Vijay Pande, Karl Leswing, and Zhenqin Wu. Deep Learning for the Life Sciences . O’Reilly Media, 2019. https://www.amazon.com/ Deep-Learning-Life-Sciences-Microscopy/dp/1492039837 .Carl Edward Rasmussen and Christopher KI Williams. Gaussian processes for machine learning ,volume 2. MIT press Cambridge, MA, 2006. RDKit. RDKit: Open-source cheminformatics. https://www.rdkit.org . Accessed 2026. Daniel J. Russo, Benjamin Van Roy, Abbas Kazerouni, Ian Osband, and Zheng Wen. A tutorial on Thompson sampling. Foundations and Trends in Machine Learning , 11(1):1–99, 2018. Karen S Sarkisyan, Dmitry A Bolotin, Margarita V Meer, Dinara R Usmanova, Alexander S Mishin, George V Sharonov, Dmitry N Ivankov, Nina G Bozhanova, Mikhail S Baranov, Onuralp Soylemez, et al. Local fitness landscape of the green fluorescent protein. Nature , 533:397–401, 2016. Ozan Sener and Silvio Savarese. Active learning for convolutional neural networks: A core-set approach. In International Conference on Learning Representations (ICLR) , 2018. URL https: //openreview.net/forum?id=H1aIuk-RW .Burr Settles. From theories to queries: Active learning in practice. In Active learning and experimental design workshop in conjunction with AISTATS 2010 , pages 1–18. JMLR Workshop and Conference Proceedings, 2011. Sam Sinai, Richard Wang, Alexander Whatley, Stewart Slocum, Elina Locane, and Eric D. Kelsic. AdaLead: A simple and robust adaptive greedy search algorithm for sequence design. arXiv preprint arXiv:2010.02141 , 2020. URL https://arxiv.org/abs/2010.02141 .Niranjan Srinivas, Andreas Krause, Sham Kakade, and Matthias Seeger. Gaussian process opti-mization in the bandit setting: No regret and experimental design. In Proceedings of the 27th International Conference on Machine Learning (ICML) , pages 1015–1022. Omnipress, 2010. Eszter Varga-Umbrich, Shikha Surana, Paul Duckworth, Jules Tilly, Olivier Peltre, and Zachary Weller-Davies. Pretrained model representations as acquisition signals for active learning of MLIPs. 
+
+arXiv preprint arXiv:2605.03964 , 2026a. 8Eszter Varga-Umbrich, Zachary Weller-Davies, Paul Duckworth, Jules Tilly, Olivier Peltre, and Shikha Surana. Force-aware neural tangent kernels for scalable and robust active learning of MLIPs. arXiv preprint arXiv:2605.13788 , 2026b. Jason Yang, Ravi G Lal, James C Bowden, Raul Astudillo, Mikhail A Hameedi, Sukhvinder Kaur, Matthew Hill, Yisong Yue, and Frances H Arnold. Active learning-assisted directed evolution. 
+
+Nature Communications , 16(1):714, 2025. Kevin Yang, Kyle Swanson, Wengong Jin, Connor Coley, Philipp Eiden, Hua Gao, Angel Guzman-Perez, Timothy Hopper, Brian Kelley, Miriam Mathea, et al. Analyzing learned molecular representations for property prediction. Journal of Chemical Information and Modeling , 59(8): 3370–3388, 2019. Zhaocheng Zhu, Chence Shi, Zuobai Zhang, Shengchao Liu, Minghao Xu, Xinyu Yuan, Yangtian Zhang, Junkun Chen, Huiyu Cai, Jiarui Lu, et al. Torchdrug: A powerful and flexible machine learning platform for drug discovery. arXiv preprint arXiv:2202.08320 , 2022. 9A The ALF Library 
+
+A.1 Package structure 
+
+ALF is deliberately split into two packages with different functionalities and dependencies. alf-core 
+
+contains the different tasks (zeroshot, supervised and mult-round design), the abstract base classes for each component, the metrics, and the logging. It’s dependencies only include lightweight libraries (such as, numpy and pandas ) and pulls in no machine learning framework, so the interfaces and tasks can be imported, and new components written against them, without heavy ML stack dependencies. 
+
+alf-tools maintains concrete implementations of each of the components introduced. It depends on 
+
+alf-core , torch , gpytorch , and botorch , used by the GP surrogate and the acquisition backend. The domain-specific libraries are optional extras, installed only for the modality in use: rdkit for the molecule oracle, matbench and pymatgen for materials, transformers for the ESM-2 and ESMFold models, chemprop for the MPNN surrogate, and mlip for the MACE potential. Workflow umbrellas group these by domain, so alf_tools[protein] , [molecule] , or [materials] install exactly the dependencies that modality needs and nothing more. 
+
+A.2 Base Classes 
+
+Each component has an abstract base class in alf-core . Table 1 details each component and describes what functionality is provided by the base class and what each user needs to implement when extending the base class. Two of the components are not subclassed at all: the Oracle and the 
+
+Surrogate are thin wrappers, configured by passing them a model. Table 1: What each component requires from a subclass, and what the base class provides. Oracle 
+
+and Surrogate are configured rather than subclassed.                    
+
+> Component You implement Provided by the base Dataset load_dataset splitting, query , split updates, metrics Model featurise ,train ,setup , embedding hook, metric
+> predict ,sample collection; reuse across roles Acquisition fn. __call__(candidates, state) top-kbatching, optimizer integration Search fn. __call__(state) dataset / generator / protocol subclasses Oracle — (wrap a dataset or model) offline/online branching Surrogate — (wrap a model) fit / predict / embed delegation
+
+A few dataclasses recur in these signatures: a Candidate is one data point, LabelledCandidates 
+
+pairs candidates with their values, Predictions holds a surrogate’s posterior distribution (means and optional variances), and State carries the datasets, surrogate, and acquisition history through the loop. 
+
+One model, three roles. The oracle, the surrogate, and generative search all take as input a 
+
+BaseModel rather than reimplementing one. The oracle’s scorer can be a BaseModel (scoring candidates on demand through predict ); the surrogate wraps a BaseModel to fit and predict; and 
+
+GeneratorSearch takes a BaseModel and proposes candidates through sample . A model therefore needs to be written once and can then act as the surrogate, the oracle, or the generator. 
+
+A.3 ALF Tasks 
+
+The ALF task drives the components through one run. The three task types; zeroshot, supervised and design share the same BaseTask scaffolding, the state, the evaluation, and the logging. DesignTask 
+
+is the active learning loop, it runs the optimizer’s ask/tell cycle for num_acq_rounds , the optimizer proposes a batch ( ask ), the oracle labels it, the surrogate is refit ( tell ), metrics are logged each round, and an aggregate summary is written at the end. SupervisedTask fits the surrogate once on a fixed train/validation split and evaluates on the test set. ZeroShotTask evaluates a pre-trained surrogate on the test set with no training at all. 10 A.4 Offline to Online 
+
+The oracle and the search function are the only components that change between the two settings; the dataset, surrogate, optimizer, and task in fig. 2 are untouched. Offline, the search draws from the fixed pool and the oracle looks labels up in the dataset. Online, the search proposes de novo candidates and the oracle scores them with a model. The code snippet below (listing 1) shows how to modify the search and oracle components to transfer an experiment from offline to online. Listing 1: Switching a campaign from offline to online: only the search function and the oracle change.                           
+
+> #Offline : draw from the pool , label by lookup
+> optimizer =Optimizer ( acquisition_fn = UCB () , search_fn = DatasetSearch () ) oracle =Oracle ( scorer = dataset )
+> #Online : propose new candidates , label with amodel
+> optimizer =Optimizer ( acquisition_fn = UCB () , search_fn = GeneratorSearch ( generative_model ) ) oracle =Oracle ( scorer = scoring_model )
+
+A.5 Extending ALF 
+
+A new implementation of a component is added by creating a child class of the component’s base class. For example, listing 2 below shows how a new acquisition function can be implemented. Listing 2: Extending the AcqusitionFunction base class to implement a custom acquisition function.            
+
+> class MyAcquisition ( AcquisitionFunction ) : def __call__ ( self , search_candidates , state ) : preds =state . surrogate . predict ( search_candidates ) scores =my_utility ( preds . means , preds . variances ) return LabelledCandidates ( search_candidates , scores )
+
+A.6 Tutorials and Documentation 
+
+The repository ships runnable notebooks and how-to recipes. 3 Offline and online design tutori-als walk through a full campaign in each setting. Additionally, there are per-surrogate tutorials cover the GP [Rasmussen and Williams, 2006], CNN, MLP, ensemble, ESM-2 [Lin et al., 2023], Chemprop [Yang et al., 2019], and the MLIP Brunken et al. [2026] model; a set of how-to recipes shows how to add a dataset, a model, an acquisition function, or a search function; and tutorials on the ProteinGym [Notin et al., 2023] and GuacaMol [Brown et al., 2019] datasets. The hosted documentation includes the full API reference and an installation guide. 
+
+## B Experimental Details 
+
+Surrogate and kernels. The surrogate is an exact-inference Gaussian process. On molecules and materials it uses a Matérn-5/2 kernel with automatic relevance determination (ARD); on sequences it uses a linear kernel, so the covariance is the k-mer spectrum inner product, with ARD off (per-dimension lengthscales would stop it being an inner product). The ARD arms place a dimension-scaled log-normal prior on the lengthscales, LogNormal( √2 + log( d)/2, √3) , following Hvarfner et al. [2024]. 
+
+GP training parameters. Each round the GP is refit by maximising the marginal likelihood for 20 iterations with Adam at learning rate 0.5. Inputs are min-max normalised on molecules and materials and left unnormalised on sequences. Labels are z-scored on the training split for fitting and inverse-transformed before evaluation, so all reported RMSE is in original label units. 
+
+> 3https://instadeepai.github.io/alf/
+
+11 The active learning loop. Every campaign runs 10 acquisition rounds of 25 candidates, for 250 acquired per cell, over five seeds. A seed fixes the data splits, the seed draw, and any stochastic acquisition. The experiments are run on Nvidia H100 GPUs. 
+
+Acquisition functions. Six acquisition strategies are used across the experiments with an additional random (uniform over the candidate set) baseline. The active learning style strategies are: CoreSet (greedy k-centres over the featurised inputs, label-blind), and uncertainty sampling ( arg max posterior standard deviation). The Bayesian optimisation strategies are: greedy ( arg max posterior mean), UCB ( μ + ασ with α = 1 .0), expected improvement, Thompson sampling (one posterior draw per selection). 
+
+Search functions. The online experiment has no fixed candidate pool, so candidates are generated each round by a modality-specific search function. We use single mutant search for sequences, SMILES mutation search for molecules, and element substitution search for materials – each the natural notion of a single-step edit in its domain: one amino-acid substitution, one character of a SMILES string, and one data-mined ionic species swap respectively. In all three search strategies, the top-K scoring candidates in the train dataset are taken as parents and mutated to form the candidate pool to acquire from. Note, any candidate in the pool that is already in the train or validation dataset is removed. 
+
+## C Offline Benchmarking Results 
+
+Figure 5 compares the acquisition strategies across all three modalities under both objectives. The pattern is consistent: under the active learning lens the information-based strategies stay close to random, which is strongest on all domains, and under the Bayesian optimisation lens the utility-based strategies acquire higher-scoring candidates than random on every modality. 0 2 4 6 8 10                        
+
+> Acquisition Round
+> 0.33 0.36 0.39 0.42
+> Test Set RMSE
+> Sequence
+> 0246810
+> Acquisition Round
+> 0.195 0.210
+> Molecule
+> 0246810
+> Acquisition Round
+> 0.45 0.50 0.55
+> Materials
+> Random Uncertainty Sampling CoreSet
+> 246810
+> Acquisition Round
+> 1.05 1.20 1.35
+> Max Score Acquired
+> 246810
+> Acquisition Round
+> 0.66 0.72 0.78 246810
+> Acquisition Round
+> 0.8 1.6 2.4 UCB Thompson Sampling Expected Improvement Greedy Random
+> Active Learning Bayesian Optimisation
+
+Figure 5: Acquisition strategies across sequence, molecule, and materials under two objectives, from single ALF campaigns. Top, active learning: test-set RMSE against acquisition round (lower is better) for the information-based strategies. Bottom, Bayesian optimisation: best score acquired so far (higher is better) for the utility-based strategies. Random is shown in both rows as the reference. Mean of five seeds, ±1 s.d. bands. 
+
+## D Online Data Acquisition Results 
+
+Figure 6 repeats the online experiment across all three modalities, with the fixed pool replaced by a search that proposes candidates and an oracle model that scores them. Sequences use single mutant search against a PyRosetta [Chaudhury et al., 2010] oracle, molecules use SMILES mutation search against an RDKit [RDKit] property scorer, and materials use element substitution search against a MACE [Batatia et al., 2022] potential. Under the active learning objective, acquisition batch RMSE falls over the campaign for molecules and materials, but not for sequences. This may be attributed 12 to the sequence surrogate and the search neighbourhood: single mutants share near-identical k-mer spectra, so the linear kernel separates little within a proposed batch. Under the Bayesian optimisation objective, every strategy improves the best scoring candidate found. 2 4 6 8 10 
+
+Acquisition Round 
+
+> 0510 15 20 25
+> Acquisition Batch RMSE
+
+Sequence     
+
+> 246810
+
+Acquisition Round  
+
+> 0.05 0.10 0.15 0.20 0.25
+
+Molecule     
+
+> 246810
+
+Acquisition Round 
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+Materials     
+
+> 0.0 2.5 5.0 7.5 10.0
+
+Acquisition Round     
+
+> 130 132 134 136 138 140
+> Max Score Acquired
+> 0.0 2.5 5.0 7.5 10.0
+
+Acquisition Round     
+
+> 0.80 0.82 0.84 0.0 2.5 5.0 7.5 10.0
+
+Acquisition Round 
+
+> 3.6 3.8 4.0
+> Active Learning Bayesian Optimisation
+> Random CoreSet Uncertainty Sampling Random Greedy UCB Expected Improvement Thompson Sampling
+
+Figure 6: Acquisition strategies across sequence, molecule, and materials under two objectives, from single online ALF campaigns. Top, active learning: to-be acquired batch RMSE against acquisition round (lower is better) for the information-based strategies. Bottom, Bayesian optimisation: best score acquired so far (higher is better) for the utility-based strategies. Random is shown in both rows as the reference. Mean of five seeds, ±1 s.d. bands. 
+
+## E Further Case Studies Results 
+
+Figure 7 presents the results referenced in the case studies (section 4.4. Each panel is taken from the cited work and shows a multi-round campaign run through ALF, with performance plotted against the acquisition round. Panel (a) shows force error on a reactive-chemistry dataset: the neural-tangent-kernel signal reaches a given error in fewer rounds than the committee, distance-based, and random baselines, and the gap widens over the campaign. Panels (b) and (c) show top-candidate recall on a protein design task. In (b), a ranking fine-tuning loss retrieves more of the top sequences than MSE at every round; in (c), the loop is fixed and the surrogate varied, with ProteinNPT [Notin et al., 2023] and language model embedding baselines pulling ahead of one-hot encodings and random. 0 10 20 30 40 
+
+> AL Round
+> 50 100 200 500
+> Force RMSE (meV/Å)
+> Comparing acq. strategies for MLIPs
+> Random Committee-E Committee-F Tanimoto PV SOAP LCMD Activation PV NTK PV
+
+(a) Acquisition strategies for MLIPs 0 2 4 6 8 10  
+
+> Round
+> 0.0 0.2 0.4 0.6 0.8
+> Top 100 Recall
+> Fine-tuning loss fns. w/ ESM-2
+> Ranking (AUC: 4.12) MSE (AUC: 3.13)
+
+(b) Ranking vs. MSE fine-tuning 0 2 4 6 8 10  
+
+> Round
+> 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8
+> Top 100 Recall
+> Comparing Surrogates on ProteinGym
+> PNPT (AUC: 5.57) Emb. aug. (MSA) (AUC: 5.15) Emb. aug. (ESM1v) (AUC: 5.08) OHE aug. (ESM1v) (AUC: 4.64) OHE aug. (MSA) (AUC: 4.64) OHE (AUC: 4.21) Random (AUC: 3.46)
+
+(c) Comparing surrogate models 
+
+Figure 7: ALF in published research. (a) Active learning for interatomic potentials Varga-Umbrich et al. [2026a,b]: force error per acquisition round, with a new neural-tangent-kernel signal among the strategies. (b, c) Bayesian optimisation for protein design [Hawkins-Hooker et al., 2026]: a ranking-based fine-tuning loss recovers more top candidates per round than MSE (b), and ProteinNPT [Notin et al., 2023] and other surrogates are compared in the same multi-round design setting (c). 13 F Limitations 
+
+Scope of the reported campaigns. The experiments in section 4 are demonstrations of the framework rather than a study of acquisition strategies. Every campaign uses one exact-inference GP surrogate, one dataset per modality, and a single budget of 10 rounds of 25 candidates over five seeds. Five seeds is enough for error bands but not for ranking strategies whose curves overlap, and we make no claim that the orderings seen here hold at other budgets, batch sizes, or initial dataset sizes. Exact GP inference also scales cubically in the number of labels, so the surrogate used throughout is not the one we would recommend for campaigns much larger than those reported; ALF supports swapping it, but we do not benchmark that here. 
+
+Oracles are computational stand-ins. The online oracles are cheap models – RDKit properties, PyRosetta energies, and a MACE potential – standing in for the wet-lab assays and expensive simulations that motivate the work. They are fast, deterministic, and always return a value. Real oracles are noisy, are sometimes unavailable for a proposed candidate, and return labels after a delay that can span rounds. ALF’s loop is synchronous and assumes every proposed batch comes back labelled, so measurement noise, attrition, and asynchronous or delayed feedback are not modelled. 
+
+Search is restricted to single-step edits. The three search functions mutate top-scoring parents by one amino-acid substitution, one SMILES character, or one ionic species swap. This keeps each round in the neighbourhood of the current best candidates, which compresses the differences between acquisition strategies and offers no mechanism for escaping a local optimum. GeneratorSearch 
+
+exists for proposing candidates from a generative model, but no campaign using it is reported. Relatedly, batches are formed by taking the top-k scoring candidates, so nothing prevents a batch of near-duplicates. 
+
+## G Broader Impacts 
+
+Intended benefit. Progress in the domains ALF targets is often bounded by measurement budget rather than modelling ability. Better tooling for active learning means fewer measurements are needed to reach a given result, so a fixed budget goes further in areas such as therapeutic design, enzyme engineering, and materials for energy storage. Since ALF provides a clean API where the the same code runs offline against a benchmark and online against an oracle, a method validated in a paper can be deployed without reimplementation, which reduces the gap between benchmark and deployment behaviour. Releasing the framework openly also lowers the engineering cost of running such campaigns. 
+
+Dual use. A data acquisition loop is agnostic to its objective, so the same machinery that optimises a useful molecular or protein property optimises a harmful one. ALF contributes orchestration rather than capability: the surrogates, oracles, datasets, and scoring functions it wraps are already publicly available, and defining a harmful objective does not require ALF. 
+
+Misplaced confidence in an automated loop. A campaign is only as good as its surrogate, and an efficient optimiser attached to a miscalibrated model will spend a real experimental budget quickly and in the wrong direction. This is a practical rather than a societal risk, but it is the one most likely to occur. ALF logs surrogate metrics every round precisely so that a campaign drifting away from its objective is visible while it is running rather than after the budget is spent, and we would encourage users to treat these as a stop condition rather than as post-hoc diagnostics. 
+
+Compute. The fine-tuning of models, running the oracles and performing search through protocols or generative models carries a non-trivial energy cost. However, in the settings we target, the cost of a simulation or a wet-lab measurement tends to be more expensive than the training and inference of these models. 14
