@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-29</span>
+      <span class="dpr-home-dashboard-kicker">2026-09-30</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 22 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 13 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>9</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>13</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>5</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>8</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-29 23:22:13 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-09-30 23:36:28 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>日报：2026-09-29 筛读22篇，精读9篇、速读13篇，系外行星观测与符号回归、复杂系统方法并进。</p>
-<p>最值得看：LHS 1140b 的X射线通量变化或解释氦逃逸变化（9.0），以及TOI-2431 b 首次由哈勃探测到岩质系外行星次食、轨道仅5.4小时（9.0）。</p>
-<p>普通读者可先追这两篇精读，理解系外行星大气逃逸与岩质行星观测；若对算法或生理系统感兴趣，再速读SNIP++与非线性动力学混沌监测。</p>
+<p>今日日报成功收录13篇，精读5篇、速读8篇，焦点落在星子形成与符号回归。</p>
+<p>最值得看的是9.0分《Planetesimal formation facilitated by streaming instability in weak pressure bumps》和8.0分《SNIP++: Fine-Grained Symbolic-Numerical Alignment for Symbolic Regression》。</p>
+<p>普通读者可先读这两篇精读，再按兴趣浏览FDM、SymbolicArena、SRHarness等速读内容。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">9 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Variable X-ray flux may explain variable helium escape from the habitable-zone exoplanet LHS 1140b">Variable X-ray flux may explain variable helium escape from the habitable-zone exoplanet LHS 1140b</span></li><li><span class="dpr-home-dashboard-paper-title" title="The First Hubble Detection of a Secondary Eclipse from a Rocky Exoplanet: the 5.4-hour planet TOI-2431 b">The First Hubble Detection of a Secondary Eclipse from a Rocky Exoplanet: the 5.4-hour planet TOI-2431 b</span></li><li><span class="dpr-home-dashboard-paper-title" title="Investigating potential causes for high inferred intrinsic temperatures of warm transiting Neptune and Sub-Neptune planets">Investigating potential causes for high inferred intrinsic temperatures of warm transiting Neptune and Sub-Neptune planets</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Planetesimal formation facilitated by streaming instability in weak pressure bumps">Planetesimal formation facilitated by streaming instability in weak pressure bumps</span></li><li><span class="dpr-home-dashboard-paper-title" title="SNIP++: Fine-Grained Symbolic-Numerical Alignment for Symbolic Regression">SNIP++: Fine-Grained Symbolic-Numerical Alignment for Symbolic Regression</span></li><li><span class="dpr-home-dashboard-paper-title" title="SymbolicLM: Training Language Models as Symbolic Regressors">SymbolicLM: Training Language Models as Symbolic Regressors</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>9</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>2</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">13 篇</strong>
+    <strong class="dpr-home-dashboard-count">8 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="SNIP++: Fine-Grained Symbolic-Numerical Alignment for Symbolic Regression">SNIP++: Fine-Grained Symbolic-Numerical Alignment for Symbolic Regression</span></li><li><span class="dpr-home-dashboard-paper-title" title="Characterization and Monitoring of Nonlinear Dynamics and Chaos in Complex Physiological Systems">Characterization and Monitoring of Nonlinear Dynamics and Chaos in Complex Physiological Systems</span></li><li><span class="dpr-home-dashboard-paper-title" title="Worlds Next Door. V. A Candidate Solar System Scale Super-Jupiter in the 61 Cygni Binary System">Worlds Next Door. V. A Candidate Solar System Scale Super-Jupiter in the 61 Cygni Binary System</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Functional dynamic mode decomposition: Learning infinite-dimensional systems from data">Functional dynamic mode decomposition: Learning infinite-dimensional systems from data</span></li><li><span class="dpr-home-dashboard-paper-title" title="SymbolicArena: A Unified Infrastructure for Benchmark Distillation and Dynamic Evaluation in Symbolic Regression">SymbolicArena: A Unified Infrastructure for Benchmark Distillation and Dynamic Evaluation in Symbolic Regression</span></li><li><span class="dpr-home-dashboard-paper-title" title="SRHarness: A Harness for Agentic Symbolic Regression">SRHarness: A Harness for Agentic Symbolic Regression</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>7</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>5</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>4</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>3</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>1</strong></span></div>
 </section>
 </div>
 
