@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-09-30</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-01</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 13 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 4 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>5</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>8</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-09-30 23:36:28 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-01 23:24:02 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日日报成功收录13篇，精读5篇、速读8篇，焦点落在星子形成与符号回归。</p>
-<p>最值得看的是9.0分《Planetesimal formation facilitated by streaming instability in weak pressure bumps》和8.0分《SNIP++: Fine-Grained Symbolic-Numerical Alignment for Symbolic Regression》。</p>
-<p>普通读者可先读这两篇精读，再按兴趣浏览FDM、SymbolicArena、SRHarness等速读内容。</p>
+<p>2026-10-01 日报精选 4 篇：1 篇精读聚焦符号回归的统一基准与动态评估基础设施，3 篇速读覆盖 Koopman 算子误差界与天王星环、HR 4796 碎片盘观测。最值得看的是 SymbolicArena（8.0/10）如何用统一基建做基准蒸馏，以及 Koopman 算子有限数据误差界（7.0/10）对动力系统建模的参考价值。普通读者可先读精读了解符号回归评测新工具，再按兴趣浏览两篇天文观测速读。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">5 篇</strong>
+    <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Planetesimal formation facilitated by streaming instability in weak pressure bumps">Planetesimal formation facilitated by streaming instability in weak pressure bumps</span></li><li><span class="dpr-home-dashboard-paper-title" title="SNIP++: Fine-Grained Symbolic-Numerical Alignment for Symbolic Regression">SNIP++: Fine-Grained Symbolic-Numerical Alignment for Symbolic Regression</span></li><li><span class="dpr-home-dashboard-paper-title" title="SymbolicLM: Training Language Models as Symbolic Regressors">SymbolicLM: Training Language Models as Symbolic Regressors</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="SymbolicArena: A Unified Infrastructure for Benchmark Distillation and Dynamic Evaluation in Symbolic Regression">SymbolicArena: A Unified Infrastructure for Benchmark Distillation and Dynamic Evaluation in Symbolic Regression</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>2</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">8 篇</strong>
+    <strong class="dpr-home-dashboard-count">3 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Functional dynamic mode decomposition: Learning infinite-dimensional systems from data">Functional dynamic mode decomposition: Learning infinite-dimensional systems from data</span></li><li><span class="dpr-home-dashboard-paper-title" title="SymbolicArena: A Unified Infrastructure for Benchmark Distillation and Dynamic Evaluation in Symbolic Regression">SymbolicArena: A Unified Infrastructure for Benchmark Distillation and Dynamic Evaluation in Symbolic Regression</span></li><li><span class="dpr-home-dashboard-paper-title" title="SRHarness: A Harness for Agentic Symbolic Regression">SRHarness: A Harness for Agentic Symbolic Regression</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Finite-Data Error Bounds for Approximating the Koopman Operator: Sampling Measures, Super-Polynomial Convergence and Regularization">Finite-Data Error Bounds for Approximating the Koopman Operator: Sampling Measures, Super-Polynomial Convergence and Regularization</span></li><li><span class="dpr-home-dashboard-paper-title" title="The dust in Sauron&#x27;s eye - Observational and experimental results on the debris disk around HR 4796">The dust in Sauron&#x27;s eye - Observational and experimental results on the debris disk around HR 4796</span></li><li><span class="dpr-home-dashboard-paper-title" title="JWST Reveals the Kuiper Belt-like Compositions of the Uranian Rings and Small Moons">JWST Reveals the Kuiper Belt-like Compositions of the Uranian Rings and Small Moons</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>4</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>3</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
 </section>
 </div>
 
