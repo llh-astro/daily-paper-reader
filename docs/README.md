@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-01</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-02</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 4 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 23 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>10</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>13</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-01 23:24:02 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-02 23:21:10 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>2026-10-01 日报精选 4 篇：1 篇精读聚焦符号回归的统一基准与动态评估基础设施，3 篇速读覆盖 Koopman 算子误差界与天王星环、HR 4796 碎片盘观测。最值得看的是 SymbolicArena（8.0/10）如何用统一基建做基准蒸馏，以及 Koopman 算子有限数据误差界（7.0/10）对动力系统建模的参考价值。普通读者可先读精读了解符号回归评测新工具，再按兴趣浏览两篇天文观测速读。</p>
+<p>10月2日日报：从23篇新论文中精读10篇、速读13篇，重点锁定年轻巨行星轨道与超热海王星大气两条主线。</p>
+<p>最值得看的是两篇9分精读——HIP 67522 bc用凌星时间变化反推17 Myr巨行星的低质量与低偏心率，LTT 9779 b则给出超热海王星的全色NIRISS/NIRSpec透射光谱，标题指向其凉爽多云夜侧。</p>
+<p>普通读者可先读这两篇精读摘要，再按兴趣追速读里的双星潮汐塑造环双星行星构型、PHAROS恒星全色能谱和EvoMO-SR符号回归。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +73,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">1 篇</strong>
+    <strong class="dpr-home-dashboard-count">10 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="SymbolicArena: A Unified Infrastructure for Benchmark Distillation and Dynamic Evaluation in Symbolic Regression">SymbolicArena: A Unified Infrastructure for Benchmark Distillation and Dynamic Evaluation in Symbolic Regression</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Toddlers in Resonance I: low masses and eccentricities of the 17 Myr giant planets HIP 67522 bc from transit timing variations">Toddlers in Resonance I: low masses and eccentricities of the 17 Myr giant planets HIP 67522 bc from transit timing variations</span></li><li><span class="dpr-home-dashboard-paper-title" title="Cool, Cloudy Nights on an Ultrahot Neptune: A Panchromatic NIRISS/NIRSpec Transmission Spectrum of LTT 9779 b">Cool, Cloudy Nights on an Ultrahot Neptune: A Panchromatic NIRISS/NIRSpec Transmission Spectrum of LTT 9779 b</span></li><li><span class="dpr-home-dashboard-paper-title" title="High-CO2 Climates and Observables in the Outer Habitable Zone">High-CO2 Climates and Observables in the Outer Habitable Zone</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>10</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +86,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">3 篇</strong>
+    <strong class="dpr-home-dashboard-count">13 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Finite-Data Error Bounds for Approximating the Koopman Operator: Sampling Measures, Super-Polynomial Convergence and Regularization">Finite-Data Error Bounds for Approximating the Koopman Operator: Sampling Measures, Super-Polynomial Convergence and Regularization</span></li><li><span class="dpr-home-dashboard-paper-title" title="The dust in Sauron&#x27;s eye - Observational and experimental results on the debris disk around HR 4796">The dust in Sauron&#x27;s eye - Observational and experimental results on the debris disk around HR 4796</span></li><li><span class="dpr-home-dashboard-paper-title" title="JWST Reveals the Kuiper Belt-like Compositions of the Uranian Rings and Small Moons">JWST Reveals the Kuiper Belt-like Compositions of the Uranian Rings and Small Moons</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Binary tidal evolution as a sculptor of circumbinary planet architectures">Binary tidal evolution as a sculptor of circumbinary planet architectures</span></li><li><span class="dpr-home-dashboard-paper-title" title="PHAROS: Panchromatic spectral energy distributions of solar-like stars across evolutionary stages">PHAROS: Panchromatic spectral energy distributions of solar-like stars across evolutionary stages</span></li><li><span class="dpr-home-dashboard-paper-title" title="EvoMO-SR: Multiobjective LLM-based Evolution of Symbolic Expressions with substructure guidance">EvoMO-SR: Multiobjective LLM-based Evolution of Symbolic Expressions with substructure guidance</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>7</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>5</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 </div>
 

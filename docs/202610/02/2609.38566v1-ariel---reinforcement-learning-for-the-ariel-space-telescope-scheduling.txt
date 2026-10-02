@@ -1,0 +1,694 @@
+Title: aRieL - Reinforcement Learning for the Ariel Space Telescope Scheduling
+
+URL Source: https://arxiv.org/pdf/2609.38566v1
+
+Published Time: Thu, 01 Oct 2026 00:31:50 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+> RASTI 000 , 1–15 (2026) Preprint 1 October 2026 Compiled using rasti L ATEX style file v3.0
+
+# aRieL - Reinforcement Learning for the Ariel Space Telescope Scheduling 
+
+# James Kostas Ray, 1★ Kai Hou Yip, 2 Alexandra Thompson, 3,1 Luís F. Simões 4 and Nikolaos Nikolaou 1
+
+> 1Department of Physics and Astronomy, University College London, Gower Street, London WC1E 6BT, UK
+> 2Department of Physics, King’s College London, University of London, Strand, London, WC2R 2LS, United Kingdom
+> 3INAF-Osservatorio Astronomico di Palermo, Piazza del Parlamento, 1, 90134 Palermo, Italy
+> 4ML Analytics, 2660-329 Lisbon, Portugal
+> Accepted XXX. Received YYY; in original form ZZZ
+
+ABSTRACT 
+
+The Ariel mission will conduct a population level survey of hundreds of exoplanet atmospheres, requiring observations to be scheduled across a large and diverse catalogue of potential targets. By framing Ariel scheduling as a long-horizon optimisation problem in which individual decisions affect both mission time and the scientific opportunities available later in the survey, Reinforcement Learning (RL) can be utilised as a framework for target selection. We introduce aRieL , a simulated observing environment coupled to a Set Transformer Proximal Policy Optimisation (PPO) agent that is trained to generate a scheduling policy. The RL policy consistently finds a strong compromise between competing survey objectives, producing large Tier 1 samples while maintaining high Tier 3 completion, population coverage, and observing efficiency when compared to a set of baseline heuristic polices. This behaviour is retained when the candidate catalogue is substantially expanded, while modifications to the reward function produce corresponding changes in the learned observing strategy. We further show that a policy trained on the baseline mission scenario can generalise without retraining to a modified scenario requiring repeated Tier 3 observations, revealing the resulting trade-off with the wider survey. These results demonstrate that reinforcement learning provides a flexible approach to large-scale astronomical scheduling, in which the observing strategy can respond directly to changes in mission state and to the scientific priorities, and motivate its wider exploration for observatories with similarly complex, state dependent scheduling problems. 
+
+Key words: machine learning – reinforcement learning – telescope scheduling – exoplanets 
+
+1 INTRODUCTION 
+
+Ariel, ESA’s M4 Cosmic Vision mission, will deliver the first large-scale survey of exoplanet atmospheres, characterising a diverse popu-lation of hundreds of transiting planets. Through simultaneous visible and infrared spectroscopy spanning 0.5-7.8 𝜇 m, Ariel aims to mea-sure atmospheric composition and structure across a broad range of planetary and stellar properties, enabling population-level studies of the processes that govern planetary formation and evolution (Tinetti et al. 2020). Ariel is not simply tasked with maximising the number of completed observations. Its scientific return depends on sampling a broad population of planets across a range of planetary and stellar properties with a high enough signal to noise ratio for characteri-sation. The candidate population will remain larger than the final observed sample and is expected to evolve as new systems are dis-covered and characterised (Edwards et al. 2019; Edwards & Tinetti 2022). Target selection and scheduling are therefore coupled: decid-ing which observation to make affects both the remaining mission time and the scientific composition of the final survey. Ariel adopts a tiered observing strategy to balance population coverage against the depth of atmospheric characterisation. Targets therefore require different numbers of transit or eclipse observations  
+
+> ★E-mail: james.ray.16@ucl.ac.uk
+
+depending on their assigned science tier and observational proper-ties (Tinetti et al. 2020; Edwards & Tinetti 2022). Moreover, the number of suitable candidate targets substantially exceeds the num-ber that can be observed during the mission’s lifetime, making the distribution of observations across planetary and stellar parameter space an important component of the survey design. Since these ob-servations occur within discrete, time dependent transit and eclipse opportunities, constructing the final observing programme requires target selection and scheduling to be considered together. The result is an optimisation problem in which limited observing time must be allocated between competing targets while maintaining the desired scientific coverage of the population. Decisions are coupled because selecting one observation consumes time and alters subsequent op-portunities. The target population and scientific priorities can also evolve. This makes fixed prioritisation rules or locally optimal de-cisions potentially inadequate for optimising the programme over the full mission. Existing Ariel scheduling work has approached the problem primarily through combinatorial and metaheuristic optimi-sation, including hybrid multi-start approaches and Forgetful Swarm Optimisation (Morales et al. 2022; Nakhjiri et al. 2023, 2024). These methods have demonstrated the ability to construct and iteratively improve complete mission schedules across several Ariel schedul-ing scenarios. Here we instead ask whether the scheduling problem  
+
+> ©2026 The Authors arXiv:2609.38566v1 [astro-ph.EP] 29 Sep 2026
+
+# 2 James Kostas Ray et al. 
+
+can be represented by a learned sequential policy, where the next observation is selected directly from the current mission state. Reinforcement Learning (RL) is a Machine Learning (ML) ap-proach for interactive decision making systems and has been ex-plored for a range of astronomical operations, including adaptive optics control and radio interferometric calibration (Landman et al. 2021; Yatawatta & Avruch 2021). Of particular relevance to obser-vation planning, RL-based approaches have been proposed for the scheduling and control of individual telescopes and distributed tele-scope arrays (Jia et al. 2023b,a; Terranova et al. 2023; Puangragsa et al. 2025; Zhang et al. 2025). For Ariel the main challenges are dealing with long episodes (being the duration of the science opera-tions phase) whilst trying to balance multiple objectives over a long horizon. Ariel is currently planned for launch in 2031 and has a nom-inal four year operational lifetime. In this work we follow previous Ariel scheduling studies in adopting a conservative estimate of a 3.5 year science scheduling horizon. We introduce aRieL , a reinforcement learning environment for Ariel observation scheduling, along with a trained Set Transformer Proximal Policy Optimisation agent designed to select between dy-namically changing observation opportunities. Through a series of controlled deterministic experiments, we test whether the learned policy can remain competitive across different candidate populations, preserve population diversity, respond to changes in the reward ob-jective, and adapt to a modified Tier 3 observing requirement without retraining. This environment can be used in conjunction with a vari-ety of methods but is mainly used to enable RL as a viable approach for the scheduling task. 
+
+2 REINFORCEMENT LEARNING (RL) 
+
+ML methods learn representations and patterns from data, with the objective of mapping features to a set of labels or capturing the un-derlying distribution and properties of the data itself. This is often performed in a static setting, where an algorithm is trained on a fixed dataset and is subsequently provided with new data to map into the learned representation space. This representation can then be used for downstream tasks such as regression, classification, feature extrac-tion, or anomaly detection. RL follows a different design philosophy. Rather than learning from a fixed dataset as most ML methods do, an RL agent continuously interacts with an environment, with each interaction potentially changing the environment. At each step, the agent is provided with a snapshot, or state, of the environment and selects an action, which is then applied to the environment. The agent learns which actions are favourable through a task specific reward function, with the objective of maximising the cumulative reward obtained over time. For example, this reward might correspond to scoring points in a game such as Pong , accumulating returns in a financial trading environment, or maximising the number of Ariel Tier 3 targets observed in a year. For a general introduction to rein-forcement learning, we refer the reader to De Asis et al. (2018) or Barto (2021). Formally speaking, RL is described as a Markov Decision Process (MDP), 
+
+M = (S , A, 𝑃, 𝑅, 𝛾 ) , (1) where S and A denote the state and action spaces, respectively, 
+
+𝑃 (𝑠 𝑡 +1 | 𝑠 𝑡 , 𝑎 𝑡 ) describes the transition dynamics of the environment, 
+
+𝑅 (𝑠 𝑡 , 𝑎 𝑡 ) defines the reward associated with an action, and 𝛾 ∈ [ 0, 1]
+
+is the discount factor, where 𝑡 indexes the decision steps. The Markov property assumes that the distribution of the next state depends only on the current state and action, 
+
+𝑃 (𝑠 𝑡 +1 | 𝑠 𝑡 , 𝑎 𝑡 , 𝑠 𝑡 −1, 𝑎 𝑡 −1, . . . ) = 𝑃 (𝑠 𝑡 +1 | 𝑠 𝑡 , 𝑎 𝑡 ). (2) The behaviour of an RL agent is described by a policy, 𝜋 (𝑎 | 𝑠 ),which defines the probability of selecting action 𝑎 given state 𝑠 . In deep reinforcement learning, this policy is commonly parameterised by a neural network, 
+
+𝜋 𝜃 (𝑎 𝑡 | 𝑠 𝑡 ), (3) where 𝜃 denotes the trainable network parameters. The objective is then to find a policy that maximises the expected cumulative dis-counted reward 𝐽 (𝜃 ),
+
+𝐽 (𝜃 ) = E𝜋 𝜃 
+
+"𝑇 −1∑︁ 
+
+> 𝑡 =0
+
+𝛾 𝑡 𝑟 𝑡 
+
+#
+
+, (4) where 𝑟 𝑡 is the reward for a given step. This approach is referred to as a policy-gradient method as the policy is being maximised via direct gradient ascent updates applied to the policy parameters 𝜃 .The discount factor, 𝛾 , controls the relative importance of imme-diate and future rewards. For 𝛾 → 0, the agent becomes increasingly myopic, whereas 𝛾 → 1 places greater importance on the long term consequences of an action. This is particularly important in sequen-tial decision problems, where an action that appears locally optimal may lead to a poorer overall outcome. The reward function therefore plays a central role in defining the behaviour learned by the agent. It provides a numerical representation of the task objective, such that the agent is not explicitly instructed which actions to take, but instead learns behaviour that maximises the accumulated reward. 
+
+2.1 Actor–Critic Methods 
+
+Policy gradient methods optimise the policy directly. Actor–critic approaches (Barto et al. 1983) supplement the policy, or actor , with a second function approximator, the critic , which estimates the ex-pected future return from a state, 
+
+𝑉 𝜙 (𝑠 𝑡 ) = E𝜋 
+
+"𝑇 −𝑡 −1∑︁ 
+
+> 𝑘 =0
+
+𝛾 𝑘 𝑟 𝑡 +𝑘 𝑠 𝑡 
+
+#
+
+, (5) where 𝜙 denotes the parameters of the value network that returns the expected reward for a given state (the value function). The quality of an action relative to the expected value of the current state is described by the advantage function, 
+
+𝐴 (𝑠 𝑡 , 𝑎 𝑡 ) = 𝑄 (𝑠 𝑡 , 𝑎 𝑡 ) − 𝑉 (𝑠 𝑡 ). (6) where the the action-value function 𝑄 (𝑠 𝑡 , 𝑎 𝑡 ) is the projected reward based on a set of actions for a given state. Intuitively, 𝑉 (𝑠 ) describes how valuable a state is, while 𝑄 (𝑠, 𝑎 ) describes the expected long-term return associated with taking action 𝑎 in state 𝑠 . This would mean the advantage function 𝐴 can be interpreted as a measure of how much better or worse a specific action is compared to the average or expected action in a given state. However, the true action-value function 𝑄 (𝑠 𝑡 , 𝑎 𝑡 ) is unknown, it is typically approximated by 
+
+𝑄 (𝑠 𝑡 , 𝑎 𝑡 ) ≈ 𝑟 𝑡 + 𝛾𝑉 𝜙 (𝑠 𝑡 +1). Thus, a simple one-step estimate of the advantage becomes ˆ𝐴 𝑡 = 𝑟 𝑡 + 𝛾𝑉 𝜙 (𝑠 𝑡 +1) − 𝑉 𝜙 (𝑠 𝑡 ). (7) Conceptually, the actor is updated using this term as a scaling factor. Actions that yield a positive advantage are made systemati-cally more probable in future iterations, while actions with a nega-tive advantage are discouraged. This adjustment establishes a direct trajectory toward maximising the expected cumulative reward (see Equation 4).  
+
+> RASTI 000 , 1–15 (2026)
+
+# aRieL - Exoplanet Observatory Scheduling 3
+
+2.2 Proximal Policy Optimisation (PPO) 
+
+PPO is an actor–critic policy-gradient method designed to improve training stability by constraining the magnitude of policy updates (Schulman et al. 2017). Large policy updates can cause previously useful behaviour to be lost. PPO achieves this effect by using the probability ratio 
+
+𝑟 𝑡 (𝜃 ) = 𝜋 𝜃 (𝑎 𝑡 | 𝑠 𝑡 )
+
+𝜋 𝜃 old (𝑎 𝑡 | 𝑠 𝑡 ) . (8) that asks how the new policy compares against the previous one, and then optimises the clipped objective 
+
+𝐿 CLIP (𝜃 ) = E𝑡 
+
+h
+
+min 
+
+
+
+𝑟 𝑡 (𝜃 ) ˆ𝐴 𝑡 , clip (𝑟 𝑡 (𝜃 ), 1 − 𝜖, 1 + 𝜖 ) ˆ𝐴 𝑡 
+
+i 
+
+, (9) where 𝜖 controls the maximum permitted change in the policy during an update. The clipping operation discourages updates that move the new policy too far from the policy used to collect the training trajectories. 
+
+2.3 Training Stability 
+
+Unlike supervised learning, the distribution of data encountered by an RL agent changes as the policy itself changes. Consequently, the training targets are non-stationary and the trajectories collected by the agent are correlated with its current behaviour. Training can there-fore be sensitive to network initialisation on top of reward scaling, hyperparameters, and the degree of exploration. This makes reinforcement learning comparatively computationally expensive, as effective policies may require large numbers of interac-tions with the environment and multiple training runs to establish the robustness of the resulting solution. Such constraints mean environ-ments with expensive reward functions or evolution steps, or agent architectures with large iteration times can become computationally prohibitive for RL. However, the ability to optimise sequential deci-sions in large state and action spaces where individual choices alter the set and quality of decisions available later in the trajectory makes RL a natural tool for exploring telescope scheduling. 
+
+3 aRieL - RL SCHEDULING ENVIRONMENT 
+
+The aRieL 1 environment represents the evolving Ariel observing scenario. The specifics of the environment and RL design will be explained throughout this section. At each decision step 𝑡 , the envi-ronment contains the current mission state 𝑠 𝑡 , from which an obser-vation 𝑜 𝑡 is constructed and passed to the agent. The agent selects a target to observe (via action 𝑎 𝑡 ), corresponding to one of the cur-rently available planetary systems provided in 𝑜 𝑡 , after which the environment executes the action and advances to the next decision point. This interaction can be summarised as 
+
+𝑠 𝑡 → 𝑜 𝑡 𝜋 𝜃 
+
+−−→ 𝑎 𝑡 → ( 𝑟 𝑡 , 𝑠 𝑡 +1), (10) where 𝜋 𝜃 is the learned policy and 𝑟 𝑡 is the reward associated with the resulting transition. Following the selected action, the mission clock is advanced ac-cording to the time required to reach and complete the chosen ob-servation. The environment then updates the observational progress of the selected target, the corresponding survey-level metrics, and the set of upcoming observation opportunities before constructing                                  
+
+> 1https://github.com/Sympanda/aRieL
+> MCS MCS + TPC sample Tier Targets Days %Targets Days %Tier 1 814 778 60.8 1427 1536 120.1 Tier 2 550 1037 81.1 817 1751 137.0 Tier 3 129 27 2.1 155 36 2.8 Total 814 1842 144.1 1427 3323 259.9
+> Table 1. Science time required to complete the full candidate catalogues to their available programme depths. Tier 1 gives the time required to complete all Tier 1 accessible targets, while the Tier 2 and Tier 3 rows give the additional science time required beyond the preceding tier. Percentages are relative to the adopted 3.5 year scheduling horizon. Slewing, waiting time and other operational overheads are not included in the calculated total observation time.
+
+the next state. Although Ariel has a nominal four year operational lifetime, the experiments presented here adopt a 3.5 year episode, consistent with the scheduling horizon used in previous Ariel opti-misation studies (Nakhjiri et al. 2024). 
+
+3.1 Target Lists 
+
+In this work, we use the Mission Candidate Sample from Edwards & Tinetti (2022) which has been consistently updated and made publicly available on GitHub 2. Specifically, we use the MCS from 18 th August 2025. Given that the MCS is constantly evolving and that the number of exoplanets being detected has grown rapidly, we created an additional experiment to explore performance. We sample planets from the TESS Planetary Candidate (TPC) list as part of the same repository. We took the rate of confirmed planets from TESS 3 and extrapolated the rate of confirmation over four years (until the scheduled launch of Ariel). This resulted in an additional 613 planets being added to the MCS. Table 1 shows the breakdown of both target lists. Note, we do not consider the properties of planets when sampling from TPC. Even before accounting for slew or idle time, completing ev-ery baseline MCS target (excluding TPC targets) to its maximum available tier would require 144 .1% of the adopted scheduling hori-zon. The expanded catalogue increases this requirement further. The scheduling problem is therefore intrinsically oversubscribed: a pol-icy must decide not only when to observe, but which parts of the candidate population to prioritise. 
+
+3.2 Observation Space 
+
+At each decision step, the agent receives information describing both the individual planetary systems available for observation and the current state of the mission. We therefore divide the observation into an unordered set of planet-level feature vectors and a separate mission-global vector, 
+
+𝑜 𝑡 =
+
+
+
+{x𝑖,𝑡 }𝑁 𝑡 
+
+> 𝑖 =1
+
+, g𝑡 
+
+
+
+, (11) where x𝑖,𝑡 describes planetary system 𝑖 and g𝑡 summarises the state of the observing programme. This representation avoids imposing an arbitrary ordering on the target catalogue while allowing the number and properties of available targets to change throughout an episode of the full 3.5 year mission.    
+
+> 2https://github.com/arielmission-space/Mission_Candidate_ Sample/tree/main
+> 3https://tess.mit.edu/tess-planet-count/
+> RASTI 000 , 1–15 (2026)
+
+# 4 James Kostas Ray et al.            
+
+> Figure 1. Set Transformer actor–critic architecture used by the RL policy. The input candidate set 𝑋 ∈R𝑁 ×𝐹 is first projected into a latent 𝑑 -dimensional representation and processed by 𝐿 Induced Set Attention Blocks (ISABs). Learned inducing tokens provide the queries in the first attention operation of each ISAB, after which information is redistributed to the candidate tokens. The actor combines each contextualised target representation with the global mission state to produce one logit per available observation. Each logit is then converted into a probability to select a corresponding observation. The critic uses Pooling by Multihead Attention (PMA) to obtain a permutation-invariant summary of the candidate set, which is combined with the same global state to estimate 𝑉 (𝑠 ).
+
+Each planetary system vector contains both static and dynamic information. The static features describe properties that remain fixed throughout the mission, including the planetary and stellar properties, assigned science tier, population weighting, and preferred observing method. The dynamic features are recomputed after every action and describe the system’s current observational state, including progress towards its assigned tier, the timing and contributions of the next reachable observation, and the availability of future observing op-portunities. Each target representation therefore contains information describing both the scientific properties of the system and its current suitability for scheduling. The mission-global vector contains information that cannot nat-urally be associated with a single target. This includes the elapsed mission time, cumulative science, slew and idle time, overall progress through the survey tiers, and the current coverage of the planetary population. These quantities provide the wider mission context re-quired to interpret the relative value of individual observing opportu-nities. For example, the desirability of observing a particular system may depend not only on its immediate observability, but also on the remaining mission time and the populations that have already been sampled. All observation features are normalised before being passed to the policy network. Planet-level features are concatenated to form a 28-dimensional vector comprising 11 static and 17 dynamic quantities, while the mission-global vector contains nine mission level quantities together with the current coverage of sufficiently populated science bins. Completed targets and padded entries are masked so that they do not contribute to subsequent attention operations. Full definitions and normalisations of all observation features are provided in Ap-pendix A. These features can be amended or extended as the scientific requirements of Ariel evolve. 
+
+3.3 Set Transformer Policy 
+
+The planet-level observations form an unordered and dynamically changing set, making a Set Transformer (Lee et al. 2019) a natural architecture for the policy. The input features for each target are first mapped to a latent token and then processed through 𝐿 Induced Set Attention Blocks (ISABs). Within each ISAB, a small set of learned inducing tokens first gathers information from the complete target set before redistributing this information back to the individual planet tokens. This allows each target representation to be contextualised by the competing observing opportunities available at the same decision point, while reducing the attention cost from O( 𝑁 2) to O( 𝑁 𝑀 ) for 
+
+𝑀 ≪ 𝑁 , where N is the number of input tokens and M is the number of inducing tokens used by the ISAB architecture (see the left hand side of Figure 1). After the final ISAB layer, the policy retains one contextualised latent token for each candidate target. These representations are used differently by the actor and critic. The actor must evaluate individual  
+
+> RASTI 000 , 1–15 (2026)
+
+# aRieL - Exoplanet Observatory Scheduling 5
+
+observing opportunities, and therefore combines each planet token with the global mission-state vector before assigning that target an action score. The critic instead evaluates the state of the survey as a whole. The complete set of planet tokens is therefore reduced to a single permutation-invariant representation using Pooling by Multi-head Attention (PMA), which is then combined with the same global mission information before estimating the state value. Conceptually, the Set Transformer therefore allows the policy to consider each target not in isolation, but relative to the other oppor-tunities currently available, while the separate global representation supplies the wider state of the mission. The resulting actor–critic architecture is shown in Figure 1, with the full Set Transformer op-erations given in Appendix B. 
+
+3.4 Slewing 
+
+The telescope is represented by a single pointing (RA , Dec ). Choos-ing a target means slewing there immediately. The angular separation 
+
+𝜃 is the great-circle (haversine) distance between the current pointing and the target. We assume a constant slew rate hop 
+
+𝑡 slew = clip  𝜃 × 60 s deg −1, 120 s , 7200 s , (12) i.e. 1 ◦ min −1 with a 2 min settle floor and a 2 h cap. The 2 min floor is charged even for a repeat visit to the same host; hops ≳ 120 ◦ all cost 2 h. There is no acceleration profile or Earth avoidance constraint. The mission clock advances as slew → idle (if early) → observe. Arrival is 𝑡 now + 𝑡 slew . Early arrival waits until the observation block opens, and if the telescope would arrive too late for an observation, the event is not included. The pointing is updated to the selected target, so the next slew is measured from that position, with each episode initialised at the same position on the sky. Each planetary set reports this 𝑡 slew as slew_norm (divided by the 2 h cap), and is paired with the first event still reachable after the slew. This prescription is deliberately simplified and is intended to pro-vide a non-zero geometric cost for moving between targets rather than to reproduce the final Ariel attitude control model. The rate is a placeholder; Ariel’s published science-mode performance is not used as this project aims to highlight full use of RL for Ariel scheduling rather than perfectly mimic the full observation system. Addition-ally, the current environment does not model detailed acceleration profiles, time dependent or field restrictions, Earth/Sun avoidance, calibration observations, or station keeping activities. These simpli-fications distinguish the present proof of concept environment from more operationally complete Ariel scheduling models and are dis-cussed further in Section 5. 
+
+3.5 Action Space 
+
+Candidate actions are defined directly by the planetary systems con-tained within the current observation set. At each decision step, the agent is presented with a variable number of valid observing oppor-tunities and selects one of these systems as its next action. The action space therefore changes dynamically with the observation space, with one action corresponding to each candidate system presented to the agent. The maximum set size is fixed to 𝑁 = 72, as described in Section 3.7, with unused entries masked when fewer candidates are available. If no targets are available, the environment continues to run until there are. The agent therefore solves a rolling local deci-sion problem rather than receiving every target in the full catalogue as a possible action at every timestep. This restriction reduces the action space and imposes the prior that very distant future events need not be considered directly when nearer valid opportunities are available. Longer term information is instead carried through the evolving mission state and value function. We are then effectively asking the agent: given the set of exoplanets that are approaching transit and the global state of the mission, which planet is best to target for observation next. This provides further motivation for the Set Transformer policy, which naturally accommodates a variable sized set of candidate targets. It should be noted, just like the observation space, if there are not enough targets to fill the full set transformer tokens then the actions corresponding to those tokens are also masked. The action space is defined directly by the candidate set presented to the agent. At decision step 𝑡 , let 
+
+𝑋 𝑡 = x𝑡 , 1, . . . , x𝑡 , 𝑁 𝑡 , 𝑁 𝑡 ≤ 𝑁, (13) denote the set of upcoming valid observation opportunities. The corresponding action space is 
+
+A𝑡 = {1, . . . , 𝑁 𝑡 } , (14) such that selecting action 𝑎 𝑡 = 𝑖 schedules the observation associated with candidate x𝑡 ,𝑖 .The policy network has a maximum output dimension 𝑁 . When fewer than 𝑁 candidate systems are available, the remaining positions are padding tokens and their corresponding actions are masked prior to action selection. Defining the action mask as 
+
+𝑚 𝑡 ,𝑖 =
+
+(
+
+0, 𝑖 ≤ 𝑁 𝑡 ,
+
+−∞ , 𝑖 > 𝑁 𝑡 , (15) the masked policy is 
+
+𝜋 𝜃 (𝑎 𝑡 = 𝑖 | 𝑜 𝑡 ) = softmax (ℓ𝑡 + m𝑡 )𝑖 (16) with ℓ being the corresponding logits that are coupled to the corre-sponding candidate-action pair. This ensures that probability mass is assigned only to observation opportunities that exist within the current candidate set. If more than 𝑁 valid opportunities fall within the look-ahead win-dow, candidates are ordered by event start time and the first 𝑁 are retained. 
+
+3.6 Objectives & Reward Function 
+
+The reward function is designed to balance several competing ob-jectives of the Ariel survey rather than optimise a single schedul-ing metric. In particular, the agent is encouraged to make progress through the observational tiers, maintain broad coverage of the target population, retain comparatively rare observing opportunities, and use the available mission time efficiently. Scientific progress is rewarded as individual targets progress to-wards and complete their observational tiers. Separate weights are assigned to Tier 1, Tier 2, and Tier 3, allowing their relative scientific priority to be varied between experiments. Intermediate progress is also rewarded, with an increased contribution as a target approaches completion. Population diversity is incorporated using planetary radius, equi-librium temperature, and host star class. Scientific progress on targets in under sampled population bins receives an increased reward, while additional rewards encourage Tier 1 coverage across the population and diversity between planetary systems. This is a simplified repre-sentation of population diversity, and the boundaries used here are specific to the present scheduling experiments rather than a final Ariel population definition. The adopted classes are given in Table 2.  
+
+> RASTI 000 , 1–15 (2026)
+
+# 6 James Kostas Ray et al.                                                                            
+
+> Axis Class Range Radius sub-Earth 𝑅 𝑝 <1.5𝑅 ⊕
+> super-Earth 1.5≤𝑅 𝑝 <2.5𝑅 ⊕
+> mini-Neptune 2.5≤𝑅 𝑝 <4.0𝑅 ⊕
+> Neptune 4.0≤𝑅 𝑝 <6.0𝑅 ⊕
+> Saturn 6.0≤𝑅 𝑝 <10 .0𝑅 ⊕
+> Jupiter 𝑅 𝑝 ≥10 .0𝑅 ⊕
+> Temperature cold 𝑇 eq <400 K warm 400 ≤𝑇 eq <900 K hot 900 ≤𝑇 eq <1400 K very hot 1400 ≤𝑇 eq <2000 K ultra hot 𝑇 eq ≥2000 K Stellar class M𝑇 eff <3900 K K3900 ≤𝑇 eff <5200 K G/F 5200 ≤𝑇 eff <7500 K A/F hot 𝑇 eff ≥7500 K
+> Table 2. Population classes used by the coverage component of the reward. Only combinations represented in the adopted catalogue contribute to the population-coverage denominator.
+
+A separate rarity component favours targets with less frequent ob-serving opportunities, based on orbital period, while scheduling effi-ciency is encouraged by penalising slew and idle time and rewarding the fraction of each step spent observing. Missed observation op-portunities can additionally be penalised. The reward per step can therefore be written abstractly as 
+
+𝑟 𝑡 = 𝑀 population 
+
+ 𝑅 progress + 𝑅 tier 
+
+ + 𝑅 population + 𝑅 rarity 
+
++ 𝑅 efficiency − 𝑃 overhead − 𝑃 miss , (17) where 𝑀 population increases the scientific reward for targets in un-der sampled population bins, while 𝑅 population contains the additional population coverage and planetary system diversity rewards. Survey level milestone and terminal rewards additionally encourage progress across the complete observing programme. Each term shown in Equation 17 contains several tunable sub-components. The relative weights of these components define the priorities presented to the agent and must therefore be chosen jointly. We do not claim that the adopted weights represent a unique or optimal Ariel objective function. Instead, they were selected to balance target completion, population diversity, rare observing opportunities, and observing efficiency. We additionally vary these weights to examine how the learned policy responds to changes in the assumed scientific priorities. The complete reward configuration and individual compo-nent weights used for each experiment are provided with the released code and configuration files. 
+
+3.7 Training 
+
+The PPO implementation and training pipeline were developed using Stable-Baselines3 (Raffin et al. 2021), with a custom Set Transformer feature extractor and actor–critic policy. The final policy uses a max-imum candidate-set size of 𝑁 = 72, 𝑀 = 24 inducing points per ISAB, and 𝐿 = 3 ISAB layers. To select 𝑁 , we inspected the number of valid observing opportu-nities within the adopted look-ahead window. We adopt 𝑁 = 72 as a compromise between retaining the available candidate set and lim-iting padding and computational cost. Having fixed 𝑁 , the number of inducing points was tested over 𝑀 = 8, 12 , 16 , 20 , 24 , 28 , 32 for a one year schedule. The smallest value for 𝑀 providing comparable performance, defined by the total reward, was retained for the final architecture. The final baseline policy was trained for 2 , 500 , 000 environment interactions using episodes spanning 3.5 years. PPO hyperparameters are listed in Appendix C. During evaluation, actions are selected de-terministically using the highest probability valid action. All models were trained on a MacBook Pro with an Apple M3 processor using the PyTorch MPS backend; despite the lack of dedicated high perfor-mance accelerator hardware, the models could be trained effectively on a standard consumer machine. On the same Apple M3 hardware, training the final baseline policy required approximately 15 hours. Once trained, deterministic generation of a complete 3.5-year episode required 20 s (across 200 sample runs). Only a single training seed (42) is reported in this work, and the results therefore characterise this learned policy rather than the variance of PPO training. 
+
+4 RESULTS 
+
+We benchmark the RL ISAB policy against a series of baseline and heuristic policies defined below: 
+
+• Random Action: This policy selects a random planet from the list of available exoplanets in the action space. This provides a simple baseline against which the other policies can be compared. 
+
+• Next Available: This policy selects the target that is next to become available for observation, regardless of its tier or system parameters. 
+
+• Greedy: For a given state, this policy selects the available planet that provides the largest immediate reward. 
+
+• Hill Climb: This policy uses a simple set of weights to score the currently available targets and selects the target with the highest score. The weights determine how strongly different target properties influence this choice. To optimise these weights, the policy first generates a complete mission schedule and records its total reward. The weights are then slightly changed and a new complete schedule is generated. If the new schedule achieves a higher reward, the new weights are retained, otherwise the previous weights are kept. This process is repeated for 100 iterations, after which the best performing set of weights is used for evaluation. Because each trial generates a new schedule through the same environment, the Hill Climb policy is subject to the same available actions and scheduling constraints as the other policies. 
+
+4.1 Competitive Scheduling Across Survey Scenarios 
+
+The five policies are tested across two working scenarios described by the target lists in Section 3.1. MCS Full Mission represents the current candidate sample, while MCS Full Mission + TPC represents a possi-ble future sample containing substantially more targets as further discoveries are made. Tables 3 and 4 show the results for these two scenarios, with bold values indicating the highest value for each metric. Figure 2 provides a visual representation of the principal metrics from the baseline MCS Full Mission experiment, allowing the relative behaviour of the policies to be seen more clearly. The number of individual observations is additionally shown as a diagnostic. Unlike the other quantities, this is not itself used as a measure of survey performance, but helps distinguish policies that obtain similar survey outcomes through different numbers of observing actions. Across MCS Full Mission , the RL policy produces the largest Tier 1 sample, completing 696 targets (85 .5%), while also completing all  
+
+> RASTI 000 , 1–15 (2026)
+
+# aRieL - Exoplanet Observatory Scheduling 7
+
+129 Tier 3 targets and achieving 100% population coverage. As shown in Figure 2, this is achieved while retaining a high observing efficiency of 72 .6%, close to the 74 .2% achieved by Next Available, a policy that is designed to explicitly maximise observational ef-ficiency. The competing policies can perform better on individual metrics, with Next Available completing more Tier 2 targets and more targets overall, but doing so while achieving lower Tier 1 yield and population coverage. The same general behaviour is retained when the candidate popula-tion is expanded in MCS Full Mission + TPC. The RL policy completes 930 Tier 1 targets (65 .2%), compared with 730 (51 .2%) for the next highest policy, while maintaining 98 .7% Tier 3 completion. It also achieves the highest observing efficiency (74 .4%) and population coverage (95 .4%). Hill Climb achieves a higher Tier 2 completion rate (48 .3% compared with 43 .0%), while Next Available completes the largest fraction of targets overall. The relative performance shown in Figure 2 therefore demonstrates that the RL policy does not max-imise a single survey metric, but instead consistently finds a strong compromise across the competing survey objectives. An additional point that is consistent across the experiments is that the Greedy policy is frequently outperformed by the Random policy. This behaviour is likely related to the interaction between the popu-lation and rarity components of the reward function and the strictly local decision making of the Greedy policy. Targets with high imme-diate scientific value can remain attractive even when selecting them requires substantial idle time, leading the Greedy policy to sacrifice observing throughput for locally high reward actions. Its compara-tively low total observation time is consistent with this interpretation. This highlights the difficulty of navigating the multi-objective reward function using only immediate reward and provides a useful contrast with the longer horizon optimisation of the RL policy. 
+
+4.2 Population Diversity 
+
+Ariel aims to observe a population spanning a broad range of plane-tary and stellar properties rather than concentrating only on the most readily observable targets. Population coverage is therefore included directly within the reward, with a population bin considered covered once at least one target within that radius, equilibrium temperature and stellar class has completed Tier 1. The coverage metric used in Figure 2 and Tables 3–6 is a summary of the population binning from the reward function described in Table 2. A population bin is considered covered once at least one target within that bin has completed Tier 1. If B denotes the set of occupied population bins, the reported coverage is therefore 
+
+𝐶 = 1
+
+|B| ∑︁ 𝑏 ∈ B 
+
+I 𝑁 T1  
+
+> 𝑏
+
+> 0 , (18) where 𝑁 T1  
+
+> 𝑏
+
+is the number of Tier 1-complete targets in population bin 𝑏 .Within the simplified population grid adopted in this work, the RL policy maintains strong coverage while simultaneously producing the largest Tier 1 sample. For MCS Full Mission , the RL policy reaches 100% coverage while completing 696 Tier 1 targets, compared with a maximum coverage of 96 .4% for the competing policies. When the target population is expanded, the RL policy still achieves the highest coverage at 95 .4%, while increasing its Tier 1 sample to 930 targets. For clarity, Figure 3 shows the three policies with the highest coverage metric, the RL policy, Greedy and Hill Climb optimisa-tion baselines, providing a more detailed view of how their Tier 1 samples are distributed through the adopted population space. The RL policy does not obtain its larger Tier 1 sample simply by con-centrating observations within the most highly populated regions. Instead, observations remain distributed across both common and comparatively sparsely populated classes. This allows the policy to increase the total Tier 1 yield while retaining broad coverage of the available population. For a full feature space plot, Figure E1 in Fig-ure E1 in Appendix E additionally compares the planetary feature space sampled by the RL, Hill Climb and Greedy policies. 
+
+4.3 Reward Adaptation 
+
+We next test to what extent the behaviour of the RL policy can be altered through changes to the reward function. Three additional agents are trained over one year episodes to reduce the overall com-putational cost of this experiment, with reward structures designed to favour Tier 1 completion, Tier 2 completion, and reduced idle and slew time respectively. The baseline policies are evaluated over the same one-year horizon for comparison. The resulting policies show clear differences in their observing strategies. Increasing the Tier 1 reward raises Tier 1 completion from 58 .7% for the default RL policy to 64 .4%, but reduces Tier 3 completion from 99 .2% to 46 .5%. Similarly, the Tier 2 focused pol-icy increases Tier 2 completion from 26 .5% to 36 .2% and increases total target completion from 17 .3% to 24 .7%, but reduces Tier 1 completion and population coverage to 30 .8% and 53 .3% respec-tively. The policy designed to reduce idle and slew time produces a different trade-off. Its observing efficiency of 73 .0% is similar to the 74 .0% achieved by the default policy, but its Tier 1 completion increases to 65 .4% while Tier 3 completion falls to 65 .1%. The effect of changing the reward is therefore not limited to the metric being directly targeted. Instead, altering the reward changes how observing time is distributed across the survey, demonstrating that the learned strategy can be steered towards different scientific priorities while also highlighting the coupling between competing objectives. 
+
+4.4 Impact of Repeated Tier 3 Observations 
+
+Tier 3 is intended to provide repeated observations of selected bench-mark targets, including the study of temporal atmospheric variability. The exact cadence of these observations is not fixed by the schedul-ing model considered here. We therefore construct a deliberately demanding hypothetical scenario, MCS T3 Repeats , in which Tier 3 progress is reset on an annual basis. This allows us to examine both the survey level cost of repeated Tier 3 completion and whether the RL policy can adapt to a modified scheduling problem without retraining. In MCS T3 Repeats , all Tier 3 progress and associated reward check-points are reset at the beginning of each year. The RL policy is eval-uated directly using the policy trained on the baseline MCS Full Mission 
+
+scenario, while the Hill Climb policy is refitted under the new con-ditions. Despite not being trained for repeated Tier 3 observations, the RL policy completes 128 of the 129 Tier 3 targets in the first year (99 .2%) and 127 targets in both subsequent years (98 .4%). The small number of missed Tier 3 targets do not show an obvious com-mon physical characteristic, although they tend to have longer orbital periods than the wider Tier 3 sample. At the same time, it retains the largest Tier 1 sample, completing 553 targets (67 .9%), and achieves the highest population coverage at 89 .3%. Its observing efficiency of 70 .4% is also within 0 .4 percentage points of the highest-performing Next Available policy.  
+
+> RASTI 000 , 1–15 (2026)
+
+# 8 James Kostas Ray et al. 
+
+Figure 2. Visual comparison of policy performance for the baseline MCS Full Mission experiment. The panels show Tier 1, Tier 2 and Tier 3 completion, population coverage, observing efficiency, and the total number of individual observations. The observation count is included as a diagnostic of policy behaviour rather than as a direct measure of survey performance. ISAB denotes the RL Set Transformer policy. Full numerical results are given in Table 3, with the expanded-catalogue results reported separately in Table 4. 
+
+Figure 3. Tier 1 sampling across planet radius and equilibrium temperature classes after three years for the three selected policies. Each cell gives the number of targets completed to Tier 1 relative to the number available in that class, while the shading represents the corresponding completion fraction. This provides a two-dimensional projection of the population structure used by the reward, for which the full coverage metric additionally includes stellar class. A more even distribution indicates that increased Tier 1 yield has not been achieved solely by concentrating observations within the most highly populated classes. 
+
+Comparing MCS T3 Repeats directly with the baseline MCS Full Mission 
+
+scenario shows the wider survey cost of imposing these revisits. For the RL policy, Tier 1 completion falls from 85 .5% to 67 .9%, while Tier 2 completion falls from 55 .6% to 37 .7%, corresponding to de-creases of 17.6 and 17.9 percentage points respectively. Population coverage also decreases from 100% to 89 .3%. In contrast, observing efficiency changes only slightly, from 72 .6% to 70 .4%. The repeated Tier 3 requirement therefore primarily changes how the available observing time is distributed rather than substantially reducing the fraction of the mission spent observing. Maintaining near-complete annual Tier 3 coverage comes at the cost of approximately 18 per-centage points in both Tier 1 and Tier 2 completion, which represents 
+
+RASTI 000 , 1–15 (2026) aRieL - Exoplanet Observatory Scheduling 9
+
+an important survey-level trade-off if repeated Tier 3 observations are adopted. 
+
+5 DISCUSSION 
+
+This section discusses limitations and interpretations of the RL policy and its actions, together with possible extensions of the framework and simplifications of the current environment. 
+
+5.1 Comparison with Existing Ariel Scheduling Methods 
+
+Previous Ariel scheduling studies have used a range of heuristic, evo-lutionary and metaheuristic optimisation approaches (Garcia-Piquer et al. 2015; Morales et al. 2015, 2022; Nakhjiri et al. 2023, 2024). Direct quantitative comparison between these approaches is diffi-cult, as the studies adopt different target samples, mission dynamics, constraints and optimisation objectives. The formulation considered here differs from these previous studies, with the primary objective being to investigate whether a learned sequential policy can provide an effective and flexible approach to Ariel scheduling. One impor-tant difference is the degree of oversubscription: the target sample adopted in the previous studies requires approximately 70% of the projected mission time, whereas the MCS used here requires 144%. However, they account for many of the observational nuances, such as taking into account calibration, station keeping and the field of view at L2. It would be possible to train a policy that is robust to such effects by including them in the environment, however, this would take more training as this would increase the state space complexity. Consequently, the results reported here should not be interpreted as a direct performance comparison with these schedulers. The dis-tinction explored in this work is methodological: rather than itera-tively constructing and repairing a complete mission schedule, the RL agent learns a policy that maps the current mission state and available observation opportunities directly to the next target selec-tion. Its objective additionally incorporates population coverage and target rarity alongside tier progress and observing efficiency. A direct quantitative comparison would require all methods to be evaluated using the same target catalogue, objective function and operational constraints. 
+
+5.2 Discounting Bias – 𝛾 
+
+Referring back to Equation 4, the discount factor 𝛾 determines how strongly rewards received at later timesteps contribute to the total re-turn. In RL environments where each timestep corresponds to a fixed amount of elapsed time, this provides a consistent way of balancing immediate and longer term objectives. For the scheduling problem considered here, however, fixed dura-tion timesteps are not appropriate. Observation durations are target dependent, and the environment advances according to both the dura-tion of the selected observation and the time required to complete the relevant observational tier. Consequently, successive actions can cor-respond to substantially different amounts of physical time. A fixed value of 𝛾 therefore discounts rewards according to the number of decisions made rather than the actual time elapsed. This introduces a decision step dependent bias, since two trajectories spanning a similar amount of mission time can experience different levels of discount-ing purely because they contain different numbers of decision steps. In this setting, this can favour trajectories containing fewer, longer duration actions when their rewards are otherwise comparable. This bias does not undermine the demonstration of RL as a suit-able approach for scheduling, but it does represent a limitation of the results presented here. In particular, the learned policy may be influenced not only by the scientific reward associated with a sched-ule, but also by the number and duration of the actions required to construct it. One solution would be to scale the effective discount factor with the elapsed time between decisions, for example using a duration-dependent term such as 𝛾 Δ𝑡 /𝜏 . However, the standard Stable-Baselines3 implementation assumes a fixed discount factor between environment steps. Implementing time dependent discounting would therefore require modification of the RL backend or a custom imple-mentation. As the aim of this work is to demonstrate the potential of RL for this scheduling problem, such an extension is left for future work. 
+
+5.3 Stellar Variability 
+
+A further source of uncertainty not considered in this work is stellar variability. The impact of stellar activity on an individual observa-tion is not necessarily known prior to observation and may reduce the quality of the resulting data. Explicitly modeling this variability would introduce additional complexity and computational cost to the environment and is beyond the scope of this work, which primarily aims to demonstrate the suitability of RL for the scheduling problem. From an RL perspective, however, this effect could be incorporated to first order without modeling the underlying stellar variability it-self. Each completed observation could instead be assigned a quality factor, 𝑞 𝑡 ∈ [ 0, 1], which scales its contribution towards completion of the corresponding observational tier, 
+
+Δ𝑐 𝑡 = 𝑞 𝑡 Δ𝑐 nom , (19) where Δ𝑐 nom is the nominal progress expected from the observation. An observation expected to provide 40% of the required Tier 1 signal, for example, would contribute only 20% if 𝑞 𝑡 = 0.5. The resulting completion state would then be provided to the agent at the follow-ing decision step. Importantly, the agent need not know this quality factor when selecting the observation if the variability is not known beforehand. The observation therefore remains a valid action, but its realised contribution is determined after it has been performed. In the current implementation this is equivalent to assuming 𝑞 𝑡 = 1 for every observation. Introducing 𝑞 𝑡 < 1 would primarily increase the number of observations required to complete some targets, delay-ing associated tier-completion rewards and changing their effective observational cost. If stellar activity constraints are known prior to an observation e.g. through long term photometric monitoring indi-cating that the star is approaching activity minima or maxima, RL offers the flexibility to prioritise or deprioritise the target accord-ingly. In the case of a scientifically valuable target approaching an activity minimum, the reward could be inflated to expedite its obser-vation. Conversely, if detrimentally high activity is predicted towards activity maximum, the corresponding opportunity could simply be removed from the valid action set at this time. Such extensions would therefore allow observational uncertainty from stellar variability to be represented naturally within the existing RL framework without requiring the agent to predict the stellar behaviour itself. 
+
+5.4 Action Analysis 
+
+Over the lifetime of the observatory in this fixed episodic seed our RL agent makes 3679 observations corresponding to the same number  
+
+> RASTI 000 , 1–15 (2026)
+
+# 10 James Kostas Ray et al. 
+
+Random Next Available Greedy Hill Climb RL ISAB Tier Max N % N % N % N % N %Tier 1 814 526 64.6 631 77.5 470 57.7 485 59.6 696 85.5 
+
+Tier 2 550 249 45.3 392 71.3 216 39.3 368 66.9 306 55.6 Tier 3 129 117 90.7 111 86.0 69 53.5 125 96.9 129 100.0 
+
+Total 814 318 39.1 569 69.9 344 42.3 461 56.6 452 55.5 Obs. time – – 47.0 – 74.2 – 39.9 – 55.0 – 72.6 Coverage – – 78.6 – 89.3 – 96.4 – 96.4 – 100.0 
+
+Mean rank – 4.00 2.17 4.42 2.58 1.83 Table 3. MCS Full Mission . Performance of the five scheduling policies over the baseline full-mission target sample. 𝑁 gives the number of targets completed to each tier and the corresponding percentage is relative to the maximum available sample. Obs. time denotes the fraction of the mission spent within scheduled exoplanet observation blocks, irrespective of whether the corresponding target ultimately reaches Tier 1. It is therefore an internal utilisation metric and is not directly equivalent to the completed-target observing time reported by operational Ariel schedulers. Bold values indicate the highest value in each row. Mean rank gives the average rank across all reported performance metrics, where a rank of 1 denotes the best-performing policy; tied values are assigned their average rank. Random Next Available Greedy Hill Climb RL ISAB Tier Max N % N % N % N % N %Tier 1 1427 662 46.4 730 51.2 630 44.1 480 33.6 930 65.2 
+
+Tier 2 817 250 30.6 322 39.4 215 26.3 395 48.3 351 43.0 Tier 3 155 116 74.8 77 49.7 70 45.2 152 98.1 153 98.7 
+
+Total 1427 338 23.7 620 43.4 423 29.6 424 29.7 474 33.2 Obs. time – – 53.6 – 72.0 – 46.2 – 67.5 – 74.4 
+
+Coverage – – 72.3 – 84.6 – 92.3 – 89.2 – 95.4 
+
+Mean rank – 4.00 2.67 4.17 2.83 1.33 Table 4. MCS Full Mission + TPC. Performance of the five scheduling policies for the expanded target population containing additional TESS Planet Candidates. Metrics are defined as in Table 3, with bold values indicating the highest value in each row. Random Next Available Greedy Hill Climb RL Default RL T1 RL T2 RL Idle Tier Max N % N % N % N % N % N % N % N %Tier 1 814 277 34.0 281 34.5 207 25.4 264 32.4 478 58.7 524 64.4 251 30.8 532 65.4 
+
+Tier 2 550 91 16.5 115 20.9 61 11.1 235 42.7 146 26.5 134 24.4 199 36.2 137 24.9 Tier 3 129 61 47.3 36 27.9 21 16.3 57 44.2 128 99.2 60 46.5 126 97.7 84 65.1 Total 814 105 12.9 218 26.8 122 15.0 250 30.7 141 17.3 68 8.4 201 24.7 96 11.8 Obs. time – – 53.7 – 66.2 – 41.5 – 61.2 – 74.0 – 65.6 – 65.5 – 73.0 
+
+Coverage – – 51.7 – 70.0 – 71.7 – 58.3 – 65.0 – 65.0 – 53.3 – 66.7 Mean rank – 6.17 4.00 6.33 4.33 2.75 4.75 4.33 3.33 Table 5. MCS 1 Year . One-year comparison of the baseline policies and RL policies trained using different reward priorities. RL Default uses the baseline reward structure, while RL T1, RL T2 and RL Idle increase the relative importance of Tier 1 completion, Tier 2 completion, and reducing idle and slew time respectively. Bold values indicate the highest two values in each row. Random Next Available Greedy Hill Climb RL ISAB Tier Max N % N % N % N % N %Tier 1 814 375 46.1 432 53.1 316 38.8 262 32.2 553 67.9 
+
+Tier 2 550 134 24.4 233 42.4 118 21.4 212 38.5 207 37.7 Tier 3 (Y1) 129 58 45.0 44 34.1 22 17.1 125 96.9 128 99.2 
+
+Tier 3 (Y2) 129 58 45.0 72 55.8 33 25.6 127 98.4 127 98.4 
+
+Tier 3 (Y3) 129 75 58.1 91 70.5 44 34.1 127 98.4 127 98.4 
+
+Total 814 162 19.9 358 44.0 209 25.7 235 28.9 252 31.0 Obs. time – – 50.2 – 70.8 – 41.0 – 48.7 – 70.4 Coverage – – 62.5 – 82.7 – 85.1 – 83.9 – 89.3 
+
+Mean rank – 3.88 2.38 4.38 2.75 1.63 Table 6. MCS T3 Repeats . Performance when Tier 3 progress is reset at the beginning of each mission year, requiring the Tier 3 sample to be revisited annually. Tier 3 (Y1–Y3) gives the number of targets completed during each yearly cycle. The RL ISAB policy is evaluated without retraining, while Hill Climb is refitted for this scenario. Bold values indicate the highest value in each row. RASTI 000 , 1–15 (2026) aRieL - Exoplanet Observatory Scheduling 11 
+
+Figure 4. Action trails over the first (top) and third (bottom) year taken by the agent. Binned actions are colour coded. Thin more transparent trails indicate earlier regions in the same bin with observations being highlighted by points with small progress circles also colour coded by their tiers. RASTI 000 , 1–15 (2026) 12 James Kostas Ray et al. 
+
+of actions. While it’s not possible to scrutinise the full action space of the model, it’s possible to interpret the actions based on Figure 2. Additionally, a sample of actions can be visually represented with trails of slew and target locations and progress, as shown in Figure 4. This would suggest the strategy adopted by the agent revolves around completing the Tier 3 targets relatively early (full action list in Appendix D) as they are the highest signal to noise and yield rewards for relatively little observational time as a result. These targets can very quickly be promoted between tiers so the agent has exploited these objects as valuable and reliable observations. This is likely why most agents, unless explicitly tasked otherwise, reach very high completion levels in the first year of observing as shown in Table 5. The exceptions being the T1-focused agent and the agent designed to minimise idle time. There does appear to be a complex relationship between minimising slew and idle time while trying to maximise the various tiered observations. For example, again in Table 5, the Default RL policy and the Minimise Idle Time RL policy have very similar scientific efficiency (observing time) while the ratio between the T1 and T3 observations are inverted, while the agent designed to maximise T1 observation spends less total time observing. 
+
+5.5 Observation Completeness 
+
+The policies differ substantially in how they distribute incomplete observations. Within the 550 Tier 2 targets, the RL policy observes every target and brings all of them to at least Tier 1, completing 306 to Tier 2 and leaving the remaining 244 at Tier 1. In contrast, Next Available and Hill Climb leave 88 and 156 Tier 2 targets unobserved, respectively, but complete Tier 2 for 392 and 368 targets. The resulting incompleteness therefore reflects different schedul-ing strategies. The RL policy spends no observing time on Tier 2 targets that subsequently fail to reach Tier 1, but spends 120.9 d pro-gressing Tier 1-complete targets that do not ultimately reach Tier 2. Other policies are more selective in which targets they begin, par-ticularly Hill Climb, which spends only 12.3 d on such incomplete post-Tier 1 progress. This highlights a trade off between broad Tier 1 coverage of the candidate population and concentrating observations sufficiently to complete deeper tiers. The total share of observation time spent on incomplete targets ends up as ∼ 12% for the RL policy, with the Hill Climb policy being ∼ 3% of observation time and the remaining policies sitting at 7 − 15%. This should all be taken in the context of the total number of observations made by each policy and the total mission time spent observing. 
+
+5.6 Stochastic Policy Sampling 
+
+During the evaluations presented here, the RL policy is executed deterministically by selecting the valid action with the highest prob-ability at each decision step. The policy itself is stochastic, however, and alternative valid actions can instead be sampled from 𝜋 𝜃 (𝑎 |𝑠 ).Sampling in this way provides a simple means of generating mul-tiple possible observing trajectories from the same learned policy. These trajectories could be used to examine how sensitive the result-ing survey is to alternative choices in states where several actions have similar policy probabilities. The probabilities themselves should not, however, be interpreted directly as calibrated uncertainty estimates. A more complete treatment of policy uncertainty would require ap-proaches such as independent policy ensembles or repeated training runs. 
+
+5.7 Integrating Target Selection with Scheduling 
+
+Within Ariel, target selection and observation scheduling are cur-rently treated as separate problems. In this work, the scheduling problem is considered for a fixed, predetermined MCS. However, the rapid inference of a trained RL policy provides a natural route to coupling these processes. Candidate target lists could be generated under different scientific priorities and passed directly to the sched-uler, allowing their schedulability and resulting science return to be assessed under a common objective. Under this framework, target se-lection and scheduling could instead be optimised jointly, such that the composition of the target sample is informed by its downstream observational feasibility. Such an approach could be valuable for exploring how alternative science requirements, tier allocations, or target selection strategies affect the achievable Ariel survey. Rather than assessing candidate samples only from their intrinsic value, the RL scheduler could pro-vide a rapid estimate of how effectively each sample can be realised under the mission’s observational constraints. A necessary step before such an extension would be to establish that the RL policy generalises reliably across target populations that differ from those encountered during training. This would require systematic testing across perturbed or independently generated target catalogues, including changes in population balance, observation duration, visibility structure, and tier allocation. Demonstrating this robustness would allow the scheduler to act as a reusable component within future target selection studies, rather than requiring retraining for each candidate survey. 
+
+6 CONCLUSIONS 
+
+This work has sought to showcase how RL can be used to assist with the Ariel space telescope scheduling task, and telescope schedul-ing more generally. The full aRieL environment is publicly released alongside this paper. By combining a simulated Ariel observing en-vironment with a Set Transformer PPO policy, we have demonstrated that long-horizon target selection can be formulated as a learnable sequential decision problem in which the agent accounts for both the properties of individual observation opportunities and the evolving state of the wider survey. Across the deterministic mission scenarios considered, the learned policy remains competitive with, and across several objectives out-performs, the heuristic and hand-crafted baselines tested. In particu-lar, the RL policy consistently produces large Tier 1 samples, popula-tion coverage and observing efficiency, while being near-complete for Tier 3 targets. This behaviour is retained when the target population is substantially expanded. Rather than dominating every individual metric, the RL policy generally finds a strong compromise between the competing objectives of the survey. A key advantage of the framework is that these objectives can be modified without changing the underlying environment or policy architecture. Altering the relative rewards associated with the ob-servational tiers and non-observing time produces correspondingly different scheduling strategies, demonstrating that the learned policy can be steered towards different scientific priorities. These changes also expose the trade-offs between objectives, with improvements in one part of the survey generally redistributing observing time away from others. The repeated Tier 3 experiment provides a further ex-ample of this behaviour: a policy trained on the baseline mission scenario is able to generalise without retraining to annual Tier 3 revisits, still maintaining near-complete Tier 3 coverage while re-vealing the resulting reduction in the wider Tier 1 and Tier 2 survey.  
+
+> RASTI 000 , 1–15 (2026)
+
+# aRieL - Exoplanet Observatory Scheduling 13 
+
+This demonstrates how the framework can be used not only to gen-erate schedules, but also to explore the consequences of alternative observing strategies. These results motivate further exploration of reinforcement learning for astronomical telescope scheduling, with Set Transformer architectures providing a natural choice when can-didate observations can be represented as unordered sets of objects of interest. These results do not establish a globally optimal Ariel schedule, nor is the purpose of these experiments to identify a preferred Ariel reward function. Instead, they demonstrate that reinforcement learn-ing provides a viable and flexible approach for optimising towards different scientific priorities as those priorities are specified. The Set Transformer architecture provides a natural representation for the changing set of available targets, while the RL formulation allows the longer term consequences of individual observations to influence target selection. This flexibility comes with a greater computational cost during training, and further work is required to establish gen-eralisation across a broader range of mission futures, incorporate observational uncertainty, and compare against more extensively op-timised scheduling methods. Nevertheless, the results presented here demonstrate that Ariel scheduling can be treated as a flexible, learn-able optimisation problem in which the resulting observing strategy responds directly to the scientific objectives and operational con-straints imposed on the agent. 
+
+ACKNOWLEDGEMENTS 
+
+James Kostas Ray acknowledges support from the STFC UCL Cen-tre for Doctoral Training in Data Intensive Science for Physics and Astronomy. The programme (and specifically Dr. Gabriel Facini) provided the opportunity to undertake an industry placement with Mission Zero Technologies, where the application of reinforcement learning informed the methods used in this work. A.T. acknowledges support from the ASI-INAF agreement 2021-5-HH.2-2024. We would like to acknowledge the helpful feedback from the Ariel Consortium, which has improved the quality of this work. 
+
+DATA AVAILABILITY 
+
+The aRieL simulation environment, trained-policy configuration files, and scripts required to reproduce the experiments presented in this work are available at https://github.com/Sympanda/ aRieL . The Ariel Mission Candidate Sample used in the experiments is derived from the publicly available Ariel Mission Candidate Sam-ple repository, with the exact catalogue version and commit recorded in Section 3.1. 
+
+AI DECLARATION 
+
+Large language models (LLMs) were used during software devel-opment to assist with debugging and the generation of tests. The publicly released code was subsequently refactored with LLM assis-tance to improve readability, maintainability, and usability. During preparation of the manuscript, LLMs were used to assist with sen-tence restructuring, grammar, and the drafting and formatting of tables and equations. 
+
+REFERENCES 
+
+Barto, A. G., 2021. Reinforcement learning: An introduction. by richard’s sutton, SIAM Rev , 6(2), 423. Barto, A. G., Sutton, R. S., & Anderson, C. W., 1983. Neuronlike adap-tive elements that can solve difficult learning control problems, IEEE transactions on systems, man, and cybernetics , (5), 834–846. De Asis, K., Hernandez-Garcia, J., Holland, G., & Sutton, R., 2018. Multi-step reinforcement learning: A unifying algorithm, in Proceedings of the AAAI conference on artificial intelligence , vol. 32. Edwards, B. & Tinetti, G., 2022. The ariel target list: the impact of tess and the potential for characterizing multiple planets within a system, The Astronomical Journal , 164 (1), 15. Edwards, B., Mugnai, L., Tinetti, G., Pascale, E., & Sarkar, S., 2019. An updated study of potential targets for ariel, The Astronomical Journal ,
+
+157 (6), 242. Garcia-Piquer, A., Ribas, I., & Colomé, J., 2015. Artificial intelligence for the echo mission planning tool, Experimental Astronomy , 40 (2), 671–694. Jia, P., Jia, Q., Jiang, T., & Liu, J., 2023a. Observation strategy optimization for distributed telescope arrays with deep reinforcement learning, The Astronomical Journal , 165 (6), 233. Jia, P., Jia, Q., Jiang, T., & Yang, Z., 2023b. A simulation framework for telescope array and its application in distributed reinforcement learning-based scheduling of telescope arrays, Astronomy and Computing , 44 ,100732. Landman, R., Haffert, S. Y., Radhakrishnan, V. M., & Keller, C. U., 2021. Self-optimizing adaptive optics control with reinforcement learning for high-contrast imaging, Journal of Astronomical Telescopes, Instruments, and Systems , 7(3), 039002–039002. Lee, J., Lee, Y., Kim, J., Kosiorek, A., Choi, S., & Teh, Y. W., 2019. Set transformer: A framework for attention-based permutation-invariant neu-ral networks, in International conference on machine learning , pp. 3744– 3753, PMLR. Morales, J., Beaulieu, J.-P., Coudé du Foresto, V., Ollivier, M., Castello, I. O., Clédassou, R., Jaubert, J., Van-Troostenberghe, P., Varley, R., Waldmann, I., et al., 2015. Scheduling the echo survey with known exoplanets, 
+
+Experimental Astronomy , 40 (2), 655–670. Morales, J. C., Nakhjiri, N., Colomé, J., Ribas, I., García, E., Moreno, D., & Vilardell, F., 2022. Ariel mission planning: Scheduling the survey of a thousand exoplanets, Experimental Astronomy , 53 (2), 807–829. Nakhjiri, N., Salamó, M., Sànchez-Marrè, M., & Morales, J. C., 2023. Ahybrid multi-start metaheuristic scheduler for astronomical observations, 
+
+Engineering Applications of Artificial Intelligence , 126 , 106856. Nakhjiri, N., Salamó, M., Sànchez-Marrè, M., Blum, C., & Morales, J. C., 2024. Forgetful swarm optimization for astronomical observation scheduling, IEEE Access , 12 , 171644–171661. Puangragsa, S., Sahavisit, T., Laon, P., Puangragsa, U., & Phasukkit, P., 2025. Implementation of deep reinforcement learning for radio telescope control and scheduling, Galaxies , 13 (6), 137. Raffin, A., Hill, A., Gleave, A., Kanervisto, A., Ernestus, M., & Dormann, N., 2021. Stable-baselines3: Reliable reinforcement learning implemen-tations, Journal of machine learning research , 22 (268), 1–8. Schulman, J., Wolski, F., Dhariwal, P., Radford, A., & Klimov, O., 2017. Prox-imal policy optimization algorithms, arXiv preprint arXiv:1707.06347 .Terranova, F., Voetberg, M., Nord, B., & Pagul, A., 2023. Self-driving tele-scopes: autonomous scheduling of astronomical observation campaigns with offline reinforcement learning, arXiv preprint arXiv:2311.18094 .Tinetti, G., Eccleston, P., Haswell, C., Lagage, P.-O., Leconte, J., Lüftinger, T., Micela, G., Min, M., Pilbratt, G., Puig, L., et al., 2020. Ariel: Enabling planetary science across light-years. Yatawatta, S. & Avruch, I. M., 2021. Deep reinforcement learning for smart calibration of radio telescopes, Monthly Notices of the Royal Astronomical Society , 505 (2), 2141–2150. Zhang, Y., Yu, C., Sun, C., Wei, J., Ju, J., & Tang, S., 2025. Solving online resource-constrained scheduling for follow-up observation in astronomy: A reinforcement learning approach, Future Generation Computer Sys-tems , 169 , 107781. RASTI 000 , 1–15 (2026) 14 James Kostas Ray et al. 
+
+APPENDIX A: OBSERVATION ENCODING 
+
+The agent observes a permutation invariant set of planet tokens to-gether with a mission level summary vector. Each active target con-tributes one token of 28 features: 11 static quantities that do not change during an episode (physical properties, assigned tier, rar-ity weight, preferred method, and host multiplicity) and 17 dynamic quantities that are recomputed at every step (tier progress, immediate scheduling quality of the first reachable event, and a short lookahead of future opportunities). Tokens for completed or padded slots are zero and are masked out of attention. The global vector comprises nine named mission scalars (elapsed time, tier coverage, time-use breakdown, and completion counts) plus one coverage coordinate per sufficiently large population bin. All coordinates are scaled in the environment before they enter the network. Fractions that are already in [0, 1] are left unchanged; remaining features are divided by a fixed physical scale (for example 20 𝑅 ⊕ , 3000 K, or a 2 h slew cap) and then clipped, to [− 3, 3] for planet features and [0, 1] for the global vector. The policy therefore receives pre normalised inputs; its first layers are linear maps of these encoded values. Tables A1–A3 list every coordinate, its scale, and the range seen by the network. 
+
+APPENDIX B: FULL SET TRANSFORMER POLICY MATHEMATICS 
+
+At each decision step 𝑡 , the currently active target catalogue is rep-resented as an unordered set of 𝑁 𝑡 planets. Each planet is described by a feature vector of dimension 𝐹 , giving the input set 
+
+𝑋 𝑡 ∈ R𝑁 𝑡 ×𝐹 . (B1) The raw planet features are first projected into a common latent space using a shared embedding network, 
+
+𝑍 (0) 
+
+> 𝑡
+
+= 𝜙 emb (𝑋 𝑡 ), 𝑍 (0) 
+
+> 𝑡
+
+∈ R𝑁 𝑡 ×𝑑 , (B2) where each row 𝑧 (0) 
+
+> 𝑡 ,𝑖
+
+∈ R𝑑 corresponds to the latent representation of a single planet. Since the same embedding is applied independently to every target, no ordering of the planet catalogue is imposed. At this stage, however, each latent token primarily represents the properties of its own planet. The Set Transformer encoder is therefore used to contextualise each token with respect to the complete set of available targets. The encoder is constructed from 𝐿 Induced Set Attention Blocks (ISABs). Each ISAB layer ℓ contains a learned set of 𝑀 inducing points, 
+
+𝐼 (ℓ ) ∈ R𝑀 ×𝑑 , ℓ = 1, . . . , 𝐿. (B3) The inducing points provide an intermediate communication bot-tleneck between the 𝑁 𝑡 planet tokens. Each ISAB consists of two multi-head attention blocks (MABs). For a generic block MAB ( 𝐴, 𝐵 ), (B4) the first argument provides the queries, while the second provides the keys and values, 
+
+𝑄 = 𝐴𝑊 𝑄 , 𝐾 = 𝐵𝑊 𝐾 , 𝑉 = 𝐵𝑊 𝑉 . (B5) with the attention operation given by Attn (𝑄, 𝐾, 𝑉 ) = softmax 
+
+ 𝑄𝐾 ⊤
+
+√𝑑 ℎ
+
+
+
+𝑉 . (B6) Thus, the first argument of the MAB determines which tokens are being updated, while the second argument supplies the information that those tokens attend to. Within the first stage of ISAB layer ℓ, the inducing points query the complete set of planet representations, 
+
+𝐻 (ℓ ) 
+
+> 𝑡
+
+= MAB (ℓ )
+
+> 1
+
+
+
+𝐼 (ℓ ) , 𝑍 (ℓ −1)
+
+> 𝑡
+
+
+
+, 𝐻 (ℓ ) 
+
+> 𝑡
+
+∈ R𝑀 ×𝑑 . (B7) In this attention operation, 
+
+𝑄 ← 𝐼 (ℓ ) , 𝐾, 𝑉 ← 𝑍 (ℓ −1) 
+
+> 𝑡
+
+. (B8) The resulting 𝐻 (ℓ ) 
+
+> 𝑡
+
+therefore forms a compact, population-dependent representation of the complete target set. The direction of attention is then reversed in the second stage. The planet tokens now act as queries, while the induced representation provides the keys and values, 
+
+𝑍 (ℓ ) 
+
+> 𝑡
+
+= MAB (ℓ )
+
+> 2
+
+
+
+𝑍 (ℓ −1) 
+
+> 𝑡
+
+, 𝐻 (ℓ )
+
+> 𝑡
+
+
+
+, 𝑍 (ℓ ) 
+
+> 𝑡
+
+∈ R𝑁 𝑡 ×𝑑 , (B9) such that 
+
+𝑄 ← 𝑍 (ℓ −1) 
+
+> 𝑡
+
+, 𝐾, 𝑉 ← 𝐻 (ℓ ) 
+
+> 𝑡
+
+. (B10) Hence, the two attention operations can be viewed as 
+
+𝑍 (ℓ −1)     
+
+> 𝑡 𝐼 (ℓ)queries 𝑍 (ℓ−1)
+> 𝑡
+
+−−−−−−−−−−−−−−−−→ 𝐻 (ℓ )     
+
+> 𝑡 𝑍 (ℓ−1)
+> 𝑡 queries 𝐻 (ℓ)
+> 𝑡
+
+−−−−−−−−−−−−−−−−−→ 𝑍 (ℓ ) 
+
+> 𝑡
+
+. (B11) The query and key–value roles are therefore exchanged between the two stages. First the inducing points query the planets, and then the planets query the induced representation. Importantly, the keys and values themselves are not interchanged; rather, the source of the query and the source of the key–value pairs are reversed. After 𝐿 ISAB layers, the final encoder output is 
+
+𝑍 𝑡 = 𝑍 (𝐿 ) 
+
+> 𝑡
+
+=
+
+
+
+𝑧 ⊤
+
+> 𝑡 , 1
+
+...𝑧 ⊤
+
+> 𝑡 , 𝑁 𝑡
+
+
+
+∈ R𝑁 𝑡 ×𝑑 . (B12) Each final latent vector 𝑧 𝑡 ,𝑖 therefore represents planet 𝑖 in the context of the complete currently available target population. These contextualised planet representations are then passed to the reinforce-ment learning actor–critic architecture: the actor retains the individ-ual 𝑧 𝑡 ,𝑖 representations to assign a score to each candidate action, while the critic pools the complete set 𝑍 𝑡 into a single mission-level representation before estimating the value of the current state. After the final ISAB layer, each candidate system is represented by a contextualised latent vector z𝑡 ,𝑖 . These representations are used differently by the actor and critic to reflect their respective roles within PPO. The actor retains the individual candidate representations, since each planetary system corresponds directly to a possible action. The global mission representation g𝑡 is concatenated with each candidate token and passed through a shared actor network, 
+
+ℓ𝑡 ,𝑖 = 𝑓 actor 
+
+ [z𝑡 ,𝑖 ∥g𝑡 ] , (B13) where ℓ𝑡 ,𝑖 is the action logit associated with candidate 𝑖 and ∥
+
+denotes concatenation. The probability of selecting each valid can-didate is then obtained from the resulting logits, 
+
+𝜋 𝜃 (𝑎 𝑡 = 𝑖 | 𝑜 𝑡 ) = softmax (ℓ𝑡 )𝑖 . (B14) The critic instead estimates the value of the complete mission state and therefore requires a single representation of the candidate  
+
+> RASTI 000 , 1–15 (2026)
+
+# aRieL - Exoplanet Observatory Scheduling 15 
+
+Table A1. Mission global observation vector. One scalar per named feature, plus one extra coordinate per population bin with at least min_bin_targets targets (default 10). All coordinates are clipped to [0, 1] after normalisation. Feature Description Normalisation Range 
+
+fraction_elapsed Fraction of the mission lifetime already elapsed. Already a fraction of mission length. [0, 1]
+
+tier1_fraction Fraction of the live catalogue that has reached Tier 1. 
+
+𝑁 T1 /𝑁 targets . [0, 1]
+
+tier2_fraction Fraction of the live catalogue that has reached Tier 2. 
+
+𝑁 T2 /𝑁 targets . [0, 1]
+
+tier3_fraction Fraction of the live catalogue that has reached Tier 3. 
+
+𝑁 T3 /𝑁 targets . [0, 1]
+
+used_science_fraction Fraction of mission time spent collecting science. 𝑇 science /𝑇 mission . [0, 1]
+
+used_slew_fraction Fraction of mission time spent slewing. 𝑇 slew /𝑇 mission . [0, 1]
+
+used_idle_fraction Fraction of mission time spent idle/waiting. 𝑇 idle /𝑇 mission . [0, 1]
+
+n_observations_norm Cumulative number of observations executed. 𝑁 obs /5000. [0, 1]
+
+n_completed_targets_norm Fraction of targets that have reached max_tier . 𝑁 done /𝑁 targets . [0, 1]
+
+bin_coverage 𝑏 Per-bin Tier-1 coverage (one feature per large population bin). 
+
+𝑁 T1 ,𝑏 /𝑁 𝑏 (normalised per bin, not by catalogue size). 
+
+[0, 1]
+
+Table A2. Static per-planet features (time invariant; cached at episode reset). After normalisation the full planet vector is clipped to [− 3, 3].Feature Description Normalisation Range 
+
+planet_radius_norm Planetary radius. 𝑅 𝑝 /( 20 𝑅 ⊕ ). [0, 3]
+
+planet_mass_norm Planetary mass. 𝑀 𝑝 /( 4000 𝑀 ⊕ ). [0, 3]
+
+planet_temperature_norm Equilibrium temperature. 𝑇 eq /( 3000 K ). [0, 3]
+
+period_norm Orbital period. 𝑃 /( 365 .25 d ). [0, 3]
+
+stellar_temperature_norm Host effective temperature. 𝑇 eff /( 10 4 K). [0, 3]
+
+stellar_metallicity Host metallicity [Fe /H] (missing values filled with 0). clip (𝑍 , −3, 3)/ 1.5 dex. [− 2, 2]
+
+distance_norm Distance to the host. 𝑑 /( 1000 pc ). [0, 3]
+
+tier_goal_norm Highest science tier assigned to the target. max_tier /3. {1/3, 2/3, 1}
+
+science_weight Inverse-frequency rarity weight (floor 0 .3). Already mapped to [floor , 1]. [0.3, 1]
+
+event_type_binary Preferred observing method. 0 transit, 1 eclipse, 0 .5 either. {0, 0.5, 1}
+
+host_multiplicity_norm Number of Ariel targets sharing the same host. min (𝑛 host , 5)/ 5. [0.2, 1]
+
+population. The final set of latent tokens is pooled using Pooling by Multi-head Attention (PMA), 
+
+c𝑡 = PMA (𝑍 𝑡 ), (B15) before being combined with the same global mission information, 
+
+𝑉 𝜙 (𝑜 𝑡 ) = 𝑓 critic ([ c𝑡 ∥g𝑡 ]) . (B16) This structure allows the actor to score individual observation oppor-tunities while allowing the critic to evaluate their collective context and the overall state of the Ariel survey. 
+
+APPENDIX C: PPO TRAINING 
+
+The parameters for the SB3 model used for the ISAB baseline model are shown in Table C1. Figure C1 shows the performance over the training of the model. The final model was trained for 2.5 million timesteps, with each episode spanning the full mission. Training used four parallel en-vironments. The number of completed episodes remains relatively small by RL standards, and the training curves do not show clear convergence across all metrics, suggesting that additional training may continue to alter the learned policy. 
+
+APPENDIX D: FULL ACTION RECORDING 
+
+A recording of the actions and task allocation of the agent is shown here in Figure D1. The time spent is colour coded by tier contribu-tions, idle and slew time. 
+
+APPENDIX E: POPULATION COMPARISON 
+
+We plot the objects observed by the learned policy vs the Greedy and Hill Climb policies in the planetary feature space across temperature, radius and period in Figure E1. The main points to focus on are the objects that exist outside of the main cluster in feature space as these are key to ensure maximum coverage. An undesirable outcome would be to have isolated square points as it would mean part of feature space has been left out. For the most part, the fringes are captured by both models with some exceptions in the upper regions of period-temperature space and period-radii space. 
+
+This paper has been typeset from a TEX/L ATEX file prepared by the author. RASTI 000 , 1–15 (2026) 16 James Kostas Ray et al. 
+
+Table A3. Dynamic per planet features, recomputed each step from mission progress and the first reachable event. After normalisation the full planet vector is clipped to [− 3, 3]. Missing upcoming events are filled with 0 (except Δ𝑡 slots, which saturate at the 1-year cap). Feature Description Normalisation Range 
+
+Progress 
+
+obs_completed_norm Equivalent observations already collected. 𝑁 done /𝑁 T3 ,req (per target). [0, 3]
+
+progress_in_tier Progress toward the next tier boundary. Already a fraction of the current tier. [0, 1]
+
+current_tier_norm Current completed tier. current_tier /3. [0, 1]
+
+obs_remaining_norm Equivalent observations still needed for the next tier. 
+
+𝑁 rem /𝑁 T3 ,req (per target). [0, 3]
+
+Immediate action quality 
+
+capture_fraction_now Fraction of the observation block capturable if selected now. Already a fraction of block duration. [0, 1]
+
+block_currently_active Whether the observation block is open at the current time. Binary indicator. {0, 1}
+
+time_to_block_end_norm Time remaining until the block closes. (𝑡 end − 𝑡 now )/( 10 d ). [0, 3]
+
+idle_if_selected_norm Idle wait if this target is selected now. 𝑡 idle /( 2 h ). [0, 3]
+
+slew_norm Slew time from the current pointing. 𝑡 slew /( 2 h ). [0, 3]
+
+scheduling_slack_norm Timing margin after slew, in units of block du-ration (negative = late arrival). clip ( ( 𝑡 start − 𝑡 arrive )/ 𝑇 block , −1, 10 )/ 10. [− 0.1, 1]
+
+Future opportunities 
+
+dt_next_event_norm Time to the next event midpoint. min (Δ𝑡 1 , 365 .25 d )/( 365 .25 d ). [0, 1]
+
+dt_second_event_norm Time to the second future event. min (Δ𝑡 2 , 365 .25 d )/( 365 .25 d ). [0, 1]
+
+dt_third_event_norm Time to the third future event. min (Δ𝑡 3 , 365 .25 d )/( 365 .25 d ). [0, 1]
+
+block_duration_norm Duration of the next observation block (2 .5 ×
+
+𝑇 14 ). min (𝑇 block , 3 d )/( 3 d ). [0, 1]
+
+ephemeris_uncertainty_norm Epoch timing uncertainty as a fraction of pe-riod. min ( 𝜎 epoch /𝑃, 1). [0, 1]
+
+remaining_opps_mission_norm Remaining events in the mission, relative to the catalogue total. min ( 𝑁 left /𝑁 avail , 1). [0, 1]
+
+remaining_opps_season_norm Remaining events in the next 90 days. min ( 𝑁 90d , 10 )/ 10. [0, 1]
+
+Parameter Value Total training timesteps 2.5 × 10 6
+
+Parallel environments 4Episode duration 1278 .375 d ( ≈ 3.5 yr) Maximum candidate set, 𝑁 72 ISAB inducing points, 𝑀 24 ISAB layers, 𝐿 3Latent dimension, 𝑑 128 Attention heads 4Discount factor, 𝛾 0.999 GAE parameter, 𝜆 0.95 PPO clipping parameter, 𝜖 0.2Learning rate 3 × 10 −4
+
+Rollout length ( 𝑛 steps ) 2048 Batch size 64 PPO epochs per update 10 Entropy coefficient 0.02 Number of random seeds 1 (seed 42) 
+
+Table C1. PPO and Set Transformer hyperparameters used for the final aRieL 
+
+policy. RASTI 000 , 1–15 (2026) aRieL - Exoplanet Observatory Scheduling 17 
+
+Figure C1. Training curves for PPO over 2 million training steps. 
+
+Figure D1. Visualisation of the time spent by the agent coloured coded by the type of activity for the full three and a half life cycle of the Ariel observatory. Shades of blue indicated time spent observing for respective tiers, while red indicated time slewing and grey time idle. Bars are coloured by the target’s tier at the start of each observation, so planets that finish T1 and T2 in one step never show a T2 segment and can appear as T3 work soon after. RASTI 000 , 1–15 (2026) 18 James Kostas Ray et al. 
+
+Figure E1. Pairwise planet properties for targets completed to Tier 1 by ISAB versus each baseline scheduler. Black squares mark planets missed by both; translucent black points are completed by both; green crosses are completed only by ISAB; red crosses only by the baseline. RASTI 000 , 1–15 (2026)
