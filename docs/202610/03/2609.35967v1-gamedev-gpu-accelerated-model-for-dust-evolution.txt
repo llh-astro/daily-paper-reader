@@ -1,0 +1,1962 @@
+Title: GameDev: GPU-accelerated model for dust evolution
+
+URL Source: https://arxiv.org/pdf/2609.35967v1
+
+Published Time: Wed, 30 Sep 2026 00:16:08 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+Astronomy & Astrophysics manuscript no. main ©ESO 2026 September 30, 2026 
+
+# GameDev: GPU-accelerated model for dust evolution 
+
+Jiaqing Bi ( 毕嘉擎)
+
+Max-Planck-Institut für Astronomie, 69117 Heidelberg, Germany; bi@mpia.de 
+
+Manuscript compiled on September 30, 2026 
+
+ABSTRACT 
+
+Grain growth and fragmentation through dust collisions in protoplanetary disks are strongly coupled with dust dynam-ics. This is because the spatial and velocity distributions of dust set the collision rates and outcomes, while dust grain sizes set the aerodynamic coupling with gas. However, existing dust evolution codes often rely on prescribed dust veloci-ties and are mostly restricted to one or two spatial dimensions. In this work, we present GameDev , a dust evolution model accelerated by graphics processing units (GPUs) that couples independently evolved three-dimensional dust dynamics with Monte Carlo collisional evolution of dust. In GameDev , we model dust as Lagrangian representative particles in a prescribed gas disk. We integrate particle trajectories with the staggered semi-analytic method, which remains accurate for both tightly and weakly coupled dust grains. We estimate collision rates from each particle’s nearest neighbors rather than on a grid, preventing physically close particles from being excluded from collision sampling because they lie across a grid boundary. Most importantly, we sample collision events against neighborhoods that remain frozen over adaptive intervals, enabling massive parallelization across particles. These implementations make GameDev an accurate and efficient tool for studying dust evolution in protoplanetary disks. GameDev supports both NVIDIA CUDA and AMD ROCm platforms, provides a smaller-scale standalone Eulerian dust fluid model, and is publicly available on GitHub. 
+
+Key words. methods: numerical – planets and satellites: formation – protoplanetary disks 
+
+1. Introduction 
+
+Dust in protoplanetary disks plays a central role in forming planets. In particular, grain growth from the micron sizes preserved in the interstellar medium to the millimeter sizes observed in protoplanetary disks represents a critical first step (Testi et al. 2014; Drążkowska et al. 2023; Birnstiel 2024, and the references therein). Numerous laboratory ex-periments and numerical models suggest that this initial grain growth is mainly facilitated by coagulation through collisions (Dominik & Tielens 1997; Blum & Wurm 2000; Dullemond & Dominik 2005; Blum & Wurm 2008). Mean-while, dust collisions not only result in sticking that drives coagulation, but can also lead to other outcomes such as bouncing, partial mass transfer, erosion, and fragmentation (Güttler et al. 2010; Zsom et al. 2010; Schräpler & Blum 2011; Krijt et al. 2015; Blum 2018). Besides the direct control of the grain-size distribution, collisions also impact dust dynamics through the grain-size-dependent aerodynamic coupling with gas (Weidenschilling 1977). Consequently, the radial drift, vertical settling, turbulent mixing, and clumping are all closely associ-ated with the local collisional activity (Adachi et al. 1976; Nakagawa et al. 1986; Cuzzi et al. 1993; Dubrulle et al. 1995; Takeuchi & Lin 2002; Dullemond & Dominik 2004; Paardekooper & Mellema 2004; Youdin & Goodman 2005; Birnstiel et al. 2009; Squire & Hopkins 2018). Meanwhile, the spatial distribution and velocity of dust, primarily con-trolled by its dynamics, can in turn impact collision rates and outcomes as well (Völk et al. 1980; Markiewicz et al. 1991; Dullemond & Dominik 2005; Ormel & Cuzzi 2007; Brauer et al. 2008; Windmark et al. 2012; Booth & Clarke 2016; Tominaga & Tanaka 2025). Therefore, a closed feed-back loop is formed between dust collisions and dynamics, requiring both processes to be resolved self-consistently and concurrently in theoretical and numerical investigations. Combining dust collisions and dynamics is important not only for theoretical understanding but also for obser-vations. This is because protoplanetary-disk observations depend both on the spatial distribution of dust shaped by its dynamics and on dust opacity, which collisions can sub-stantially alter through changes in grain size, grain shape, porosity, and the chemical composition of coating materi-als (Semenov et al. 2003; Draine 2006; Weidling et al. 2009; Paszun & Dominik 2009; Ormel et al. 2011; Kataoka et al. 2014; Tazaki & Tanaka 2018; Krijt et al. 2024). Capturing the interplay between dust collisions and dy-namics requires, at a minimum, the evolution of the posi-tion, velocity, and polydisperse grain-size distribution 1 of dust. There are three typical methods to account for these coupled processes in planet formation studies: 
+
+– The representative-particle method uses a limited num-ber of Lagrangian particles (e.g., 10 5–10 6) to model the astrophysically large number of dust grains in real pro-toplanetary disks (e.g., > 10 30 ) that cannot be handled directly by numerical models. Each representative parti-cle statistically represents a group of physical dust grains 
+
+with the same modeled dust properties. Its dust prop-erties and statistical weight are updated through sam-pled collision events, while its position evolves according to the adopted dust-transport model. With a sufficient number of representative particles and sampled collision  
+
+> 1
+
+A polydisperse distribution means that the local dust popu-lation is divided into multiple groups and represented by more than one characteristic grain size. Article number, page 1 arXiv:2609.35967v1 [astro-ph.EP] 28 Sep 2026 A&A proofs: manuscript no. main 
+
+events, the evolution of the dust population can then be statistically reproduced through a Monte Carlo method (Zsom & Dullemond 2008; Beutel & Dullemond 2023; Beutel et al. 2024). One typical code using this method is mcdust (Vaikundaraman et al. 2026). 
+
+– The Eulerian mass-bin method discretizes the grain-mass distribution into multiple bins and models each of them as a distinct pressureless dust fluid . This method solves the Smoluchowski equation (von Smoluchowski 1916), an integro-differential equation, by calculat-ing collision rates and redistributing mass within and across these grain-size bins according to the pre-scribed collision outcomes. Examples include DustPy 
+
+(Stammler & Birnstiel 2022), cuDisc (Robinson et al. 2024, 2026), and a new standalone solver GRACE-DG 
+
+(Yang et al. 2026). 
+
+– The reduced two-population method approximates the dust population using only small- and large-grain com-ponents plus a characteristic maximum grain size. In-stead of solving the full Smoluchowski equation, it uses simplified prescriptions for coagulation, fragmentation, and the partition of mass between the two populations. Examples include two-pop-py (Birnstiel et al. 2012), its successor TriPoD (Pfeil et al. 2024, 2026), and the open-source version TriPoDPy (Kaufmann et al. 2025). Apart from the recently published GRACE-DG , the other codes mentioned above are compared across a range of out-puts by Eriksson et al. (2026), and we refer readers to that paper for a more detailed summary of the codes. Despite the availability of multiple dust evolution codes for planet formation studies, a few methodological gaps still persist: 
+
+– Three-dimensional (3D) model: cuDisc and mcdust pro-vide two-dimensional (2D) radial–vertical models, while the other open-source codes are one-dimensional (1D), except for GRACE-DG , which is a local (0D) solver. A 3D version of the TriPoD –Athena++ framework is men-tioned in Eriksson et al. (2026), but it relies on the re-duced two-population approximation and, to our knowl-edge, has not yet been publicly released. Therefore, no open-source code resolves the full collisional evolution of the grain-size distribution together with the vertical distribution of dust, non-axisymmetric structures, and their combined effects on dust collisions. 
+
+– Dust momentum treatment: Among the codes above, only cuDisc and the TriPoD –Athena++ framework pro-vide dust transport with independently evolved momen-tum (Huang & Bai 2022; Pfeil et al. 2026). All others use reduced dust transport with prescribed velocities. These prescriptions restrict dust motion to the assumed drift and settling regimes, potentially misrepresenting dust concentration and collision velocities where the un-derlying force-balance assumptions fail. 
+
+– General methodological issues: Eulerian mass-bin meth-ods face a multiplicative increase in the total number of bins when additional dust properties are resolved as independent dimensions. In addition, insufficient mass-bin resolution can introduce numerical diffusion that ar-tificially accelerates grain growth (Ohtsuki et al. 1990; Drążkowska et al. 2014). Representative-particle meth-ods can retain sampled dust trajectories and properties, but finite sampling may underresolve low-mass regions (Zsom & Dullemond 2008). Both approaches therefore face a trade-off between the fidelity of coupled collisional and dynamical evolution and the feasibility of numerical implementation. Motivated by these limitations, we introduce GameDev ,a GPU-accelerated mod el for dust ev olution that runs on graphics processing units (GPUs) 2. GameDev supports dust dynamics in 3D through both Lagrangian particle and Eu-lerian fluid formulations, with independently evolved parti-cle velocities and fluid momentum, respectively. The parti-cle formulation couples dust dynamics to Monte Carlo dust collisions, allowing dust grains undergoing collisional evo-lution to move without prescribing equilibrium drift or set-tling velocities. The paper is organized as follows. Section 2 describes the particle model of GameDev , including gas prescriptions, dust transport, diffusion, collision, and numerical stepping. Section 3 presents numerical tests of the particle model, in-cluding particle trajectories, dust diffusion, grain coagula-tion against analytical solutions, followed by a comparison with other dust evolution codes. Section 4 demonstrates an application of GameDev to the photospheric instability, dis-cusses the computational performance, and outlines future extensions. We conclude in Sect. 5. The appendices provide a description of the Eulerian dust fluid model, and a list of symbols. 
+
+2. The particle model and physical prescriptions 
+
+The particle model describes dust evolution around a cen-tral star in a prescribed gas disk. The dynamical forcing of dust is provided by stellar gravity and aerodynamic drag, with optional radiation pressure and Poynting–Robertson drag. Dust diffusion is treated through stochastic spatial displacements, while grain growth and fragmentation are treated through sampled collision events. The current grain model assumes spherical grains with a fixed internal den-sity, so that grain mass is uniquely determined by size. We specify the particle nature of the model here to distinguish it from the standalone Eulerian dust fluid model also pro-vided by GameDev and described in Appendix D. The physical dust grain population is represented by an ensemble of Np Lagrangian representative particles (here-after, particles). Each particle i carries a position vector xi,a velocity vector vi, a grain size si, and the number Ni of represented physical dust grains. Taking si as the diameter, the grain mass and particle mass of each particle are 
+
+mi = πρ ◦s3 
+
+> i
+
+/6 (1) and 
+
+Mi = Nimi, (2) where ρ◦ is the constant internal density of grains. 
+
+2.1. Geometry and dimensional reductions 
+
+GameDev is formulated in spherical coordinates {r, θ, ϕ } cen-tered on the star, where r is the distance from the star, θ 
+
+> 2The code supports and has been tested on NVIDIA devices with CUDA 12.1 and AMD devices with ROCm 7.2. The code is publicly available at https://github.com/bijiaqing/GameDev/ Article number, page 2 Jiaqing Bi: the GameDev code
+
+is the polar angle, and ϕ is the azimuthal angle. In this pa-per, we also use {R, Z } to denote the cylindrical radius and height, respectively. The particle model supports four spatial configurations: full 3D, 2D radial–polar, 2D radial–azimuthal, and 1D ra-dial. Axisymmetric models retain azimuthal angular mo-mentum, while vertically integrated models constrain parti-cles to the midplane, set polar motion to zero, and represent dust throughout the vertical column. These models evolve the surface density Σd instead of the volume density ρd and require a prescription for the unresolved vertical structure when calculating collision rates. Hereafter, we use ϱd and ϱg
+
+to denote the dust and gas densities: Σd and Σg in vertically integrated models, and ρd and ρg otherwise. For configurations with a resolved azimuthal dimension, the domain may cover either the full azimuth or a periodic sector. A periodic sector assumes that the modeled distri-bution repeats outside the simulated interval. 
+
+2.2. The prescribed gas background 
+
+Explicit gas hydrodynamics is not included in GameDev . The gas background is either prescribed analytically or supplied through imported density and velocity fields. In the latter case, the gas fields are reloaded at each simulation output time, and the fields between successive loadings are linearly interpolated in time. In either case, feedback from dust onto the gas is not included. When adopting the analytical prescription, the gas has a locally isothermal equation of state and is vertically isother-mal. We assume an axisymmetric gas disk with power-law profiles for the gas surface density and aspect ratio, written as 3
+
+Σg(R) = Σ g0 (R/R 0)p (3) and 
+
+hg(R) = hg0 (R/R 0)(q+1) /2 (4) where p and q are the constant power-law indices of the gas surface density and temperature, respectively. The gas scale height and sound speed are given by 
+
+Hg(R) = hgR (5) and 
+
+cs(R) = HgΩK, (6) where 
+
+ΩK(R) = pGM ⋆/R 3 (7) is the Keplerian angular velocity, G is the gravitational con-stant, and M⋆ is the stellar mass. In configurations with a resolved vertical dimension, the gas volume density follows the hydrostatic-equilibrium so-lution 
+
+ρg (R, Z ) = Σg
+
+√2πH g
+
+× exp 
+
+
+
+− 1 − R/r h2g
+
+
+
+, (8)     
+
+> 3We use the subscript 0 to denote evaluations in the disk mid-plane at the reference radius R=R0, unless otherwise specified.
+
+which reduces to a Gaussian profile near the midplane. The analytical azimuthal velocity of the gas is given by 
+
+vg,ϕ (R, Z ) = p1 − 2η ΩKR, (9) where 
+
+η (R, Z ) = − 12
+
+ 
+
+p + q
+
+2 − 32
+
+
+
+h2g + q
+
+
+
+1 − Rr
+
+ 
+
+(10) is the radial pressure-gradient term. The radial and vertical velocities of the gas in cylindrical coordinates are set to zero unless a viscous flow of the gas is included. The kinematic viscosity ν of the gas is either held constant globally or cal-culated using an otherwise constant α viscosity parameter (Shakura & Sunyaev 1973) 
+
+ν(R) = αc sHg. (11) The viscous flow is imposed as a radial velocity of the gas following Kanagawa et al. (2017) 
+
+vvisc (R, Z ) = − νR
+
+"
+
+3 ∂ ln  νϱ gR1/2
+
+∂ ln R − q ∂ ln ( ϱgZ)
+
+∂ ln Z
+
+#
+
+. (12) The last term of Eq. (12) is dropped in vertically integrated configurations, so the equation naturally reduces to the con-ventional form in Lynden-Bell & Pringle (1974). 
+
+2.3. Dust dynamics and advection 
+
+The equation of motion for the dust is given by 
+
+dv
+
+dt (x, v, s ) = − GM ⋆
+
+r2 ˆr + f rad + f aero , (13) where f rad and f aero are the specific radiation and aerody-namic forces, respectively. 
+
+2.3.1. Aerodynamic drag 
+
+Aerodynamic drag relaxes the dust velocity toward the local velocity of the gas on the stopping timescale ts. We assume that dust grains are in the Epstein regime (Epstein 1924), so the drag term is given by 
+
+f aero (x, v, s ) = ( vg − v) / t s, (14) and the stopping time is prescribed as 
+
+ts (x, s ) = ss0
+
+ ρg
+
+ρg0 
+
+cs
+
+cs0 
+
+−1 St 0
+
+ΩK0 
+
+. (15) Here, s0 is a spatially invariant reference grain size, and the dimensionless Stokes number 
+
+St ( x, s ) = Ω Kts (16) is the parameter we use to adjust the aerodynamic coupling between gas and dust in our models. For the analytical gas background, we have 
+
+St ( R, Z, s ) = St 0
+
+ss0
+
+ RR0
+
+−p
+
+× exp 
+
+ 1 − R/r h2g
+
+
+
+. (17)  
+
+> Article number, page 3 A&A proofs: manuscript no. main
+
+For the imported gas background, the Stokes number scales with the normalized density of the supplied gas via 
+
+St ( x, s ) = St 0
+
+ss0
+
+ ρg
+
+ρg0 
+
+−1  RR0
+
+−(q+3) /2
+
+(18) when the vertical dimension is resolved, and 
+
+St ( x, s ) = St 0
+
+ss0
+
+ Σg
+
+Σg0 
+
+−1
+
+(19) in vertically integrated models. Gas fields are supplied on numerical grids and interpolated to each particle’s position using multilinear spatial interpolation. 
+
+2.3.2. Radiation forces 
+
+GameDev supports an optional implementation of radiation pressure and Poynting–Robertson (P–R) drag 
+
+f rad (x, v, s ) = f RP + f PR . (20) Both forces scale with the β parameter, which describes the strength of radiation pressure relative to gravity 
+
+β(s) = κL ⋆
+
+4πc GM ⋆
+
+, (21) where κ is the dust opacity, L⋆ is the stellar luminosity, and 
+
+c is the speed of light. We prescribe the grain-size depen-dence of κ following Burns et al. (1979) 
+
+κ(s) = κ0 (s/s 0)−1 , (22) therefore, we also have 
+
+β(s) = β0 (s/s 0)−1 . (23) The radiation pressure is then given by 
+
+f RP (x, s ) = βe−τ GM ⋆
+
+r2 ˆr, (24) where τ is the local optical depth measured in the radial direction from the inner boundary assuming no additional interior extinction, and is given by 
+
+τ (x) = 
+
+Z rrmin 
+
+Z ∞
+
+> 0
+
+κ (s′) ∂ρ d
+
+∂s ′ (r′, s ′) ds ′dr ′ (25) when the vertical dimension is resolved 4. In vertically inte-grated models, we evaluate τ in the midplane while assum-ing that all dust grains share the same scale height, equal to that of the gas, regardless of grain size, which gives 
+
+τ (x) = 
+
+Z RRmin 
+
+1
+
+√2πH g (R′)
+
+Z ∞
+
+> 0
+
+κ (s′) ∂Σd
+
+∂s ′ (R′, s ′) ds ′dR ′. (26) In practice, particles are first interpolated onto the numer-ical grids to obtain τ . Similar to the treatment of the im-ported gas fields described in Sect. 2.3.1, the τ field is then        
+
+> 4Despite the relation in Eqs. (21), (22), and (23), κ0and β0can be specified independently in GameDev to decouple the prescrip-tions for the radiation forces from those for the optical depth.
+
+interpolated back to each particle’s position during force evaluations. The P–R drag introduces velocity-dependent damping effects. To first order in v/c , it can be written as 
+
+f PR (x, v, s ) = −γPR 
+
+
+
+vθ ˆθ + 2 vr ˆr + vϕ ˆϕ
+
+
+
+, (27) where 
+
+γPR (x, s ) = βe−τ
+
+cGM ⋆
+
+r2 . (28) Unlike radiation pressure, which is treated as an explicit forcing term during the numerical integration, the P–R damping terms are included in combination with the aero-dynamic drag terms (see Sect. 2.3.3). To avoid introducing transient effects at the beginning of a simulation, radiation forces are usually multiplied by a taper factor ξ2 (3 − 2ξ), where 
+
+ξ(t) = min 
+
+h
+
+max ( t/t β , 0) , 1
+
+i
+
+, (29) such that radiation forces are gradually turned on over the timescale tβ .
+
+2.3.3. The staggered semi-analytic trajectory integration 
+
+We use the staggered semi-analytic method introduced in Fung & Muley (2019) to advance the positions and dynam-ical variables of the particles in spherical coordinates. This method is second-order accurate when the stopping time ts
+
+is resolved by the numerical timestep ∆t, and it approaches a leapfrog scheme in the drag-free limit. In the stiff regime where ∆t ≫ ts, its analytical drag treatment and staggered force evaluation accurately recover the terminal drift with-out resolving the rapid velocity relaxation. For computational efficiency, we evolve the integration variables 
+
+y = ( vr , ℓ θ , ℓ ϕ) (30) which use the specific angular momenta instead of the linear momenta in the polar and azimuthal directions, where 
+
+ℓθ = rv θ (31) and 
+
+ℓϕ = vϕr sin θ. (32) The equation of motion can then be written as 
+
+dy
+
+dt = −Γy + yg
+
+ts
+
++ f , (33) where the diagonal damping-rate matrix is 
+
+Γ = diag ( γr , γ θ , γ ϕ) , (34) with 
+
+γr = t−1s + 2 γPR (35) and 
+
+γθ = γϕ = t−1s + γPR . (36) The remaining specific force terms are 
+
+fr = −  1 − βe−τ  GM ⋆
+
+r2 + ℓ2
+
+> θ
+
+r3 + ℓ2
+
+> ϕ
+
+r3 sin 2 θ , (37) 
+
+fθ = ℓ2 
+
+> ϕ
+
+cos θr2 sin 3 θ , (38) and 
+
+fϕ = 0 . (39) 
+
+> Article number, page 4 Jiaqing Bi: the GameDev code
+
+2.4. Dust diffusion 
+
+In addition to the deterministic motion described above, particles undergo stochastic spatial redistribution to rep-resent dust diffusion. We prescribe a dust diffusion tensor that is diagonal in the local cylindrical basis 
+
+D = diag ( DR, D Z , D ϕ) , (40) where the diffusion coefficient of imperfectly coupled dust grains in each direction is approximated as 
+
+D = ν
+
+Sc  1 + St 2 . (41) Here, Sc is the Schmidt number in each direction and is the primary parameter through which we prescribe the dif-fusion level independently of the direction and strength of viscous flows of the gas. We provide two implementations of dust diffusion, with their Fickian target equations written as 
+
+∂ϱ d
+
+∂t diffusion 
+
+= ∇ · 
+
+
+
+ϱgD∇
+
+ ϱd
+
+ϱg
+
+ 
+
+(42) and 
+
+∂ϱ d
+
+∂t diffusion 
+
+= ∇ · (D∇ϱd) . (43) Equation (42) acts on the dust-to-gas ratio and is typically used for turbulent mixing (e.g., Ciesla 2010; Charnoz et al. 2011; Zsom et al. 2011; Desch et al. 2017). We also provide Eq. (43) as an alternative. It acts on the dust density and can provide an effective description of redistribution driven by particle interactions, such as collisional spreading in par-ticulate disks (Quillen 2007). For vertically integrated mod-els, the vertical terms are omitted. The azimuthal terms are likewise omitted in axisymmetric models. We reproduce Eqs. (42) and (43) statistically using an Euler–Maruyama update (Kloeden & Platen 1992). Over a diffusion timestep ∆tdiff , particle displacements in cylindri-cal coordinates are calculated as 
+
+∆R = p2DR∆tdiff ζR
+
++
+
+ DR
+
+R + ∂D R
+
+∂R + χD R
+
+∂ ln ϱg
+
+∂R 
+
+
+
+∆tdiff ,
+
+(44) 
+
+∆Z = p2DZ ∆tdiff ζZ
+
++
+
+ ∂D Z
+
+∂Z + χD Z
+
+∂ ln ϱg
+
+∂Z 
+
+
+
+∆tdiff ,
+
+(45) and 
+
+∆ϕ = p2Dϕ∆tdiff 
+
+ζϕ
+
+R
+
++
+
+ ∂D ϕ
+
+∂ϕ + χD ϕ
+
+∂ ln ϱg
+
+∂ϕ 
+
+ ∆tdiff 
+
+R2 ,
+
+(46) where χ = 1 for Eq. (42), χ = 0 for Eq. (43), and the ζ val-ues are independent random numbers drawn from a normal distribution with zero mean and unit variance N (0 , 1) . The displacements are then converted to the coordinates used to store particle positions and applied to the particles. This redistribution process does not change the magnitude or direction of the dust velocity in Cartesian coordinates. We recalculate the stored velocity components to account for the change in the local coordinate basis at the new position. 
+
+2.5. Dust collisions 
+
+Dust transport determines where grains encounter one an-other and the local populations available for collisions. We model collisional evolution by sampling encounters between particles and updating their dust properties according to prescribed collision outcomes. Changes in grain size then modify the aerodynamic coupling and radiation forces gov-erning subsequent particle motion. 
+
+2.5.1. Collision rate 
+
+We estimate the local collisional environment of each par-ticle i using its NK nearest particles within a user-specified maximum search-scale, including the query particle at zero distance 5. The nearest neighbors are identified using either the k-dimensional tree (KD-tree) method adapted from the 
+
+cudaKDTree library (Bentley 1975; Wald 2022), or the adap-tive spatial hierarchy method based on the Morton order (Morton 1966). Both search methods are available because their relative performance depends on the model configura-tion. The neighborhood size NK controls the balance between statistical sampling and spatial resolution. Larger neighbor-hoods improve sampling but average over a broader space, potentially smoothing local variations. The convergence of statistically sampled collision outcomes toward the analyt-ical solution for varying NK is examined in Sect. 3.3 and Appendix B. The importance of adequate local sampling and spatial resolution in particle collision models was also demonstrated by Drążkowska et al. (2013). Let Ji denote the retained neighbors of particle i, and let di denote the distance to the farthest neighbor in Ji. In 3D models, the sampling region is a sphere with volume 
+
+Vi = 4 πd 3 
+
+> i
+
+/3. (47) Each neighbor j represents Nj = Mj /m j physical dust grains, which we treat as uniformly distributed within this region when estimating the collision rate of i. Its contribu-tion to the local grain-number density is therefore 
+
+nij = Nj /V i. (48) For spherical grains with diameters si and sj , the collision kernel is the geometrical cross section multiplied by the relative speed, 
+
+Kij = π (si + sj )2 ∆vij /4, (49) where ∆vij is the relative speed specified in Sect. 2.5.2. The collision rate of a physical dust grain represented by particle 
+
+i with the population represented by neighbor j is then 
+
+λij = nij Kij = Nj Kij /V i. (50) Summing over the neighbors gives the collision rate of par-ticle iλi = X
+
+> j∈J i
+
+λij . (51)          
+
+> 5Including the query particle allows collisions with physical dust grains belonging to its own dust population, which should not be neglected in the statistical sampling (Zsom & Dullemond 2008; Beutel & Dullemond 2023). For Ni≫1, we approximate the number of available partners, Ni−1, by Ni.Article number, page 5 A&A proofs: manuscript no. main
+
+The sampling measure Vi is adjusted to the model ge-ometry. When the vertical dimension is resolved, Vi is a volume. In 2D radial–polar models, neighbors are identi-fied in the meridional plane, and the sampled area is con-verted to a toroidal volume by multiplying it by the local circumference 2πR i. In vertically integrated models, neigh-bors are identified in the midplane, and Vi is instead the sampled area. In 2D radial–azimuthal models, it is a disk of radius di. In 1D radial models, it is an annulus that spans 
+
+[Ri − di, R i + di]. The vertical length scale is then supplied by assuming that the dust grains of population i are ver-tically distributed following the normal probability density with zero mean and variance H2
+
+> i
+
+N  Z; 0 , H 2
+
+> i
+
+ = 1
+
+√2πH i
+
+× exp 
+
+
+
+− Z2
+
+2H2
+
+> i
+
+
+
+, (52) where Hi = Hg (Ri). The grain-number density of popula-tion j at height Z is then 
+
+nij (Z) = Nj
+
+Vi
+
+N  Z; 0 , H 2
+
+> j
+
+
+
+= Nj
+
+√2πH j Vi
+
+× exp − Z2
+
+2H2
+
+> j
+
+!
+
+.
+
+(53) Treating Kij as independent of height, we average the col-lision rate over the vertical distribution of population iλij = Kij 
+
+Z ∞−∞ 
+
+N  Z; 0 , H 2
+
+> i
+
+ nij (Z) dZ, (54) which finally gives 
+
+λij = Nj Kij 
+
+Vi
+
+q
+
+2π  H2 
+
+> i
+
++ H2
+
+> j
+
+ . (55) Near the domain boundaries, we reduce the sampling mea-sure to account for the portion outside the domain, ap-proximating each nearby boundary as locally flat. Particles across a periodic azimuthal boundary are also considered as candidates in the neighbor search. 
+
+2.5.2. Collision speed and prescribed outcomes 
+
+The collision speed combines prescribed differential motions with contributions from Brownian motion and unresolved turbulence 
+
+∆v2 
+
+> ij
+
+= ∆ v2 
+
+> R
+
++ ∆ v2 
+
+> Z
+
++ ∆ v2 
+
+> ϕ
+
++ ∆ v2B + ∆ v2t . (56) The relative-motion terms are given by 
+
+∆vR = 2 ηR ΩK
+
+St i
+
+1 + St 2
+
+> i
+
+− St j
+
+1 + St 2
+
+> j
+
+!
+
+, (57) 
+
+∆vZ = ZΩK
+
+h
+
+min (St i, 0.5) − min (St j , 0.5) 
+
+i
+
+, (58) and 
+
+∆vϕ = ηR ΩK
+
+11 + St 2
+
+> i
+
+− 11 + St 2
+
+> j
+
+!
+
+. (59) We adopt these prescribed differential velocities here be-cause the resolved velocities of neighbors separated by up to di also include the background shear across the neighbor-hood. Dust momentum therefore affects collisions through the spatial distribution of dust rather than through the col-lision speeds. The Brownian contribution is written as 
+
+∆vB = min 
+
+"
+
+cs,
+
+s
+
+8kBTπ
+
+ 1
+
+mi
+
++ 1
+
+mj
+
+ #
+
+, (60) where kB is the Boltzmann constant and T is the gas tem-perature. All the variables entering Eq. (56) are evaluated at the query particle’s position. We include Brownian mo-tion only in calculations with explicit physical units. For the turbulent contribution, we adopt the six-branch piece-wise expressions of Ormel & Cuzzi (2007), adapted from the DustPy implementation. We note that the Brownian and turbulent terms specify unresolved contributions to the collision speed and do not apply additional velocity kicks to the particles. Similarly, the stochastic spatial displace-ments introduced in Sect. 2.4 do not contribute to collision speeds. We distinguish collision outcomes among sticking, ero-sion, and fragmentation using the prescribed fragmentation speed vfrag and the grain-mass ratio 
+
+ψ = mj /m i. (61) Collisions with ∆vij < v frag result in the sticking of physical dust grains, with the new grain mass given by 
+
+m′ 
+
+> isticking
+
+= mi + mj . (62) Given the fixed internal density of grains adopted here, its diameter then becomes 
+
+s′ 
+
+> isticking
+
+= 3
+
+q
+
+s3 
+
+> i
+
++ s3 
+
+> j
+
+. (63) Collisions with ∆vij ≥ vfrag and ψ ≤ 0.1 result in erosion, following the prescription of Birnstiel et al. (2011) as imple-mented in mcdust . The probability that the particle follows the remnant or the debris depends on the grain-mass ratio, such that 
+
+m′ 
+
+> ierosion
+
+=
+
+(mi − mj , with probability 1 − ψ, mj , with probability ψ. (64) Notably, to improve numerical performance, small sticking increments and erosive decrements are grouped in the col-lisional calculations following Ormel & Spaans (2008) and Zsom & Dullemond (2008), similar to mcdust . The group-ing factor is given by 
+
+Ncoll =
+
+( 10 −4/ψ  , ψ ≤ 10 −6,
+
+1, otherwise , (65) and the grouped sticking gives 
+
+m′  
+
+> isticking
+
+= mi + Ncoll mj (66) at a reduced effective collision rate 
+
+λ∗ 
+
+> ij sticking
+
+= N −1coll λij . (67) Here, the effective collision rate λ∗ 
+
+> ij
+
+describes both grouped and ungrouped collision events, with λ∗ 
+
+> ij
+
+= λij for Ncoll =
+
+> Article number, page 6 Jiaqing Bi: the GameDev code
+
+1. Grouped erosion retains separate prescriptions for the remnant and the debris with 
+
+m′ 
+
+> ierosion
+
+=
+
+(mi − Ncoll mj , λ∗ 
+
+> ij, rem
+
+= N −1coll (1 − ψ) λij ,mj , λ∗ 
+
+> ij, deb
+
+= ψλ ij 
+
+(68) at an effective collision rate 
+
+λ∗ 
+
+> ij erosion
+
+= λ∗ 
+
+> ij, rem
+
++ λ∗
+
+> ij, deb
+
+. (69) Other high-speed collisions lead to fragmentation. The new diameter assigned to the particle is sampled as 
+
+s′ 
+
+> ifragment
+
+=
+
+h√smin + U (√si − √smin )
+
+i2
+
+, (70) where U ∼ U (0 , 1) is a random number drawn from a uni-form distribution and smin is the prescribed minimum grain size. Equation (70) samples the fragment diameter from the mass-weighted distribution 
+
+dM frag /ds ∝ s−1/2, (71) which corresponds to the conventional grain-number distri-bution in Mathis et al. (1977) 
+
+dN frag /ds ∝ s−7/2. (72) After every collision, the number of physical dust grains represented by the particle is updated while its particle mass Mi is preserved 
+
+N ′ 
+
+> i
+
+= Mi/m ′
+
+> i
+
+. (73) 
+
+2.5.3. Monte Carlo sampling and particle updates 
+
+During each collision timestep ∆tcoll , particles are advanced through a sequence of randomly sampled collision events. However, the outcome of a collision event involving one par-ticle is not immediately broadcast to others. The collisional evolution follows the workflow below. The spatial domain is partitioned into multiple spatial groups . For each local spatial group, the globally shared collision timestep ∆tcoll is divided into one or more adap-tive frozen-neighbor intervals ∆tfn . Unless otherwise speci-fied, the quantities introduced below refer to a single spatial group. At the beginning of each frozen-neighbor interval ∆tfn ,a particle caches the broadcast properties of its NK nearest neighbors. It then evolves independently against this frozen neighborhood. A particle’s properties are updated after ev-ery collision event, with multiple events allowed within the same interval. However, the particles in a local spatial group broadcast their updated properties and refresh the cached properties of their neighbors only after completing their lo-cal interval. This approximation permits the parallel evolu-tion of all particles, but a neighborhood-refresh query may access properties broadcast at earlier times because differ-ent spatial groups may have different frozen-neighbor inter-vals. The length of the frozen-neighbor interval is controlled by the expected change in the grain size of the local dust population. Within each local spatial group, particles are assigned into a set B of adaptive logarithmic grain-size bins, which we call controller bins 6. We evaluate the first and second moments of the grain-size change for each controller bin b ∈ B at the beginning of each frozen-neighbor interval as 
+
+Ab =
+
+X
+
+> i∈b
+
+Mi
+
+X
+
+> o
+
+λ∗ 
+
+> io
+
+⟨Jio ⟩
+
+X
+
+> i∈b
+
+Mi
+
+, (74) and 
+
+Bb =
+
+X
+
+> i∈b
+
+Mi
+
+X
+
+> o
+
+λ∗ 
+
+> io
+
+J2
+
+> io
+
+X
+
+> i∈b
+
+Mi
+
+, (75) where 
+
+Jio = | ln ( s′
+
+> i
+
+/s i) | (76) is a dimensionless parameter of the grain-size change for a sampled collision channel o acting on particle i, and λ∗ 
+
+> io
+
+is its sampling rate. The quantity ⟨Jio ⟩ denotes the expecta-tion over the random collision outcome, with ⟨Jio ⟩ = Jio 
+
+for deterministic outcomes. This expectation is introduced because the fragmentation outcome depends on the random draw U (see Eq. (70)), giving 
+
+⟨Jio ⟩ fragment 
+
+=
+
+Z 10
+
+Jio (U ) dU. (77) The first moment Ab measures how quickly grain sizes change, and the second moment Bb measures the corre-sponding fluctuation induced by random collision events. Using a prescribed dimensionless tolerance ε to constrain the speed of grain-size changes and their fluctuations before refreshing the frozen neighborhood, we require any candi-date frozen-neighbor interval to satisfy 
+
+Ab∆tfn ≤ εC (78) and 
+
+Bb∆tfn ≤ ε2C2, (79) where 0.25 ≤ C ≤ 1 is an adaptive safety factor shared by all controller bins b ∈ B . The requested frozen-neighbor interval ∆tfn ,req is then constrained by 
+
+∆tfn ,req = min 
+
+
+
+∆tremain , ∆tfn ,max , min 
+
+> b∈B
+
+εC Ab
+
+, min 
+
+> b∈B
+
+ε2C2
+
+Bb
+
+
+
+,
+
+(80) where ∆tremain is the remaining time to complete the cur-rent collision timestep and ∆tfn ,max is the prescribed max-imum frozen-neighbor interval. The safety factor C is ini-tialized to 1 and inherited between adjacent frozen-neighbor intervals. It is adjusted by post-interval audits, which mon-itor the collision frequency, the grain-size changes, and the redistribution of mass between controller bins. While post-interval audits adjust the length of subsequent intervals, completed collision events are not rejected or repeated.   
+
+> 6Adjacent sparsely populated grain-size bins are merged to im-prove statistical sampling. Article number, page 7 A&A proofs: manuscript no. main
+
+Using the requested interval ∆tfn ,req as a reference, the executed frozen-neighbor interval ∆tfn ,exe is obtained by re-peatedly halving the collision timestep ∆tcoll . To limit dif-ferences in how frequently interacting groups refresh their neighbor properties, the ratios of their intervals are re-stricted to at most 16. However, timestep changes respect already scheduled intervals, so a requested refinement may be delayed. Within each frozen-neighbor interval, a particle i sam-ples a waiting time until its next collision event following Gillespie (1975) 
+
+∆tw = − ln Ui/λ ∗ 
+
+> i
+
+, (81) where Ui ∼ U (0 , 1) is, again, a random number drawn from a uniform distribution and 
+
+λ∗ 
+
+> i
+
+= X
+
+> j∈J i
+
+λ∗ 
+
+> ij
+
+. (82) If this waiting time exceeds the remaining interval, no fur-ther collision occurs. Otherwise, the particle advances its clock by ∆tw, undergoes an event, and updates its own dust properties and effective collision rate λ∗ 
+
+> i
+
+. For each col-lision event involving particle i, a partner population j is selected with probability λ∗ 
+
+> ij
+
+/λ ∗ 
+
+> i
+
+. Then the collision event follows the outcome prescriptions described in Sect. 2.5.2. Although implicit in the workflow, each collision event updates only the corresponding particle i. Any particle j
+
+supplying the partner properties evolves through its own independently sampled events. Despite this asymmetry, a sufficiently large particle number Np and sufficiently short frozen-neighbor intervals controlled by ε should allow the ensemble to statistically capture the evolution of the dust population without updating both participants of the same event. This method is tested in Sect. 3.3 and Appendix B. 
+
+2.6. Numerical stepping 
+
+In GameDev , we combine dust dynamics, diffusion, and colli-sional evolution through a symmetric sequence of operator updates. For each numerical timestep ∆t, we first advance collisions and diffusion by half a step each, then integrate particle trajectories over the full step, and repeat diffusion and collisions in reverse order 
+
+C
+
+ ∆t
+
+2
+
+
+
+D
+
+ ∆t
+
+2
+
+
+
+T
+
+
+
+∆t
+
+
+
+D
+
+ ∆t
+
+2
+
+
+
+C
+
+ ∆t
+
+2
+
+
+
+,
+
+where C, D, and T are operators denoting collision, dif-fusion, and deterministic transport, respectively, such that 
+
+∆tcoll = ∆ tdiff = ∆ t/ 2. This symmetric operator splitting is adopted to reduce splitting errors (Strang 1968). Col-lision operators are placed outside the diffusion operators so that the cached nearest-neighbor lists can be reused be-tween the final collision operator of one timestep and the first collision operator of the next. All active particles share a common transport timestep, selected from the following constraints 
+
+∆t = min 
+
+h
+
+∆tmax , ∆tout , min  
+
+> i
+
+∆ti
+
+i
+
+, (83) where ∆tmax is the prescribed maximum timestep, ∆tout is the remaining time before the next output, and ∆ti is the most restrictive local timestep for particle i, determined by orbital motion and by deterministic and diffusive displace-ments relative to the local grid spacing.       
+
+> Fig. 1. Eccentric-orbit test for a particle initialized on a drag-free eccentric Keplerian orbit with e= 0 .5and integrated with four fixed timesteps. Top: phase error. Middle: running maxi-mum of the relative energy error. Bottom: maximum relative en-ergy error over 100 P0as a function of timestep, with the dashed line indicating second-order convergence.
+
+3. Numerical tests 
+
+In this section, we present numerical tests of GameDev ’s par-ticle model and validate its accuracy in particle trajecto-ries, dust diffusion, and collisional coagulation against an-alytical solutions. Finally, we reproduce the 2D advection– diffusion–collision model of Eriksson et al. (2026) and com-pare the numerical results with those of other existing mod-els. All GameDev test sets are available on GitHub. 
+
+3.1. Particle trajectory tests 
+
+We tested the accuracy of a particle’s trajectory by simulat-ing its motion on an eccentric Keplerian orbit in a gravity-
+
+> Article number, page 8 Jiaqing Bi: the GameDev code
+
+only, drag-free disk model. Eccentric Keplerian orbits pro-vide exact periodic references with strongly varying velocity and acceleration, allowing repeated passages through the pericenter to expose accumulated phase errors and artificial orbital precession alongside errors in conserved quantities. Using code units with GM ⋆ = R0 = 1 , we initialized a single particle in a 2D radial–azimuthal disk model with 
+
+(R, ϕ, v r , ℓ ϕ) = 
+
+
+
+1/2, 0, 0, √3/2
+
+
+
+.
+
+This initialization places the particle at the pericenter of an eccentric Keplerian orbit with eccentricity e = 0 .5, semi-major axis R0, orbital period P0 = 2 π, and the exact spe-cific orbital energy Eexact = −0.5. The exact true anomaly is then given by 
+
+ϕexact (t) = 2 tan −1
+
+" r 1 + e
+
+1 − e tan u
+
+2
+
+#
+
+, (84) where u(t) is the eccentric anomaly that satisfies 
+
+u − e sin u = t. (85) We integrated the particle’s trajectory for 100 P0 with four different fixed dynamical timesteps 
+
+∆t =
+
+ P0
+
+80 , P0
+
+160 , P0
+
+320 , P0
+
+640 
+
+
+
+.
+
+The phase and energy errors are shown in Fig. 1. While the numerical trajectory develops a systematic phase lag, both the accumulated phase error and the energy error decrease as the timestep is reduced. The maximum relative energy error scales approximately as ∆t2, consistent with second-order temporal convergence, and falls below 10 −4 for ∆t =
+
+P0/640 .
+
+3.2. Dust diffusion tests 
+
+We tested the accuracy of dust diffusion by simulating the expansion of a dust ring due to stochastic diffusive dis-placements of particles in a 1D radial disk model without external forcing such as gravity and aerodynamic drag. The gas disk was prescribed with hg0 = 0 .05 , p = −1, q = 0 .5,and α = 0 .04 .We initialized 220 particles with zero velocity and as-signed each particle i a random position according to 
+
+ln ( Ri/R 0) t=0 
+
+∼ N 
+
+
+
+μ(0) , σ 2(0) 
+
+
+
+, (86) where μ(0) = 0 and σ(0) = 0 .05 are the initial mean and standard deviation of the logarithmic radius, respectively. Assuming that all particles carry the same particle mass, the same spatially constant Stokes number, and Sc = 1 , the diffusion coefficient of dust can be written as 
+
+D(R) = D0 (R/R 0)2 , (87) where 
+
+D0 = 10 −4/(1 + St 2) (88) is a numerical value in code units. The initial surface density of dust is 
+
+Σd (R, t = 0) = Md
+
+√8π3R2σ(0) exp 
+
+(
+
+− 12
+
+ ln ( R/R 0)
+
+σ(0) 
+
+2)
+
+,
+
+(89) where Md is the total dust mass. We tested both diffusion prescriptions described in Eqs. (42) and (43) using 
+
+∂Σd
+
+∂t (R, t ) = 1
+
+R∂∂R 
+
+
+
+RD 
+
+ ∂Σd
+
+∂R − χΣd
+
+∂ ln Σ g
+
+∂R 
+
+ 
+
+, (90) where χ = 1 for Eq. (42) and χ = 0 for Eq. (43), as in Eqs. (44)–(46). Combining Eqs. (89) and (90), the analyti-cal solution of the time-dependent density profile is 
+
+Σd (R, t ) = Md
+
+√8π3R2σ(t) exp 
+
+(
+
+− 12
+
+ ln ( R/R 0) − μ(t)
+
+σ(t)
+
+2)
+
+,
+
+(91) where 
+
+μ(t) = 
+
+D
+
+ln ( Ri/R 0)
+
+E
+
+> i
+
+= (2 + χp ) D0t/R 20 (92) tracks the displacement of the dust distribution, and 
+
+σ2(t) = 
+
+Dh 
+
+ln ( Ri/R 0) − μ
+
+i2E
+
+> i
+
+= σ2(0) + 2 D0t/R 20 (93) measures its broadening. For each diffusion prescription, we established three models with different Stokes numbers 
+
+St = {0.1, 1, 10 } .
+
+The Stokes number enters the dust diffusivity in Eq. (87) and therefore affects the dimensionless time 
+
+˜t = t/t 0 = D0t/R 20, (94) where 
+
+t0 = R20/D 0 (95) is the reference time of the diffusion test. We simulated each model to ˜t = 0 .1, so that the resulting structures could be compared at the same evolutionary stage, and the results are shown in Fig. 2. Both diffusion prescriptions in GameDev accurately re-produce the diffusive evolution of dust rings compared with their corresponding analytical solutions. At ˜t = 0 .1, the measured mean logarithmic radii differ from the analyti-cal values by 0.31% for concentration diffusion and 0.16% for density diffusion. The measured variances agree with the analytical value of 0.2025 to approximately 0.3%. Pan-els in the same column coincide because the models used the same dimensionless times, dimensionless timesteps, and random-number sequences. While a larger scatter of the profiles in the low-density regions is consistent with finite particle sampling, the scatter patterns are also expected to be similar across the two columns because of the shared random-number sequence. 
+
+3.3. Grain coagulation tests 
+
+We tested the accuracy of dust collisions and coagulation by simulating the time evolution of the grain-size distribu-tion of a group of particles undergoing collisions without spatial motion. We prescribed coagulation-only outcomes with three idealized collision kernels, namely the constant, linear, and product kernels, for which the Smoluchowski           
+
+> Article number, page 9 A&A proofs: manuscript no. main
+> Fig. 2. Dust-diffusion tests with concen-tration diffusion (Eq. (42); left) and den-sity diffusion (Eq. (43); right) for St = 0 .1,1, and 10 (top to bottom). Dots show the simulated surface densities at ˜t= 0 , 0.01, 0.05, and 0.1, and lines show the corre-sponding analytical solutions. Each panel lists the measured mean logarithmic radius
+> μand variance σ2at ˜t= 0 .1.
+
+equation has closed-form analytical solutions provided in Appendix A. We initialized Np = 10 6 particles with equal particle masses 
+
+Mi = Md/N p (96) inside a 2D annulus with 0.5 < R/R 0 < 1.5, −π < ϕ < π ,and θ = π/ 2, where Md is the total dust mass. Particles were close to uniformly distributed in R and ϕ, with small independent displacements from a strictly uniform distri-bution to prevent excessive equal-distance ties in neighbor searches. For all coagulation models, we define 
+
+λ0 = Npm0
+
+NKMd
+
+1
+
+t0
+
+, (97) where m0 is the unit mass and t0 is the unit time, so that the dimensionless time can be written as 
+
+˜t = NKMd
+
+Npm0
+
+λ0t = tt0
+
+, (98) and collision rates were calculated using an adapted form of Eq. (50) with a prescribed dimensionless measure of the neighborhood Vi = 1 
+
+λij (mi, m j ) = λ0
+
+Nj
+
+Vi
+
+Kij (mi, m j )= 1
+
+t0
+
+1
+
+NK
+
+m0
+
+mj
+
+Kij (mi, m j ) .
+
+(99) As mentioned in Sects. 2.5.1 and 2.5.3, NK controls the quality of statistical sampling of collision events with the nearest-neighbor approach while ε controls the refresh in-tervals in the frozen-neighbor scheme. Both are newly intro-duced components of our collision model, and their param-eters jointly affect the accuracy of the grain-size evolution and the computational cost. To identify parameters that provide a suitable balance between accuracy and computa-tional performance, we explored combinations of 
+
+NK = {16 , 32 , 64 , 128 , 256 }
+
+and 
+
+ε = {0.01 , 0.02 , 0.04 , 0.08 , 0.16 } .
+
+A summary of the coagulation evolution compared with the analytical solutions is provided in Figs. B.1, B.2, and B.3. We measured the elapsed time for each model to com-plete its final snapshot and quantified the discrepancy be-tween the simulation results and the analytical solutions using the dimensionless Wasserstein distance (Vallender 1974). Both metrics are described in more detail in Ap-pendix B, with an accuracy-versus-performance plot pro-vided in Fig. B.4. We find that NK = 256 , the largest value tested, is strongly preferred to achieve good agreement with the an-alytical solutions, and ε = 0 .08 generally provides good accuracy across all three kernel tests. A comparison of the simulation results from this model with the analytical solu-tions for the three kernel tests is provided in Fig. 3. Mean-while, given that physical collision kernels 
+
+Kij ∝ (si + sj )2 ∆vij 
+
+scale approximately linearly with grain mass when drift, settling, or turbulence dominates the collision speed, we suggest that ε = 0 .04 and ε = 0 .16 remain suitable choices when greater emphasis is placed on accuracy or computa-tional performance, respectively. 
+
+3.4. Benchmark comparison 
+
+While the measured accuracy and performance of the code, as well as the preferred choices of NK and ε, may depend on the idealized coagulation tests, we further constructed           
+
+> Article number, page 10 Jiaqing Bi: the GameDev code
+> Fig. 3. Normalized grain-mass distributions in the constant (top), linear (middle), and product (bottom) kernel tests with
+> NK= 256 and ε= 0 .08 . Shaded histograms show the simula-tion results and solid curves show the analytical solutions at the dimensionless times ˜tgiven in the legends. Vertical dashed lines mark the analytical peak masses mpeak in the constant-kernel test given by Eq. (A.6). Each panel lists the error indicator, the Wasserstein distance W1, at the final snapshot, which is aver-aged over ten repetitions (Appendix B).
+
+more realistic models to provide more representative evi-dence. Eriksson et al. (2026) (hereafter E26) present a com-parison of several dust evolution models. They consider a specific setup for sedimentation-driven coagulation, which is both scientifically relevant and numerically well-suited for further testing (Dullemond & Dominik 2005; Tanaka et al. 2005; Zsom et al. 2011; Drążkowska et al. 2013). Following Sect. 5 in E26, we built both the strong-turbulence model with α = 10 −3 and the weak-turbulence model with α = 10 −4 in GameDev with Np = 2 20 , NK = 256 ,and ε = 0 .08 . We also performed matched runs with the La-grangian particle model mcdust , which runs on central pro-cessing units (CPUs), with the same Np and 256 particles per collision cell. Results from the two models were further compared with those from the GPU-based Eulerian fluid model cuDisc provided by E26, although small discrepan-cies in snapshot times exist. Figures 4 and 5 are partial reproductions of Figs. 14 and 16 in E26, with the addition of the GameDev results. A summary of the comparison is provided in Fig. 6. Consistent with E26, we find good overall agreement among the models tested, including GameDev . However, in quantitative comparisons, GameDev agrees more closely with 
+
+cuDisc than with mcdust , despite sharing a Lagrangian particle formulation with mcdust rather than the Eulerian fluid formulation of cuDisc . This contrast is especially obvi-ous in the outer disk, where mcdust deviates from the other two in both the vertically and radially integrated surface-density distributions in Figs. 4 and 5. To investigate the origin of the discrepancy among the three models, we compared the grain-mass distributions in the inner and outer disks in Fig. 6. In the inner disk, the three models generally agree well. However, unlike the other two models, mcdust does not show the “plateau” feature around grain radius a = s/ 2 ∼ 0.01 cm in the α = 10 −3
+
+model and shows only a weak feature around a ∼ 0.03 cm in the α = 10 −4 model. In the outer disk, the differences become more pronounced. mcdust shifts the dust popula-tion toward larger grain sizes and also produces stronger sedimentation than the other two models. More rapid grain growth could enhance sedimentation, while stronger sed-imentation could in turn promote grain growth. Because grain growth and sedimentation are coupled through this feedback loop, these results alone do not clearly identify the origin of the discrepancy. However, one notable methodological difference is the treatment of dust transport. GameDev and cuDisc use dif-ferent dust formulations but both evolve dust momentum independently, whereas mcdust adopts prescribed dust ve-locities. Such prescribed velocities may provide a good ap-proximation in the inner disk but may become less accurate in the outer disk, where the aerodynamic coupling between dust and gas becomes weaker. We therefore tentatively at-tribute at least part of the discrepancy among the three models to the treatment of dust transport. This compar-ison highlights the potential importance of independently evolving dust momentum when modeling the coupled evo-lution of grain growth and sedimentation. 
+
+4. Discussion 
+
+4.1. Application example 
+
+The development of GameDev was primarily motivated by, and used for, studying the photospheric instability (PSI; Bi & Fung 2022; Fung et al., submitted). The PSI is a radiation-driven instability that develops at the illuminated inner edge of dusty disks. There, radiation pressure sweeps dust outward into a sharp optically thin-to-thick transi-tion, i.e., a dust wall. Small azimuthal density perturbations along the wall are then amplified: underdense segments are pushed outward faster by radiation pressure, sheared be-hind overdense segments, and radially compressed by shad-owing. The instability breaks the axisymmetry of the disk and produces compact dust clumps. Radiation can then leak around these clumps to reach the previously shadowed material behind the wall. Consequently, the combination of radiation pressure, shadowing, and gas drag can drive a net outward recession of the dust disk edge, potentially clear-ing dust cavities of tens of au in gas-rich transitional disks. Moreover, the clumps may serve as sites for planetesimal formation. To probe dust evolution inside these clumps, it is therefore important to incorporate collisional evolution into the model of Bi & Fung (2022), or equivalently, to extend a dust evolution model to resolve the azimuthal direction. Figure 7 shows the morphology of the dusty disk in a demonstration case where PSI is developing. We adopted a 2D radial–azimuthal model spanning 0.5 < R/R 0 < 1.5
+
+in a periodic sector 0 < ϕ < π/ 2, with code units GM ⋆ =                     
+
+> Article number, page 11 A&A proofs: manuscript no. main
+> Fig. 4. Partial reproduction of Fig. 14 of Eriksson et al. (2026) for the strong-turbulence model with α= 10 −3at t= 11 ,100 yr, showing GameDev (top), mcdust (middle), and cuDisc (bottom, at t= 11 ,134 yr). Left: vertically integrated surface density of dust per grain-size bin as a function of the distance to the star. Middle and right: radially integrated surface density of dust per grain-size bin as a function of the angle from the midplane in the inner ( r < 15 au) and outer ( r > 25 au) disk. Lines show the mass-weighted mean radius of grains in each model and are overplotted in all rows for comparison.
+
+R0 = 1 . The analytical gas disk had p = −0.5, q = 0 , and 
+
+hg0 = 0 .05 . Dust of a single grain size was represented by 
+
+Np = 10 9 particles with equal particle mass and evolved under stellar gravity, aerodynamic drag with St 0 = 10 −3,and radiation pressure with β0 = 10 . Dust diffused follow-ing Eq. (43) with α = 10 −4 and Sc = 1 , while collisions and Poynting–Robertson drag were not included. The axisym-metric initial surface density of dust was a truncated power law smoothed by a Gaussian kernel 
+
+Σd (R, t = 0) = Σd0 
+
+√2πw 
+
+Z 1.4R0
+
+> 0.6R0
+
+ R′
+
+R0
+
+p
+
+exp 
+
+"
+
+− (R − R′)2
+
+2w2
+
+#
+
+dR ′, (100) where w = 0 .025 R0. We prescribed κ0 and Σd0 such that the initial optical depth was τ ∼ 6 near the peak of the ini-tial surface density, and τ was mapped on a 1024 ×1536 grid for radial and azimuthal resolutions. Particles were sampled from Eq. (100) with uniformly distributed azimuths and ini-tialized with their drag-equilibrium drift velocities. No per-turbation was imposed, so any non-axisymmetric structure grows from particle-sampling noise, whose relative ampli-tude was ∼ 3% at the initial density peak. Follow-up stud-ies on the PSI incorporating collisional dust evolution and on the PSI developing in the 3D photospheric layers of the disk will be presented in separate papers. 
+
+4.2. Computational performance 
+
+We compared the elapsed computational time of the two Lagrangian particle models, GameDev and mcdust , for the benchmarks in Sect. 3.4, where both models used Np = 2 20 ,
+
+GameDev used NK = 256 and ε = 0 .08 , and mcdust used 256 particles per collision cell. The results are summarized in Fig. C.1. Despite the differences in the simulation re-sults, GameDev with the Morton-order neighbor search com-pletes both benchmarks faster than mcdust when GPUs and CPUs of similar generations are compared. In this config-uration, the Morton-order neighbor search is faster than the KD-tree on all three GPUs. We note that ε may be in-creased further to improve performance without sacrificing much accuracy, given that physical collision kernels scale approximately linearly with grain mass (Sect. 3.3). Notably, each GameDev model currently uses only one GPU, which typically occupies between one-half and one-eighth of a high-performance computing node, whereas the 72- and 128-core mcdust models each occupied an entire node. This leaves greater room for scaling GameDev to larger models. With the planned extension to multi-GPU par-allelization (Sect. 4.3.1), GameDev may also benefit from faster communication between devices within a node than between separate nodes, which may otherwise become a performance bottleneck when scaling CPU-based models further. 
+
+> Article number, page 12
+
+Jiaqing Bi: the GameDev code 
+
+Fig. 5. Same as Fig. 4 but for the weak-turbulence model with α = 10 −4 at t = 23 ,800 yr ( t = 23 ,809 yr for cuDisc ), reproducing Fig. 16 of Eriksson et al. (2026). 
+
+Fig. 6. Grain-mass distributions and vertical profiles of the Eriksson et al. (2026) models with α = 10 −3 at t = 11 ,100 yr (top) and α = 10 −4 at t = 23 ,800 yr (bottom). Left and middle: mass-weighted distributions of grain radius in the inner ( r < 15 au) and outer ( r > 25 au) disk, with insets in the left panels magnifying the plateau feature. Right: radially integrated surface density of dust in the outer disk as a function of the angle from the midplane. 
+
+4.3. Future extensions 
+
+4.3.1. Multi-GPU parallelization 
+
+The current implementation of GameDev supports only one GPU for each model. Although the typical video random ac-cess memory (VRAM) capacity of a GPU should generally be sufficient for models commensurate with its computing power, dividing a single GameDev model into multiple parti-tions and distributing them across multiple GPUs remains a promising approach for further improving computational performance. 
+
+Article number, page 13 A&A proofs: manuscript no. main      
+
+> Fig. 7. Dust surface density in the particle model of the photo-spheric instability at t= 3 P0. Top: inner part of the simulated sector in Cartesian coordinates. Bottom: inner edge of the dust disk in the R–ϕplane across the full sector.
+
+Collisional evolution is expected to benefit most from multi-GPU parallelization. This is because neighbor search-ing and repeated collision updates can account for a sub-stantial fraction of the total computational cost, posing a major challenge when scaling the model up even when the VRAM capacity of individual GPUs is not a bottle-neck. The Morton ordering implemented in GameDev for neighbor searching provides a natural basis for spatial do-main decomposition by partitioning the ordered particles among GPUs. Distributed KD-trees offer another possi-ble approach (Patwary et al. 2016). Efficient paralleliza-tion would therefore require suitable data exchange and load balancing, particularly when collision activity varies strongly across the disk. The relative scalability of these approaches remains to be established. 
+
+4.3.2. N-body implementation 
+
+A natural extension of GameDev is to couple its collisional evolution of dust grains to the growth and orbital dynamics of planetesimals and planetary embryos. Coagulation and fragmentation determine the particle sizes, radial drift, and duration of the pebble supply, thereby influencing planetary growth through pebble accretion. For example, fragmenta-tion can promote core growth by maintaining efficiently ac-creted particle sizes and prolonging the delivery of solids (Drążkowska et al. 2021). Following this evolving reservoir could therefore reduce the reliance on prescribed pebble sizes and fluxes in population-synthesis calculations. Such an extension could be achieved by retaining the statistical particle representation for pebbles and small dust grains while introducing a separate population of individually resolved planetesimals or planetary embryos. The mutual gravitational interactions among massive bod-ies could be evolved using an established integrator, such as GENGA or SyMBA (Duncan et al. 1998; Grimm & Stadel 2014; Grimm et al. 2022; Lau & Lee 2023). While there are already precedents for coupling dust evolution to N-body dynamics, such as the DustPy –SyMBAp framework in Lau et al. (2024), GameDev could retain the local spatial and velocity distributions of dust evolving through colli-sions alongside the dynamics of the accreting bodies. With a consistent treatment of pebble accretion and the associated mass and momentum transfer, this coupling would allow planetesimals and planetary embryos to com-pete for a shared, evolving pebble reservoir. It could quan-tify how collisional processing changes accretion efficien-cies and growth timescales, and when simplified pebble-accretion prescriptions remain adequate. Detailed calcula-tions could then inform improved prescriptions for larger population-synthesis ensembles, even where directly resolv-ing the coupled evolution in every system remains compu-tationally expensive. 
+
+5. Conclusions 
+
+We present GameDev , an accurate and efficient dust evolu-tion model that is accelerated by graphics processing units (GPUs). GameDev couples independently evolved 3D dust dynamics with Monte Carlo collisional evolution. Its main features are summarized as follows: 
+
+– The particle model of GameDev simulates dust grains us-ing Lagrangian representative particles in a prescribed gas disk. It integrates particle trajectories under stellar gravity, aerodynamic drag, and optional radiation pres-sure and Poynting–Robertson drag using the staggered semi-analytic method, which converges at second or-der. The integration method remains accurate for both tightly and weakly coupled dust grains. Dust diffusion is implemented with the Euler–Maruyama method. 
+
+– Collision rates are estimated from the NK nearest neigh-bors of each particle, found with either a KD-tree or a Morton-order search, so the sampling region adapts to the local dust distribution without a grid. Collisions re-sult in sticking, erosion, or fragmentation depending on the collision speed and the mass ratio of the colliding grains. Each particle samples collision events against a neighborhood that remains frozen over adaptive inter-vals. The interval length is controlled by a tolerance on the expected grain-size change and its fluctuation, al-lowing all particles to evolve their collisions in parallel. 
+
+– GameDev agrees well with both mcdust and cuDisc in the benchmark of sedimentation-driven coagulation, but shows closer agreement with cuDisc . This suggests that independently evolved dust momentum is important for modeling the coupled evolution of grain growth and sed-imentation. Idealized coagulation tests identify the com-bination of NK = 256 and ε = 0 .08 as a suitable balance between accuracy and computational cost. 
+
+– GameDev supports both NVIDIA and AMD GPUs. With the Morton-order neighbor search, GameDev on one GPU 
+
+> Article number, page 14
+
+Jiaqing Bi: the GameDev code 
+
+completes the sedimentation-driven coagulation bench-mark faster than mcdust on a full CPU node of a similar generation, while occupying only a fraction of a GPU node. 
+
+– The particle model of GameDev supports 3D, 2D radial– polar, 2D radial–azimuthal, and 1D radial configura-tions, with the collision sampling measure adjusted con-sistently to each geometry. 
+
+– A standalone Eulerian pressureless-fluid model comple-ments the particle model where extremely weak pertur-bations must be resolved (see Appendix D). 
+
+– The source code of GameDev , as well as the setup for all models and tests presented in this paper, is available on GitHub. 
+
+Acknowledgements. We thank Hongping Deng, Ruobing Dong, Joanna Drążkowska, Kees Dullemond, Mario Flock, Jeffrey Fung, Ya-Ping Li, Min-Kai Lin, Beibei Liu, and many others for helpful discus-sions over the past few years since the project was initiated. This work is supported by the Deutsche Forschungsgemeinschaft (DFG) under Grant No. 544937803 and was supported by several other grants in the past. The author further gratefully acknowledges funding from COST Action CA22133 PLANETS, supported by COST (European Cooperation in Science and Technology). The simulations were car-ried out on computing clusters hosted by the Max Planck Computing and Data Facility (MPCDF). During the preparation of this work, the author used Codex and Claude models as assistants for software development and manuscript preparation. Software-related assistance included code implementation and refactoring, debugging, and perfor-mance optimization. Manuscript-related assistance included literature searches, code–text cross-checking, and language revision. The author reviewed and validated all AI-assisted content and takes full respon-sibility for this publication. 
+
+References 
+
+Adachi, I., Hayashi, C., & Nakazawa, K. 1976, Prog. Theor. Phys., 56, 1756 Bentley, J. L. 1975, Commun. ACM, 18, 509 Beutel, M. & Dullemond, C. P. 2023, A&A, 670, A134 Beutel, M., Dullemond, C. P., & Strzodka, R. 2024, A&A, 684, A2 Bi, J. & Fung, J. 2022, ApJ, 928, 74 Birnstiel, T. 2024, ARA&A, 62, 157 Birnstiel, T., Dullemond, C. P., & Brauer, F. 2009, A&A, 503, L5 Birnstiel, T., Klahr, H., & Ercolano, B. 2012, A&A, 539, A148 Birnstiel, T., Ormel, C. W., & Dullemond, C. P. 2011, A&A, 525, A11 Blum, J. 2018, Space Sci. Rev., 214, 52 Blum, J. & Wurm, G. 2000, Icarus, 143, 138 Blum, J. & Wurm, G. 2008, ARA&A, 46, 21 Booth, R. A. & Clarke, C. J. 2016, MNRAS, 458, 2676 Brauer, F., Dullemond, C. P., & Henning, T. 2008, A&A, 480, 859 Burns, J. A., Lamy, P. L., & Soter, S. 1979, Icarus, 40, 1 Charnoz, S., Fouchet, L., Aleon, J., & Moreira, M. 2011, ApJ, 737, 33 Ciesla, F. J. 2010, ApJ, 723, 514 Colella, P. & Woodward, P. R. 1984, J. Comput. Phys., 54, 174 Crank, J. & Nicolson, P. 1947, Math. Proc. Cambridge Philos. Soc., 43, 51 Cuzzi, J. N., Dobrovolskis, A. R., & Champney, J. M. 1993, Icarus, 106, 102 Desch, S. J., Estrada, P. R., Kalyaan, A., & Cuzzi, J. N. 2017, ApJ, 840, 86 Dominik, C. & Tielens, A. G. G. M. 1997, ApJ, 480, 647 Draine, B. T. 2006, ApJ, 636, 1114 Drążkowska, J., Bitsch, B., Lambrechts, M., et al. 2023, in Protostars and Planets VII, Vol. 534, 717 Drążkowska, J., Stammler, S. M., & Birnstiel, T. 2021, A&A, 647, A15 Drążkowska, J., Windmark, F., & Dullemond, C. P. 2013, A&A, 556, A37 Drążkowska, J., Windmark, F., & Dullemond, C. P. 2014, A&A, 567, A38 Dubrulle, B., Morfill, G., & Sterzik, M. 1995, Icarus, 114, 237 Dullemond, C. P. & Dominik, C. 2004, A&A, 421, 1075 Dullemond, C. P. & Dominik, C. 2005, A&A, 434, 971 Duncan, M. J., Levison, H. F., & Lee, M. H. 1998, AJ, 116, 2067 Epstein, P. S. 1924, Phys. Rev., 23, 710 Eriksson, L. E. J., Pfeil, T., Kaufmann, N., & Vaikundaraman, V. 2026, MNRAS, 549, 982 Fung, J. & Muley, D. 2019, ApJS, 244, 42 Gillespie, D. T. 1975, J. Atmos. Sci., 32, 1977 Grimm, S. L. & Stadel, J. G. 2014, ApJ, 796, 23 Grimm, S. L., Stadel, J. G., Brasser, R., Meier, M. M. M., & Mor-dasini, C. 2022, ApJ, 932, 124 Guermond, J.-L., Popov, B., & Tomas, I. 2019, Comput. Methods Appl. Mech. Eng., 347, 143 Güttler, C., Blum, J., Zsom, A., Ormel, C. W., & Dullemond, C. P. 2010, A&A, 513, A56 Harten, A., Lax, P. D., & van Leer, B. 1983, SIAM Rev., 25, 35 Huang, P. & Bai, X.-N. 2022, ApJS, 262, 11 Kanagawa, K. D., Ueda, T., Muto, T., & Okuzumi, S. 2017, ApJ, 844, 142 Kataoka, A., Okuzumi, S., Tanaka, H., & Nomura, H. 2014, A&A, 568, A42 Kaufmann, N. L., Pfeil, T., Stammler, S., et al. 2025, arXiv e-prints [arXiv:2511.20764 ]Kloeden, P. E. & Platen, E. 1992, Numerical Solution of Stochastic Differential Equations (Springer Berlin Heidelberg) Krijt, S., Arakawa, S., Oosterloo, M., & Tanaka, H. 2024, MNRAS, 534, 2125 Krijt, S., Ormel, C. W., Dominik, C., & Tielens, A. G. G. M. 2015, A&A, 574, A83 Lau, T. C. H., Birnstiel, T., Drążkowska, J., & Stammler, S. M. 2024, A&A, 688, A22 Lau, T. C. H. & Lee, M. H. 2023, Res. Notes Am. Astron. Soc., 7, 74 Lynden-Bell, D. & Pringle, J. E. 1974, MNRAS, 168, 603 Markiewicz, W. J., Mizuno, H., & Völk, H. J. 1991, A&A, 242, 286 Masset, F. S. 2000, in ASP Conf. Proc., Vol. 219, 75 Mathis, J. S., Rumpl, W., & Nordsieck, K. H. 1977, ApJ, 217, 425 Morton, G. M. 1966, A Computer Oriented Geodetic Data Base and a New Technique in File Sequencing (International Business Ma-chines Company) Nakagawa, Y., Sekiya, M., & Hayashi, C. 1986, Icarus, 67, 375 Ohtsuki, K., Nakagawa, Y., & Nakazawa, K. 1990, Icarus, 83, 205 Ormel, C. W. & Cuzzi, J. N. 2007, A&A, 466, 413 Ormel, C. W., Min, M., Tielens, A. G. G. M., Dominik, C., & Paszun, D. 2011, A&A, 532, A43 Ormel, C. W. & Spaans, M. 2008, ApJ, 684, 1291 Paardekooper, S. J. & Mellema, G. 2004, A&A, 425, L9 Paszun, D. & Dominik, C. 2009, A&A, 507, 1023 Patwary, M. M. A., Satish, N. R., Sundaram, N., et al. 2016, in 2016 IEEE Int. Parallel Distrib. Process. Symp. IPDPS, 494–503 Pfeil, T., Birnstiel, T., & Klahr, H. 2024, A&A, 691, A45 Pfeil, T., Ziampras, A., Zhang, S., Armitage, P. J., & Jiang, Y.-F. 2026, arXiv e-prints [ arXiv:2609.28618 ]Quillen, A. C. 2007, MNRAS, 377, 1287 Robinson, A., Booth, R. A., & Owen, J. E. 2024, MNRAS, 529, 1524 Robinson, A., Owen, J. E., & Booth, R. A. 2026, MNRAS, 550, 1245 Schräpler, R. & Blum, J. 2011, ApJ, 734, 108 Semenov, D., Henning, Th., Helling, Ch., Ilgner, M., & Sedlmayr, E. 2003, A&A, 410, 611 Shakura, N. I. & Sunyaev, R. A. 1973, A&A, 24, 337 Shu, C.-W. & Osher, S. 1988, J. Comput. Phys., 77, 439 von Smoluchowski, M. V. 1916, Phys. Z., 17, 557 Squire, J. & Hopkins, P. F. 2018, MNRAS, 477, 5011 Stammler, S. M. & Birnstiel, T. 2022, ApJ, 935, 35 Strang, G. 1968, SIAM J. Numer. Anal., 5, 506 Takeuchi, T. & Lin, D. N. C. 2002, ApJ, 581, 1344 Tanaka, H., Himeno, Y., & Ida, S. 2005, ApJ, 625, 414 Tazaki, R. & Tanaka, H. 2018, ApJ, 860, 79 Testi, L., Birnstiel, T., Ricci, L., et al. 2014, in Protostars and Planets VI, 339–361 Tominaga, R. T. & Tanaka, H. 2025, ApJ, 983, 15 Trubnikov, B. A. 1971, Sov. Phys. Dokl., 16, 124 Vaikundaraman, V., Gurrutxaga, N., & Drążkowska, J. 2026, JOSS, 11, 10140 Vallender, S. S. 1974, Theory Probab. Appl., 18, 784 Völk, H. J., Jones, F. C., Morfill, G. E., & Röser, S. 1980, A&A, 85, 316 Wald, I. 2022, arXiv e-prints [ arXiv:2211.00120 ]Weidenschilling, S. J. 1977, MNRAS, 180, 57 Weidling, R., Güttler, C., Blum, J., & Brauer, F. 2009, ApJ, 696, 2036 Windmark, F., Birnstiel, T., Ormel, C. W., & Dullemond, C. P. 2012, A&A, 544, L16 Yang, J., Chen, Z., & Bai, X.-N. 2026, ApJS, 286, 6 Youdin, A. N. & Goodman, J. 2005, ApJ, 620, 459 Zsom, A. & Dullemond, C. P. 2008, A&A, 489, 931 Zsom, A., Ormel, C. W., Dullemond, C. P., & Henning, T. 2011, A&A, 534, A73 Zsom, A., Ormel, C. W., Güttler, C., Blum, J., & Dullemond, C. P. 2010, A&A, 513, A57 
+
+Article number, page 15 A&A proofs: manuscript no. main 
+
+Appendix A: Analytical solutions to the Smoluchowski equation 
+
+A.1. Constant kernel 
+
+For the constant-kernel test, Eq. (49) was replaced by 
+
+Kij (mi, m j ) const 
+
+= 1 . (A.1) All particles were initialized with mi = m0, such that the grain-number distribution satisfies 
+
+n (m, t = 0) = Md
+
+m20
+
+δ ˜m1, (A.2) where δ ˜m1 is the Kronecker delta and 
+
+˜m = m/m 0 = 1 , 2, 3, . . . (A.3) is the dimensionless mass, which remains a positive inte-ger because of the discrete mass initialization in Eq. (A.2) and the coagulation-only prescription. The Smoluchowski equation then gives (Ohtsuki et al. 1990) 
+
+n (m, t ) const 
+
+= Md
+
+m20
+
+ ˜t/ 2 ˜m−1
+
+ 1 + ˜ t/ 2 ˜m+1 . (A.4) Notably, Eq. (A.4) offers 
+
+m2n (m, t ) const 
+
+∝ ˜m2
+
+ ˜t
+
+2 + ˜ t
+
+ ˜m−1
+
+, (A.5) which has a maximum for t > 0 at 
+
+mpeak (t) = − 2m0
+
+ln 
+
+ ˜t
+
+2 + ˜ t
+
+ . (A.6) This analytical form was used for comparison with the sim-ulation results. 
+
+A.2. Linear kernel 
+
+For the linear-kernel test, Eq. (49) was replaced by 
+
+Kij (mi, m j ) linear 
+
+= mi + mj
+
+m0
+
+. (A.7) We sampled the grain masses of the particles from a gamma distribution with a shape parameter of 2 and a scale param-eter of m0, while retaining equal particle masses. This gives the initial grain-number distribution 
+
+n (m, 0) = Md
+
+m20
+
+e− ˜m. (A.8) The Smoluchowski equation then gives (Ohtsuki et al. 1990) 
+
+n (m, t ) linear 
+
+= 1
+
+mMd
+
+m0
+
+g
+
+p1 − g exp [ − ˜m (2 − g)] 
+
+× I1
+
+
+
+2 ˜ mp1 − g
+
+
+
+,
+
+(A.9) where I1 is the modified Bessel function of the first kind of order one and 
+
+g(t) = exp  −˜t . (A.10) To avoid overflow when evaluating the exponentially grow-ing I1(x), we rewrite Eq. (A.9) as 
+
+n (m, t ) linear 
+
+= 1
+
+mMd
+
+m0
+
+g
+
+√1 − g exp 
+
+"
+
+− ˜m
+
+ g
+
+1 + √1 − g
+
+2#
+
+× I1e 
+
+
+
+2 ˜ mp1 − g
+
+
+
+, (A.11) where 
+
+I1e (x) = e −xI1(x) (A.12) is the corresponding exponentially scaled Bessel function. 
+
+A.3. Product kernel 
+
+For the product-kernel test, Eq. (49) was replaced by 
+
+Kij (mi, m j ) prod 
+
+= mi × mj
+
+m20
+
+. (A.13) With the initial distribution given by Eq. (A.2), the Smolu-chowski equation gives (Trubnikov 1971) 
+
+n (m, t ) prod 
+
+= 1
+
+mMd
+
+m0
+
+  ˜m˜t ˜m−1
+
+˜m! exp  − ˜m˜t . (A.14) 
+
+Appendix B: Parameter survey of the coagulation tests 
+
+For each collision kernel, we ran all 25 combinations of NK
+
+and ε listed in Sect. 3.3, each with ten independent repe-titions that differed in the random numbers used for par-ticle positions and collision sampling, as well as the initial grain masses for the linear-kernel tests. The constant-kernel models were evolved to ˜t = 10 8, the linear-kernel models to 
+
+˜t = 4 , and the product-kernel models to ˜t = 0 .9, before gelation at ˜t = 1 . Figures B.1, B.2, and B.3 compare the grain-mass distributions of the repetition with seed index 0 with the analytical solutions in Appendix A. We quantified the discrepancy at the final snapshot us-ing the first Wasserstein distance W1 between the simulated and analytical mass-weighted distributions in logarithmic grain mass (Vallender 1974) 
+
+W1 =
+
+Z
+
+|Fsim ( ˜ m) − Fexact ( ˜ m)| d log 10 ˜m, (B.1) where Fsim ( ˜ m) and Fexact ( ˜ m) are the simulated and ana-lytical fractions of the total dust mass in grains with dimen-sionless mass below ˜m, and the integral covers the range oc-cupied by both distributions. The distance W1 is the mass-weighted mean shift in log 10 m required to transform one distribution into the other, such that W1 = 0 .01 dex corre-sponds to a typical mass offset of about 2%. The reported values of W1 are averages over the ten repetitions, whose standard deviation is typically ≲ 25% of the mean for the constant and linear kernels and up to ∼ 60% for the product kernel at ε ≤ 0.02 , where W1 is smallest. For the product kernel, the collision rates are dominated by the few most massive grains. With fixed neighbor lists, a growing particle repeatedly samples the same partners, which correlates the growth histories of nearby particles and can artificially amplify runaway growth. Because the 
+
+> Article number, page 16
+
+Jiaqing Bi: the GameDev code 
+
+Fig. B.1. Normalized grain-mass distributions in the constant-kernel test for all combinations of NK (rows) and ε (columns). Shaded histograms show one repetition and solid curves show the analytical solutions at ˜t = 10 0, 10 2, . . . , 10 8. Vertical dashed lines mark the analytical peak masses mpeak . Each panel lists W1 at the final snapshot, averaged over ten repetitions. 
+
+Fig. B.2. Same as Fig. B.1 but for the linear-kernel test at ˜t = 0 , 1, . . . , 4.
+
+analytical solution assumes a well-mixed population, we randomly permuted the cached neighbor indices of all parti-cles before every neighborhood refresh in the product-kernel models, and treated the domain as a single spatial group so that all particles refreshed simultaneously. This reshuffling was applied only in the product-kernel test. It removes the dependence of the results on NK (Fig. B.3), so that this test primarily probes the frozen-neighbor intervals controlled by 
+
+ε.
+
+Article number, page 17 A&A proofs: manuscript no. main            
+
+> Fig. B.3. Same as Fig. B.1 but for the product-kernel test with neighbor reshuffling at ˜t= 0 .1,0.3, . . . , 0.9.
+> Fig. B.4. Accuracy versus elapsed time of the coagulation tests with NK= 256 . Colors denote the collision kernels and markers denote ε. Both W1at the final snapshot and the elapsed time are averaged over ten repetitions.
+
+The wall time was measured as the elapsed time of each entire simulation, including initialization and output. Be-cause the particles did not move, each collision timestep spanned an output interval, and the KD-tree and the neigh-bor search were constructed only once. The wall time is therefore dominated by the collisional evolution and under-estimates the cost of models with transport, in which the neighbor search is repeated every timestep. For the product kernel, the wall time also includes the reshuffling overhead. Figure B.4 summarizes the accuracy and wall time of the models with NK = 256 . For the constant and linear kernels, 
+
+W1 depends only weakly on ε up to ε = 0 .08 and decreases with increasing NK, approximately as N −1K for the linear kernel and as N −0.8K for the constant kernel (Figs. B.1 and B.2), indicating that the error is dominated by the finite neighborhood sampling rather than by the frozen-neighbor intervals. In contrast, the product-kernel error increases rapidly with ε: at large ε, the simulated distributions fall below the analytical solutions at the high-mass end. This is consistent with partner masses cached at the beginning of each interval lagging behind their actual growth, to which the product kernel is most sensitive. For the constant and linear kernels, the wall time scales approximately as ε−2,consistent with the second-moment constraint in Sect. 2.5.3 limiting the frozen-neighbor intervals. 
+
+Appendix C: Elapsed time in the benchmark comparison 
+
+Figure C.1 shows the elapsed computational time of the 
+
+GameDev and mcdust models discussed in Sect. 4.2. 
+
+Appendix D: The dust fluid model 
+
+In addition to the particle model, GameDev provides a stan-dalone Eulerian model that treats dust as a pressureless fluid. The fluid model shares the prescriptions of aerody-namic drag, radiation pressure, diffusion, and the analyti-cal gas background with the particle model, and we describe only the differences here.           
+
+> Article number, page 18 Jiaqing Bi: the GameDev code
+> Fig. C.1. Elapsed computational time of GameDev and mcdust for the E26 benchmarks with α= 10 −3(top) and α= 10 −4
+> (bottom). Left: elapsed time per 100 yr of simulation time. Right: total elapsed time to reach the snapshots shown in Figs. 4 and 5. Labels give the hardware used by each model, with the peak double-precision vector throughput for the GPUs and the base clock frequency for the CPUs.
+
+D.1. Governing equations 
+
+The fluid model represents a single dust species with a fixed grain size, so that the Stokes number depends only on posi-tion. It supports the 3D and the 2D radial–azimuthal con-figurations, both of which require a resolved azimuthal di-mension. Collisions and Poynting–Robertson drag are not included. With the dust density ϱd defined in Sect. 2.1, the dust evolves according to 
+
+∂ϱ d
+
+∂t + ∇ · (ϱdv) = ∂ϱ d
+
+∂t diffusion 
+
+(D.1) and 
+
+∂ (ϱdv)
+
+∂t + ∇ · (ϱdvv ) = 
+
+ϱd
+
+
+
+− GM ⋆
+
+r2 ˆr + f RP + vg − v
+
+ts
+
+
+
++ Sdiff ,
+
+(D.2) where v is the dust velocity, the diffusion term is given by Eq. (42) or (43), and Sdiff is the momentum flux carried by the diffusive mass flux (Appendix D.2). Given that dust is pressureless, the momentum flux ϱdvv does not include the velocity-dispersion term. This closure is appropriate as long as the dust velocity is locally single-valued. Unlike the particle model, however, the fluid model cannot represent multiple velocity streams at the same location after trajec-tories cross, as can occur for weakly coupled grains. Same as the particle model, the momentum is evolved in terms of y = ( vr , ℓ θ , ℓ ϕ), and the conserved variables are 
+
+ϱd and ϱdy, with ℓθ omitted in 2D. The dust diffusion co-efficients keep the form given in Sect. 2.4, with a Schmidt number in each direction, but the diffusion tensor is diag-onal in the local spherical basis instead of the cylindrical basis. The two bases coincide in vertically integrated mod-els, whereas in 3D the fluid model diffuses along r rather than R.
+
+D.2. Numerical methods 
+
+Density and momenta are transported conservatively by di-rectionally split finite-volume sweeps. Interface states are reconstructed with the piecewise parabolic method (PPM; Colella & Woodward 1984). Fluxes are calculated with the Harten–Lax–van–Leer method (HLL; Harten et al. 1983). Given that the pressureless equations are only weakly hy-perbolic and can develop vacuum regions and singular con-centrations, the high-order flux at each face is blended with a first-order HLL flux such that the density remains nonnegative and the transported specific momenta remain within local bounds (Guermond et al. 2019). Azimuthal transport uses the fast advection in rotating gaseous objects method (FARGO; Masset 2000). Radial and polar trans-port are integrated with the three-stage third-order strong stability preserving Runge–Kutta method (SSPRK(3,3);  
+
+> Article number, page 19 A&A proofs: manuscript no. main
+
+Shu & Osher 1988). The radial and polar boundaries allow only outflow, and the azimuthal boundaries are periodic. Stellar gravity, aerodynamic drag, and radiation pres-sure acting on y are integrated locally in each cell. Same as the particle model, drag relaxation is integrated analyt-ically for a fixed stopping time, while the remaining forces are interpolated linearly in time between their old and up-dated values with drag-dependent weights, which recover the trapezoidal rule for ∆t ≪ ts. The optical depth is cal-culated from the cell densities following Eq. (25) or (26). Dust diffusion is solved in finite-volume form with the implicit Crank–Nicolson method (Crank & Nicolson 1947) along each direction, using subcycling and donor-limited fluxes where necessary to preserve positivity. To keep the momentum consistent with the redistributed mass, the dif-fusive mass flux across each face carries the specific mo-mentum y of its donor cell, which defines Sdiff in Eq. (D.2) and conserves momentum across internal faces. Similar to the particle model, each timestep follows a symmetric operator splitting, 
+
+D
+
+ ∆t
+
+2
+
+
+
+T
+
+ ∆t
+
+2
+
+
+
+S
+
+
+
+∆t
+
+
+
+T
+
+ ∆t
+
+2
+
+
+
+D
+
+ ∆t
+
+2
+
+
+
+,
+
+where D, T , and S are diffusion, transport, and local source terms, respectively. The directional sweeps within D and T
+
+are applied in reverse order in the second half of the step. The optical depth is evaluated at the intermediate state before S. The timestep is limited by the azimuthal veloc-ity relative to the ring-averaged orbital motion removed by FARGO and by the radial and polar velocities relative to the local cell sizes. The transport half-steps are subcycled whenever this limit becomes more restrictive during the step. The implicit diffusion and the analytical drag integra-tion impose no additional timestep constraints. 
+
+D.3. Application to the photospheric instability 
+
+The fluid model was primarily motivated by studies of the linear-growth phase of the PSI that require extremely weak initial perturbations. In the particle model, the initial perturbation is set by the particle-sampling Poisson noise, which decreases only as N −1/2p . Reducing it from ∼ 3% to 
+
+10 −10 on the same grid would require ∼ 10 26 particles, far beyond what is computationally feasible. We repeated the model of Sect. 4.1 with the fluid model, using the same physical parameters and initial surface den-sity on a 3072 × 4096 grid in the radial and azimuthal di-rections. Instead of sampling noise, the initial surface den-sity was perturbed in azimuth with a relative amplitude of 
+
+10 −10 , drawn independently from a standard normal distri-bution for each azimuthal cell and applied identically at all radii. Because the instability likely requires longer to grow from this weaker seed, Fig. D.1 shows a later snapshot at 
+
+t = 5 P0, compared with t = 3 P0 for the particle model in Fig. 7. The fluid model develops a clumpy disk edge similar to that of the particle model.    
+
+> Fig. D.1. Same as Fig. 7 but for the fluid model at t= 5 P0.Article number, page 20 Jiaqing Bi: the GameDev code
+
+Appendix E: List of symbols 
+
+Table E.1 lists the symbols used in this paper. Bold italic symbols denote vectors, bold upright symbols denote matrices and tensors, and calligraphic symbols denote sets, operators, and probability distributions. The subscript 0 denotes reference values, the subscript “exact” denotes analytical solutions, and a tilde denotes a quantity normalized by its reference value.  
+
+> Table E.1. Symbols used in this paper.
+
+Symbol Description Section 
+
+Latin letters 
+
+a Grain radius, s/ 2 3.4 
+
+Ab First moment of the grain-size change rate in controller bin b 2.5.3 
+
+b Controller bin index 2.5.3 
+
+Bb Second moment of the grain-size change rate in controller bin b 2.5.3 
+
+c Speed of light 2.3.2 
+
+cs, cs0 Sound speed, and its value at R0 2.2, 2.3.1 
+
+C Adaptive safety factor of the frozen-neighbor intervals 2.5.3 
+
+di Distance to the farthest retained neighbor of particle i 2.5.1 
+
+D, D0 Dust diffusion coefficient, and its value at R0 2.4, 3.2 
+
+D Dust diffusion tensor 2.4 
+
+DR, DZ , Dϕ Directional dust diffusion coefficients 2.4 
+
+e Orbital eccentricity 3.1 
+
+E, Eexact Specific orbital energy, and its exact value 3.1 
+
+f , fr , fθ , fϕ Remaining specific force terms in the equation of y, and their components 2.3.3 
+
+f aero Specific aerodynamic force 2.3 
+
+f PR Specific Poynting–Robertson drag 2.3.2 
+
+f rad Specific radiation force 2.3 
+
+f RP Specific radiation pressure 2.3.2 
+
+Fexact , Fsim Analytical and simulated cumulative mass fractions B
+
+g exp  −˜t in the linear-kernel solution A
+
+G Gravitational constant 2.2 
+
+hg, hg0 Gas aspect ratio, and its value at R0 2.2 
+
+Hg Gas scale height 2.2 
+
+Hi, Hj Gas scale heights at particles i and j, Hg (Ri) and Hg (Rj ) 2.5.1 
+
+i Query particle index 2
+
+I1, I1e Modified Bessel function of the first kind of order one, and its exponentially scaled form A
+
+j Neighbor (partner population) index 2.5.1 
+
+Jio , ⟨Jio ⟩ Logarithmic grain-size change for outcome o, and its expectation 2.5.3 
+
+kB Boltzmann constant 2.5.2 
+
+Kij Collision kernel 2.5.1 
+
+ℓθ , ℓϕ Specific polar and azimuthal angular momenta 2.3.3 
+
+L⋆ Stellar luminosity 2.3.2 
+
+m, mi, mj , m0 Grain mass, and the unit (monomer) mass 2, 3.3 
+
+mpeak Grain mass at the peak of m2n A
+
+m′ 
+
+> i
+
+Post-collision grain mass 2.5.2 
+
+˜m Dimensionless grain mass, m/m 0 A
+
+Md Total dust mass 3.2, 3.3 
+
+Mfrag Mass-weighted fragment distribution 2.5.2 
+
+Mi Particle mass 2
+
+M⋆ Stellar mass 2.2 
+
+n Grain-number distribution per unit mass A
+
+nij Number density of grains represented by neighbor j 2.5.1 
+
+Ncoll Grouping factor (number of grouped collisions) 2.5.2 
+
+Nfrag Number-weighted fragment distribution 2.5.2 
+
+Ni Number of physical dust grains represented by particle i 2  
+
+> Article number, page 21 A&A proofs: manuscript no. main
+> Table E.1. continued.
+
+Symbol Description Section 
+
+NK Number of nearest neighbors 2.5.1 
+
+Np Number of representative particles 2
+
+N ′ 
+
+> i
+
+Post-collision number of represented grains 2.5.2 
+
+o Collision outcome index 2.5.3 
+
+p Power-law index of the gas surface density 2.2 
+
+P0 Orbital period at R0, 2π/ ΩK0 3.1 
+
+q Power-law index of the gas temperature 2.2 
+
+r Spherical radius 2.1 
+
+rmin Inner boundary in spherical radius 2.3.2 
+
+ˆr Radial unit vector 2.3 
+
+R, R0 Cylindrical radius, and the reference radius 2.1, 2.2 
+
+Rmin Inner boundary in cylindrical radius 2.3.2 
+
+∆R Diffusive radial displacement 2.4 
+
+s, si, sj , s0 Grain diameter, and the reference grain diameter 2, 2.3.1 
+
+smin Minimum grain diameter of fragments 2.5.2 
+
+s′ 
+
+> i
+
+Post-collision grain diameter 2.5.2 
+
+Sdiff Momentum flux carried by the diffusive mass flux D.1 
+
+Sc Schmidt number of the gas turbulence, relating ν to D 2.4 
+
+St , St 0 Stokes number, and its midplane value for s0 at R0 2.3.1 
+
+t, t0 Time, and the reference time 2.3, 3.2, 3.3 
+
+ts Stopping time 2.3.1 
+
+tβ Timescale of the radiation taper 2.3.2 
+
+˜t Dimensionless time, t/t 0 3.2, 3.3 
+
+∆t Timestep, over which the transport operator advances 2.3.3, 2.6 
+
+∆tcoll Collision timestep, ∆t/ 2 in models with transport 2.5.3, 2.6 
+
+∆tdiff Diffusion timestep, ∆t/ 2 2.4, 2.6 
+
+∆tfn Frozen-neighbor interval 2.5.3 
+
+∆tfn ,exe Executed frozen-neighbor interval 2.5.3 
+
+∆tfn ,max Maximum frozen-neighbor interval 2.5.3 
+
+∆tfn ,req Requested frozen-neighbor interval 2.5.3 
+
+∆ti Most restrictive local timestep of particle i 2.6 
+
+∆tmax Maximum transport timestep 2.6 
+
+∆tout Remaining time before the next output 2.6 
+
+∆tremain Remaining time in the current collision timestep ∆tcoll 2.5.3 
+
+∆tw Waiting time until the next collision event 2.5.3 
+
+T Gas temperature 2.5.2 
+
+u Eccentric anomaly 3.1 
+
+U , Ui Uniform random number 2.5.2, 2.5.3 
+
+v, vr , vθ , vϕ Dust velocity and its spherical components 2, D.1 
+
+vfrag Fragmentation speed 2.5.2 
+
+vg Gas velocity 2.3.1 
+
+vg,ϕ Gas azimuthal velocity 2.2 
+
+vvisc Viscous radial gas velocity 2.2 
+
+∆vij Collision speed 2.5.2 
+
+∆vB Brownian contribution to the collision speed 2.5.2 
+
+∆vR, ∆vZ , ∆vϕ Relative radial drift, vertical settling, and azimuthal speeds 2.5.2 
+
+∆vt Turbulent contribution to the collision speed 2.5.2 
+
+Vi Sampling measure of particle i (volume, area, or annulus area) 2.5.1 
+
+w Width of the Gaussian smoothing kernel 4.1 
+
+W1 Wasserstein distance B
+
+x, xi Position vector 2
+
+y Integration variables (vr , ℓ θ , ℓ ϕ) 2.3.3 
+
+yg Gas velocity in the integration variables 2.3.3  
+
+> Article number, page 22 Jiaqing Bi: the GameDev code
+> Table E.1. continued.
+
+Symbol Description Section 
+
+Z Cylindrical height 2.1 
+
+∆Z Diffusive vertical displacement 2.4 
+
+Greek letters 
+
+α Viscosity parameter 2.2 
+
+β, β0 Ratio of radiation pressure to gravity, and its value for s0 2.3.2 
+
+γPR Poynting–Robertson damping rate 2.3.2 
+
+γr , γθ , γϕ Damping rates of the integration variables 2.3.3 
+
+Γ Diagonal damping-rate matrix 2.3.3 
+
+δ ˜m1 Kronecker delta A
+
+ε Tolerance of the frozen-neighbor intervals 2.5.3 
+
+ζR, ζZ , ζϕ Independent standard normal random numbers 2.4 
+
+η Radial pressure-gradient parameter 2.2 
+
+θ Polar angle 2.1 
+
+ˆθ Polar unit vector 2.3.2 
+
+κ, κ0 Dust opacity, and its value for s0 2.3.2 
+
+λ0 Collision-rate normalization 3.3 
+
+λi, λij Total and pair collision rates 2.5.1 
+
+λ∗ 
+
+> i
+
+, λ∗ 
+
+> ij
+
+Effective total and pair collision rates 2.5.2, 2.5.3 
+
+λ∗
+
+> ij, deb
+
+, λ∗ 
+
+> ij, rem
+
+Effective rates of the erosion debris and remnant branches 2.5.2 
+
+μ Mean of ln ( Ri/R 0) 3.2 
+
+ν Gas kinematic viscosity 2.2 
+
+ξ Argument of the radiation taper 2.3.2 
+
+ρd Dust volume density 2.1 
+
+ρg, ρg0 Gas volume density, and its midplane value at R0 2.2, 2.3.1 
+
+ρ◦ Internal density of grains 2
+
+ϱd Dust density, Σd in vertically integrated models and ρd otherwise 2.1 
+
+ϱg Gas density, Σg in vertically integrated models and ρg otherwise 2.1 
+
+σ Standard deviation of ln ( Ri/R 0) 3.2 
+
+Σd, Σd0 Dust surface density, and the normalization of its initial profile 2.1, 4.1 
+
+Σg, Σg0 Gas surface density, and its value at R0 2.2 
+
+τ Radial optical depth 2.3.2 
+
+ϕ Azimuthal angle 2.1 
+
+ϕexact Exact true anomaly 3.1 
+
+ˆϕ Azimuthal unit vector 2.3.2 
+
+∆ϕ Diffusive azimuthal displacement 2.4 
+
+χ Switch between concentration ( χ = 1 ) and density ( χ = 0 ) diffusion 2.4 
+
+ψ Grain-mass ratio, mj /m i 2.5.2 
+
+ΩK, ΩK0 Keplerian angular velocity, and its value at R0 2.2, 2.3.1 
+
+Calligraphic symbols 
+
+B Set of controller bins in a spatial group 2.5.3 
+
+C Collision operator 2.6 
+
+D Diffusion operator 2.6, D.2 
+
+Ji Set of retained neighbors of particle i 2.5.1 
+
+N Normal distribution 2.4, 2.5.1 
+
+S Local source operator of the fluid model D.2 
+
+T Deterministic transport operator 2.6, D.2 
+
+U Uniform distribution 2.5.2

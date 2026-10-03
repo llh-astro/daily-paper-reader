@@ -1,0 +1,2949 @@
+Title: Identifiability Guarantees for Drivers and Dynamics of Delayed Physical Systems
+
+URL Source: https://arxiv.org/pdf/2609.37944v3
+
+Published Time: Fri, 02 Oct 2026 02:02:18 GMT
+
+Number of Pages: 46
+
+Markdown Content:
+Preprint. 
+
+# IDENTIFIABILITY GUARANTEES FOR DRIVERS AND 
+
+# DYNAMICS OF DELAYED PHYSICAL SYSTEMS 
+
+Julien Boussard 1,2,† Antoine Debouchage 3 Th´ eo Saulus 2,41School of Computer Science, McGill University, Canada 2Mila - Quebec AI Institute, Canada 
+
+> 3
+
+LaMMe, Universit´ e ´ Evry Paris-Saclay, France 4 DIRO, Universit´ e de Montr´ eal, Canada 
+
+> †
+
+julien.boussard@mila.quebec 
+
+## ABSTRACT 
+
+Learning the dynamics of a physical system directly from observations is a key problem in natural sciences, where physical consistency and interpretability are essential. A wide range of methods have been proposed, including physics-informed neural networks, which are powerful but do not guarantee identifiability of the dynamics, symbolic regression, which requires a set of precomputed oper-ations, and causal discovery, which is more principled but usually relies on strong assumptions that physical systems may violate. In this work, we develop a theory-grounded method and prove that under a set of permissive assumptions, the struc-tural drivers and drift of stochastic delayed differential equations are identifiable. Our method outperforms others on a benchmark for driver identifiability, and on a second benchmark to evaluate physical consistency of the learned dynamics. 
+
+## 1 INTRODUCTION 
+
+The evolution of many physical systems depends not only on their current state but also on their past states. For example, the climate system and ecological or neural population dynamics are driven by delayed feedbacks between variables (Chekroun & Liu, 2024; Keane et al., 2017; C ¸ etin et al., 2026). Lagged dynamical systems explicitly model both instantaneous and time-delayed depen-dencies, which improves the predictive capacity and interpretability of the learned model. Such systems are formally described by stochastic delayed differential equations (SDDEs) (Mohammed, 1982; Scheutzow, 1984) which allow for delayed connections, as opposed to stochastic differential equations (SDEs) used to describe Markovian dynamical systems (Itˆ o, 1944; 1951). Lagged connections in physical systems such as the climate system typically lead to oscillations and chaotic behavior, characterized by ergodicity and chaoticity (Ghil et al., 2008; Ghil & Lucarini, 2020). Ergodic means that long-time statistics are identical across almost all initial conditions (Wal-ters, 1999), while chaotic means that an infinitesimally small difference between two initial condi-tions will lead to two paths diverging exponentially fast (Dorfman, 1999). Scientific machine learning (ML) has mostly focused on modeling SDE-driven systems. Neural ordinary differential equations (ODEs) (Chen et al., 2018; Dupont et al., 2019) allow the direct ap-proximation of the gradient of a physical system from irregular sparse observations (Zhang et al., 2020). They have been extended to capture delay (Eggen & Midtfjord, 2023; Oh et al., 2025), but still do not learn the long-term statistics of the system, leading to unrealistic long-horizon trajec-tories. Indeed, Park et al. (2024) have shown that data-driven neural parameterizations of chaotic ordinary or partial differential equations (PDEs) fail to generalize when modeling ergodic chaotic systems, despite low test error. Physics-informed neural networks (Yin et al., 2021), or symbolic regression methods (Udrescu et al., 2020; Brunton et al., 2016) improve generalization but require a known parametric form or a set of precomputed functions and are computationally expensive. Motivated by the above limitations, we aim to learn the true drivers and drift of an SDDE. They must therefore be identifiable, i.e. uniquely recoverable from observations. Causal discovery methods have emerged as a promising avenue to infer cause–effect relationships from time-series observa-tions and have been extended to complex, nonlinear, lagged causal structures (Runge, 2020; Yao et al., 2022; Lippe et al., 2022; Hickman et al., 2025; Brouillard et al., 2026). To identify the causal graph, these methods typically rely on strong constraints such as acyclicity (Pamfil et al., 2020) or 1arXiv:2609.37944v3 [stat.ML] 1 Oct 2026 Preprint. no instantaneous connections, which physical systems often violate. Another approach is to embed traditional regularization and feature selection methods into Neural ODEs (NODEs, Aliee et al., 2025), with identifiability guarantees derived for Markovian systems (Bellot et al., 2022). In this work, we provide identifiability guarantees for ergodic, chaotic SDDE-driven systems, both at population level and in finite-sample settings. We use L0 regularization (Louizos et al., 2018), which has been proposed in the disentanglement literature (Lachapelle et al., 2023) and to regularize neural ODEs (Aliee et al., 2022). We show that under a set of permissive assumptions, it is sufficient for identifying the correct lagged causal connections and drift of SDDEs. 
+
+Main contributions :• We develop a theory-grounded method ( L0-Neural DDE, L0-NDDE) and provide novel identifiability proofs for lagged and instantaneous drivers and drift of SDDE systems. • We demonstrate that L0-NDDE outperforms other data-driven methods for identifying structural drivers of dynamical systems on a comprehensive benchmark. • We show that L0-NDDE accurately captures long-term statistics on 40 simulated low-dimensional chaotic systems from the Dysts dataset (Gilpin, 2021). 
+
+## 2 RELATED WORK 
+
+Several causal discovery approaches have been proposed for time-series data. Building upon Granger causality (Granger, 1969), which fails to capture nonlinear dynamics (Sugihara et al., 2012), methods such as Neural Granger Causality (NGC) (Tank et al., 2022), CUTS+ (Cheng et al., 2024) or Temporal Causal Discovery Framework (TCDF) (Nauta et al., 2019) use various deep-learning techniques to learn nonlinear autoregressive links and identify lagged causal links directly from mul-tivariate sequences. Constraint-based methods such as PCMCI+ (Runge, 2020) or F-PCMCI (Castri et al., 2023) infer causal structure using conditional independence tests between lagged variables, while permutation-based methods (GRaSP, Lam et al., 2022) search over permutations of variables and iteratively prune spurious edges to identify sparse causal graphs. Score-based methods such as DYNOTEARS (Pamfil et al., 2020) infer causal relationships by optimizing a score function with differentiable constraints that ensure identifiability of the causal graph (Zheng et al., 2018; Brouil-lard et al., 2026; Hickman et al., 2025). Noise-based methods (VARLiNGAM, Hyv¨ arinen et al., 2010; RCD, Maeda & Shimizu, 2020) leverage the statistical independence of the noise term with respect to the inputs to identify causal connections. Finally, cross-mapping techniques discover lagged causal relationships by aligning lagged time-series (TSCI, Butler et al., 2024). These causal methods typically discretize time and rely on strong assumptions about the causal graph (e.g., acyclicity) which often violate the nature of the continuous-time dynamics (Tagliapietra et al., 2026). To overcome this issue, a growing body of work has proposed to integrate graphical modelling approaches into Neural ODEs to identify the Jacobian of the physical system. Penalized regression has been used to estimate parameters of differential equations, with consistency guaran-tees (Ramsay et al., 2007; Raissi et al., 2017; Wenk et al., 2020). More recently, Bellot et al. (2022) derived identifiability results for drivers of SDEs and proposed to use adaptive group lasso (AGL, Zou, 2006) to select input features and identify drivers. This work has been applied to SDDEs without identifiability guarantees (Wu et al., 2024). In our work, we propose to use L0-induced sparsity (Louizos et al., 2018) on the input features to identify the instantaneous and lagged drivers of SDDEs. We derive novel theoretical guarantees for the identifiability of the dynamics of SDDEs, under a discrete, finite number of observations. L0-induced sparsity has been used in causal representation learning (Lachapelle et al., 2023), and for regularizing neural ODEs (PathReg, Aliee et al., 2022). 
+
+## 3 METHOD 
+
+We consider the following continuous-time stochastic model, with delays 0 < τ 1 < · · · < τ q ,
+
+dX t = G(Xt, X t−τ1 , . . . , X t−τq ) dt + Σ dW t,Gj (x0, x 1, . . . , x q ) = fj
+
+ m0 
+
+> j
+
+⊙ x0, m 1 
+
+> j
+
+⊙ x1, . . . , m qj ⊙ xq
+
+ , M ∈ { 0, 1}D×D×(q+1) (1) 2Preprint. where W is a standard D-dimensional Brownian motion and Σ ∈ RD×D is the diffusion matrix (ΣΣ ⊤ being the noise covariance per unit time). M is a sparse binary tensor representing the dy-namical drivers at timesteps 0, τ 1, . . . , τ q . We note Zt := ( Xt, X t−τ1 , . . . , X t−τq ) to simplify the notation when needed. We assume here that there is a maximum time lag τmax for the lagged inter-actions, which happen within the timesteps 0, τ 1, . . . , τ q . fj is the nonlinear function giving the drift (the infinitesimal conditional mean rate of change) of Xt,j as a function of its drivers. We learn the functions efj ( ˜ m0 
+
+> j
+
+⊙ x0, ˜m1 
+
+> j
+
+⊙ x1, . . . , ˜mqj ⊙ xq ) =: eGj (x0, . . . , x q ) to approximate this system. In this section, we first show that the drivers and the dynamics, i.e. the matrix M and function 
+
+G, can in principle be recovered from a finite number of observations. We first give assumptions under which the SDDE (1) admits a unique strong solution, which is a prerequisite to identifiability. We then show that G and M are identifiable at the population level, either under a hard sparsity constraint (Theorem 1) or with an L0 penalty (Theorem 2). Under additional assumptions, we prove that the system is geometrically ergodic (Theorem 3) and provide a finite-sample identifiability theorem (Theorem 4). Proofs are given in Section A and we provide a proof map (Figure 1) to help the reader understand the construction of the proofs. 3.1 EXISTENCE AND UNIQUENESS OF A SOLUTION 
+
+Because the system is not Markovian, the evolution of the system depends on the whole history of length τmax rather than the current value only. This is represented by the segment space and the segment process (Mao, 2007; Hairer et al., 2011): 
+
+C := C [−τmax , 0]; RD  , Xseg  
+
+> t
+
+(s) := Xt+s, s ∈ [−τmax , 0] ,
+
+where C is the space of continuous functions from [−τmax , 0] to RD , equipped with the supremum norm ∥φ∥C = sup s∈[−τmax ,0] ∥φ(s)∥ for any given path φ ∈ C . The segment process (Xseg  
+
+> t
+
+)t≥0 is then a Markov process on the (infinite-dimensional) space C. Accordingly, the initial condition is a 
+
+C-valued random variable Xseg 0 , i.e. all values observed in the previous time interval [−τmax , 0] .We impose standard assumptions on the underlying process: we require that the observed history does not anticipate future noise, that the noise acts in all dimensions (non-degenerate), and that the drift maintains finite energy along the trajectory, i.e. the system has finite energy. 
+
+Assumption 1 (Data-Generating Process) . The true process X solves the SDDE Equation 1 on RD :(i) Initial conditions: The initial state Xseg 0 is independent of W , and E∥Xseg 0 ∥2 
+
+> C
+
+< ∞.(ii) Non-degenerate noise: The diffusion matrix Σ ∈ RD×D is invertible. (iii) Finite energy: For every finite T > 0, E R T 
+
+> 0
+
+∥G(Xt, X t−τ1 , . . . , X t−τq )∥2 dt < ∞.
+
+To guarantee that the problem is well-posed, we need to control the drift locally and globally. Lo-cally, it must be regular enough for trajectories to be unique, and globally it must not diverge in finite time to infinity. We thus impose the drift to be locally Lipschitz — a condition generally satisfied in most physical systems — and a radial Khasminskii condition (Khasminskii, 2012) which requires that, outside a ball whose radius can be as large as desired, the drift does not push the current state away from c faster than linearly and prevents explosiveness in finite time. It is much weaker than 
+
+dissipativity , which asks the drift to actively pull the state back towards c when it is far away, like friction or damping in a physical system. 
+
+Assumption 2 (Regularity) . To guarantee well-posedness and stability, we assume: (i) Local Lipschitzness: {fj }j≤D are locally Lipschitz continuous in all of their arguments jointly. (ii) Radial Khasminskii condition: There exist constants c ∈ RD , R > 0, and β > 0 such that, writing z = ( x0, x 1, . . . , x q ) ∈ RD(q+1) and c(q) := ( c, . . . , c ) ∈ RD(q+1) for the concatenation of q + 1 copies of c, the true drift G satisfies 
+
+⟨x0 − c, G (z)⟩ ≤ β(1 + ∥z − c(q)∥2) for all z with ∥z − c(q)∥ ≥ R. (2) These two sets of assumptions are permissive and encompass a wide range of SDDE-driven systems. We now establish the existence of a unique strong solution that does not explode in finite time, deferring the proof to Section A.2. 
+
+Proposition 1 (Non-explosion and strong solution) . Under Assumptions 1 and 2, the SDDE defined by Equation 1 has a unique strong solution for every initial condition with E∥Xseg 0 ∥2 
+
+> C
+
+< ∞ without explosion i.e. it does not diverge to infinity in a finite amount of time. 
+
+3Preprint. 3.2 IDENTIFIABILITY OF THE DYNAMICAL DRIVERS 
+
+We aim to identify the drift on the regions of the state space that the process actually visits. Since the drift depends on the lagged state Zt and we observe a trajectory over [0 , T ], the natural measure of “where the data lives” is the time-averaged law of Zt. We thus define the joint occupation measure 
+
+of the states entering the drift: for a Borel set A ⊆ RD(q+1) and a fixed T > τ max ,
+
+¯μqT (A) := 1
+
+T − τmax 
+
+Z Tτmax 
+
+P(Zt ∈ A) dt. (3) A parameter of a model is identifiable if it is theoretically possible to uniquely determine it from observations. We thus consider an idealized learner: its model class must be able to represent the true system and minimize the population risk (Assumption 3). Although we never fully minimize the risk in practice, this is a standard assumption. 
+
+Assumption 3 (Model class and population risk minimization) . Let T > τ max be fixed. (i) Model class: The model class Hq consists of pairs ( eG, ˜M ) of candidate masks ˜M ∈{0, 1}D×D×(q+1) and masked drifts eGj (x0, x 1, . . . , x q ) = efj ( ˜ m0 
+
+> j
+
+⊙x0, ˜m1 
+
+> j
+
+⊙x1, . . . , ˜mqj ⊙xq )
+
+with continuous efj , and the same known lags τ1 < · · · < τ q as the data-generating process. It contains the true pair (G, M ), and every eG ∈ H q has finite risk: 
+
+RT ( eG) := E
+
+Z Tτmax 
+
+eG(Zt) − G(Zt) 2 dt = ( T − τmax )∥ ˜G − G∥2  
+
+> L2(¯ μqT)
+
+< ∞. (4) 
+
+(ii) Risk minimization: The learned pair ( eG, ˜M ) ∈ H q minimises RT over Hq .
+
+When minimizing the risk, an input along which Gj is constant could be kept or dropped without changing the drift, we therefore require every true edge to actually vary (Assumption 4). 
+
+Assumption 4 (Faithfulness) . For every a ∈ { 0, 1, . . . , q } and every pair (i, j ) with M aij = 1 , there exist z, z ′ ∈ supp(¯ μqT ) = RD(q+1) differing only in the i-th coordinate of the a-th block argument 
+
+such that Gj (z)̸ = Gj (z′). We show that supp(¯ μqT ) = RD(q+1) in Lemma 1. 
+
+Conversely, to avoid retaining spurious edges on which eGj does not actually depend, we bound the number of learned edges. This entails that the sparsity level of the system is known a priori, a standard assumption in identifiability (Lachapelle et al., 2023), and we relax it in Section 3.3. 
+
+Assumption 5 (Structural Sparsity) . The learned mask is no denser than the true mask: 
+
+∥ ˜M ∥0 ≤ ∥ M ∥0. (5) 
+
+Theorem 1 (Identifiability) . Under Assumptions 1–5 , G and M are identifiable: 
+
+eG = G on RD(q+1) , ˜M = M. (6) The proof of this theorem is given in Section A.3. 3.3 L0 -PENALIZED IDENTIFIABILITY 
+
+We now relax Assumption 5: instead of a hard constraint on the number of edges, it is possible to use a penalty if dropping a true edge to minimize sparsity leads to a higher increase in risk. Define, for each lag a ∈ { 0, . . . , q } and pair (i, j ) with M aij = 1 , the per-link signal strength 
+
+saij := Gj − Π−(i,a )Gj L2(¯ μqT ), (7) where Π−(i,a ) is the L2(¯ μqT )-orthogonal projection onto the closed subspace of functions of all coordinates except coordinate i of block a. In words, saij is the smallest error achievable by any model that ignores this input. Set 
+
+smin := min saij : M aij = 1 , dmax := max 
+
+> jq
+
+X
+
+> a=0
+
+∥maj ∥0. (8) 4Preprint. Define, for a constant λ > 0, the penalized risk: 
+
+Jλ(G, M ) = RT (G) + λ
+
+> q
+
+X
+
+> a=0
+
+∥M a∥0 (9) 
+
+Theorem 2 (Identifiability with the penalized objective) . Let Assumptions 1, 2 and 3(i) hold. Sup-pose M̸ = 0 and smin > 0 i.e. the system has at least one true driver, and every true driver has a measurable impact on the dynamics. This replaces Assumption 4 (faithfulness). If 
+
+0 < λ < (T − τmax )s2min 
+
+dmax 
+
+, (10) 
+
+then every minimizer of Jλ over Hq satisfies ˜M = M and eG = G on RD(q+1) . Moreover, every feasible pair with ˜M̸ = M satisfies 
+
+Jλ( ˜G, ˜M ) − Jλ(G, M ) ≥ γ(λ) := min( λ, (T − τmax )s2min − λd max ) > 0
+
+Note that Assumption 5 (sparsity constraint) is not needed here. 3.4 ERGODICITY OF THE TRUE PROCESS 
+
+The results above assume that we can compute and minimize RT . In practice, however, we want to learn the system from discrete observations of a single long trajectory. To this aim, we need the system to be ergodic , so that trajectories converge to a unique statistical equilibrium. This is the natural notion of predictability for chaotic systems: individual trajectories cannot be forecast over long horizons, but their long-run statistics are well defined and do not depend on initial conditions. 
+
+Assumption 6 (Delay-adapted dissipativity) . There exist c ∈ RD , R, α, C R ≥ 0 and 
+
+β0, . . . , β q , ε 1, . . . , ε q ≥ 0 such that, for all z = ( x0, . . . , x q ) ∈ RD(q+1) ,
+
+⟨x0 − c, G (z)⟩ ≤ α − β0∥x0 − c∥2 + Pqa=1 βa∥xa − c∥2 if ∥x0 − c∥ ≥ R, (11) 
+
+⟨x0 − c, G (z)⟩ ≤ CR + Pqa=1 εa∥xa − c∥2 if ∥x0 − c∥ ≤ R, (12) 
+
+B := Pqa=1 (βa + εa) < β 0. (13) Far from c, Equation 11 forces the current state to be pulled back at rate β0, while past states may push outwards at rates βa. Near c, Equation 12 only forces the drift to stay radially controlled: no restoring condition is imposed on the dynamics inside the ball, which can be chaotic. Strict domination (Equation 13) is the delay counterpart of stability: the restoring force of the present must dominate the destabilising influence of the past. This assumption holds for most damped systems with a bounded attractor (Lorenz, 1963; 1996), for any bounded delayed feedback (Mackey & Glass, 1977), and for any linear delayed feedback once the instantaneous damping is superlinear (e.g. a delayed oscillator model of ENSO (Suarez & Schopf, 1988)). 
+
+Theorem 3 (Ergodicity: existence, uniqueness, exponential convergence) . Under Assumptions 1, 2 and 6, the segment process admits a unique invariant probability measure πseg on C. Write 
+
+Pt(φ, ·) := L(Xseg  
+
+> t
+
+| Xseg 0 = φ) and V (φ) := ∥φ − c∥2 
+
+> C
+
+, where c denotes the constant segment with value c. The invariant measure satisfies 
+
+Z
+
+> C
+
+∥η − c∥2p 
+
+> C
+
+πseg (dη ) < ∞, p ≥ 1 an integer . (14) 
+
+There exist C ≥ 1 and γ > 0 such that, ∀ϵ > 0, the metric d(φ, ψ ) := 1 ∧ ϵ−1∥φ − ψ∥C satisfies 
+
+Wd
+
+ Pt(φ, ·), π seg  ≤ ∥ Pt(φ, ·) − πseg ∥TV ≤ Ce −γt  1 + V (φ), t ≥ 0, φ ∈ C . (15) In words, the system effectively forgets about its initial condition, and reaches exponentially quickly a regime that is uniquely determined and well behaved. 5Preprint. 3.5 FINITE -SAMPLE IDENTIFIABILITY 
+
+This section characterizes identifiability when only a finite number of samples are available. We assume data is observed on a deterministic time grid 0 = t0 < t 1 < · · · < t n = T , with step sizes ∆k := tk+1 − tk bounded by ∆max := max k<n ∆k ≤ 1. We also assume that the lagged connections happen within the observed time steps. Consequently, we restrict our analysis to the effective horizon T◦ := T −τmax > 0, denoting the sampled sequence as Zk := Ztk . All subsequent summations over k < n apply strictly to the usable window tk ≥ τmax .
+
+Assumption 7 (Finite-sample model class) . Let Hqn denote the restricted class of deterministic models derived from Assumption 3(i) satisfying the following two conditions: (i) Local finite covering: For every radius ρ ≥ 1 and tolerance ϵ > 0, we can select a finite number of representative functions from within Hqn (an internal ϵ-net) such that every function in the class is within a maximum distance of ϵ from at least one representative over the compact set Kρ := {z ∈ RD(q+1) : ∥z − c(q)∥ ≤ ρ}. The minimal number of representatives required to cover the class this way is denoted by Nn(ρ, ϵ ).(ii) Stationary envelope: The pointwise diameter of the class, defined as E(z) := sup ˜G1, ˜G2∈H qn ∥ ˜G1(z) − ˜G2(z)∥, has a finite second moment under the stationary measure: 
+
+m2 
+
+> E
+
+:= R E(z)2μq
+
+> ∞
+
+(dz ) < ∞.
+
+This ensures that each bounded region can be covered by a finite number of candidate functions (i), and that candidates do not lead to wildly different equilibrium (ii). The empirical risk is defined below, and we assume that a measurable global minimizer exists: 
+
+bRn( ˜G) := X
+
+> k
+
+∆k
+
+Xtk+1 − Xtk
+
+∆k
+
+− ˜G(Zk)
+
+> 2
+
+( bG, cM ) ∈ arg min   
+
+> ( ˜G, ˜M)∈H qn
+
+(bRn( ˜G) + λ
+
+> q
+
+X
+
+> a=0
+
+∥ ˜M a∥0
+
+)
+
+(16) 
+
+Theorem 4 (Finite-sample exact support recovery ( L0 estimator)) . Let Assumptions 1, 2, 6 and 7 hold, with T > τ max . For a fixed δ ∈ (0 , 1) , there exists a bound εn(δ; ρ, ϵ ) dependent on two deterministic parameters ρ and ϵ, such that the uniform deviation is bounded with probability at least 1 − δ:
+
+sup 
+
+> ˜G∈H qn
+
+h bRn( ˜G) − bRn(G)
+
+i
+
+− R T ( ˜G) ≤ εn(δ; ρ, ϵ ), (17) 
+
+The explicit bound εn(δ; ρ, ϵ ) and details on the selection of ρ and ϵ are given in (56)–(58). Suppose further that the true mask M̸ = 0 , the minimum signal strength smin > 0, and the penalty parameter λ satisfies 0 < λ < T ◦s2min /d max . This ensures a strictly positive margin γ(λ) := min {λ, T ◦s2min − λd max } > 0.If the error bound is strictly less than the margin ( εn(δ; ρ, ϵ ) < γ (λ)), every measurable minimizer of the empirical objective achieves exact support recovery with probability at least 1 − δ:
+
+Pπ
+
+cM a = M a for all a = 0 , . . . , q, ∥ bG − G∥2 
+
+> L2(μq
+> ∞)
+
+≤ εn(δ; ρ, ϵ )
+
+T◦
+
+
+
+≥ 1 − δ (18) Setting λ = λ0T◦ (where 0 < λ 0 < s 2min /d max ) allows us to identify the mask exactly and the drift up to a given level of error from finitely many observations. Achieving consistency inherently requires joint conditions on the observation duration, mesh size, and model class complexity; in-creasing the number of samples alone is not sufficient. The bound εn is explicit, but it should be read as a qualitative consistency statement: it contains factors 1/δ and a local envelope Eρ that may grow with the radius ρ, itself growing with T◦.3.6 IMPLEMENTATION AND OPTIMIZATION 
+
+The L0-norm used in our identifiability theorems (1, 4) is not differentiable. To allow for differ-entiable optimization, we implement the relaxed L0 penalization proposed by Louizos et al. (2018) 6Preprint. and parametrize the matrix M as the sigmoid of differentiable logit parameters. The functions 
+
+ef are parametrized with simple MLPs, with tanh activation functions and an affine output layer. With discrete, regularly sampled observations, we train the model to predict Xt+1 − Xt given 
+
+Xt, X t−1, ..., X t−τ . With irregular observations, it is possible to choose any numerical integra-tor, as when training Neural ODEs (Chen et al., 2018). Here, we use a simple Euler integrator, as all datasets in this paper have regular discrete temporal resolutions. We standardize each dimension by the estimated gradient mean and standard deviation. Otherwise, the method may learn to pre-dict the mean for smooth dimensions, and mask off all of their potential drivers. We use the Adam optimizer (Kingma & Ba, 2015). We additionally propose to use gradient penalty (Gulrajani et al., 2017), to regularize our network and ensure that it does not overfit to spurious correlations. Full implementation details are provided in Section C.1. As the datasets considered in this paper are low-dimensional, and the architectures are relatively small, we run all experiments on CPUs. The code for implementing the methods can be found here https://anonymous.4open.science/ r/ODEDriverIdentifiability-C325/README.md .Assumption 6 requires the true drift to be unbounded, and Assumption 7 requires the drift to belong to the model class. However, MLPs with tanh activation functions are bounded by construction. To satisfy both assumptions needed for finite-sample identifiability, we parametrize eG as eGR(z) = 
+
+ef (z)−K ·(u−ΠR,c (u)) , where R is an arbitrarily large radius parameter, c the center of the system, 
+
+K = diag( κ1, . . . , κ D ) a diagonal matrix, and ΠR,c (u) a projection onto the cube of center c and radius R. In practice, we can choose R large enough so that the cube encompasses all our training observations, c to be equal to zero. This correction is seen as a linear restoring force outside a cube and can be applied at inference only. More details on this modification are given in A.9. 
+
+## 4 DATASETS AND EXPERIMENTS 
+
+4.1 CAUSAL DYNAMICS DATASET 
+
+The CausalDynamics dataset (Herdeanu et al., 2025) contains more than 14,000 simulated dynam-ical systems grouped in different classes: “Simple” three-dimensional chaotic dynamical systems (e.g. the Lorenz system), with or without added noise (high noise level, 2) and confounders (585 graphs); “Coupled” systems generated from simulated interactions between simple MLPs, of dimen-sion 3–10, with added noise and with or without confounders, lagged interactions, or standardiza-tion (14096 graphs); and 2 simulated “Climate” datasets, one corresponding to a simplified coupled ocean-atmosphere model in dimension 10, and one simulating the decoupled El-Ni˜ no Southern Os-cillation (ENSO), an important mode of variability of the climate system (12 graphs). For each graph, 10 timeseries of 1000 timesteps are generated with different random seeds. The area under the receiver-operator curve (AUROC), area under the precision-recall curve (AUPRC) and structural Hamming distance (SHD) are computed for each time series, before being averaged across the system class (e.g. “Simple, Confounder, No noise”). Hyperparameter search is done for all evaluated methods by maximizing AUROC on the “Simple, No confounder, No noise, Lorenz84” graph, which is then excluded from the results. The same set of parameters is used for evaluation on all other graphs. We implement L0-NDDE and additional baselines: AGL (Bellot et al., 2022; Wu et al., 2024) and C-NODE (Aliee et al., 2025), which uses the L1-penalty. We extend C-NODE to SDDEs similarly as Neural ODEs, by adding neural networks to capture lagged connections. All methods share the same core architecture. Hyperparameter search is conducted for each method separately, following the benchmark procedure. Details on the hyperparameter search, and the final set of parameters are reported in Section C. 4.2 THE DYSTS BENCHMARK 
+
+To evaluate the quality of the learned dynamics, we use the Dysts benchmark (Gilpin, 2021). It allows us to generate trajectories for low-dimensional chaotic systems (e.g. “Lorenz” system), which we use to evaluate L0-NDDE, C-NODE, AGL, as well as PathReg, which uses L0 to regularize entire input-output paths, and regular NODEs. In total, we use the 40 systems for which the Jacobian is given by the dataset, which is needed for our metric computation (Section E.2). For each system, we generate one noisy training trajectory of 50 Lyapunov timesteps, with stochastic noise forcing of 7Preprint. level 0.05, and 3 test trajectories of 250 Lyapunov timesteps, with different initial conditions. The Lyapunov timestep is the timescale over which a chaotic system loses its predictability (Lyapunov, 1992). These trajectories are long enough to densely cover the system’s space. We train each method on the training trajectory, generate 3 trajectories using the 3 test initial conditions, and compare the predicted trajectories to the true unseen test trajectories for evaluation. We compute two metrics to evaluate short-term accuracy: the normalized root mean-square error (NRMSE) averaged over the first 5 Lyapunov timesteps, and the valid Lyapunov prediction time (VLPT), the number of Lyapunov timesteps before the predicted trajectories diverge from the true trajectory by more than 1 standardized unit. We compute two metrics to evaluate the reconstructed systems’ attractor geometry and chaoticity: the first Lyapunov exponent squared error (FLEE), in-dicative of the level of chaoticity of the system, and the squared error between the true and estimated Kaplan-Yorke dimension ( DKY , Evans et al., 2000), a proxy for the system’s attractor dimension. We compute two metrics to evaluate the long-term statistics of the predicted trajectories: the log-spectral distance (LSD), to evaluate whether the oscillation frequencies are accurately captured, and the state-space distance ( Dstsp , Koppe et al., 2019), a divergence between the true and esti-mated equilibrium distribution. We report, for each metric and method, the median value across all datasets and the average fractional rank, to assess whether one method systematically outperforms another. More details on the metric computation are given in Section E.2. We choose 5 systems at random for hyperparameter search and we select, for each method, the set of parameters that maximizes the VLPT before evaluating the method on the other systems. A detailed description of the hyperparameter search and final parameters is given in Section E.1. 
+
+## 5 RESULTS 
+
+5.1 CAUSAL DYNAMICS BENCHMARK 
+
+Results on the CausalDynamics benchmark are reported in Table 1. L0-NDDE achieves lower aver-age rank on all three metrics. It generally has higher AUROC/AUPRC than competing methods on the “Simple”, “Coupled” and the “Climate” datasets, and consistently achieves low SHD, although the hyperparameters, only selected on the “Simple lorenz84” dataset, lead to too dense graphs on the “Coupled” datasets. Some results lead to “degenerate” metrics (e.g. AUROC of 0.50), as some methods sometimes fully sparsify or do not sparsify at all, and thus do not rank the edges. NGC and AGL achieve the lowest SHD on the MAOOAM dataset despite low AUROC, as they do not spar-sify the learned graph. C-NODE performs well in general, despite not providing any identifiability guarantee. C-NODE also does not explicitly remove input features and even when a low weight is given to an input feature, the neural network can compensate for it. 5.2 DYSTS BENCHMARK 
+
+Results are reported in Table 2. L0-NDDE and NODE consistently rank better than other methods in all metrics except the NRMSE. The median Dstsp is extremely high for AGL and PathReg, as this metric explodes when the two distributions are very different. It is an artefact of Dstsp . Additionally, we show predicted versus true trajectories for L0-NDDE, NODE, and C-NODE on 26 test systems, in Figure 2. Both NODE and L0-NDDE are capable of modelling the systems very well. To explain why NODE and L0-NDDE outperform other methods, we report in Figure 3 the rela-tionship between each metric and the SHD (upper half) and training MSE (lower half). We run a Kendall-τ test (Kendall, 1938), standard for non-Gaussian low-samples regimes, to measure the strength of association between the two sets of values. We find that DKY , Dstsp and VLPT have a statistically significant association with both SHD and training MSE, indicating that on this bench-mark, methods that better learn the drivers, and better fit the training data perform better. C-NODE, PathReg, and AGL all apply a regularization on the weights of the neural network, preventing these methods from reaching low training error. PathReg tends to sparsify specific input-output paths with-out masking off input features, thus not performing input feature selection. This is also why we do not evaluate it on CausalDynamics. With no weight penalty, neural ODE achieves low training error and thus good reconstruction performance. L0-penalty does not penalize the weights of the network but instead turns the inputs on/off, allowing L0-NDDE to achieve low train error while masking off irrelevant input features. With the lowest SHD, L0-NDDE thus outperforms other methods. 8Preprint.                                                                                                                                                                                                                                
+
+> Experiment Simple Coupled Climate Avg. rank
+> Default Confounder Noise Default Noise Confounder Time-lag Standardize MAOOAM ENSO
+> SHD
+> PCMCI+ 41.04 23.02 47.64 224.80 183.90 324.63 327.72 228.32 80.00 529.36 7.30 F-PCMCI 35.30 21.07 45.09 192.90 149.60 195.74 350.61 201.79 130.00 530.27 5.80 NGC 28.91 19.96 28.84 840.95 842.55 670.53 793.67 840.26 31.00 337.09 7.90 CUTS+ 48.11 24.04 61.32 152.00 150.50 272.68 247.22 310.63 130.00 608.73 7.50 RCD 61.85 26.74 61.38 157.05 155.65 136.53 201.11 159.84 130.00 665.36 6.80 GRaSP 59.04 27.09 60.18 215.94 842.55 136.00 793.67 840.26 126.00 666.27 9.70 AGL 26.60 16.96 21.28 319.04 ∗222.41 ∗246.37 ∗315.54 ∗312.31 ∗30.00 ∗337.09 5.55 C-NODE (L1) 24.07 17.10 20.50 253.91 ∗176.30 ∗179.58 ∗273.57 ∗258.09 42.00 335.36 4.50
+> L0-NDDE (Ours) 26.42 16.25 23.67 205.35 144.20 143.33 222.34 212.11 40.00 325.54 2.50 AUROC / AUPRC  PCMCI+ .52 / .71 .49 / .59 .50 / .69 .67 / .25 .64 / .25 .58 / .20 .58 / .24 .69 / .27 .69 / .88 .57 / .70 4.10 / 5.25 F-PCMCI .51 / .70 .50 / .59 .52 / .70 .67 / .27 .57 / .21 .55 / .19 .59 / .24 .68 / .28 .50 / .81 .57 / .70 4.80 / 6.05 NGC .50 / .69 .50 / .58 .50 / .68 .50 / .15 .50 / .15 .50 / .16 .50 / .20 .50 / .15 .50 / .81 .50 / .67 9.85 / 10.90 CUTS+ .50 / .69 .50 / .58 .50 / .68 .50 / .15 .50 / .15 .49 / .16 .50 / .20 .50 / .15 .50 / .81 .50 / .67 10.10 / 10.90 RCD .50 / .69 .50 / .58 .50 / .68 .50 / .15 .50 / .15 .51 / .18 .50 / .20 .50 / .16 .50 / .81 .50 / .67 9.55 / 10.25 GRaSP .52 / .71 .55 / .64 .49 / .68 .49 / .15 .50 / .50 .50 / .17 .50 / .50 .50 / .50 .48 / .81 .50 / .50 9.60 / 6.70 AGL .52 / .71 ∗.56 / .64 .53 / .74 ∗.53 / .33 ∗.53 / .33 ∗.54 / .35 ∗.52 / .35 ∗.54 / .34 ∗.56 / .86 ∗.54 / .69 ∗5.80 / 4.35 C-NODE (L1) .64 / .79 .54 / .65 .61 / .79 ∗.64 / .43 .63 / .43 .67 / .47 .59 / .43 .68 / .47 .88 / .97 .49 / .66 ∗3.45 / 3.35
+> L0-NDDE (Ours) .64 / .80 .58 / .66 .63 / .80 .64 / .43 .65 / .44 .67 / .47 .60 / .43 .66 / .45 .86 / .96 .58 / .75 1.75 / 2.10
+
+Table 1: L0-NDDE outperforms competing methods on the CausalDynamics benchmark. SHD (lower is better) and AUROC / AUPRC (higher is better) are reported for L0-NDDE (Ours), AGL, C-NODE and the benchmark causal discovery methods. The best values are bold, the second best values are underlined. ∗ indicates statistical significance between AGL or C-NODE and L0-NDDE, calculated with a Welch’s t-test (p-value 0.05). The benchmark only provides the mean values for the causal discovery methods, and we thus do not run statistical significance tests for these methods. For AUROC and AUPRC, statistical significance results always match, so we report only one ∗ for each pair. The last column reports the average rank for each method and metric. For readability, methods that never score best are not shown here, but in the Appendix (Table 4) 
+
+Method NRMSE ( ↓) VLPT ( ↑) FLEE ( ↓) DKY (↓) LSD ( ↓) Dstsp (↓) SHD ( ↓)Med. Rank Med. Rank Med. Rank Med. Rank Med. Rank Med. Rank Med. Rank AGL 1.15 2.69 2.85 3.14 0.25 3.47 0.88 ∗ 3.82 14.71 ∗ 2.82 3e 6∗ 4.37 0.44 ∗ 4.46 PathReg 1.19 2.49 4.33 3.24 0.25 3.78 0.89 ∗ 3.9 16.99 3.02 3e 6∗ 4.62 0.22 2.70 C-NODE 1.53 4.05 4.61 3.39 0.20 3.00 0.72 ∗ 3.17 37.79 ∗ 4.08 34.60 ∗ 2.86 0.17 2.67 NODE 1.20 2.94 5.12 2.63 0.16 2.51 0.076 2.17 13.99 2.57 4.29 1.62 0.22 2.70 
+
+L0-NDDE 1.19 2.83 6.54 2.60 0.16 2.25 0.075 1.94 14.75 2.50 2.50 1.54 0.11 2.45 
+
+Table 2: L0-NDDE outperforms other feature selection methods. L0-NDDE ranks best in five of the metrics. The difference with NODE is non significant, as NODE also performs very well, but L0-NDDE consistently ranks better than the other methods performing input feature selection, especially on attractor dimension reconstruction ( DKY ) and convergence in distribution ( Dstsp ). ∗
+
+indicates statistical significance with the L0-NDDE metric, obtained using a permutation test (p-value 0.05). For each metric, best results are bolded and second best are underlined. 
+
+## 6 DISCUSSION 
+
+We hope that the theoretical framework proposed in this paper lays the foundations for the devel-opment of robust methods for modelling lagged dynamical systems. One limitation of our method is that we can only optimize for an approximate L0-penalty, as the true L0-loss is not differen-tiable, although existing methods also rely on approximations. We show empirical improvements on two benchmarks that evaluate the methods mostly on SDE-driven systems as, to the best of our knowledge, no comprehensive benchmark exists for evaluating lagged systems modelling. Despite these promising results, future work is needed to apply this method to real physical systems. Our method’s computational requirements scale quadratically with the input dimension. To apply it to high-dimensional systems, it would need to be combined with an identifiable dimensionality re-duction technique (Hı zlıet al., 2025). Our method learns probabilities for the input-output mapping, but the learned drift is deterministic. Extending our method to be fully probabilistic could allow us to better represent uncertainty during long-term autoregressive rollouts. We see several exciting applications of our method. Identifying correct drivers in dynamical systems could open the door to scientific discovery across several domains. Our method could also be integrated into physical mod-els to robustly parametrize SDDE-driven subprocesses. It could also be used to stabilize gradient estimates in differentiable models of chaotic systems (Metz et al., 2022). 9Preprint. 
+
+## ACKNOWLEDGEMENTS 
+
+We thank Julia Kaltenborn and David Rolnick for their feedback on the manuscript. We thank Ben-jamin Herdeanu, Carla Roesch and Juan Nathaniel for helping us run the CausalDynamics bench-mark. This research was supported in part by the Canada CIFAR AI Chairs program. This research was enabled in part by compute resources provided by Mila ( mila.quebec ). 
+
+## AI USE STATEMENT 
+
+In this work, we used generative AI tools for providing critical ingredients for proving mathematical claims, assisting in the writing of proofs, and implementing methods. We have not used generative AI tools for generating synthetic data sets, helping develop theoretical models or conceptual frame-works, formulating mathematical claims, proposing or refining hypotheses, designing or providing feedback on research methodology or experiments, assisting with translation, cleaning and reformat-ting datasets, supporting qualitative and thematic data analysis, or interpreting results. Additionally, we used generative AI tools to identify relevant literature. We have reviewed all AI-assisted work. For the mathematical proofs, we first sketched the proofs ourselves before asking an LLM to review them and suggest corrections or improvements. We have reviewed every suggestion manually be-fore incorporating them into the final version of the proofs. For implementing methods, we carefully verified and tested all code used for the experiments in this paper. All the identified literature and references were manually checked, and we read every paper that our work builds upon or takes inspi-ration from; e.g., we did not rely on an LLM-generated summary of other research papers to design this paper, or to decide whether to include or not include references. We take responsibility for the final content of this work, including text, claims or artifacts produced with the aid of generative AI. 
+
+## REPRODUCIBILITY STATEMENT 
+
+The code to implement the methods has been shared in Section 3.6. This code uses poetry to manage the environment. Detailed parameters, as well as hyperparameter search procedures are given in the main text as well as the appendix. As mentioned in the main text, all experiments have been run on CPU, allowing for easy reproducibility i.e. without intensive computational requirements. The metric computation is described in details in the appendix (Section E.2). The data used in this paper is taken from peer-reviewed, publicly available benchmarks. 
+
+## REFERENCES 
+
+Hananeh Aliee, Till Richter, Mikhail Solonin, Ignacio Ibarra, Fabian Theis, and Niki Kilbertus. Sparsity in continuous-depth neural networks. In Advances in Neural Information Processing Systems , volume 35, pp. 901–914, 2022. doi: 10.52202/068431-0066. Hananeh Aliee, Fabian J. Theis, and Niki Kilbertus. Beyond predictions in neural odes: Identifica-tion and interventions, 2025. URL https://arxiv.org/abs/2106.12430 .Alexis Bellot, Kim Branson, and Mihaela van der Schaar. Neural graphical modelling in continuous-time: consistency guarantees and algorithms. In International Conference on Learning Represen-tations , 2022. URL https://openreview.net/forum?id=SsHBkfeRF9L .Richard C. Bradley. Basic Properties of Strong Mixing Conditions. A Survey and Some Open Questions. Probability Surveys , 2:107 – 144, 2005. doi: 10.1214/154957805100000104. URL 
+
+https://doi.org/10.1214/154957805100000104 .Philippe Brouillard, Sebastien Lachapelle, Julia Kaltenborn, Yaniv Gurwicz, Dhanya Sridhar, Alexandre Drouin, Peer Nowack, Jakob Runge, and David Rolnick. Learning a spatial parti-tioning and its causal relations from temporal data. In Bijan Mazaheri and Niels Richard Hanson (eds.), Proceedings of the Fifth Conference on Causal Learning and Reasoning , volume 323 of Proceedings of Machine Learning Research , pp. 547–592. PMLR, 06–08 Apr 2026. URL 
+
+https://proceedings.mlr.press/v323/brouillard26a.html .10 Preprint. Steven L. Brunton, Joshua L. Proctor, and J. Nathan Kutz. Discovering governing equations from data by sparse identification of nonlinear dynamical systems. Proceedings of the Na-tional Academy of Sciences , 113(15):3932–3937, 2016. doi: 10.1073/pnas.1517384113. URL 
+
+https://www.pnas.org/doi/abs/10.1073/pnas.1517384113 .Kurt Butler, Daniel Waxman, and Petar M Djuri´ c. Tangent space causal inference: Leveraging vector fields for causal discovery in dynamical systems. Advances in Neural Information Processing Systems , 37:120078–120102, 2024. Luca Castri, Sariah Mghames, Marc Hanheide, and Nicola Bellotto. Enhancing causal discovery from robot sensor data in dynamic scenarios. In Conference on Causal Learning and Reasoning ,pp. 243–258. PMLR, 2023. Micka¨ el D. Chekroun and Honghu Liu. Effective reduced models from delay differential equations: Bifurcations, tipping solution paths, and enso variability. Physica D: Nonlin-ear Phenomena , 460:134058, 2024. ISSN 0167-2789. doi: https://doi.org/10.1016/j.physd. 2024.134058. URL https://www.sciencedirect.com/science/article/pii/ S0167278924000095 .Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David K Duvenaud. Neural ordinary dif-ferential equations. In S. Bengio, H. Wallach, H. Larochelle, K. Grauman, N. Cesa-Bianchi, and R. Garnett (eds.), Advances in Neural Information Processing Systems , volume 31. Cur-ran Associates, Inc., 2018. URL https://proceedings.neurips.cc/paper_files/ paper/2018/file/69386f6bb1dfed68692a24c8686939b9-Paper.pdf .Yuxiao Cheng, Lianglong Li, Tingxiong Xiao, Zongren Li, Jinli Suo, Kunlun He, and Qionghai Dai. Cuts+: High-dimensional causal discovery from irregular time-series. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 38, pp. 11525–11533, 2024. Yu. A. Davydov. Mixing conditions for markov chains. Theory of Probability & Its Applications , 18 (2):312–328, 1974. doi: 10.1137/1118033. URL https://doi.org/10.1137/1118033 .J. R. Dorfman. An Introduction to Chaos in Nonequilibrium Statistical Mechanics . 1999. Emilien Dupont, Arnaud Doucet, and Yee Whye Teh. Augmented neural odes. Advances in neural information processing systems , 32, 2019. Mari Dahl Eggen and Alise Danielle Midtfjord. Delay-sde-net: A deep learning approach for time series modelling with memory and uncertainty estimates, 2023. URL https://arxiv.org/ abs/2303.08587 .Denis J. Evans, E. G. D. Cohen, Debra J. Searles, and F. Bonetto. Note on the kaplan–yorke dimension and linear transport coefficients. Journal of Statistical Physics , 101, 2000. doi: 10.1023/A:1026449702528. Michael Ghil and Valerio Lucarini. The physics of climate variability and climate change. Rev. Mod. Phys. , 92:035002, Jul 2020. doi: 10.1103/RevModPhys.92.035002. URL https:// link.aps.org/doi/10.1103/RevModPhys.92.035002 .Michael Ghil, Micka¨ el D. Chekroun, and Eric Simonnet. Climate dynamics and fluid mechanics: Natural variability and related uncertainties. Physica D: Nonlinear Phenomena , 237(14):2111– 2126, 2008. ISSN 0167-2789. doi: https://doi.org/10.1016/j.physd.2008.03.036. URL https: //www.sciencedirect.com/science/article/pii/S0167278908001139 . Eu-ler Equations: 250 Years On. William Gilpin. Chaos as an interpretable benchmark for forecasting and data-driven modelling. In Thirty-fifth Conference on Neural Information Processing Systems Datasets and Benchmarks Track (Round 2) , 2021. URL https://openreview.net/forum?id=enYjtbjYJrf .C. W. J. Granger. Investigating causal relations by econometric models and cross-spectral methods. 
+
+Econometrica , 37(3):424–438, 1969. ISSN 00129682, 14680262. URL http://www.jstor. org/stable/1912791 .11 Preprint. Ishaan Gulrajani, Faruk Ahmed, Martin Arjovsky, Vincent Dumoulin, and Aaron Courville. Im-proved training of wasserstein gans. In Proceedings of the 31st International Conference on Neural Information Processing Systems , NIPS’17, pp. 5769–5779, Red Hook, NY, USA, 2017. Curran Associates Inc. ISBN 9781510860964. M. Hairer, J. C. Mattingly, and M. Scheutzow. Asymptotic coupling and a general form of harris’ theorem with applications to stochastic delay equations. Probability Theory and Related Fields ,149(1):223–259, 2011. doi: 10.1007/s00440-009-0250-6. URL https://doi.org/10. 1007/s00440-009-0250-6 .Aristide Halanay. Differential Equations: Stability, Oscillations, Time Lags , volume 23 of Mathe-matics in Science and Engineering . Academic Press, 1966. Jack K. Hale and Sjoerd M. Verduyn Lunel. Introduction to Functional Differential Equations .Applied Mathematical Sciences. Springer, New York, NY, 1 edition, 1993. ISBN 978-0-387-94076-2. doi: 10.1007/978-1-4612-4342-7. Benjamin Herdeanu, Juan Nathaniel, Carla Roesch, Jatan Buch, Gregor Ramien, Johannes Haux, and Pierre Gentine. Causaldynamics: A large-scale benchmark for structural discovery of dynamical causal models. In D. Belgrave, C. Zhang, H. Lin, R. Pascanu, P. Koniusz, M. Ghassemi, and N. Chen (eds.), Advances in Neural Information Processing Systems ,volume 38, Main Conference. Curran Associates, Inc., 2025. doi: 10.52202/085713-1349. URL https://proceedings.neurips.cc/paper_files/paper/2025/file/ 39a3f7dc00e4723a5ca7808b04fc4d4f-Paper-Datasets_and_Benchmarks_ Track.pdf .C¸ a˘ glar Hı zlı, C ¸ a˘ gatay Yı ldız, Matthias Bethge, ST John, and Pekka Marttinen. Identifying latent state transitions in non-linear dynamical systems. In Y. Yue, A. Garg, N. Peng, F. Sha, and R. Yu (eds.), International Conference on Learning Representations , volume 2025, pp. 71286–71315, 2025. URL https://proceedings.iclr.cc/paper_files/paper/2025/file/ b192f601432dff4e6777d2d06d52cfa5-Paper-Conference.pdf .Sebastian Hickman, Ilija Trajkovi´ c, Julia Kaltenborn, Francis Pelletier, Alexander T Archibald, Yaniv Gurwicz, Peer Nowack, David Rolnick, and Julien Boussard. Causal climate emulation with bayesian filtering. In The Thirty-ninth Annual Conference on Neural Information Process-ing Systems , 2025. URL https://openreview.net/forum?id=YxPI1c5e09 .Aapo Hyv¨ arinen, Kun Zhang, Shohei Shimizu, and Patrik O. Hoyer. Estimation of a structural vector autoregression model using non-gaussianity. Journal of Machine Learning Research , 11 (56):1709–1731, 2010. URL http://jmlr.org/papers/v11/hyvarinen10a.html .Kiyosi Itˆ o. Stochastic integral. Proceedings of the Imperial Academy , 20(8):519 – 524, 1944. doi: 10.3792/pia/1195572786. URL https://doi.org/10.3792/pia/1195572786 .Kiyosi Itˆ o. On Stochastic Differential Equations . Number 4 in Memoirs of the American Math-ematical Society. American Mathematical Society, 1951. doi: 10.1090/memo/0004. URL 
+
+https://doi.org/10.1090/memo/0004 .Ioannis Karatzas and Steven E. Shreve. Brownian Motion and Stochastic Calculus . Graduate Texts in Mathematics. Springer New York, NY, 2 edition, 1991. ISBN 978-0-387-97655-6. doi: 10. 1007/978-1-4612-0949-2. Andrew Keane, Bernd Krauskopf, and Claire M. Postlethwaite. Climate models with delay differ-ential equations. Chaos: An Interdisciplinary Journal of Nonlinear Science , 27(11):114309, 10 2017. ISSN 1054-1500. doi: 10.1063/1.5006923. URL https://doi.org/10.1063/1. 5006923 .M. G. Kendall. A new measure of rank correlation. Biometrika , 30(1-2):81–93, 06 1938. ISSN 0006-3444. doi: 10.1093/biomet/30.1-2.81. URL https://doi.org/10.1093/biomet/ 30.1-2.81 .Rafail Khasminskii. Stochastic Stability of Differential Equations . Stochastic Modelling and Ap-plied Probability. Springer Berlin, Heidelberg, 2 edition, 2012. ISBN 978-3-642-23279-4. doi: 10.1007/978-3-642-23280-0. 12 Preprint. Diederik P. Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In International Conference on Learning Representations (ICLR) , 2015. URL https://arxiv.org/abs/ 1412.6980 .Georgia Koppe, Hazem Toutounji, Peter Kirsch, Stefanie Lis, and Daniel Durstewitz. Identifying nonlinear dynamical systems via generative recurrent neural networks with applications to fmri. 
+
+PLOS Computational Biology , 15(8):1–35, 08 2019. doi: 10.1371/journal.pcbi.1007263. URL 
+
+https://doi.org/10.1371/journal.pcbi.1007263 .Sebastien Lachapelle, Tristan Deleu, Divyat Mahajan, Ioannis Mitliagkas, Yoshua Bengio, Simon Lacoste-Julien, and Quentin Bertrand. Synergies between disentanglement and sparsity: Gen-eralization and identifiability in multi-task learning. In Proceedings of the 40th International Conference on Machine Learning , volume 202 of Proceedings of Machine Learning Research ,pp. 18171–18206. PMLR, 23–29 Jul 2023. URL https://proceedings.mlr.press/ v202/lachapelle23a.html .Wai-Yin Lam, Bryan Andrews, and Joseph Ramsey. Greedy relaxations of the sparsest permutation algorithm. In James Cussens and Kun Zhang (eds.), Proceedings of the Thirty-Eighth Confer-ence on Uncertainty in Artificial Intelligence , volume 180 of Proceedings of Machine Learning Research , pp. 1052–1062. PMLR, 01–05 Aug 2022. URL https://proceedings.mlr. press/v180/lam22a.html .Phillip Lippe, Sara Magliacane, Sindy L¨ owe, Yuki M Asano, Taco Cohen, and Stratis Gavves. CITRIS: Causal identifiability from temporal intervened sequences. In Kamalika Chaudhuri, Stefanie Jegelka, Le Song, Csaba Szepesvari, Gang Niu, and Sivan Sabato (eds.), Proceed-ings of the 39th International Conference on Machine Learning , volume 162 of Proceedings of Machine Learning Research , pp. 13557–13603. PMLR, 17–23 Jul 2022. URL https: //proceedings.mlr.press/v162/lippe22a.html .Edward N. Lorenz. Deterministic nonperiodic flow. Journal of the Atmospheric Sciences , 20(2): 130–141, 1963. Edward N. Lorenz. Predictability: A problem partly solved. In Proceedings of the Seminar on Predictability , volume 1, pp. 1–18, Reading, UK, 1996. ECMWF. Christos Louizos, Max Welling, and Diederik P. Kingma. Learning sparse neural networks through 
+
+l0 regularization. In International Conference on Learning Representations , 2018. URL https: //openreview.net/forum?id=H1Y8hhg0b .A. M. Lyapunov. The general problem of the stability of motion. International Journal of Control ,55(3):531–534, 1992. doi: 10.1080/00207179208934253. URL https://doi.org/10. 1080/00207179208934253 .Michael C. Mackey and Leon Glass. Oscillation and chaos in physiological control systems. Science ,197(4300):287–289, 1977. ISSN 00368075, 10959203. URL http://www.jstor.org/ stable/1744526 .Takashi Nicholas Maeda and Shohei Shimizu. Rcd: Repetitive causal discovery of linear non-gaussian acyclic models with latent confounders. In Silvia Chiappa and Roberto Calandra (eds.), 
+
+Proceedings of the Twenty Third International Conference on Artificial Intelligence and Statistics ,volume 108 of Proceedings of Machine Learning Research , pp. 735–745. PMLR, 26–28 Aug 2020. URL https://proceedings.mlr.press/v108/maeda20a.html .Xuerong Mao. Stochastic Differential Equations and Applications . Woodhead Publishing, 2 edi-tion, 2007. ISBN 978-1-904275-34-3. doi: 10.1533/9780857099402. URL https://www. sciencedirect.com/science/book/9781904275343 .Hiroki Masuda. Ergodicity and exponential β-mixing bounds for multidimensional diffusions with jumps. Stochastic Processes and their Applications , 117(1):35–56, 2007. ISSN 0304-4149. doi: https://doi.org/10.1016/j.spa.2006.04.010. URL https://www.sciencedirect. com/science/article/pii/S0304414906000524 .13 Preprint. Luke Metz, C. Daniel Freeman, Samuel S. Schoenholz, and Tal Kachman. Gradients are not all you need, 2022. URL https://arxiv.org/abs/2111.05803 .S. E. A. Mohammed. The infinitesimal generator of a stochastic functional differential equation. In W.N. Everitt and B.D. Sleeman (eds.), Ordinary and Partial Differential Equations , pp. 529–538, Berlin, Heidelberg, 1982. Springer Berlin Heidelberg. ISBN 978-3-540-39561-4. Meike Nauta, Doina Bucur, and Christin Seifert. Causal discovery with attention-based convolu-tional neural networks. Machine Learning and Knowledge Extraction , 1(1):312–340, 2019. ISSN 2504-4990. doi: 10.3390/make1010019. URL https://www.mdpi.com/2504-4990/1/ 1/19 .David Nualart. The Malliavin Calculus and Related Topics . Probability and Its Applications. Springer Berlin, Heidelberg, 2 edition, 2006. ISBN 978-3-540-28328-7. doi: 10.1007/ 3-540-28329-3. Yongkyung Oh, Seungsu Kam, Dongyoung Lim, and Sungil Kim. Modeling irregular astronomical time series with neural stochastic delay differential equations. In Proceedings of the 34th ACM In-ternational Conference on Information and Knowledge Management , CIKM ’25, pp. 5068–5073, New York, NY, USA, 2025. Association for Computing Machinery. ISBN 9798400720406. doi: 10.1145/3746252.3760805. URL https://doi.org/10.1145/3746252.3760805 .Roxana Pamfil, Nisara Sriwattanaworachai, Shaan Desai, Philip Pilgerstorfer, Konstantinos Geor-gatzis, Paul Beaumont, and Bryon Aragam. Dynotears: Structure learning from time-series data. In International conference on artificial intelligence and statistics , pp. 1595–1605. Pmlr, 2020. Jeongjin Park, Nicole Tianjiao Yang, and Nisha Chandramoorthy. When are dynamical systems learned from time series data statistically accurate? In A. Globerson, L. Mackey, D. Belgrave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang (eds.), Advances in Neural Information Pro-cessing Systems , volume 37, pp. 43975–44008. Curran Associates, Inc., 2024. doi: 10.52202/ 079017-1396. URL https://proceedings.neurips.cc/paper_files/paper/ 2024/file/4dc57702c987e1e72f0dd2921edb5ded-Paper-Conference.pdf .Maziar Raissi, Paris Perdikaris, and George E. Karniadakis. Physics informed deep learning (part i): Data-driven solutions of nonlinear partial differential equations, 2017. URL https://arxiv. org/abs/1711.10561 .J. O. Ramsay, G. Hooker, D. Campbell, and J. Cao. Parameter estimation for differential equa-tions: a generalized smoothing approach. Journal of the Royal Statistical Society: Series B (Statistical Methodology) , 69(5):741–796, 2007. doi: https://doi.org/10.1111/j.1467-9868.2007. 00610.x. URL https://rss.onlinelibrary.wiley.com/doi/abs/10.1111/j. 1467-9868.2007.00610.x .Jakob Runge. Discovering contemporaneous and lagged causal relations in autocorrelated nonlinear time series datasets, 2020. M. Scheutzow. Qualitative behaviour of stochastic delay equations with a bounded memory. 
+
+Stochastics , 12(1):41–80, 1984. doi: 10.1080/17442508408833294. URL https://doi. org/10.1080/17442508408833294 .Ch. Skokos. The Lyapunov Characteristic Exponents and Their Computation , pp. 63–135. Springer Berlin Heidelberg, Berlin, Heidelberg, 2010. ISBN 978-3-642-04458-8. doi: 10.1007/ 978-3-642-04458-8 2. URL https://doi.org/10.1007/978-3-642-04458-8_2 .Daniel W. Stroock and S. R. Srinivasa Varadhan. On the support of diffusion processes with ap-plications to the strong maximum principle. In Proceedings of the Sixth Berkeley Symposium on Mathematical Statistics and Probability , volume 3, pp. 333–359. University of California Press, 1972. URL https://api.semanticscholar.org/CorpusID:35508438 .Max J. Suarez and Paul S. Schopf. A delayed action oscillator for enso. Journal of Atmospheric Sciences , 45(21):3283 – 3287, 1988. doi: 10.1175/1520-0469(1988)045 ⟨3283:ADAOFE ⟩2. 0.CO;2. URL https://journals.ametsoc.org/view/journals/atsc/45/21/ 1520-0469_1988_045_3283_adaofe_2_0_co_2.xml .14 Preprint. George Sugihara, Robert May, Hao Ye, Chih hao Hsieh, Ethan Deyle, Michael Fogarty, and Stephan Munch. Detecting causality in complex ecosystems. Science , 338(6106):496–500, 2012. doi: 10.1126/science.1227079. URL https://www.science.org/doi/abs/10.1126/ science.1227079 .Nicholas Tagliapietra, Katharina Ensinger, Christoph Zimmer, and Osman Mian. Causal structure learning for dynamical systems with theoretical score analysis. In Proceedings of the AAAI Con-ference on Artificial Intelligence , volume 40, pp. 36740–36748, 2026. Alex Tank, Ian Covert, Nicholas Foti, Ali Shojaie, and Emily B. Fox. Neural granger causality. 
+
+IEEE Transactions on Pattern Analysis and Machine Intelligence , 44(8):4267–4279, 2022. doi: 10.1109/TPAMI.2021.3065601. Silviu-Marian Udrescu, Andrew Tan, Jiahai Feng, Orisvaldo Neto, Tailin Wu, and Max Tegmark. Ai feynman 2.0: Pareto-optimal symbolic regression exploiting graph modular-ity. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, and H. Lin (eds.), Advances in Neural Information Processing Systems , volume 33, pp. 4860–4871. Curran Associates, Inc., 2020. URL https://proceedings.neurips.cc/paper_files/paper/2020/ file/33a854e247155d590883b93bca53848a-Paper.pdf .Peter Walters. An Introduction to Ergodic Theory . Springer New York,, 1999. URL https: //link.springer.com/book/9780387951522 .Philippe Wenk, Gabriele Abbati, Michael A Osborne, Bernhard Sch¨ olkopf, Andreas Krause, and Stefan Bauer. Odin: Ode-informed regression for parameter and state inference in time-continuous dynamical systems. In Proceedings of the AAAI conference on artificial intelligence ,volume 34, pp. 6364–6371, 2020. Fan Wu, Woojin Cho, David Korotky, Sanghyun Hong, Donsub Rim, Noseong Park, and Kookjin Lee. Identifying contemporaneous and lagged dependence structures by promoting sparsity in continuous-time neural networks. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management , CIKM ’24, pp. 2534–2543, New York, NY, USA, 2024. Association for Computing Machinery. ISBN 9798400704369. doi: 10.1145/3627673. 3679751. URL https://doi.org/10.1145/3627673.3679751 .Weiran Yao, Yuewen Sun, Alex Ho, Changyin Sun, and Kun Zhang. Learning temporally causal latent processes from general temporal data. In International Conference on Learning Represen-tations , 2022. URL https://openreview.net/forum?id=RDlLMjLJXdq .Yuan Yin, Vincent Le Guen, J´ er´ emie Dona, Emmanuel De B´ ezenac, Ibrahim Ayed, Nicolas Thome, and Patrick Gallinari. Augmenting physical models with deep networks for complex dynam-ics forecasting. Journal of Statistical Mechanics: Theory and Experiment , 2021(12):124012, 2021. doi: 10.1088/1742-5468/ac3ae5. URL https://doi.org/10.1088/1742-5468/ ac3ae5 .Bin Yu. Rates of convergence for empirical processes of stationary mixing sequences. The Annals of Probability , 22(1):94–116, 1994. ISSN 00911798, 2168894X. URL http://www.jstor. org/stable/2244496 .Han Zhang, Xi Gao, Jacob Unterman, and Tom Arodz. Approximation capabilities of neural ODEs and invertible residual networks, 13–18 Jul 2020. URL https://proceedings. mlr.press/v119/zhang20h.html .Xun Zheng, Bryon Aragam, Pradeep K Ravikumar, and Eric Xing. Dags with no tears: Continuous optimization for structure learning, 2018. URL 
+
+https://proceedings.neurips.cc/paper_files/paper/2018/file/ e347c51419ffb23ca3fd5050202f9c3d-Paper.pdf .Hui Zou. The adaptive lasso and its oracle properties. Journal of the American Statistical As-sociation , 101(476):1418–1429, 2006. doi: 10.1198/016214506000000735. URL https: //doi.org/10.1198/016214506000000735 .15 Preprint. Cos ¸kun C ¸ etin, Jose Roberto Castilho Piqueira, Burhaneddin ˙ Izgi, Ayse Peker-Dobie, Semra Ahme-tolan, and Murat ¨ Ozkaya. Deterministic, stochastic, and mean-field pde models in neuroscience. 
+
+Frontiers in Computational Neuroscience , Volume 20 - 2026, 2026. ISSN 1662-5188. doi: 10.3389/fncom.2026.1762692. URL https://www.frontiersin.org/journals/ computational-neuroscience/articles/10.3389/fncom.2026.1762692 .16 Preprint. 
+
+## A PROOFS 
+
+We dedicate this section to proving the different lemmas, propositions and theorems from the main content of the paper as well as some auxiliary lemmas and corollaries. We first establish that the model is well posed: Proposition 1 gives a unique, non-exploding strong solution. We then treat identifiability at the population level, first for the exact-risk formulation (Theorem 1) and then for the penalized objective (Theorem 2). The remaining three subsections provide the probabilistic machinery to go from the population result to the finite-sample one: uniform moment bounds, er-godicity of the true process, and exponential mixing of the sampled lagged state. These feed the finite-sample recovery guarantee (Theorem 4). We provide a graph illustrating the relationships between the assumptions, lemmas, propositions, and theorems in Figure 1. A.1 NOTATION 
+
+We denote the true data-generating objects using standard symbols: G for the drift, Gj for its coor-dinates, fj for the link functions, and M for the binary mask. Candidates within the model class are indicated by a tilde (e.g., ˜G), whereas empirical minimizers are denoted by a hat (e.g., ˆG). Matrix indices follow the mask variables, where M aij = 1 indicates that the driver coordinate i at lag τa
+
+influences the target coordinate j. The lag index a ∈ { 0, . . . , q } specifies the lag block, with a = 0 
+
+representing the instantaneous interactions. We let maj denote the j-th column of M a, and define 
+
+Sj = {(i, a ) : M aij = 1 } as the active set of drivers for coordinate j. The delay sequence is strictly ordered as 0 < τ 1 < · · · < τ q , with the maximum delay defined as τmax = τq .Because the drift evaluates the trajectory at multiple past times, the process X is non-Markovian, though the process of its recent histories (segments) is Markovian. We therefore operate on the 
+
+segment space of continuous functions from [−τmax , 0] to RD ,
+
+C = C [−τmax , 0]; RD  , Xseg  
+
+> t
+
+(s) = Xt+s, s ∈ [−τmax , 0] ,
+
+equipped with the supremum norm ∥·∥ C . Generic segments in this space are denoted by Greek letters such as φ, ψ, and η, with Xseg 0 serving as the initial condition. The drift relies strictly on q + 1 
+
+discrete time slices of a segment; thus, we define the lagged state as Zt = ( Xt, X t−τ1 , . . . , X t−τq ).Observations of this state are taken on a temporal grid t0 < · · · < t n = T , where we write 
+
+Zk = Ztk . The effective horizon over which the drift is evaluated is T◦ = T −τmax . Reference balls centered at the constant c (introduced in our regularity and dissipativity assumptions) are denoted by BR ⊂ C in the segment space and Kρ ⊂ RD(q+1) in the lagged state space, and c(q) ∈ RD(q+1) 
+
+denotes the concatenation of q + 1 copies of c. When q = 0 (no delays) we use the conventions 
+
+τmax = 0 and C = RD , so that the segment process is X itself. We use subscripts on the probability operators to distinguish the initial state of the process. The probability measure and expectation for a solution initialized at a fixed segment Xseg 0 = φ are written as Pφ and Eφ, with the corresponding transition kernel Pt(φ, ·) and semigroup (Pt)t≥0. This specific notation is utilized for moment and coupling estimates that require uniform bounds over φ ∈
+
+BR. Conversely, when the process is initialized from equilibrium ( Xseg 0 ∼ πseg , independent of the driving noise W ), we may use Pπ and Eπ . Here, πseg represents the invariant measure of the system, which forms the probabilistic foundation for our finite-sample analysis. Undecorated expectations 
+
+E and probabilities P denote an arbitrary initial distribution consistent with the underlying data-generating process. We compare candidate drifts in the L2 space associated with the joint occupation measure ¯μqT , which represents the time-averaged law of Zt over the interval [τmax , T ]. Identifiability is first established as an identity in L2(¯ μqT ) before being extended to all of RD(q+1) . Under stationary conditions, ¯μqT
+
+coincides with the stationary law μq 
+
+> ∞
+
+of Zt, rendering our bounding constants independent of the horizon T .For a given candidate drift ˜G and mask ˜M , the population risk is defined as RT ( eG) = T◦∥ eG −
+
+G∥2 
+
+> L2(¯ μqT)
+
+. Its empirical counterpart is the Euler criterion bRn, leading to the penalized objective 
+
+Jλ( eG, ˜M ) = RT ( eG) + λ P
+
+> a
+
+∥ ˜M a∥0. Because bRn contains a quadratic-variation term identi-cal across all candidates, we evaluate only the excess empirical risk bRn( eG) − bRn(G) against 17 Preprint. the population risk RT . Although RT involves the unknown G, it is determined by observ-able quantities up to a candidate-independent constant: for every eG with finite risk, the contrast 
+
+CT ( eG) := ER Tτmax ∥ eG(Zt)∥2 dt − 2 R Tτmax ⟨ eG(Zt), dX t⟩ satisfies CT ( eG) − C T (G) = RT ( eG), as follows by substituting the SDDE and using that the square-integrable stochastic integral has zero mean. Finally, successful recovery is governed by three primary structural quantities. The first is the signal strength saij = ∥Gj − Π−(i,a )Gj ∥L2(¯ μqT ), where Π−(i,a ) denotes the orthogonal projection onto the subspace of functions that do not depend on (i.e. do not use) coordinate i in lag block a. The remaining two are smin , the minimum signal strength across all true edges, and dmax , the maximal in-degree of the system. These combine to define the margin γ(λ) = min {λ, T ◦s2min − λd max },which acts as the minimum objective gap incurred by any incorrectly identified mask. A.2 NON -EXPLOSION AND EXISTENCE OF A STRONG SOLUTION 
+
+Since the process is not Markov, we cannot apply the classical existence theorems for SDEs directly. Instead, we exploit the fact that the delays are bounded away from zero and prove existence of a unique solution by induction over intervals of length τmin := min a τa (the so-called method of steps, see e.g. Hale & Verduyn Lunel, 1993). On each such interval the delayed arguments are already known from the previous interval, so that the SDDE reduces to a standard (non-delayed) Itˆ o equation with a random, time-dependent drift: we solve that by truncation on a closed ball and rule out explosion with a Khasminskii-type Lyapunov test. The induction then extends the solution to all of 
+
+[0 , ∞). The proof of the following statement only uses the initial-condition clause of Assumption 1 (independence of Xseg 0 and W , and its finite second moment) together with Assumption 2. 
+
+Proposition 1 (Non-explosion & Strong solution) . Under Assumptions 1 and 2, the SDDE defined in Equation 1 has a unique strong solution for every initial condition with E∥Xseg 0 ∥2 
+
+> C
+
+< ∞ without explosion i.e. it does not diverge to infinity in a finite amount of time. Proof. Step 1: Initialisation on [−τmax , τ min ]. The initial segment Xseg 0 provides the solution on [−τmax , 0] . For s ∈ [0 , τ min ] and every lag a ≥ 1, the delayed argument satisfies s − τa ≤
+
+τmin − τa ≤ 0, so Xs−τa is read from the initial segment. Define 
+
+Ys = ( Xs−τ1 , . . . , X s−τq ), s ∈ [0 , τ min ]
+
+This is a continuous, F0-measurable path with compact range KY ⊂ RDq (as a continuous function on the compact [0 , τ min ] composed with the continuous initial segment). On this segment, the SDDE reduces to a standard (non-delayed) Itˆ o equation: 
+
+dX s = b(s, X s) ds + Σ dW s, X0 = Xseg 0 (0) 
+
+with time-dependent drift b(s, x ) := G(x, Y s).
+
+(a) Existence and uniqueness via truncated approximation. For n ∈ N, consider the metric pro-jection onto the closed ball of radius n centered at c, πn : RD → ¯Bn(c) which is 1-Lipschitz by convexity. Define the truncated drift :
+
+bn(s, x ) := b(s, π n(x)) = G(πn(x), Y s)
+
+Since G is locally Lipschitz by Assumption 2 and both πn, Ys remain in a compact set ( ¯Bn(c)×KY ), the truncated drift bn is globally Lipschitz in x uniformly in s ∈ [0 , τ min ] with Lipschitz constant 
+
+Ln (random but F0-measurable). Since Ln and Y are F0-measurable while the Brownian motion W is independent of F0 (Assump-tion 1), we may apply the Picard-Lindel¨ of theorem for SDEs with globally Lipschitz coefficients (Mao, 2007, Ch. 2) conditionally on F0, i.e. for each fixed realisation of the initial segment (alter-natively, one may localise on the events {Ln ≤ m} ∈ F 0, m ∈ N). Hence the truncated equation 
+
+dX (n) 
+
+> s
+
+= bn(s, X (n) 
+
+> s
+
+) ds + Σ dW s, X(n)0 = Xseg 0 (0) 
+
+admits a unique non-exploding strong solution on [0 , τ min ].Define the exit time from ¯Bn(c), ζn := inf {s ≥ 0, ∥X(n) 
+
+> s
+
+− c∥ ≥ n}. For any n ≤ m, the pathwise uniqueness on [0 , ζ n] gives X(n) 
+
+> s
+
+= X(m) 
+
+> s
+
+for all s ≤ ζn (since bn = bm = b on the ball ¯Bn(c)). 18 Preprint. 
+
+Well-posedness & population identifiability Moments & ergodicity Mixing Data-generating process 
+
+Asm. 1 
+
+Regularity 
+
+Asm. 2 
+
+Non-explosion & strong solution 
+
+Prop. 1 
+
+Full support of ¯μqT
+
+Lem. 1 
+
+Faithfulness 
+
+Asm. 4 
+
+Structural sparsity 
+
+Asm. 5 
+
+Model class & risk min. 
+
+Asm. 3 
+
+Identifiability 
+
+Thm. 1 
+
+L0-penalised identifiability 
+
+Thm. 2 
+
+Delay-adapted dissipativity 
+
+Asm. 6 
+
+Global dissipativity estimate 
+
+Lem. 2 
+
+One-point moment bounds 
+
+Lem. 3 
+
+Segment moment bounds 
+
+Lem. 4 
+
+Uniform kernel overlap 
+
+Lem. 5 
+
+Ergodicity of the true process 
+
+Thm. 3 
+
+Ergodicity of the learned system 
+
+Thm. 6 
+
+Confinement by con-struction 
+
+Prop. 2 
+
+Stationary error bound on invari-ant laws 
+
+Prop. 3 
+
+β-mixing coefficient 
+
+Def. 1 
+
+β-coefficient of a stationary Markov process 
+
+Lem. 6 
+
+Exponential 
+
+β-mixing of Zt
+
+Thm. 5 
+
+Finite-sample model class 
+
+Asm. 7 
+
+Finite-sample exact support recovery ( L0 estimator) 
+
+Thm. 4 
+
+> (i) only Lyapunov population margin segment moments stationary law & moments independent blocks
+> Assumption Definition Lemma / Prop. Theorem
+
+Figure 1: Dependency map of the theoretical results. Yellow boxes are assumptions, blue boxes are lemmas and propositions, and green boxes are theorems. Arrows denote when an assumption or a result is used in another proof. A use already implied by a chain of arrows is not drawn, unless it plays a separate role (labelled arrows). The proofs are grouped vertically into the three groups of proofs in Section A, contributing the finite-sample guarantee at the bottom. 19 Preprint. Thus, ζn is non-decreasing in n, and given the limit ζ = lim n→∞ ζn, define the process Xs := X(n)
+
+> s
+
+for s < ζ n. This defines a unique strong solution on [0 , ζ ).
+
+(b) Non-explosion via Khasminskii’s test (Khasminskii, 2012; see also Mao, 2007). Set Φ( x) := 1 + ∥x − c∥2. We work conditionally on F0, under which Y and the constants below are fixed while 
+
+W remains a Brownian motion. By Dynkin’s formula applied to Φ( Xs∧ζn ):
+
+E[Φ( Xs∧ζn ) | F 0] = Φ( X0) + E
+
+hZ s∧ζn
+
+> 0
+
+LuΦ( Xu) du F0
+
+i
+
+where LuΦ( x) := 2 ⟨x − c, b (u, x )⟩ + tr(ΣΣ ⊤) is the (time-dependent) generator of the equation with frozen delayed arguments. Let ρ2 
+
+> Y
+
+:= sup s∈[0 ,τ min ]
+
+Pqa=1 ∥Xs−τa − c∥2 < ∞, which is F0-measurable since KY is compact, so that ∥(x0, Y s) − c(q)∥2 ≤ ∥ x0 − c∥2 + ρ2 
+
+> Y
+
+. By Assumption 2 (ii), whenever ∥(x0, Y s) − c(q)∥ ≥ R
+
+we have 2⟨x0 − c, G (x0, Y s)⟩ ≤ 2β(1 + ∥x0 − c∥2 + ρ2 
+
+> Y
+
+) ≤ 2β(1 + ρ2 
+
+> Y
+
+)Φ( x0). Otherwise 
+
+∥x0 − c∥ < R . For ∥x0 − c∥ ≤ R, set 
+
+MR := sup {∥ G(x0, y )∥ : ∥x0 − c∥ ≤ R, y ∈ KY } < ∞ a.s. ,
+
+finite by continuity of G on the compact ¯BR(c) × KY , so that 2⟨x0 − c, G (x0, Y s)⟩ ≤ 2RM R ≤
+
+2CRΦ( x0) with CR := RM R, using Φ ≥ 1. Hence, for all x ∈ RD and s ∈ [0 , τ min ],
+
+LsΦ( x) = 2 ⟨x − c, G (x, Y s)⟩ + tr(ΣΣ ⊤) ≤ C Φ( x),
+
+where C := 2 max  β(1 + ρ2 
+
+> Y
+
+), C R
+
+ + tr(ΣΣ ⊤) is F0-measurable and a.s. finite. As R s∧ζn 
+
+> 0
+
+LuΦ( Xu) du ≤ C R s 
+
+> 0
+
+Φ( Xu∧ζn ) du , Gr¨ onwall’s inequality gives 
+
+E[Φ( Xs∧ζn ) | F 0] ≤ Φ( X0)eCs , s ∈ [0 , τ min ].
+
+Since Φ( Xζn ) ≥ 1 + n2 on {ζn ≤ τmin }, we have that 
+
+(1 + n2)P(ζn ≤ τmin | F 0) ≤ E[Φ( Xζn )1ζn≤τmin | F 0] ≤ Φ( X0)eCτ min .
+
+Since {ζ ≤ τmin } ⊆ { ζn ≤ τmin }, letting n → ∞ yields P(ζ ≤ τmin | F 0) = 0 a.s., and integrating these conditional probabilities (which are bounded by one) gives P(ζ ≤ τmin ) = 0 , i.e. the solution does not explode on [0 , τ min ]. No integrability of Φ( X0)eCτ min is needed. 
+
+Step 2: Induction on [kτ min , (k + 1) τmin ]. The delayed arguments now satisfy s − τa ≤ kτ min ,hence lie on the already-constructed path; parts (a)–(b) apply verbatim with F0 replaced by Fkτ min .Induction over k yields a unique strong solution on [0 , ∞) with sup s≤T ∥Xs∥ < ∞ a.s. for every finite T .Note: When q = 0 there are no delayed arguments: Step 1 applies directly on any finite interval 
+
+[0 , T ] (with Y void and τmin replaced by T ), and no induction is needed. A.3 POPULATION IDENTIFIABILITY 
+
+We prove population identifiability in two stages. First, we show that the drift and the mask are pinned down on the support of the joint occupation measure: matching the risk forces eG = G there by continuity, and faithfulness upgrades this to equality of the masks. Second, Lemma 1 shows that, under non-degenerate noise, the occupation measure has full support, so “on the support” is in fact “everywhere” and the faithfulness hypothesis reduces to plain faithfulness. The proof follows the structure of the assumptions: a zero risk forces eG = G on the support of 
+
+¯μqT = RD(q+1) which fills the whole domain from the non-degenerate noise (Lemma 1), faithfulness prevents the learned mask from dropping a true edge, and sparsity prevents it from adding a spurious one. We compare these assumptions to those of Bellot et al. (2022) in Section B. 
+
+Theorem 1 (Identifiability) . Under Assumptions 1–5, G and M are identifiable: 
+
+eG = G on supp(¯ μqT ), ˜M = M. (19) 
+
+Moreover, under the non-degenerate noise of Assumption 1 the occupation measure has full support, 
+
+supp(¯ μqT ) = RD(q+1) by Lemma 1 (see below), so the drift equality extends to all of RD(q+1) .
+
+20 Preprint. 
+
+Proof. Step 1: Drift identifiability on supp(¯ μqT ). The true pair (G, M ) is feasible by As-sumption 3(i) and has risk zero. Nonnegativity and optimality (Assumption 3(ii)) therefore give 
+
+RT ( eG) = 0 , hence by Equation 4 eG = G ¯μqT -a.e.; G is continuous by Assumption 2 and eG by Assumption 3(i), and the complement of a ¯μqT -null set meets every nonempty relatively open subset of supp(¯ μqT ), so equality on this dense subset of the (closed) support upgrades to equality on all of 
+
+supp(¯ μqT ).
+
+Step 2: Mask identifiability on the support. If M aij = 1 but ˜M aij = 0 — that is, if a true edge were dropped — then eGj is constant in coordinate i of block a on all of RD(q+1) (its mask removes that input), so Gj = eGj on supp(¯ μqT ) takes equal values at the axis-aligned witnessing pair z, z ′ ∈
+
+supp(¯ μqT ) of Assumption 4, which is a contradiction. Hence ˜M aij ≥ M aij entry-wise for all a, i.e. 
+
+P
+
+> a
+
+∥ ˜M a∥0 ≥ P
+
+> a
+
+∥M a∥0 with equality iff ˜M a = M a for all a; Assumption 5 forces equality. It remains to remove the “on the support” qualifier. The next lemma shows that non-degenerate noise makes the joint law of the lagged state charge every open set, so its support is the whole space and the identity is global. 
+
+Lemma 1 (Full support of the joint occupation measure) . Under Assumptions 1 and 2, for every t > τmax the law of  Xt, X t−τ1 , . . . , X t−τq
+
+ on RD(q+1) has full support; consequently supp(¯ μqT ) = 
+
+RD(q+1) for every T > τ max .Proof. We first prove the statement for a deterministic initial history and then integrate. 
+
+Step 1: Deterministic initial segment and pilot path. Fix a deterministic initial segment φ ∈ C , a time t > τ max , a target z = ( z0, z 1, . . . , z q ) ∈ RD(q+1) and ε > 0, and write Pφ for the law of the solution started from Xseg 0 = φ. We must show: 
+
+Pφ
+
+ ∥Xt − z0∥ < ε, ∥Xt−τ1 − z1∥ < ε, . . . , ∥Xt−τq − zq ∥ < ε  > 0.
+
+With the convention τ0 = 0 , the times t − τa for a = 0 , 1, . . . , q are distinct and strictly positive, since t > τ max = τq . Choose a path h : [ −τmax , t ] → RD which is continuously differentiable on 
+
+[0 , t ] and satisfies 
+
+h|[−τmax ,0] = φ, h(t − τa) = za (0 ≤ a ≤ q).
+
+Such a path exists because we are prescribing finitely many values at distinct times of (0 , t ], together with the value h(0) = φ(0) at the left endpoint (e.g. by spline interpolation). Note that h need not be differentiable at 0 and no regularity of φ beyond continuity is required. 
+
+Step 2: The driving control. Since Σ is invertible by Assumption 1, we may define 
+
+wh(s) := Σ −1
+
+
+
+h(s) − φ(0) −
+
+Z s
+
+> 0
+
+G h(u), h (u − τ1), . . . , h (u − τq ) du 
+
+
+
+, s ∈ [0 , t ].
+
+The integrand is continuous on [0 , t ], so wh is continuously differentiable with wh(0) = 0 . In particular, wh has square-integrable derivative and belongs to the Cameron–Martin space of the Wiener measure on C([0 , t ]; RD ) (see Nualart, 2006, Ch. 1). By construction h solves the integral equation associated with Equation 1 on [0 , t ] driven by wh in place of W :
+
+h(s) = φ(0) + 
+
+Z s
+
+> 0
+
+G h(u), h (u − τ1), . . . , h (u − τq ) du + Σ wh(s). (20) 
+
+Step 3: Localized Gr¨ onwall estimate. Let 
+
+K := 
+
+n
+
+(y0, . . . , y q ) ∈ RD(q+1) : ∃ u ∈ [0 , t ] with max 
+
+> 0≤a≤q
+
+∥ya − h(u − τa)∥ ≤ 1
+
+o
+
+,
+
+a compact subset of RD(q+1) , and let L < ∞ be a Lipschitz constant for G on K, which exists by Assumption 2 (i). Both K and L are deterministic as functions of h alone. Choose η > 0 such that 
+
+∥Σ∥op η e L√q+1 t < min(1 , ε ), (21) 21 Preprint. and define the Brownian tube event and the exit time 
+
+Aη := 
+
+n
+
+sup 
+
+> s≤t
+
+∥Ws − wh(s)∥ < η 
+
+o
+
+, σ := t ∧ inf {s ≥ 0 : ∥Xs − h(s)∥ ≥ 1}.
+
+Since X and h agree with φ on [−τmax , 0] , we have Xu − h(u) = 0 for every u ∈ [−τmax , 0] , so that for s ∈ [0 , σ ]
+
+∥Xs−τa − h(s − τa)∥ ≤ D(s) := sup 
+
+> 0≤u≤s
+
+∥Xu − h(u)∥, 0 ≤ a ≤ q. 
+
+Subtracting Equation 20 from the integral form of Equation 1 and using that both argument vectors lie in K before time σ, we obtain on Aη , for every s ≤ σ,
+
+D(s) ≤ ∥ Σ∥op sup 
+
+> u≤t
+
+∥Wu −wh(u)∥+Lpq + 1 
+
+Z s
+
+> 0
+
+D(u) du ≤ ∥ Σ∥op η+Lpq + 1 
+
+Z s
+
+> 0
+
+D(u) du, 
+
+the factor √q + 1 coming from bounding the Euclidean norm on RD(q+1) by √q + 1 times the maximum of the blockwise norms. Gr¨ onwall’s inequality and Equation 21 then give 
+
+D(σ) ≤ ∥ Σ∥op η e L√q+1 t < min(1 , ε ).
+
+In particular ∥Xσ − h(σ)∥ < 1 strictly, so by continuity of s 7 → Xs − h(s) the exit time cannot occur before t, i.e. σ = t on Aη , and the estimate sup s≤t∥Xs − h(s)∥ < ε holds on all of [0 , t ].
+
+Step 4: Positivity of the Brownian tube probability. The path wh is continuously differentiable with 
+
+wh(0) = 0 , hence lies in the Cameron–Martin space, so the law of W − wh on C([0 , t ]; RD ) is equivalent to the Wiener measure. Since the Brownian small-ball probability P(sup s≤t∥Ws∥ < η )
+
+is strictly positive, we conclude that P(Aη ) > 0 (Stroock & Varadhan, 1972, Sec. 3). Combining with Step 3 and h(t − τa) = za,
+
+Pφ
+
+
+
+max 
+
+> 0≤a≤q
+
+∥Xt−τa − za∥ < ε 
+
+
+
+≥ P(Aη ) > 0.
+
+Step 5: Random initial history and conclusion. By Proposition 1, the solution is a measurable func-tional of (φ, W ), so φ 7 → Pφ(·) is a probability kernel; using Assumption 1, the initial segment Xseg 0
+
+is independent of W . Conditioning on Xseg 0 = φ and integrating the strictly positive conditional probabilities of Step 4 against Law( Xseg 0 ) yields 
+
+P
+
+
+
+max 
+
+> 0≤a≤q
+
+∥Xt−τa − za∥ < ε 
+
+
+
+> 0.
+
+Since z ∈ RD(q+1) and ε > 0 were arbitrary, the law of (Xt, X t−τ1 , . . . , X t−τq ) charges every nonempty open subset of RD(q+1) , i.e. it has full support. Finally, for every nonempty open O ⊂
+
+RD(q+1) the map t 7 → P (Xt, X t−τ1 , . . . , X t−τq ) ∈ O is strictly positive on (τmax , T ], so its integral over that interval is strictly positive. The single endpoint t = τmax , at which the lagged coordinate Xt−τq = X0 is still determined by the initial history, has zero Lebesgue measure and does not affect the integral. Hence supp(¯ μqT ) = RD(q+1) .A.4 IDENTIFIABILITY WITH THE PENALIZED OBJECTIVE 
+
+The penalized objective decouples across output coordinates, so it is enough to argue one coordinate 
+
+j at a time. For each j, we compare the true active set Sj against a candidate ˜Sj in two exhaustive cases; the minimum-signal condition smin > 0 makes dropping a true input strictly costly, and this yields the sufficient λ-window Equation 22. 
+
+Theorem 2 (Identifiability with the penalized objective) . Let Assumptions 1, 2 and 3(i) hold. Sup-pose M̸ = 0 and smin > 0 i.e. the system has at least one true driver, and every true driver has a measurable impact on the dynamics. This replaces Assumption 4 (faithfulness). If 
+
+0 < λ < (T − τmax )s2min 
+
+dmax 
+
+, (22) 
+
+then every minimizer of Jλ over Hq satisfies ˜M = M and eG = G on RD(q+1) . Moreover, every feasible pair with ˜M̸ = M satisfies 
+
+Jλ( ˜G, ˜M ) − Jλ(G, M ) ≥ γ(λ) := min( λ, (T − τmax )s2min − λd max ) > 0
+
+22 Preprint. 
+
+Proof. The true pair (G, M ) is feasible by Assumption 3(i) and satisfies RT (G) = 0, so 
+
+Jλ(G, M ) = λ PDj=1 |Sj |, where Sj := {(i, a ) : M aij = 1 } is the true active set of coordi-nate j and |Sj | = Pqa=0 ∥maj ∥0 ≤ dmax . Let ( eG, ˜M ) ∈ H q be any feasible pair and write 
+
+˜Sj := {(i, a ) : ˜M aij = 1 }. Since the squared L2(¯ μqT ) risk and the ℓ0 penalty of Equation 9 are both sums over the output coordinates, the objective gap decomposes as 
+
+Jλ( eG, ˜M ) − Jλ(G, M ) = 
+
+> D
+
+X
+
+> j=1
+
+∆j , ∆j := ( T − τmax ) ∥Gj − eGj ∥2  
+
+> L2(¯ μqT)
+
++ λ | ˜Sj | − | Sj |.
+
+(23) This decomposes the value of the gap at a fixed feasible pair. It therefore suffices to bound ∆j from below in the two exhaustive cases and to sum. Consider first a coordinate whose mask keeps every true input, ˜Sj ⊇ Sj . Then | ˜Sj | ≥ | Sj |, and since the risk term is nonnegative we obtain ∆j ≥ 0; if the containment is strict then | ˜Sj | ≥ | Sj | + 1 
+
+and 
+
+∆j ≥ λ > 0. (24) Consider next a coordinate whose mask omits some true input (i, a ) ∈ Sj \ ˜Sj , that is ˜M aij = 0 
+
+while M aij = 1 . By the masked parametrization of Assumption 3(i), the candidate eGj = efj ( ˜ m0 
+
+> j
+
+⊙
+
+x0, . . . , ˜mqj ⊙ xq ) does not depend on coordinate i of block a, so it belongs to the closed subspace onto which Π−(i,a ) projects (the L2(¯ μqT ) space of the σ-algebra generated by the remaining coordi-nates; note that Gj ∈ L2(¯ μqT ) by the finite-energy clause of Assumption 1, hence eGj ∈ L2(¯ μqT ) by finite risk). Since Π−(i,a )Gj is the nearest point of that subspace to Gj , the signal strength Equation 7 lower-bounds the distance to any of its elements, and in particular 
+
+∥Gj − eGj ∥L2(¯ μqT ) ≥ Gj − Π−(i,a )Gj L2(¯ μqT ) = saij ≥ smin .
+
+Bounding the penalty term by | ˜Sj | ≥ 0 and |Sj | ≤ dmax gives 
+
+∆j ≥ (T − τmax ) ( saij )2 − λ |Sj | ≥ (T − τmax ) s2min − λd max , (25) which is strictly positive under the window Equation 22. Now let ( eG, ˜M ) be feasible with ˜M̸ = M and let j be a coordinate in which the two masks differ. That coordinate falls into exactly one of the two cases: either it omits a true input, and Equation 25 applies, or its mask strictly contains Sj , and Equation 24 applies. In both cases ∆j ≥ γ(λ), while every remaining coordinate satisfies ∆j ≥ 0 under Equation 22. Summing in Equation 23 yields 
+
+Jλ( eG, ˜M )−Jλ(G, M ) ≥ γ(λ) > 0, so no pair with an incorrect mask can be a minimizer and every minimizer satisfies ˜M = M . Given ˜M = M the true pair is feasible with objective λ P 
+
+> j
+
+|Sj |,so any minimizer has RT ( eG) = 0 , that is eG = G ¯μqT -almost everywhere. G is continuous by Assumption 2 (i) and eG by Assumption 3(i), and supp(¯ μqT ) = RD(q+1) by Lemma 1, so eG = G
+
+everywhere, exactly as in the proof of Theorem 1. A.5 UNIFORM MOMENT BOUNDS 
+
+In order to prove some ergodicity results in Section A.6, we will need some estimates on the mo-ments of the process both point-wise and in the segment space. This section provides: first a bound on the one-point moments E∥Xt − c∥2p, obtained from Itˆ o’s formula and a Halanay comparison to handle the delayed feedback, second a lifting of these to the segment norm via the Burkholder– Davis–Gundy inequality (Karatzas & Shreve, 1991). We first give a small lemma combining the radial bound and the residual bound from the Assump-tion 6 to get a bound on the whole space. 
+
+Lemma 2 (Global dissipativity estimate) . Under Assumption 6, set ba := βa + εa for a = 1 , . . . , q ,so that B = Pqa=1 ba < β 0 by Equation 13. Combining the radial bound outside ¯BR(c) with the 
+
+23 Preprint. 
+
+residual bound inside it, we obtain, for all (x0, x 1, . . . , x q ) ∈ RD(q+1) ,
+
+⟨x0 − c, G (x0, x 1, . . . , x q )⟩ ≤ A − β0∥x0 − c∥2 +
+
+> q
+
+X
+
+> a=1
+
+ba∥xa − c∥2, (26) 
+
+where A := max α, C R + β0R2 and CR is the constant defined in Equation 12. Proof. Outside the ball, Equation 26 follows from the radial bound Equation 11, since A ≥ α and 
+
+ba ≥ βa. Inside it, β0∥x0 − c∥2 ≤ β0R2, so adding and subtracting this term in the residual bound Equation 12 and using ba ≥ εa gives Equation 26 with the constant CR + β0R2 ≤ A.
+
+Lemma 3 (One-point moment bounds) . Suppose that Assumptions 1, 2 and 6 hold. For every integer 
+
+p ≥ 1 with E∥Xseg 0 − c∥2p 
+
+> C
+
+< ∞ there are constants γp > 0 and K⋆p < ∞, depending only on Σ, p,the delays and the constants from the assumption bounds, such that 
+
+E∥Xt − c∥2p ≤ E∥Xseg 0 − c∥2p 
+
+> C
+
+e−γpt + K⋆p (27) 
+
+Proof. Write Q := ΣΣ ⊤, Φ1(x) := ∥x − c∥2 and Φp := Φ p 
+
+> 1
+
+, so that Φp(Xt) = ∥Xt − c∥2p, and recall ba = βa + εa and B = Pqa=1 ba from Lemma 2, and set M0 := E∥Xseg 0 − c∥2p 
+
+> C
+
+< ∞.
+
+Step 1: Generator bound for Φp. Since ∇Φp = 2 p Φp−11 (x − c) and D2Φp = 2 p Φp−11 I + 4 p(p −
+
+1) Φ p−21 (x − c)( x − c)⊤, Itˆ o’s formula applied to Equation 1 gives 
+
+LΦp = 2 p Φp−11 (x0) ⟨x0 − c, G ⟩ + p Φp−11 (x0) tr( Q) + 2 p(p − 1) Φ p−21 (x0) Σ⊤(x0 − c) 2.
+
+Note that the last term vanishes when p = 1 . Bounding ∥Σ⊤(x0 − c)∥2 ≤ ∥ Σ∥2op Φ1(x0) and inserting Equation 26 yields, 
+
+LΦp ≤ − 2pβ 0 Φp(x0) + 2 p
+
+> q
+
+X
+
+> a=1
+
+ba Φp−11 (x0)Φ 1(xa) + kp Φp−11 (x0), (28) with kp := 2 pA + p tr( Q) + 2 p(p − 1) ∥Σ∥2op . The delayed terms Φ1(xa) are the reason a plain Gr¨ onwall argument does not apply and a delay comparison is needed using Halanay’s inequality (Halanay, 1966). 
+
+Step 2: Scaled Young inequality and the dissipativity margin. For p > 1, Young’s inequality with conjugate exponents p/ (p − 1) and p gives 
+
+Φp−11 (x0) Φ 1(xa) ≤ p−1 
+
+> p
+
+Φp(x0) + 1 
+
+> p
+
+Φp(xa),
+
+so the cross terms in Equation 28 are bounded by 2( p − 1) B Φp(x0) + 2 P 
+
+> a
+
+ba Φp(xa).The lower-order term kp Φp−11 (x0) is treated separately using a scale ηp. Fix any 
+
+ηp ∈  0, 2p(β0 − B), Cp := sup 
+
+> y≥0
+
+ kp yp−1 − ηp yp = k pp (p − 1) p−1
+
+p p η p−1
+
+> p
+
+< ∞,
+
+so that kp Φp−11 (x0) ≤ ηp Φp(x0) + Cp; for p = 1 this term is already the constant k1 and we set 
+
+η1 := 0 , C1 := k1.Substituting both bounds into Equation 28 yields the delay-dissipative estimate 
+
+LΦp ≤ − ap Φp(x0) + 2 
+
+> q
+
+X
+
+> a=1
+
+ba Φp(xa) + Cp, ap := 2 pβ 0 − 2( p − 1) B − ηp. (29) The role of the free parameter is that the margin required by the comparison step is now automatic: 
+
+ap − 2B = 2 p(β0 − B) − ηp > 0 for every p ≥ 1,
+
+by the choice of ηp. Applying an unscaled Young inequality to the lower-order term would instead add kp to the coefficient of Φp(x0) and can make ap negative, which is what must be avoided when using Halanay inequality. 24 Preprint. 
+
+Step 3: A priori integrability. Before applying the inequality, we must show that mp(t) := EΦp(Xt)
+
+is finite and locally absolutely continuous. Let ζn := inf {s ≥ 0 : ∥Xs − c∥ ≥ n}, which increases to +∞ a.s. by Proposition 1, and set 
+
+Sn(t) := max 
+
+n
+
+∥Xseg 0 − c∥2p 
+
+> C
+
+, sup 
+
+> u≤t
+
+Φp(Xu∧ζn )
+
+o
+
+,
+
+so that ESn(t) ≤ M0 + n2p < ∞ and Sn(s) dominates every delayed term Φp(Xs−τa ) for s ≤ t
+
+— those with s < τ a being read off the initial segment. Itˆ o’s formula for Φp(Xu∧ζn ) together with Equation 29, after discarding the nonpositive term 
+
+−apΦp, gives the following estimate 
+
+ESn(t) ≤ 2M0 + Cp t + 2 B
+
+Z t
+
+> 0
+
+ESn(s) ds + E sup 
+
+> u≤t
+
+Nu∧ζn .
+
+where we wrote Nt := R t 
+
+> 0
+
+2p Φp−11 (Xs)( Xs − c)⊤Σ dW s for the martingale part. Since d[N ]s ≤ 4p2∥Σ∥2op Φ2p−11 (Xs) ds , the Burkholder–Davis–Gundy inequality, the factorisation 
+
+Φ2p−11 = Φ p · Φp−11 and Young’s inequality √uv ≤ 14 u + v bound the last term by 12 ESn(t) + 
+
+C R t 
+
+> 0
+
+(1 + ESn(s)) ds , with C depending only on p and ∥Σ∥op . Absorbing 12 ESn(t) on the left and applying Gr¨ onwall’s lemma gives a bound uniform in n on every finite horizon; letting n → ∞ and using Fatou’s lemma, 
+
+E sup 
+
+> u≤H
+
+∥Xu − c∥2p < ∞ for every finite H. 
+
+Consequently, by the same Burkholder–Davis–Gundy bound, E sup u≤H |Nu| < ∞, so N is a true martingale on finite horizons and expectations may be taken in Itˆ o’s formula without stopping; the positive part of LΦp is integrable by Equation 29 and Itˆ o’s identity then controls its negative part, so 
+
+mp is locally absolutely continuous and, for almost every t > 0,
+
+m′
+
+> p
+
+(t) ≤ − ap mp(t) + 2 
+
+> q
+
+X
+
+> a=1
+
+ba mp(t − τa) + Cp. (30) 
+
+Step 4: Halanay comparison. Consider the characteristic equation 
+
+γp + 2 
+
+> q
+
+X
+
+> a=1
+
+ba eγpτa = ap. (31) Its left-hand side is strictly increasing in γp, equals 2B < a p at γp = 0 by Step 2, and tends to infinity, so Equation 31 has a unique positive root γp ∈ (0 , a p); when all ba vanish it reduces to 
+
+γp = ap. Put K⋆p := Cp/(ap − 2B) and 
+
+w(t) := M0 e−γpt + K⋆p , t ≥ − τmax .
+
+A direct computation using Equation 31 shows that w satisfies Equation 30 with equality, and w(t) ≥
+
+M0 ≥ mp(t) on [−τmax , 0] since e−γpt ≥ 1 there. Set u := mp − w, so that u ≤ 0 on [−τmax , 0] 
+
+and u′(t) ≤ − apu(t) + 2 P 
+
+> a
+
+ba u(t − τa) almost everywhere. On [0 , τ min ] all delayed values 
+
+u(t − τa) are nonpositive, hence (eaptu)′ ≤ 0 and u(t) ≤ u(0) e−apt ≤ 0; since τmin is the smallest delay, induction over the intervals [kτ min , (k + 1) τmin ] propagates u ≤ 0 to all of [0 , ∞) (for q = 0 
+
+ordinary Gr¨ onwall suffices). Therefore mp(t) ≤ w(t) for every t ≥ 0, that is 
+
+E∥Xt − c∥2p ≤ E∥Xseg 0 − c∥2p 
+
+> C
+
+e−γpt + K⋆p , t ≥ 0,
+
+which is the announced bound, with γp the positive root of Equation 31 and K⋆p = Cp/(ap −
+
+2B).With the one-point bound in hand, we lift to the segment norm and record the stationary and finite-horizon consequences (parts (b) and (c) of the lemma). 25 Preprint. 
+
+Lemma 4 (Segment moment bounds) . Under the assumptions of Lemma 3 and for the same range of p, write Up(φ) := ∥φ − c∥2p 
+
+> C
+
+for φ ∈ C and let (Pt)t≥0 denote the semigroup of the segment process on C.(a) There are constants Aseg  
+
+> p
+
+, B seg  
+
+> p
+
+< ∞ and γp > 0 such that 
+
+PtUp(ϕ) = Eϕ∥Xseg  
+
+> t
+
+− c∥2p 
+
+> C
+
+≤ Aseg  
+
+> p
+
+e−γpt Up(ϕ) + Bseg  
+
+> p
+
+, t ≥ 0, ϕ ∈ C . (32) 
+
+In particular M2p(ϕ) := sup t≥0 Eϕ∥Xseg  
+
+> t
+
+− c∥2p 
+
+> C
+
+≤ Aseg  
+
+> p
+
+Up(ϕ) + Bseg  
+
+> p
+
+< ∞.(b) If the segment process admits an invariant probability measure πseg on C, then 
+
+Z
+
+> C
+
+∥η − c∥2p 
+
+> C
+
+πseg (dη ) < ∞. (33) 
+
+(c) For every finite horizon H there is Cp,H < ∞ with 
+
+Eϕ sup 
+
+> t≤H
+
+∥Xseg  
+
+> t
+
+− c∥2p 
+
+> C
+
+≤ Cp,H 
+
+ 1 + Up(ϕ), ϕ ∈ C , (34) 
+
+which is uniform over any ball BR := {ϕ ∈ C : ∥ϕ − c∥C ≤ R}.Proof. Recall Φ1(x) = ∥x − c∥2, Φp = Φ p 
+
+> 1
+
+and σ2 := ∥Σ∥2op , and note that Up(Xseg  
+
+> t
+
+) = sup u∈[t−τmax , t ] Φp(Xu), so that (a) is exactly an upgrade of the one-point control of Lemma 3 to a supremum over a window of length τmax . We keep the constants bi, B = Pqi=1 bi, Cp, γp and 
+
+K⋆p of that lemma, together with its generator bound Equation 29. All suprema below are first taken up to the localising time θN := inf {s : ∥Xs − c∥ > N }; the resulting constants do not depend on 
+
+N , and θN ↑ ∞ a.s. by Proposition 1, so monotone convergence removes the localisation at the end of each step. The finite-horizon integrability established in the proof of Lemma 3 guarantees that every expectation written below is finite before the limit is taken. When q = 0 we use the conven-tions τmax = 0 and C = RD : then Up(Xseg  
+
+> t
+
+) = Φ p(Xt), part (a) is Lemma 3 itself, and in Step 5 the windows of length τmax are replaced by windows of unit length, to which the window estimate Equation 38 of Step 2 applies verbatim. 
+
+Step 1: A one-point envelope valid on negative times. Set mp(s) := EϕΦp(Xs) for s ≥ − τmax .For s ∈ [−τmax , 0] the path is the deterministic initial segment, so mp(s) ≤ Up(ϕ). Since moreover 
+
+mp(s) ≤ Up(ϕ)e−γps + K⋆p for s ≥ 0 by Lemma 3, the inequality 
+
+mp(s) ≤ Up(ϕ) e−γps + K⋆p (35) holds for every s ≥ − τmax .
+
+Step 2: Window estimate. Fix 0 ≤ v < w with w − v ≤ τmax . In integrated form, for u ∈ [v, w ],
+
+Φp(Xu) = Φ p(Xv ) + 
+
+Z uv
+
+LΦp(Xs) ds + ( Nu − Nv ),
+
+with Ns := R s 
+
+> 0
+
+2p Φp−11 (Xr ) ( Xr − c)⊤Σ dW r as in the previous lemma. Discarding the favourable term −apΦp ≤ 0 in Equation 29, taking the supremum over u ∈ [v, w ]
+
+and then expectations, 
+
+E sup 
+
+> v≤u≤w
+
+Φp(Xu) ≤ mp(v)+2 
+
+> q
+
+X
+
+> i=1
+
+bi
+
+Z wv
+
+mp(s−τi) ds +Cp(w −v)+ E sup 
+
+> v≤u≤w
+
+Nu −Nv . (36) Re-anchored at v, the increment u 7 → Nu − Nv is a continuous local martingale started at 0, so the Burkholder–Davis–Gundy inequality at exponent 1 applies with a universal constant CBDG . Using 
+
+d[N ]s ≤ 4p2σ2Φ2p−11 (Xs) ds and the factorisation Φ2p−11 = Φ p · Φp−11 ,
+
+E sup 
+
+> v≤u≤w
+
+Nu − Nv ≤ 2pσC BDG E
+
+
+
+sup 
+
+> v≤u≤w
+
+Φp(Xu)
+
+1/2Z wv
+
+Φp−11 (Xs) ds 
+
+1/2
+
+.
+
+26 Preprint. Young’s inequality ab ≤ 12 a2 + 12 b2, with the constant absorbed into the second factor and CN := (2 pσC BDG )2, gives 
+
+E sup 
+
+> v≤u≤w
+
+Nu − Nv ≤ 12 E sup 
+
+> v≤u≤w
+
+Φp(Xu) + CN
+
+> 2
+
+Z wv
+
+E Φp−11 (Xs) ds, (37) and Φp−11 ≤ p−1 
+
+> p
+
+Φp + 1 
+
+> p
+
+≤ Φp + 1 bounds the last integral by R wv (1 + mp(s)) ds . Substituting Equation 37 into Equation 36 and absorbing the half-supremum into the left-hand side, 
+
+E sup 
+
+> v≤u≤w
+
+Φp(Xu) ≤ 2mp(v)+4 
+
+> q
+
+X
+
+> i=1
+
+bi
+
+Z wv
+
+mp(s−τi) ds +2 Cp(w −v)+ CN
+
+Z wv
+
+ 1+ mp(s) ds. 
+
+(38) 
+
+Step 3: Geometric drift for the segment process. Let t ≥ τmax and apply Equation 38 with v =
+
+t − τmax and w = t. Every time argument occurring on its right-hand side lies in [t − 2τmax , t ],so Equation 35 bounds each of them by e2γpτmax Up(ϕ)e−γpt + K⋆p . Writing Λp := 2 + 4 Bτ max +
+
+CN τmax , we obtain Equation 32 for t ≥ τmax with 
+
+Aseg  
+
+> p
+
+:= Λ p e2γpτmax , Bseg  
+
+> p
+
+:= Λ pK⋆p + 2 Cpτmax + CN τmax .
+
+For 0 ≤ t < τ max the window [t − τmax , t ] straddles the origin, and the initial history is not an Itˆ oprocess on its negative part. We therefore split 
+
+Up(Xseg  
+
+> t
+
+) = sup 
+
+> u∈[t−τmax , t ]
+
+Φp(Xu) ≤ Up(ϕ) + sup 
+
+> 0≤u≤t
+
+Φp(Xu),
+
+bound the first term directly and the second by Equation 38 with v = 0 , w = t, whose length is at most τmax . All time arguments in the latter lie in [−τmax , t ] ⊆ [t − 2τmax , t ], so the computation above bounds the expectation of the second term by Aseg  
+
+> p
+
+e−γptUp(ϕ)+ Bseg  
+
+> p
+
+, while the first term is at most eγpτmax e−γptUp(ϕ) since e−γpt ≥ e−γpτmax on this range. Replacing Aseg  
+
+> p
+
+by Aseg  
+
+> p
+
++ eγpτmax 
+
+therefore extends Equation 32 to all t ≥ 0. Taking the supremum over t ≥ 0 gives the uniform bound M2p(ϕ) ≤ Aseg  
+
+> p
+
+Up(ϕ) + Bseg  
+
+> p
+
+announced in (a), established without any growth assumption on G.
+
+Step 4: Stationary integrability (b). Choose h > 0 so that κ := Aseg  
+
+> p
+
+e−γph < 1 and write ϱ := Bseg  
+
+> p
+
+,so that Equation 32 reads PhUp ≤ κU p + ϱ pointwise on C. One cannot integrate this against πseg 
+
+and cancel the two sides, since R Up dπ seg is not yet known to be finite. Therefore, set uN := 
+
+Up ∧ N , a bounded measurable function. Concavity of v 7 → v ∧ N and Jensen’s inequality give 
+
+PhuN ≤ (PhUp) ∧ N ≤ (κU p + ϱ) ∧ N , and invariance of πseg applied to the bounded function 
+
+uN yields Z
+
+> C
+
+h
+
+uN −  (κU p + ϱ) ∧ N  + ϱ
+
+i
+
+dπ seg ≤ ϱ. 
+
+The integrand is nonnegative, because κ ≤ 1 implies (κU p +ϱ)∧N ≤ (Up ∧N )+ ϱ = uN +ϱ, and it converges pointwise to (1 − κ)Up as N → ∞ . Fatou’s lemma therefore gives (1 − κ) R 
+
+> C
+
+Up dπ seg ≤
+
+ϱ < ∞, which is Equation 33. The argument applies separately for each p and uses no moment of 
+
+πseg in its hypotheses. 
+
+Step 5: Finite horizon (c). Cover [0 , H ] by the n := ⌈H/τ max ⌉ windows [kτ max , (k + 1) τmax ] ∩
+
+[0 , H ], k = 0 , . . . , n − 1, each of length at most τmax . Since the supremum over a union is at most the sum of the suprema, 
+
+Eϕ sup 
+
+> t≤H
+
+Up(Xseg  
+
+> t
+
+) = Eϕ sup 
+
+> u∈[−τmax , H ]
+
+Φp(Xu) ≤ Up(ϕ) + 
+
+> n−1
+
+X
+
+> k=0
+
+Eϕ sup 
+
+> u∈[kτ max ,(k+1) τmax ]∧H
+
+Φp(Xu),
+
+and each summand is bounded by Equation 38 together with the envelope Equation 35, which gives 
+
+mp(s) ≤ Up(ϕ) + K⋆p for every s ≥ − τmax . Collecting the n contributions yields Equation 34 with a constant Cp,H depending only on p, H, the delays and the constants of Lemma 3, and in particular uniform over ϕ ∈ BR for each fixed R.27 Preprint. A.6 ERGODICITY OF THE TRUE PROCESS 
+
+Having those moment estimates both in the segment space and point-wise at hand, it is now possible to show that the true process admits a unique invariant probability and that we have geometric ergodicity in Wasserstein-d distance for some distance on the segment space. The proof is based on the application of the generalized Harris theorem for delayed SDEs by Hairer et al. (2011). Besides the Lyapunov condition provided by Lemma 4, Harris’ theorem needs the transition laws started from any two histories in a bounded set to overlap. For SDDEs this is the tricky part: indeed, the two initial segments may differ over the whole window [−τmax , 0] , while the noise only acts on the present. The idea of the proof is to steer one copy of the process onto the other with a control acting on [0 , h ]. After time h > τ max the two segments coincide, and since Σ is invertible, Girsanov’s theorem shows that the price paid for this control is a change of measure with a bounded energy. 
+
+Lemma 5 (Uniform overlap of the segment transition kernels) . Under Assumptions 1, 2 and 6, fix 
+
+h > τ max and R0 > 0, and set BR0 := {φ ∈ C : ∥φ − c∥C ≤ R0}. There exists δ > 0 depending on h and R0 (and on G through a local Lipschitz constant, see Equation 41) such that 
+
+sup 
+
+> φ,ψ ∈BR0
+
+∥Ph(φ, ·) − Ph(ψ, ·)∥TV ≤ 1 − δ. (39) 
+
+Proof. Fix φ, ψ ∈ BR0 , let X start from φ, and put t1 := h − τmax > 0 and v := ∥φ − ψ∥C ≤ 2R0.Define the deterministic difference pilot path 
+
+g(t) := 
+
+
+
+φ(t) − ψ(t), −τmax ≤ t ≤ 0,
+
+(1 − t/t 1) φ(0) − ψ(0) , 0 ≤ t ≤ t1,
+
+0, t1 ≤ t ≤ h. 
+
+Then g is continuous, sup t∥g(t)∥ ≤ v, and its restriction to [0 , h ] is absolutely continuous with 
+
+∥g′(t)∥ ≤ (v/t 1)1(0 ,t 1)(t) almost everywhere. 
+
+Step 1: Localized control. The finite-horizon estimate in Lemma 4 gives 
+
+sup 
+
+> φ∈BR0
+
+Eφ sup 
+
+> 0≤t≤h
+
+∥Xt − c∥2 < ∞.
+
+Consequently, we can choose a deterministic M > R 0 such that, with σ := inf {t ≥ 0 : ∥Xt − c∥ ≥ 
+
+M },
+
+inf 
+
+> φ∈BR0
+
+Pφ(σ > h ) ≥ 12 .
+
+Write Zt := ( Xt, X t−τ1 , . . . , X t−τq ) and garg  
+
+> t
+
+:= ( g(t), g (t − τ1), . . . , g (t − τq )) . Define the progressively measurable control 
+
+ut := 1{t<σ }Σ−1G(Zt) − G(Zt − garg  
+
+> t
+
+) − g′(t), 0 ≤ t ≤ h. (40) All arguments in this expression belong to a fixed compact subset of RD(q+1) , uniformly over φ, ψ ∈
+
+BR0 in the finite times t < σ . Let L be a Lipschitz constant of G on a ball containing this set. Since 
+
+∥garg  
+
+> t
+
+∥ ≤ √q + 1 v, the control has the deterministic energy bound 
+
+Z h
+
+> 0
+
+∥ut∥2 dt ≤ 8R20∥Σ−1∥2op 
+
+
+
+(q + 1) L2h + 1
+
+t1
+
+
+
+=: Kh,R 0 < ∞. (41) Set Yt = Xt − g(t) up to σ, and, when σ < h , continue Y after σ using the original SDDE with the same Brownian motion and its segment at σ as initial condition. Strong existence and pathwise uniqueness justify this continuation. By substitution, Y satisfies 
+
+dY t = G(Yt, Y t−τ1 , . . . , Y t−τq ) dt + Σ dW t + Σ ut dt, Y seg 0 = ψ. 
+
+On the event E := {σ > h }, the two terminal segments agree because g = 0 on [h − τmax , h ]. Thus 
+
+Y seg  
+
+> h
+
+= Xseg  
+
+> h
+
+on E, with P(E) ≥ 12 .
+
+Step 2: Correction of the controlled law. Define 28 Preprint. 
+
+Λ := exp −
+
+Z h
+
+> 0
+
+ut · dW t − 12
+
+Z h
+
+> 0
+
+∥ut∥2 dt 
+
+!
+
+, dQ := Λ dP.
+
+The deterministic bound Equation 41 implies Novikov’s condition. Under Q, the process Wt +R t 
+
+> 0
+
+us ds is Brownian, so uniqueness in law gives LQ(Y seg  
+
+> h
+
+) = Ph(ψ, ·). The exponential martingale with integrand u also has expectation one, and therefore 
+
+E[Λ −1] = E
+
+"
+
+exp 
+
+Z h
+
+> 0
+
+ut · dW t − 12
+
+Z h
+
+> 0
+
+∥ut∥2 dt 
+
+!
+
+exp 
+
+Z h
+
+> 0
+
+∥ut∥2 dt 
+
+!# 
+
+≤ eKh,R 0 .
+
+Set ℓ := e−Kh,R 0 /4. Markov’s inequality gives P(Λ < ℓ ) ≤ 1/4, hence 
+
+E1E min(1 , Λ)  ≥ ℓ P E ∩ { Λ ≥ ℓ} ≥ e−Kh,R 0
+
+16 .
+
+For a Borel set A ⊆ C , define 
+
+ν(A) := E1E min(1 , Λ) 1{Xseg  
+
+> h∈A}
+
+.
+
+Since Xseg  
+
+> h
+
+= Y seg  
+
+> h
+
+on E, this measure is dominated by both Ph(φ, ·) and Ph(ψ, ·). Its mass is at least e−Kh,R 0 /16 , which proves Equation 39 with δ := e−Kh,R 0 /16 .
+
+Theorem 3 (Ergodicity: existence, uniqueness, exponential convergence) . Under Assumptions 1, 2 and 6, the segment process admits a unique invariant probability measure πseg on C. Write 
+
+Pt(φ, ·) := L(Xseg  
+
+> t
+
+| Xseg 0 = φ) and V (φ) := ∥φ − c∥2 
+
+> C
+
+, where c also denotes the constant segment with value c. The invariant measure satisfies 
+
+Z
+
+> C
+
+∥η − c∥2p 
+
+> C
+
+πseg (dη ) < ∞, p ≥ 1 an integer .
+
+There exist C ≥ 1 and γ > 0 such that, for every ϵ > 0, the metric d(φ, ψ ) := 1 ∧ ϵ−1∥φ − ψ∥C
+
+satisfies 
+
+Wd
+
+ Pt(φ, ·), π seg  ≤ ∥ Pt(φ, ·) − πseg ∥TV ≤ Ce −γt  1 + V (φ), t ≥ 0, φ ∈ C . (15) 
+
+Proof. By Proposition 1, time-homogeneity and pathwise uniqueness define a Markov semigroup 
+
+(Pt)t≥0 on C.
+
+Step 1: Lyapunov estimate. For V (φ) = ∥φ − c∥2 
+
+> C
+
+, the decaying segment-moment bound in Lemma 4 provides constants AV ≥ 1, BV < ∞ and γV > 0 such that 
+
+PtV (φ) ≤ AV e−γV tV (φ) + BV , t ≥ 0. (42) Choose h > τ max sufficiently large that AV e−γV h < 1. Every sublevel set {V ≤ S} is the supremum-norm ball B√S , and Lemma 5 gives uniform transition overlap on this set for Ph. Since Lemma 5 holds for every radius R0 at the same time h, this overlap is available on every sublevel set of V , however large; in particular, the size of the level set required in Harris’ theorem (of order 
+
+BV /(1 − AV e−γV h)) imposes no restriction. 
+
+Step 2: Harris’ theorem in total variation. The estimate Equation 42 is a Lyapunov condition, and Equation 39 is precisely the pairwise total-variation small-set condition in Hairer et al. (2011, Theorem 1.5). The choice of h satisfies the time requirement h > γ −1 
+
+> V
+
+log AV in that theorem. It follows that (Pt)t≥0 has a unique invariant probability measure πseg and that, for some C ≥ 1 and 
+
+γ > 0,
+
+∥Pt(φ, ·) − πseg ∥TV ≤ Ce −γt  1 + V (φ), t ≥ 0, φ ∈ C .
+
+Only pairwise overlap is required here; no common minorising measure for an entire sublevel set is asserted. 
+
+Step 3: Stationary moments and Wasserstein convergence. Now that an invariant measure exists, the stationary-integrability part of Lemma 4 gives all the stated polynomial moments. For any two probability measures μ, ν on C, a maximal coupling has probability ∥μ − ν∥TV of unequal coordinates. Since d ≤ 1 and d(φ, φ ) = 0 , this coupling gives Wd(μ, ν ) ≤ ∥ μ − ν∥TV . Combining this inequality with the preceding total-variation estimate proves Equation 15. 29 Preprint. 
+
+Remark 1 (Stabilisation of the identifiability constants) . Under Theorem 3, averaging Equation 15 over t ∈ [τmax , T ] against the initial law and applying the evaluation map at the lags gives 
+
+∥¯μqT − μq
+
+> ∞
+
+∥TV ≤ C 1 + EV (Xseg 0 )
+
+γ(T − τmax )
+
+ e−γτ max − e−γT ,
+
+where μq 
+
+> ∞
+
+is the stationary joint law of (X0, X −τ1 , . . . , X −τq ) under πseg . Total-variation conver-gence alone does not control squared errors of an unbounded drift (the stationary drift need not even be square-integrable). If, in addition, ∥G∥2 is uniformly integrable with respect to the family 
+
+{¯μqT }T >τ max ∪ { μq
+
+> ∞
+
+}, then the signal strengths saij and hence smin stabilize as T → ∞ to their stationary counterparts, and the λ window Equation 22 scales linearly in T with an asymptotically constant slope. This is what makes the finite-horizon constants of Theorem 2 meaningful uniformly in T , rather than per-(T, initial law ). The finite-sample analysis of Section A.8 avoids this issue by working directly under the stationary law and imposing a finite stationary drift energy in Equa-tion 48 explicitly. 
+
+A.7 MIXING OF THE SAMPLED PROCESS 
+
+The finite-sample analysis of Section A.8 requires the sampled lagged state to forget its past at an ex-ponential rate, in the sense of β-mixing. Since β-mixing is a total-variation property, a Wasserstein contraction of the segment process would not be enough. Theorem 3, however, already provides ge-ometric ergodicity in total variation: despite the infinite-dimensional state space, the noise is additive and non-degenerate, so that for h > τ max the kernels Ph(φ, ·) and Ph(ψ, ·) overlap (Lemma 5). The mixing rate is therefore a corollary of Theorem 3. We first bound the β-coefficient of a stationary Markov process by the π-average distance of its kernel from equilibrium (Lemma 6), and then pass from the segment process to the lagged state and to its deterministic subsamples by monotonicity (Theorem 5). No assumption beyond those of Theorem 3 is needed, and the non-delayed case q = 0 
+
+is included. 
+
+Definition 1 (β-mixing coefficient) . We normalize the total-variation distance of two probability measures μ, ν on a common measurable space as 
+
+∥μ − ν∥TV := sup 
+
+> A
+
+|μ(A) − ν(A)| = 12
+
+Z
+
+|dμ − dν| ∈ [0 , 1] .
+
+For sub-σ-algebras A, B ⊆ F , the β-mixing (absolute regularity) coefficient is 
+
+β(A, B) := sup 12
+
+> I
+
+X
+
+> i=1
+> J
+
+X
+
+> j=1
+
+|P(Ai ∩ Bj ) − P(Ai) P(Bj )| ,
+
+the supremum over all finite A-measurable partitions {Ai}i≤I and B-measurable partitions 
+
+{Bj }j≤J of Ω (Bradley, 2005). Since any pair of partitions admissible for (A′, B′) is admissible for 
+
+(A, B),
+
+A′ ⊆ A , B′ ⊆ B =⇒ β(A′, B′) ≤ β(A, B). (43) 
+
+For a process (Ys)s≥s0 , its β-mixing coefficient at gap t > 0 is 
+
+βY (t) := sup 
+
+> s≥s0
+
+β
+
+
+
+σ(Yu : s0 ≤ u ≤ s), σ (Yu : u ≥ s + t)
+
+
+
+, (44) 
+
+and for a sequence (Yk)k≥0 we set βY (m) := sup k≥0 β σ(Yj : j ≤ k), σ (Yj : j ≥ k + m),
+
+m ≥ 1. By Equation 43, βY is nonincreasing. The process is β-mixing if βY (t) → 0 as t → ∞ , and 
+
+exponentially β-mixing if βY (t) ≤ Cβ e−λerg t for constants Cβ < ∞, λerg > 0. For a stationary process indexed by R with past σ(Yu : u ≤ s), the supremum is redundant and one recovers the classical coefficient β(F≤0, F≥t); the one-sided form Equation 44 avoids constructing a two-sided extension of the solution. 
+
+Lemma 6 (β-coefficient of a stationary Markov process) . Let (ξs)s≥0 be a time-homogeneous Markov process on a Polish space E, Markov with respect to its natural filtration Gs := σ(ξu :0 ≤ u ≤ s), with transition kernels (Pt)t≥0 and invariant probability measure π, and started from 
+
+ξ0 ∼ π. Then, for every s ≥ 0 and t > 0,
+
+β
+
+
+
+Gs, σ (ξu : u ≥ s + t)
+
+
+
+=
+
+Z
+
+> E
+
+∥Pt(x, ·) − π∥TV π(d x), (45) 
+
+so that, in particular, βξ (t) is given by the right-hand side. 
+
+30 Preprint. This identity is due to Davydov (1974) for Markov chains on a general state space, and its continuous-time version is standard (see, e.g., Masuda (2007)). Only the inequality “ ≤” is used below. It follows by conditioning each future event on Gs: by the Markov property and stationarity, the conditional law of (ξs+t+r )r≥0 is the law of the process started from Pt(ξs, ·), while its uncon-ditional law is the law of the process started from π, and a Markov kernel does not increase total variation. For the reverse inequality, restrict both σ-algebras to the endpoints using Equation 43: 
+
+β(σ(ξs), σ (ξs+t)) is the total-variation distance between the joint law π(d x)Pt(x, dy) of (ξs, ξ s+t)
+
+and the product law π(d x)π(d y), which equals the right-hand side of Equation 45. 
+
+Theorem 5 (Exponential β-mixing of the lagged state) . Let Assumptions 1, 2 and 6 hold, let C ≥ 1
+
+and γ > 0 be the constants of Theorem 3, and take the process in its stationary regime, Xseg 0 ∼ πseg 
+
+independent of W . Set 
+
+M π 
+
+> 2
+
+:= 
+
+Z
+
+> C
+
+∥η − c∥2 
+
+> C
+
+πseg (d η) < ∞, Cβ := C 1 + M π
+
+> 2
+
+,
+
+and write Zt := ( Xt, X t−τ1 , . . . , X t−τq ), t ≥ 0. Then: (i) the segment process is exponentially β-mixing: βXseg (t) ≤ Cβ e−γt for all t > 0;(ii) the lagged state is exponentially β-mixing: βZ (t) ≤ Cβ e−γt for all t > 0, and the same bound holds for (Zt)t≥τmax ;(iii) for every deterministic grid 0 ≤ t0 < t 1 < · · · , the sampled sequence Zk := Ztk satisfies, for all k ≥ 0 and m ≥ 1,
+
+β
+
+
+
+σ(Zj : j ≤ k), σ (Zj : j ≥ k + m)
+
+
+
+≤ Cβ e−γ(tk+m−tk ); (46) 
+
+in particular β(Zk )(m) ≤ Cβ e−γ∆min m whenever min k(tk+1 − tk) ≥ ∆min > 0.Consequently, the physical-time mixing estimate Equation 50 used in Section A.8 is implied by As-sumptions 1, 2 and 6, with λerg := γ and Cβ as above. Proof. Step 1: Stationary regime and Markov property. By Theorem 3 with p = 1 , M π 
+
+> 2
+
+< ∞, so the initial condition Xseg 0 ∼ πseg satisfies the initial condition of Assumption 1, and Proposition 1 provides a unique strong solution; invariance of πseg gives Xseg  
+
+> s
+
+∼ πseg for every s ≥ 0. Finite stationary drift energy is not needed for mixing; it is imposed separately in Section A.8. As in the proof of Theorem 3, (Xseg  
+
+> t
+
+)t≥0 is a time-homogeneous Markov process with kernels (Pt)t≥0 with respect to the filtration generated by Xseg 0 and W . Since its natural filtration Gs := σ(Xseg  
+
+> u
+
+: 0 ≤
+
+u ≤ s) is smaller and Xseg is adapted to it, the tower property shows that Xseg is also Markov with respect to (Gs). The space C is a separable Banach space, hence Polish, so Lemma 6 applies with 
+
+E = C and π = πseg .
+
+Step 2: Segment process, item (i). Fix s ≥ 0 and t > 0. By Lemma 6 and Equation 15, 
+
+β
+
+
+
+Gs, σ (Xseg  
+
+> u
+
+: u ≥ s + t)
+
+
+
+=
+
+Z
+
+> C
+
+∥Pt(η, ·) − πseg ∥TV πseg (d η)
+
+≤ Ce −γt 
+
+Z
+
+> C
+
+ 1 + ∥η − c∥2
+
+> C
+
+ πseg (d η) = Cβ e−γt . (47) Taking the supremum over s ≥ 0 gives (i). 
+
+Step 3: Lagged state, item (ii). The evaluation map ev : C → RD(q+1) , ev( η) := (η(0) , η (−τ1), . . . , η (−τq )) , is continuous, and Zu = ev( Xseg  
+
+> u
+
+) for every u ≥ 0. Hence 
+
+σ(Zu : 0 ≤ u ≤ s) ⊆ G s, σ(Zu : u ≥ s + t) ⊆ σ(Xseg  
+
+> u
+
+: u ≥ s + t),
+
+and Equation 43 together with Equation 47 gives βZ (t) ≤ Cβ e−γt . Restricting the index set to 
+
+u ≥ τmax shrinks both σ-algebras and the range of the supremum in Equation 44, so the same bound holds for (Zt)t≥τmax .
+
+Step 4: Deterministic subsamples, item (iii). Fix k ≥ 0, m ≥ 1 and set s := tk, t := tk+m −tk > 0.Then σ(Zj : j ≤ k) ⊆ G s and σ(Zj : j ≥ k + m) ⊆ σ(Xseg  
+
+> u
+
+: u ≥ s + t), so Equation 46 follows from Equation 43 and Equation 47. No regularity of the spacings is used. If all spacings are at least 
+
+∆min , then tk+m − tk ≥ m∆min , and taking the supremum over k gives the last claim. 31 Preprint. 
+
+Remark 2 (Scope of Theorem 5) . For q = 0 the segment space reduces to RD (τmax = 0 ) and Theorem 5 covers the Markovian SDE case. The additive form of the noise is what makes the total-variation proof valid: if the diffusion coefficient depended on the delayed state, the quadratic variation of the solution could reveal the initial segment, the kernels Ph(φ, ·) and Ph(ψ, ·) could then be mutually singular (Hairer et al., 2011), and Lemma 5 (hence the bound Equation 47) could fail. 
+
+A.8 FINITE -SAMPLE IDENTIFIABILITY 
+
+We now move from the population results to what can be guaranteed from a single trajectory ob-served on a finite grid. The argument compares the empirical excess risk to its population coun-terpart uniformly over the model class, and concludes with the margin γ(λ) of Theorem 2. We observe the stationary solution, with Xseg 0 ∼ πseg independent of the future Brownian motion W .Write Pπ and Eπ for probability and expectation under this law, including both the initial segment and the subsequent noise. For Zt := ( Xt, X t−τ1 , . . . , X t−τq ), let μq 
+
+> ∞
+
+be its stationary distribution. Thus ¯μqT = μq
+
+> ∞
+
+, and the signal strengths in Equation 7 do not depend on T in this section. The finite-energy condition in Assumption 1 is imposed on this stationary solution: 
+
+m2 
+
+> G
+
+:= Eπ ∥G(Z0)∥2 =
+
+Z
+
+∥G(z)∥2 μq
+
+> ∞
+
+(dz ) < ∞. (48) Observations are available on a deterministic grid 0 = t0 < t 1 < · · · < t n = T , with ∆k := 
+
+tk+1 − tk and ∆max := max k<n ∆k ≤ 1. We assume that τmax is an observation time and that 
+
+Xtk −τa is observed exactly for every used left endpoint tk ≥ τmax and every lag a. An equally spaced grid has this property when each delay is an integer multiple of its spacing. All sums over k
+
+below are over k < n with tk ≥ τmax , and we set 
+
+Zk := Ztk , T◦ := X
+
+> k
+
+∆k = T − τmax .
+
+Assumption 7 (Finite-sample model class) . Let Hqn denote the restricted class of deterministic models derived from Assumption 3(i) satisfying the following two conditions: (i) Local finite covering: For every radius ρ ≥ 1 and tolerance ϵ > 0, we can select a finite number of representative functions from within Hqn (an internal ϵ-net) such that every function in the class is within a maximum distance of ϵ from at least one representative over the compact set Kρ := {z ∈ RD(q+1) : ∥z − c(q)∥ ≤ ρ}. The minimal number of representatives required to cover the class this way is denoted by Nn(ρ, ϵ ).(ii) Stationary envelope: The pointwise diameter of the class, defined as E(z) := sup ˜G1, ˜G2∈H qn ∥ ˜G1(z) − ˜G2(z)∥, has a finite second moment under the stationary measure: 
+
+m2 
+
+> E
+
+:= R E(z)2μq
+
+> ∞
+
+(dz ) < ∞.
+
+The local covering condition makes E locally bounded, and it is measurable as a supremum of continuous functions. Since the true drift is feasible, ∥ eG(z) − G(z)∥ ≤ E (z) for every candidate. Thus the finite second moment of the previous assumption controls prediction errors, not the absolute size of a dissipative drift. Any deterministic locally bounded measurable upper bound for these errors with finite stationary second moment can be used in its place. All class-dependent quantities may depend on n.Define the stationary mean-square modulus of the true drift by 
+
+ωG(h) := sup 
+
+> 0≤u≤h
+
+ Eπ ∥G(Zu) − G(Z0)∥21/2 , 0 ≤ h ≤ 1. (49) Continuity and Equation 48 imply ωG(h) → 0 as h ↓ 0, as shown in the proof below. By Theorem 5, the total-variation conclusion of Theorem 3 and the stationary moment bound give the physical-time mixing estimate 
+
+βZ (u) ≤ Cβ e−λerg u, u > 0, (50) where λerg = γ and Cβ = C  1 + R ∥φ − c∥2 
+
+> C
+
+πseg (dφ ) may be used, with C, γ from Theorem 3. 32 Preprint. Consider the empirical criterion, and assume that a measurable global minimizer exists (a finite local cover does not by itself guarantee this): 
+
+bRn( eG) := X
+
+> k
+
+∆k
+
+Xtk+1 − Xtk
+
+∆k
+
+− eG(Zk) 2,
+
+( bG, cM ) ∈ arg min    
+
+> (eG, ˜M)∈H qn
+
+(bRn( eG) + λ
+
+> q
+
+X
+
+> a=0
+
+∥ ˜M a∥0
+
+)
+
+.
+
+(16) The relevant comparison is between the empirical excess risk bRn( eG) − bRn(G) and 
+
+RT ( eG) = T◦∥ eG − G∥2
+
+> L2(μq
+> ∞)
+
+.
+
+Theorem 4 (Finite-sample exact support recovery, L0 estimator) . Let Assumptions 1, 2, 6 and 7 hold for the stationary observations above. Fix δ ∈ (0 , 1) and choose the deterministic quantities in Equation 56–Equation 57 below. With probability at least 1 − δ,
+
+sup 
+
+> eG∈H qn
+
+ bRn( eG) − bRn(G) − R T ( eG) ≤ εn(δ; ρ, ϵ ), (51) 
+
+where the explicit bound is given in Equation 58. Suppose additionally that M̸ = 0 , smin > 0, and 
+
+0 < λ < T◦s2min 
+
+dmax 
+
+, γ(λ) := min {λ, T ◦s2min − λd max } > 0. (52) 
+
+If 
+
+εn(δ; ρ, ϵ ) < γ (λ), (53) 
+
+then every measurable minimizer in Equation 16 satisfies 
+
+Pπ
+
+cM a = M a for all a = 0 , . . . , q, ∥ bG − G∥2 
+
+> L2(μq
+> ∞)
+
+≤ εn(δ; ρ, ϵ )
+
+T◦
+
+
+
+≥ 1 − δ. (54) The conclusion applies to both q = 0 and q ≥ 1. It identifies the mask exactly, not the drift exactly from finitely many observations. With λ = λ0T◦ for 0 < λ 0 < s 2min /d max , recovery follows whenever the displayed bound divided by T◦ is smaller than min {λ0, s 2min − λ0dmax }.Thus consistency requires a joint condition on the observation duration, mesh and class complexity; large n alone does not suffice. For ρ ≥ 1, define 
+
+Eρ := 1 ∨ sup 
+
+> z∈Kρ
+
+E(z), vρ := 
+
+Z
+
+> Kcρ
+
+E(z)2 μq
+
+> ∞
+
+(dz ), σop := ∥Σ∥op , σF := 
+
+q
+
+tr(ΣΣ ⊤).
+
+(55) Here Eρ bounds errors on the truncation region and vρ → 0 is the remaining stationary squared-error mass. For an integer p ≥ 1, let 
+
+Sp := Eπ sup 
+
+> 0≤u≤1
+
+∥Xseg  
+
+> u
+
+− c∥2p 
+
+> C
+
+< ∞.
+
+Finiteness follows by integrating the finite-horizon estimate of Lemma 4(c) against πseg and using its stationary moments. For δ ∈ (0 , 1) , choose p ≥ 1 and ϵ > 0, and set 
+
+η := δ/ 6, J := max {1, ⌈T◦⌉} , ρ ≥ max 
+
+(
+
+1,
+
+ J(q + 1) pSp
+
+η
+
+1/(2 p))
+
+. (56) We define some more quantities: the block length and logarithmic complexity, 
+
+b := max 
+
+
+
+1, 1
+
+λerg 
+
+log Cβ Jη
+
+
+
+, N := Nn(ρ, ϵ ), Λ := log 4Nη . (57) 33 Preprint. A valid bound in Equation 51 is then 
+
+εn(δ; ρ, ϵ ) = 2mE T◦
+
+η ωG(∆ max )+ 2 σop Eρ
+
+p2T◦Λ + 2ϵσ F
+
+η
+
+X
+
+> k
+
+p∆k
+
++ E2
+
+> ρ
+
+p2T◦(b + ∆ max )Λ + 4 EρϵT ◦ + vρT◦.
+
+(58) The first line is the discretisation error. The second line controls Brownian fluctuations and the approximation by a finite net. The third line controls the centred time average, its net approximation and the stationary tail outside Kρ.Before giving the proof, let us describe its structure. The excess empirical risk bRn( eG) − bRn(G)
+
+splits into three parts: a time average of ∥ eG − G∥2 along the grid, a stochastic integral against the Brownian increments, and a discretisation error due to the grid. The discretisation error is controlled by the modulus ωG (Steps 1–2). We then truncate to the ball Kρ and replace the class by a finite net (Step 3). The time average concentrates around RT thanks to the exponential β-mixing of Theorem 5, via the independent-block argument of Yu (1994) and Hoeffding’s inequality (Step 4), while the Brownian term has Gaussian conditional increments and is controlled by a Chernoff bound (Step 5). A union bound over the net and the margin argument of Theorem 2 conclude (Step 6). 
+
+Proof of Theorem 4. Step 1: The drift modulus needs no growth assumption. Let GA be the pro-jection of G onto the closed Euclidean ball of radius A in RD . It is continuous and bounded, while 
+
+∥G − GA∥L2(μq 
+
+> ∞)
+
+→ 0 by Equation 48. Stationarity and the triangle inequality in L2 give 
+
+∥G(Zu) − G(Z0)∥L2(Pπ ) ≤ 2∥G − GA∥L2(μq 
+
+> ∞)
+
++ ∥GA(Zu) − GA(Z0)∥L2(Pπ ).
+
+For fixed A, continuity of the paths and bounded convergence make the last term tend to zero as 
+
+u ↓ 0. First choosing A large and then u small proves ωG(h) → 0 as h ↓ 0; also ωG(h) ≤ 2mG.Fix a deterministic internal net G1, . . . , G N on Kρ and write h = eG − G and hi = Gi − G.The suprema below are measurable: the continuous drifts form a separable space in the topology of uniform convergence on compact sets, and their population risks are continuous on the class by domination with E2. One may therefore evaluate each supremum over a countable dense subset of the class. 
+
+Step 2: Exact expansion and discretisation. Set ∆Wk := Wtk+1 − Wtk . Inserting the SDDE increment into the square and cancelling the candidate-independent squared-increment term gives 
+
+bRn( eG) − bRn(G) − R T ( eG) = An(h) − Mn(h) − Dn(h),An(h) := X
+
+> k
+
+∆k
+
+
+
+∥h(Zk)∥2 −
+
+Z
+
+∥h(z)∥2 μq
+
+> ∞
+
+(dz )
+
+
+
+,Mn(h) := 2 X
+
+> k
+
+⟨h(Zk), Σ∆ Wk⟩,Dn(h) := 2 X
+
+> k
+
+Z tk+1 
+
+> tk
+
+⟨h(Zk), G (Zs) − G(Zk)⟩ ds. 
+
+(59) Stationarity makes the centring in An exact; there is no further Riemann-sum error for its expecta-tion. For every candidate, 
+
+|Dn(h)| ≤ D n := 2 X
+
+> k
+
+Z tk+1 
+
+> tk
+
+E(Zk)∥G(Zs) − G(Zk)∥ ds. 
+
+Cauchy–Schwarz and stationarity imply 
+
+Eπ Dn ≤ 2mE
+
+X
+
+> k
+
+Z ∆k
+
+> 0
+
+ωG(u) du ≤ 2mE T◦ωG(∆ max ).
+
+34 Preprint. Markov’s inequality therefore bounds sup h |Dn(h)| by the first line of Equation 58, outside an event of probability at most η. If this expectation bound is zero, Dn = 0 almost surely and no exceptional event is needed. 
+
+Step 3: Localisation and the squared-loss net. Let 
+
+Lρ := 
+
+
+
+sup 
+
+> τmax ≤t≤T
+
+∥Zt − c(q)∥ ≤ ρ
+
+
+
+.
+
+Since ∥Zt − c(q)∥ ≤ √q + 1 ∥Xseg  
+
+> t
+
+− c∥C , a cover of [τmax , T ] by J intervals of length at most one, stationarity and Markov’s inequality give 
+
+Pπ (Lcρ) ≤ J(q + 1) pSp
+
+ρ2p ≤ η. (60) Define fh(z) := ∥h(z)∥21Kρ (z) ∈ [0 , E 2 
+
+> ρ
+
+] and 
+
+Aρn(h) := X
+
+> k
+
+∆k
+
+
+
+fh(Zk) −
+
+Z
+
+fh(z) μq
+
+> ∞
+
+(dz )
+
+
+
+.
+
+On Lρ, the empirical squared losses equal their truncated versions, so |An(h)| ≤ | Aρn(h)| + T◦vρ.For each h, choose a centre hi with sup Kρ ∥h − hi∥ ≤ ϵ. Both errors are bounded by Eρ on this set, hence sup z |fh(z) − fhi (z)| ≤ 2Eρϵ and 
+
+sup 
+
+> h
+
+|An(h)| ≤ max  
+
+> i≤N
+
+|Aρn(hi)| + 4 EρϵT ◦ + T◦vρ on Lρ. (61) 
+
+Step 4: Time-average fluctuations on an irregular grid. Partition the used left endpoints into bins 
+
+Ij = [ τmax + jb, τ max + ( j + 1) b), for 0 ≤ j < J b := max {1, ⌈T◦/b ⌉} , and set wj := P  
+
+> k:tk∈Ij
+
+∆k.The intervals with left endpoints in a nonempty bin are consecutive, and only the last can extend beyond its right boundary, by at most ∆max . Consequently, 
+
+0 ≤ wj ≤ b + ∆ max , X
+
+> j
+
+wj = T◦, X
+
+> j
+
+w2 
+
+> j
+
+≤ (b + ∆ max )T◦. (62) Successive nonempty bins of the same parity have their observations separated by at least b in phys-ical time. For either parity, Equation 50 bounds the total-variation distance between its joint block law and the product of its block marginals by (m − 1) +Cβ e−λerg b, where m is the number of its nonempty bins. Indeed, successively separating the next block from all previous blocks costs at most the corresponding β coefficient, and the triangle inequality adds these costs. This comparison con-cerns the observation blocks themselves, so its error is not multiplied by the number N of candidate functions. It is the independent-block argument of Yu (1994), here applied in physical time. Under the product law for one parity, the variables 
+
+Vj,i := X 
+
+> k:tk∈Ij
+
+∆k
+
+
+
+fhi (Zk) −
+
+Z
+
+fhi (z) μq
+
+> ∞
+
+(dz )
+
+
+
+are independent and centred, with range length at most E2 
+
+> ρ
+
+wj . Hoeffding’s inequality gives, for 
+
+x > 0,
+
+Pprod 
+
+ X 
+
+> jof one parity
+
+Vj,i > x 
+
+ ≤ 2 exp − 2x2
+
+E4
+
+> ρ
+
+P 
+
+> j
+
+w2
+
+> j
+
+!
+
+.
+
+An empty parity has sum zero and needs no bound. Using Equation 62, taking x =
+
+E2
+
+> ρ
+
+pT◦(b + ∆ max )Λ /2, and taking the union over the N centres and two parities yield 
+
+Pπ
+
+
+
+max  
+
+> i≤N
+
+|Aρn(hi)| > E 2
+
+> ρ
+
+p2T◦(b + ∆ max )Λ 
+
+
+
+≤ 4N e −Λ + JbCβ e−λerg b ≤ 2η. (63) The last inequality uses b ≥ 1, hence Jb ≤ J, and Equation 57. Together with Equation 61, this supplies the third line of Equation 58. 35 Preprint. 
+
+Step 5: Brownian fluctuations and their net approximation. Use the predictable truncation 
+
+M ρn (h) := 2 X
+
+> k
+
+⟨h(Zk)1Kρ (Zk), Σ∆ Wk⟩.
+
+For fixed hi, conditional on the past at tk, the kth summand is centred Gaussian with variance at most 4σ2op E2 
+
+> ρ
+
+∆k. Iterating the conditional moment-generating functions gives 
+
+Eπ esM ρn(hi) ≤ exp  2s2σ2op E2 
+
+> ρ
+
+T◦
+
+ , s ∈ R.
+
+The Gaussian Chernoff bound and a union over the fixed net imply 
+
+Pπ
+
+
+
+max  
+
+> i≤N
+
+|M ρn (hi)| > 2σop Eρ
+
+p2T◦Λ
+
+
+
+≤ 2N e −Λ = η/ 2. (64) The net remainder is controlled pathwise, not by treating a data-selected remainder as a fixed mar-tingale: 
+
+|M ρn (h) − M ρn (hi)| ≤ 2ϵ X
+
+> k
+
+∥Σ∆ Wk∥, Eπ
+
+X
+
+> k
+
+∥Σ∆ Wk∥ ≤ σF
+
+X
+
+> k
+
+p∆k.
+
+Markov’s inequality therefore bounds the remainder simultaneously for all candidates by 
+
+2ϵσ F η−1 P
+
+> k
+
+√∆k, outside an event of probability at most η. On Lρ, Mn(h) = M ρn (h) for ev-ery h, so this and Equation 64 give the second line of Equation 58. 
+
+Step 6: Uniform deviation and mask recovery. The exceptional probabilities in Steps 2–5 sum to at most 
+
+η + η + 2 η + η/ 2 + η = 11 2 η < δ. 
+
+Adding the three bounds in Equation 59 proves Equation 51 on the complementary event. On that event, feasibility of (G, M ) and empirical optimality imply 
+
+RT ( bG) + λ
+
+> q
+
+X
+
+> a=0
+
+∥ cM a∥0 − λ
+
+> q
+
+X
+
+> a=0
+
+∥M a∥0 ≤ εn(δ; ρ, ϵ ).
+
+The population margin of Theorem 2, applied to μq 
+
+> ∞
+
+= ¯μqT , makes the left-hand side at least 
+
+γ(λ) for every wrong mask. This uses its lower bound for every feasible wrong mask, not a population-minimisation assumption on the empirical estimator. Condition Equation 53 therefore excludes every wrong mask on the same event. Once the masks agree, their penalties cancel, leaving 
+
+RT ( bG) ≤ εn(δ; ρ, ϵ ). Dividing by T◦ proves Equation 54. We showed in the proof that the discretisation term is 2mE T◦ωG(∆ max )/η . When the stronger es-timate ωG(h) ≤ CG
+
+√h is available, Step 2 improves this term to 4mE CG(3 η)−1 P 
+
+> k
+
+∆3/2 
+
+> k
+
+. It does not become O(T◦∆max ) merely from a fourth drift moment. On an equally spaced used grid, we have the equality P
+
+> k
+
+√∆k = T◦/√∆, so the martingale net remainder divided by T◦ is propor-tional to ϵ/ (η√∆) . On a general grid, the displayed sum must be retained; it is not bounded using 
+
+∆max alone. The factors 1/η = 6 /δ together with the local envelope Eρ, which may grow with the radius ρ ≥ (J(q + 1) pSp/η )1/(2 p) and hence with T◦, make Equation 58 a qualitative consistency statement rather than a sharp rate. 
+
+Optimization accuracy and sampling endpoints. If the returned feasible pair has a certified empirical objective gap at most ζn ≥ 0, replace Equation 53 by εn + ζn < γ (λ) and the prediction bound by (εn + ζn)/T ◦. This follows by adding ζn to the final optimality comparison; an arbitrary output of a nonconvex optimization algorithm is not automatically certified. If τmax is not observed, let a be the first used left endpoint, replace T◦ by T −a, and use Ra,T ( eG) := ( T −a)∥ eG−G∥2
+
+> L2(μq
+> ∞)
+
+throughout this section and in its population margin. The proof is otherwise unchanged. Interpolated lag values require an additional error analysis and are not covered by the exact-observation statement above. 36 Preprint. A.9 DISSIPATIVITY AND ERGODICITY OF THE LEARNED SYSTEM 
+
+In this section, we analyze the ergodicity of both the data-generating process and the learned simu-lator, providing theoretical insights beyond the empirical assumptions made in our experiments. Er-godicity of the true data-generating process guarantees that a single, long trajectory visits all states in proportion to their true probabilities. This allows us to learn the invariant measure because time averages converge to ensemble averages. Conversely, ergodicity of the learned model ensures sta-bility during forward simulation: rather than drifting indefinitely or exploding, the generated paths settle into their own stationary distribution (which ideally matches the true one). In what follows, we discuss sufficient conditions and architectural choices to guarantee the ergodicity of the learned system. We parameterize the drift using an MLP with tanh hidden activations and an affine output layer. Provided there are no skip connections to the final layer, the output of this architecture is globally bounded. Consequently, when used as the drift in Equation 1, the resulting process is non-explosive. However, a globally bounded drift cannot satisfy the dissipation condition of Assumption 6 outside a compact set, nor can it uniformly approximate a drift that does over the entire domain. As a result, Theorem 6 does not apply to an unconstrained setup. We emphasize that this highlights a limitation of the sufficient condition rather than the model itself, as bounded drifts can still be ergodic. For instance, the SDE dX t = − tanh( Xt) dt +σ dW t yields an integrable invariant density proportional to (cosh x)−2/σ 2
+
+, and its drift can be exactly represented by our unconstrained chosen architecture. In what follows, we describe several fixes and results to maintain dissipativity and thus ergodicity of the learned drift. We chose for our experiments to apply the post-training exterior confinement defined by Equation 67 which imposes no restriction to the architecture during the training and only applies a restoring force outside a compact set that encompasses all of our samples. Although an unconstrained MLP architecture does not inherently satisfy these global dissipation conditions, we nevertheless provide a conditional ergodicity result in Theorem 6. This global per-turbation result becomes highly relevant when the learned and true drifts exhibit compatible tail be-haviors — for instance, when they share a dissipative physical baseline and differ only by bounded residuals. Thus, we retain this theorem to address scenarios equipped with such structural priors, with the caveat that its hypotheses do not automatically emerge simply from fitting an unconstrained neural network. 
+
+Theorem 6 (Conditional ergodicity transfer under bounded drift error) . Suppose Assumptions 1, 2 and 6 hold for the true system, with B = Pqa=1 (βa + εa) < β 0. Let eG be locally Lipschitz, of at most linear growth, and satisfy 
+
+sup 
+
+> z∈RD(q+1)
+
+∥ eG(z) − G(z)∥ ≤ δ0 < ∞.
+
+For any 0 < η < 2( β0 − B), it satisfies Assumption 6 with the same centre and radius and with 
+
+eβ0 = β0 − η/ 2, eα = α + δ20 /(2 η), eβa = βa,
+
+eCR = CR + δ20 /(2 η) + ηR 2/2, eεa = εa (a ≥ 1) .
+
+With the same invertible additive diffusion, the learned SDDE is non-explosive and its segment process has a unique invariant probability measure, all polynomial stationary segment moments, and geometric convergence in total variation as in Theorem 3, with model-dependent constants. Proof. Writing u = x0 − c, Cauchy–Schwarz and Young’s inequality give 
+
+⟨u, eG(z) − G(z)⟩ ≤ δ0∥u∥ ≤ η
+
+2 ∥u∥2 + δ20
+
+2η .
+
+Add this to the exterior and interior inequalities of Assumption 6; in the latter, use ∥u∥2 ≤ R2. The displayed constants follow and retain strict domination. The resulting radial bound also gives the Khasminskii condition. Local Lipschitzness gives well-posedness by localisation, and the second-moment estimate together with at-most-linear growth gives finite drift energy for square-integrable initial histories independent of the future noise. The moment and kernel-overlap arguments estab-lishing Theorem 3 then apply to eG.37 Preprint. An important observation is that the constant δ0 need not be small for existence of the ergodic behavior, although increasing it can have drawbacks on statistical accuracy, and worsen moments and mixing results. Note that the result above can be strengthened into an affine error bound with sufficiently small slope, ∥ eG(z) − G(z)∥ ≤ δ0 + θ∥z − c(q)∥, θ ≥ 0.For the learned process to remain stable, we only need to bound the network’s error in the outward radial direction. Large errors that act tangentially, or those that provide additional inward pull, will not cause the system to diverge. We therefore turn to conditions that can be imposed directly on the learned drift rather than on its unknown error at infinity. 
+
+Dissipative architecture with bounded neural residual A simple and natural extension of the unconstrained architecture is to retain the MLP with tanh activations as nonlinear residuals and add an explicit instantaneous damping: 
+
+eGθ (z) = −K(x0 − c) + Nθ (z), K = diag (κ1, . . . , κ D ), κ i ≥ κ∗ > 0 (65) 
+
+Proposition 2 (Confinement by construction) . Let Nθ be locally Lipschitz and globally bounded, with sup z ∥Nθ (z)∥ ≤ Mθ . For any fixed delays and an invertible additive diffusion as in Assump-tion 1, the drift in Equation 65 defines a non-explosive SDDE whose segment process has a unique invariant law, all polynomial stationary segment moments, and geometric convergence in total vari-ation. Proof. For every lagged state z, with u = x0 − c,
+
+⟨u, eGθ (z)⟩ ≤ − κ∗∥u∥2 + Mθ ∥u∥ ≤ − κ∗
+
+2 ∥u∥2 + M 2
+
+> θ
+
+2κ∗
+
+. (66) This gives Assumption 6 with zero delayed coefficients; the interior radial bound follows by increas-ing its constant on any chosen ball. Local Lipschitzness and linear growth ensure the remaining well-posedness and energy conditions. The conclusion is a direct application of Theorem 3. 
+
+Post-training exterior confinement The same idea can be applied after training in such a way that the fitted drift remains unchanged inside a radius vector R = ( R1, . . . , R D )⊤ with strictly positive components, Rj > 0. Set u = x0 − c and define ΠR(u) = (min {Rj , max {− Rj , u j }} )j
+
+the projection onto the box Q 
+
+> j
+
+[−Rj , R j ]. Then, define the post-hoc network: 
+
+eGθ,R (z) = Nθ (z) − K · (u − ΠR(u)) (67) Whenever |x0,j − cj | ≤ Rj for every j, the network is left unchanged for all delayed inputs. This applies a linear restoring drift only to coordinates outside the given box. Furthermore, since we can rearrange Equation 67 as eGθ,R (z) = −K ·u+( Nθ (z)+ K ·ΠR(u)) and sup z ∥Nθ (z)+ KΠR(u)∥ ≤ 
+
+Mθ + ∥K · R∥, Proposition 2 applies. Note, nonetheless, that this changes in general the invariant law of the learned process and thus the damping matrix and radii considered should be taken into consideration and their effect on long-run statistics assessed. The preceding results describe some constructions to exhibit the existence of the learned equilibrium, however they say little about whether or not it agrees with the true one. Under the same invertible additive noise, we can find a stationary error bound on the invariant distributions in total variation given the true invariant measure. 
+
+Proposition 3 (Stationary error bound on invariant distributions) . Suppose the true process is sta-tionary with segment law πseg . Let eG be locally Lipschitz and define a non-explosive SDDE with the same lags and diffusion. Suppose its invariant law eπseg and kernels obey 
+
+∥ ePt(φ, ·) − eπseg ∥TV ≤ eCe −eγt (1 + V (φ)) , V (φ) = ∥φ − c∥2 
+
+> C
+
+, πseg V < ∞. (68) 
+
+where the former inequality holds when the learned drift satisfies for example Assumptions 1, 2 and 6 as in Theorem 3. If e2Σ = R ∥Σ−1( eG − G)( z)∥2μq
+
+> ∞
+
+(dz ) < ∞, then for every t > 0, with total variation normalized as sup A |ν(A) − μ(A)|,
+
+∥πseg − eπseg ∥TV ≤ eΣ
+
+√t
+
+2 + eCe −eγt (1 + πseg V ). (69) 38 Preprint. 
+
+Proof. Step 1: Common starting equilibrium law. Fix t > 0 and start both equations with an initial segment of law π, independent of future noise. The true terminal-segment law remains π, whereas the learned law is π ePt. Hence 
+
+∥πseg − eπseg ∥TV ≤ ∥ πseg − πseg ePt∥TV 
+
+| {z }
+
+> finite-time drift comparison
+
++ ∥πseg ePt − eπseg ∥TV 
+
+| {z }
+
+> learned mixing
+
+. (70) Let P and Q be the true and learned laws of the full path on [−τmax , t ], including its initial history. On this path space set 
+
+v(z) = Σ −1(G(z) − eG(z)) , As =
+
+Z s
+
+> 0
+
+∥v(Zr )∥2 dr. 
+
+Stationarity under P gives the essential identity 
+
+EPAt =
+
+Z t
+
+> 0
+
+EP∥v(Zs)∥2 ds = te 2Σ. (71) 
+
+Step 2: Stopped change of drift. Finite mean energy does not imply a global Novikov condition. Instead, stop at σm = inf {s ∈ [0 , t ] : As ≥ m}, with the convention inf ∅ = ∞. Under Q, let eB be the driving Brownian motion and define 
+
+dPm
+
+dQ = exp 
+
+Z t∧σm
+
+> 0
+
+v(Zs) · d eBs − 12 At∧σm
+
+
+
+. (72) Because At∧σm ≤ m, this exponential is a true martingale, also conditionally on the initial history. Girsanov’s theorem therefore preserves the initial law π and makes Pm follow drift G until σm, then drift eG afterwards. Under Pm, the log-density in Equation 72 is a mean-zero stochastic integral plus At∧σm /2. Conse-quently, the Kullback-Leibler divergence can be written as 
+
+DKL (Pm∥Q) = 12 EPm At∧σm = 12 EPAt∧σm ≤ te 2Σ
+
+2 . (73) The second equality holds because the auxiliary and true equations agree up to the stopping time: pathwise uniqueness from Proposition 1 gives identical stopped path laws. This is why the error remains evaluated under the true law. If we couple these two equations with the same history and Brownian motion, their paths can differ only if σm ≤ t, so 
+
+∥P − Pm∥TV ≤ P(At ≥ m) ≤ te 2Σ
+
+m .
+
+Pinsker’s inequality and Equation 73 now imply 
+
+∥P − Q∥TV ≤ te 2Σ
+
+m +
+
+r 12 DKL (Pm∥Q) ≤ te 2Σ
+
+m + eΣ
+
+√t
+
+2 .
+
+Let m → ∞ with t fixed. Extracting a terminal segment cannot increase total variation, and its laws under P, Q are πseg , π seg ePt, respectively. Thus 
+
+∥πseg − πseg ePt∥TV ≤ eΣ
+
+√t
+
+2 . (74) 
+
+Step 3: Conclusion. Integrating Equation 68 against its initial law πseg gives 
+
+∥πseg ePt − eπseg ∥TV ≤
+
+Z
+
+∥ ePt(φ, ·) − eπseg ∥TV πseg (dφ ) ≤ eCe −eγt (1 + πseg V ).
+
+Together with Equation 74 and Equation 70, this proves Equation 69. 39 Preprint. 
+
+## B COMPARISON WITH ADAPTIVE GROUP LASSO ASSUMPTIONS 
+
+Bellot et al. (2022) prove local consistency of the adaptive group lasso , for Markovian systems. They show similar identifiability proofs using the adaptive group lasso to select input features. AGL also requires an initial consistent estimator to build the adaptive weights. In this work, we derive identifiability guarantees for SDDE-driven systems, which extend Bellot et al. (2022) results. Ad-ditionally, we use the L0 penalty instead of AGL. The L0 route is in two ways cleaner: no initial estimator is needed, and the population theorem (2) already supplies an explicit λ window. Both results suppose an optimization oracle, which is standard in the literature, but something that is most often not available in practice. Our theorems assume global minimization of a nonconvex, combinatorial objective. Bellot et al. (2022) assume that they can find exact solutions to their problem, which is least squares over a 
+
+neural network class with an AGL penalty, and hence also nonconvex. Both results presuppose an optimization oracle — theirs for a continuous nonconvex problem, ours for a combinatorial one —. Empirically, we find that even on Markovian systems (part of the CausalDynamics benchmark, the Dysts benchmark), the relaxed L0penalty performs better than the AGL-penalized objective. Our minimum-signal condition smin > 0 plays exactly the role of their eq. (10), and our effective sample size λerg T plays the role of their n/ ∥α∥2.
+
+## C IMPLEMENTATION DETAILS AND HYPERPARAMETERS 
+
+C.1 IMPLEMENTATION DETAILS 
+
+The L0-norm is not differentiable. To allow for score-based optimization, we implement the relaxed 
+
+L0 penalization proposed by Louizos et al. (2018). More precisely, the matrix M is a square logits matrix parametrized as the sigmoid of differentiable parameters in R. During training, at each batch, we draw samples of M through a hard-concrete distribution, a continuous relaxation of a binary random variable. We use a low temperature parameter β = 0 .33 to sharpen the hard-concrete distribution and force to turn inputs on or off. Samples are drawn on the [−0.1, 1.1] interval before being clamped to [0 , 1] i.e. most samples will be exactly equal to 0 or 1. At inference, we fix M to be 0 or 1 if the probabilities (obtained from the logits) are lower or higher than 0.5. To have a smoothed convergence, we draw multiple samples of M at each batch before optimizing for its differentiable parameters. We also warm-up the model and train the neural network without penalty for 100 warm-up iterations before adding the penalty to the loss. We then train until the loss plateaus and does not decrease for 200 patience iterations. These parameters and optimization procedure are standard when using L0-penalty (Louizos et al., 2018). The functions f are small multi-layer perceptrons (MLPs) and we use a gradient penalty to enforce that our functions are Lipschitz. To make sure that smooth dimensions e.g. with close to 0 gradient are not approximated by the mean and then do not have any drivers, we renormalize each dimension by the gradient mean and standard deviation. C-NODE follows a similar implementation, where the L0 is replaced by L1norm. In practice, we just apply a L1penalty on the logits matrix M . AGL implementation is similar, but uses an AGL penalty instead. We find that using a gradient penalty slightly improve the results for both, so we included it in the method’s implementation. Except the penalty, everything is kept the same between methods. 
+
+## D CAUSAL DYNAMICS BENCHMARK 
+
+D.1 METRIC COMPUTATION 
+
+L0-NDDE and “No Grad. Pen.” use a logit matrix to represent probabilities of inputting a feature or not. It is thus straightforward to calculate SHD, AUROC and AUPRC by comparing this matrix to the ground truth logits matrix. AGL and L1penalty instead assign weights to each input feature. While these weights can still be compensated for by the neural network, we used this weight matrix to compute AUROC / AUPRC, treating the weights as feature importance. For SHD instead, we used a low threshold ( 10 −8) to decide whether an input feature is turned off or not. Changing this 40 Preprint. threshold did not affect performance, as we observed that the weights were generally either 0 or above 10 −3 in practice. D.2 HYPERPARAMETER SEARCH 
+
+The causal methods evaluated in CausalDynamics have various numbers of hyperparameters. While methods such as PCMCI rely crucially on a single parameter e.g. the conditional independence test threshold, others such as TSCI or NGC depend on many parameters e.g. neural network architec-tures. Herdeanu et al. (2025) thus decided to keep default parameters except the main parameter and perform hyperparameter search on this parameter only. We do the same and keep default parameters, highlighted in Section D.3, except for the sparsity penalty coefficient, which controls for the final level of sparsity. For all methods, we run our model on the 10 time series of the Lorenz84 system with the follow-ing penalty coefficients and select the one maximizing AUROC: (0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 25, 50, 100). D.3 FINAL HYPERPARAMETERS 
+
+Parameter Value Architecture, functions fj
+
+Number of layers 2Number of units per layer 8
+
+Optimization parameters 
+
+Gradient penalty coefficient 100 Warm-up iterations 100 Patience iterations 200 Learning rate 0.001 Batch size 128 
+
+L0 implementation parameters (L0-NDDE, No grad. pen.) Temperature βtemp 0.33 Approximate distribution interval [−0.1, 1.1] 
+
+Number of samples 3
+
+Sparsity penalty coefficients 
+
+L0 0.025 AGL 5C-NODE (L1) 50 No grad. pen. 0.01 Table 3: Final hyperparameters used for L0-NDDE, C-NODE, AGL and No grad. pen. The last 4 lines show the penalty coefficient for each method, as it is the only parameter tuned for each the method. Note that No grad. pen. does not use gradient penalty. D.4 FULL CAUSAL DYNAMICS RESULTS 
+
+41 Preprint. 
+
+Experiment Simple Coupled Climate Avg. rank 
+
+Default Confounder Noise Default Noise Confounder Time-lag Standardize MAOOAM ENSO 
+
+> SHD
+
+PCMCI+ 41.04 23.02 47.64 224.80 183.90 324.63 327.72 228.32 80.00 529.36 7.30 F-PCMCI 35.30 21.07 45.09 192.90 149.60 195.74 350.61 201.79 130.00 530.27 5.80 VARLiNGAM 35.69 22.04 42.84 311.45 248.90 159.63 449.33 349.63 130.00 453.00 8.00 DYNOTEARS 52.37 21.74 51.68 181.50 180.95 248.32 261.44 243.84 94.00 589.36 6.60 NGC 28.91 19.96 28.84 840.95 842.55 670.53 793.67 840.26 31.00 337.09 7.90 TSCI 52.50 22.02 60.50 174.70 173.50 265.26 244.56 244.42 108.00 666.27 7.20 CUTS+ 48.11 24.04 61.32 152.00 150.50 272.68 247.22 310.63 130.00 608.73 7.50 RCD 61.85 26.74 61.38 157.05 155.65 136.53 201.11 159.84 130.00 665.36 6.80 GRaSP 59.04 27.09 60.18 215.94 842.55 136.00 793.67 840.26 126.00 666.27 9.70 TCDF 59.46 26.61 61.43 252.00 842.55 670.53 793.67 840.26 130.00 666.27 11.65 AGL 26.60 16.96 21.28 319.04 ∗ 222.41 ∗ 246.37 ∗ 315.54 ∗ 312.31 ∗ 30.00 ∗ 337.09 5.55 C-NODE (L1) 24.07 17.10 20.5 253.91 ∗ 176.30 ∗ 179.58 ∗ 273.57 ∗ 258.09 42.00 335.36 4.50 
+
+L0-NDDE (Ours) 26.42 16.25 23.67 205.35 144.20 143.33 222.34 212.11 40.00 325.54 2.50 AUROC / AUPRC 
+
+PCMCI+ .52 / .71 .49 / .59 .50 / .69 .67 / .25 .64 / .25 .58 / .20 .58 / .24 .69 / .27 .69 / .88 .57 / .70 4.10 / 5.25 F-PCMCI .51 / .70 .50 / .59 .52 / .70 .67 / .27 .57 / .21 .55 / .19 .59 / .24 .68 / .28 .50 / .81 .57 / .70 4.80 / 6.05 VARLiNGAM .50 / .69 .48 / .58 .53 / .70 .60 / .19 .57 / .18 .51 / .17 .54 / .22 .60 / .19 .50 / .81 .56 / .69 6.90 / 8.55 DYNOTEARS .43 / .67 .52 / .64 .48 / .68 .59 / .21 .57 / .20 .49 / .17 .53 / .22 .65 / .23 .64 / .86 .55 / .69 7.75 / 7.95 NGC .50 / .69 .50 / .58 .50 / .68 .50 / .15 .50 / .15 .50 / .16 .50 / .20 .50 / .15 .50 / .81 .50 / .67 9.85 / 10.90 TSCI .46 / .68 .53 / .66 .49 / .68 .60 / .23 .53 / .17 .51 / .18 .53 / .21 .65 / .23 .58 / .84 .50 / .67 7.50 / 8.00 CUTS+ .50 / .69 .50 / .58 .50 / .68 .50 / .15 .50 / .15 .49 / .16 .50 / .20 .50 / .15 .50 / .81 .50 / .67 10.10 / 10.90 RCD .50 / .69 .50 / .58 .50 / .68 .50 / .15 .50 / .15 .51 / .18 .50 / .20 .50 / .16 .50 / .81 .50 / .67 9.55 / 10.25 GRaSP .52 / .71 .55 / .64 .49 / .68 .49 / .15 .50 / .50 .50 / .17 .50 / .50 .50 / .50 .48 / .81 .50 / .50 9.60 / 6.70 TCDF .51 / .70 .50 / .58 .50 / .68 .48 / .15 .50 / .50 .50 / .50 .50 / .50 .50 / .50 .50 / .81 .50 / .50 9.85 / 6.65 AGL .52 / .71 ∗ .56 / .64 .53 / .74 ∗ .53 / .33 ∗ .53 / .33 ∗ .54 / .35 ∗ .52 / .35 ∗ .54 / .34 ∗ .56 / .86 ∗ .54 / .69 ∗ 5.80 / 4.35 C-NODE (L1) .64 / .79 .54 / .65 .61 / .79 ∗ .64 / .43 .63 / .43 .67 / .47 .59 / .43 .68 / .47 .88 / .97 .49 / .66 ∗ 3.45 / 3.35 
+
+L0-NDDE (Ours) .64 / .80 .58 / .66 .63 / .80 .64 / .43 .65 / .44 .67 / .47 .60 / .43 .66 / .45 .86 / .96 .58 / .75 1.75 / 2.10 
+
+Table 4: L0-NDDE outperforms competing methods most of the time on the CausalDynamics benchmark. This table is similar to Table 1 with additional methods being shown. D.5 NO GRADIENT PENALTY 
+
+Experiment Simple Coupled Climate Default Confounder Noise Default Noise Confounder Time-lag Standardize MAOOAM ENSO SHD No Grad. Pen. 26.95 18.21 24.47 215.08 142.67 145.08 233.58 220.68 49.00 341.27 
+
+L0-NDDE (Ours) 26.42 16.25 23.67 205.35 144.20 143.33 222.34 212.11 40.00 325.54 AUROC / No Grad. Pen. .64 / .80 .58 / .65 .61 / .79 .63 / .42 .64 / .44 .67 / .47 .59 / .41 .65 / .44 .85 / .96 .52 / .68 AUPRC L0-NDDE (Ours) .64 / .80 .58 / .66 .63 / .80 .64 / .43 .65 / .44 .67 / .47 .60 / .43 .66 / .45 .86 / .96 .58 / .75 
+
+Table 5: L0-NDDE is slightly stronger with gradient penalty. Gradient penalty helps avoid overfit-ting spurious correlations and leads to slightly better performance on the CausalDynamics bench-mark. 
+
+## E DYSTS BENCHMARK 
+
+E.1 TRAIN AND TEST SYSTEMS 
+
+We use 40 systems in total, split into a hyperparameter search set (5 systems), and a test set (the other 35 systems). For each system, we generate one training trajectory, and 3 test trajectories. The train trajectories last 50 Lyapunov times and the test trajectories last 250 Lyapunov times, to ensure that the trajectory visits the entire space. Trajectories are sampled at the native temporal resolution. To avoid too short or too long trajectories in training, we enforce the training trajectory to have a minimum of 1000 and a maximum of 10000 timesteps. We use a stochastic forcing of level 0.05 times the variance of each dimension of the training trajectory. Each test and training trajectory is normalized by subtracting the mean and dividing by the training trajectory standard deviation per dimension. We studied 40 systems in total, which are the 40 Dysts systems for which the Jacobian is accessi-ble. For these 40 systems, a method is implemented to access the Jacobian at any point along any trajectory. This is necessary to compute metrics. Among these 40 systems, we randomly chose 5 systems for doing hyperparameter search, and 35 systems for testing. On the 5 hyperparameter search systems, we ran the methods with the following sets of hyperparameters, and selected the ones that maximized the valid prediction time on the three test trajectories. For all methods, we wait a certain number of patience iterations (200) to declare convergence i.e. when the penalized loss does not improve for 200 iterations, we stop sparsifying. After this, we fix the input mask i.e. the learned matrices ˜M , and then keep training the neural networks to learn the dynamics for a certain number of iterations n_iter_after_convergence . Also, we wait a number niter_warmup of warm-up iterations before sparsifying. 42 Preprint. We chose the best values among the following values for the following parameters: • Sparsity penalty coefficient: [0 .01 , 0.05 , 0.1, 0.5, 1, 5, 10 , 50 , 100] 
+
+• Gradient penalty coefficient: [0 , 10 , 100 , 1000 , 10 000] 
+
+• n_iter_after_convergence : [0 , 50 , 100 , 200 , 500 , 1000] 
+
+• niter_warmup : [0 , 25 , 50 , 100] 
+
+For all methods, these four parameters are key as they control the sparsity and the regularization of the methods and their final values can be found in Table 6. All other parameters are kept the same as in the CausalDynamics experiments (Table 3). Optimization parameters L0-NDDE NODE C-NODE AGL PathReg Gradient penalty coefficient 0 100 0 1000 1000 
+
+niter_warmup 0 0 100 50 200 
+
+n_iter_after_convergence 200 0 500 1000 500 Sparsity penalty coefficients 0.05 0 0.05 50 1Table 6: Final hyperparameters used for L0-NDDE, C-NODE, AGL and PathReg 
+
+The systems chosen randomly to perform hyperparameter search are the following: MooreSpiegel, Lorenz, Laser, RikitakeDynamo, Chua The systems used for evaluating the methods are the following: BurkeShaw, Chen, ChenLee, Coullet, DequanLi, Duffing, Finance, GenesioTesi, Hadley, JerkCircuit, KawczynskiStrizhak, Li-uChen, Lorenz84, LuChen, LuChenCheng, PanXuZhou, PehlivanWei, QiChen, RayleighBenard, Rucklidge, Sakarya, SanUmSrisuchinwong, ShimizuMorioka, SprottA, SprottB, SprottC, SprottE, SprottI, SprottTorus, Thomas, ThomasLabyrinth, Tsucs2, WangSun, YuWang, YuWang2, ZhouChen E.2 METRICS 
+
+As we evaluate driver identifiability on the CausalDynamics benchmark, we are now interested in evaluating the dynamics. More precisely, we want to compare methods on short-term horizon pre-diction performance, attractor and geometry reconstruction, and long-term statistics. At evaluation, we predict autoregressively 3 trajectories from the initial conditions of the 3 test conditions (only the initial conditions are given), and generate trajectories of the same length as the test trajectories. We then compare the predicted vs true trajectories and compute several metrics. For short-term prediction, we compute the valid prediction time at 1, normalized by the first Lya-punov exponent (valid prediction lyapunov time, VLPT) i.e. we compute the number of Lyapunov timesteps before the normalized trajectory is further than 1 away from the true normalized trajectory. We also compute the normalized root mean square error (NRMSE), by averaging the RMSE across the first 5 Lyapunov timesteps before normalizing by the trajectory mean and standard deviation. For geometry and attractor reconstruction, we compute the first Lyapunov exponent error (FLEE) i.e. the squared difference between the first Lyapunov exponent of the learned vs. true system. The Lyapunov exponents are computed using the Benettin algorithm (Skokos, 2010), which requires access to the Jacobian which is possible in the selected Dysts systems, and for the learned models which are by construction differentiable. This error is small when the chaoticity of the system is well approximated. We additionally compute the Kaplan-Yorke dimension error ( DKY , Evans et al., 2000). Computed using the Lyapunov exponents, the DKY gives us the dimension of the attractor i.e. the fractal dimension, which would be 2 in the case of the classic Lorenz system. The reported error is the squared error between the estimated system vs. true system’s DKY .We then evaluate whether the learned system correctly captures long-term statistics, in other words whether the predicted trajectories converge, and if so whether they converge to the right equilibrium distribution. We report the log-spectral distance (LSD), which is the squared difference between the true and estimated log power spectral density, to indicate whether the system captured the right oscillation and periodicity properties of the system. We additionally report the Dstsp , a state-space 43 Preprint. divergence which estimates the KL divergence between the learned and true system invariant distri-bution from a set of predicted and true trajectories (Koppe et al., 2019). We compute it by placing a Gaussian kernel at each trajectory point (for both true and generated trajectories) and estimating the KL divergence between the two Gaussian Mixture Models via Monte Carlo sampling. E.3 RESULTS 
+
+On top of the quantitative results shown in the paper, we show, in Figure 2 the predicted (red) vs true (black) trajectories for 26 systems, for the three best methods, L0-NDDE, NODE and C-NODE. We then analyze the performance of the different methods on this benchmark, in Figure 3. 44 Preprint. BurkeShaw 
+
+L0-NDDE NODE C-NODE 
+
+> Chen
+
+L0-NDDE NODE C-NODE 
+
+> Coullet
+> DequanLi
+> Duffing
+> JerkCircuit
+> KawcStrizhak
+> Lorenz84
+> LuChen
+> LuChenCheng
+> PanXuZhou
+> PehlivanWei
+> QiChen
+> RayBenard
+> Rucklidge
+> SanUmSrisuch
+> Sakarya
+> ShMorioka
+> SprottA
+> SprottB
+> SprottC
+> SprottI
+> SprottTorus
+> Thomas
+> YuWang
+> ZhouChen
+
+Figure 2: Example predicted trajectories (red) vs. true trajectories (black) on 26 Dysts systems, for 
+
+L0-NDDE (left), NODE (middle), and C-NODE (right). 45 Preprint. 0.0 0.5 1.0 1.5 2.0 2.5                                
+
+> DKY
+> Kendall-tau p-value 1.8e-07
+> 010 20 30 40 50 60 70 80
+> VLPT
+> Kendall-tau p-value 0.018
+> 10 1
+> 10 1
+> 10 3
+> 10 5
+> 10 7
+> 10 9
+> Dstsp
+> Kendall-tau p-value 0.0017
+> 0.00 0.11 0.22 0.33 0.44 0.56 0.67 0.89
+> SHD
+> 0.0 0.5 1.0 1.5 2.0
+> FLEE
+> Kendall-tau p-value 0.33
+> 0.00 0.11 0.22 0.33 0.44 0.56 0.67 0.78 0.89
+> SHD
+> 0.5 1.0 1.5 2.0 2.5
+> NRMSE
+> Kendall-tau p-value 0.83
+> 0.00 0.11 0.22 0.33 0.44 0.56 0.67 0.78 0.89
+> SHD
+> 10 20 30 40 50 60 70 80
+> LSD
+> Kendall-tau p-value 0.66
+> 0.0 0.5 1.0 1.5 2.0 2.5
+> DKY
+> Kendall-tau p-value 1.7e-18
+> L0 NODE CNODE AGL pathreg
+> 010 20 30 40 50 60 70 80
+> VLPT Kendall-tau p-value 0.0022
+> 10 1
+> 10 1
+> 10 3
+> 10 5
+> 10 7
+> 10 9
+> Dstsp
+> Kendall-tau p-value 0.00011
+> 10 510 410 310 210 110 0
+> Train MSE
+> 0.0 0.5 1.0 1.5 2.0
+> FLEE Kendall-tau p-value 0.16
+> 10 510 410 310 210 1
+> Train MSE
+> 0.5 1.0 1.5 2.0 2.5
+> NRMSE Kendall-tau p-value 0.27
+> 10 510 410 310 210 110 0
+> Train MSE
+> 10 20 30 40 50 60 70 80
+> LSD Kendall-tau p-value 0.092
+
+Figure 3: Lower training error and lower SHD are both associated with higher performance. 
+
+We perform an analysis to better understand why L0-NDDE and NODE outperform other methods on the Dysts datasets. We compute, for all methods and all datasets, the training error (Train MSE) and SHD. We then plot the 6 metrics versus the SHD (upper half) and versus the training error (lower half). We see that DKY and Dstsp increase, while VLPT decreases with SHD and train-ing error. These relationships are statistically significant according to a Kendall-τ test, a standard rank-correlation test for investigating associations between two sets of values, without assuming Gaussianity of the samples or needing large samples. The relationship is also significant between LSD and training error. This indicates that a lower training error is associated with better recon-struction, indicating why NODE performs well, as the absence of input feature regularization allows it to overfit to the training data; and why L0-NDDE outperforms other methods, as it achieves lower SHD. Moreover, the L0-penalty has the advantage that it does not perform weight decay, but explic-itly turns features on or off, allowing the rest of the network to approximate the dynamics very well given the set of selected features. 46
