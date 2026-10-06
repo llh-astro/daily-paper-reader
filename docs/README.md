@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-04</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-06</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 5 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 7 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>3</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-04 22:37:42 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-06 01:26:53 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,9 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>2026-10-04日报：共5篇均为速读、精读为0，最高分并列7.0，聚焦脑流体物理信息建模、符号回归评测基础设施与PDE跨域学习。</p>
-<p>最值得看的是《PI-NOMT》把物理信息神经网络用于脑流体最优传输，以及《SymbolicArena》为符号回归提供基准蒸馏和动态评估。</p>
-<p>普通读者可先看这两篇的摘要与结论，再留意《Geometry-physics confounding...》对PDE学习在不同域上受几何-物理混杂影响的提示。</p>
+<p>今日日报汇总</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -73,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">0 篇</strong>
+    <strong class="dpr-home-dashboard-count">3 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="A Missing Latent, Not a Missing Simulator: Radius-Augmented Inference for Real JWST Retrieval">A Missing Latent, Not a Missing Simulator: Radius-Augmented Inference for Real JWST Retrieval</span></li><li><span class="dpr-home-dashboard-paper-title" title="TOI-1408: the limb darkening models, photometric and Doppler noises, and the exoplanetary system">TOI-1408: the limb darkening models, photometric and Doppler noises, and the exoplanetary system</span></li><li><span class="dpr-home-dashboard-paper-title" title="The 200-300 GHz Survey for 18 Class II Disks in the Ophiuchus Star-Forming Complex">The 200-300 GHz Survey for 18 Class II Disks in the Ophiuchus Star-Forming Complex</span></li></ul>
   </div>
-
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>3</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -86,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">5 篇</strong>
+    <strong class="dpr-home-dashboard-count">4 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="PI-NOMT: Physics-Informed Neural Optimal Mass Transport for Brain Fluid Dynamics">PI-NOMT: Physics-Informed Neural Optimal Mass Transport for Brain Fluid Dynamics</span></li><li><span class="dpr-home-dashboard-paper-title" title="SymbolicArena: A Unified Infrastructure for Benchmark Distillation and Dynamic Evaluation in Symbolic Regression">SymbolicArena: A Unified Infrastructure for Benchmark Distillation and Dynamic Evaluation in Symbolic Regression</span></li><li><span class="dpr-home-dashboard-paper-title" title="Geometry-physics confounding impairs PDE learning across varying domains">Geometry-physics confounding impairs PDE learning across varying domains</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Higher-Order Kolmogorov-Arnold Networks for Dynamics">Higher-Order Kolmogorov-Arnold Networks for Dynamics</span></li><li><span class="dpr-home-dashboard-paper-title" title="Energetic Variational Deep Learning for Solving High-Dimensional Stationary Fokker-Planck Equations">Energetic Variational Deep Learning for Solving High-Dimensional Stationary Fokker-Planck Equations</span></li><li><span class="dpr-home-dashboard-paper-title" title="Performance of AutoRegressive Planet Search methodology on simulated PLATO lightcurves">Performance of AutoRegressive Planet Search methodology on simulated PLATO lightcurves</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>4</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>2</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>2</strong></span></div>
 </section>
 </div>
 
