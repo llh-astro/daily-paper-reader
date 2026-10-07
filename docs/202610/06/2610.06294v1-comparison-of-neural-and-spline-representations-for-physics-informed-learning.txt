@@ -1,0 +1,574 @@
+Title: Comparison of neural and spline representations for physics-informed learning
+
+URL Source: https://arxiv.org/pdf/2610.06294v1
+
+Published Time: Tue, 06 Oct 2026 03:00:52 GMT
+
+Number of Pages: 37
+
+Markdown Content:
+# Comparison of neural and spline representations for physics-informed learning 
+
+Régis Duvigneau ∗
+
+Université Côte d’Azur, Inria, CNRS, LJAD 
+
+Abstract 
+
+Physics-informed machine learning as recently emerged as a new paradigm for the res-olution of partial differential equations, including functionalities for parametric modeling and inverse design, using neural networks to represent the solution fields. However, several difficulties have been reported concerning the training of such networks, resulting in slow convergence, low accurate solutions and sensitivity to the choice of hyper-parameters. In order to better understand the mechanisms underlying these difficulties, the present work proposes a rigourous comparison of neural networks and B-Splines representations within the same physics-informed learning framework. Four problems with closed-form solutions are numerically studied to establish a rigorous analysis of the accuracy and efficiency of the two representations, in terms of asymptotic convergence rates, sampling requirements, loss function minimization and arithmetic precision needed. 
+
+# 1 Introduction 
+
+The current context of energy transition makes the use of multi-physics simulation and design methodologies critical across all industrial sectors (energy, transportation, building, chemicals, etc.). Continuous advances in numerical simulation methods over the last thirty years have enabled the development of design workflows incorporating numerous cutting-edge methods, such as geometric modeling, mesh generation, numerical resolution of partial differential equa-tions (PDEs), optimization. Although these techniques are now well established, their wide adoption in industry has yet to be achieved, primarily for two reasons: the complexity of im-plementing these workflows and the computational cost of running them. These observations motivate the development of new methods that are simpler to implement and less costly to run. Recently, the emergence of machine learning techniques has enable the construction of approximate models based on data, whether from experimental measurements or pre-existing simulation results, which have been found particularly effective for many applications, when large databases are available. Many architectures have been investigated, from historical multilayer perceptrons [1] to convolutional networks [3, 21], graph neural networks [33] and, more recently, transformers [12, 43] including attention mechanisms and neural operators [22, 24] mapping functions. Among these, the present work focuses on techniques that make direct use of physical models based on PDEs during the training phase, by incorporating the PDE residuals in 
+
+> ∗Inria, 2004 route des lucioles, 06902 Sophia-Antipolis, France - regis.duvigneau@inria.fr
+
+1arXiv:2610.06294v1 [math.AP] 5 Oct 2026 the loss function, which allows to address data scarcity but also to solve inverse problems. These approaches are known, amongst other names, as Physics-Informed Neural Networks (PINNs) [27], deep Ritz method [40] or deep Galerkin method [34]. They have enjoyed con-siderable success in recent years, leading to a remarkable number of publications, numerous extensions and applications across all disciplines, as demonstrated in the review article [7]. However, these physics-informed learning approaches cannot be considered as general-purpose solvers yet, such as finite-element method. Indeed, several studies have pointed out strong limitations, in particular the sensitivity with respect to the choice of hyper-parameters such as network architecture, optimizer, loss weights, etc. [20, 37, 44]. The objective of this work is to study more in depth the role of the neural representa-tion itself in these difficulties, by comparing the use of neural networks and B-Splines in a similar physics-informed machine learning framework. B-Splines are a standard representa-tion in geometric modeling [8, 10] and are also used for PDE solving in isogeometric analysis methods [6]. Recently, they have also been employed in machine learning in conjunction with neural networks [32, 36, 39], mainly to facilitate geometry handling. In a very recent work [5], B-Splines have been used directly to parameterize the solution in a physics-informed machine learning formulation. The present work is based on similar methodological ingredients, but is focused on the analysis of the approximation properties of the two representations. The general framework of physics-informed learning is presented in Section 2, irrespective of the representation chosen for the solution. The specific features of neural networks and B-Splines are described in Section 3 and 4. Their properties are examined in Section 5. Aset of four problems with closed-form solutions is considered in Section 6, allowing a rigorous comparison of errors obtained by numerical resolution. Finally, the results are discussed in Section 8, before conclusion. 
+
+# 2 Physics-informed machine learning 
+
+2.1 Principle of residuals minimization 
+
+Physics-informed machine learning aims to simulate physical phenomena by minimizing an error estimate based on model residuals, typically formalized as PDEs. Although the approach is clearly inspired by artificial intelligence paradigms, the use of PDE residuals makes it similar to standard resolution methods like finite-element method. For the sake of simplicity, we consider a generic problem to present the methodology: the physical rules are expressed as a one-dimensional PDE, first-order in time and second-order in space, associated with Dirichlet and Neumann boundary conditions and initial condition. The extension to more complex governing equations will be straightforward. Thus, the problem writes: 
+
+
+
+∂tu + N [u, ∂ xu, ∂ xx u]( x, t ) = 0 (x, t ) ∈ Ω×]0 , T ]
+
+u(xD, t ) = gD(xD, t ) (xD, t ) ∈ ∂ΩD×]0 , T ]
+
+∂nu(xN , t ) = gN (xN , t ) (xN , t ) ∈ ∂ΩN ×]0 , T ]
+
+u(x, 0) = gI (x) x ∈ Ω,
+
+(1) where u is the unknown field, Ω an open domain, (x, t ) the space-time coordinates and N
+
+denotes a differential operator. gD, gN and gI define respectively the Dirichlet, Neumann and 2initial conditions. The resolution of the problem is based on a parametric representation of the solution 
+
+u(θ; x, t ), where θ is a set of parameters to be calibrated, also denoted as degrees of freedom .The precise nature of the representation will be examined in forthcoming sections, most of the methodological ingredients of this approach being agnostic w.r.t. the chosen representation. The calibration of the parameters θ, denoted as training , simply consists in minimizing an estimate of the error L(θ), denoted as loss function , which aggregates errors regarding PDE residuals and initial / boundary conditions: 
+
+L(θ) = LP DE (θ) + LI (θ) + LD(θ) + LN (θ). (2) 
+
+LP DE is the loss term related to the PDE residual: 
+
+LP DE (θ) = 1
+
+NP DE NP DE X
+
+> k=1
+
+{R (θ; xk, t k)}2 , (3) with: 
+
+R(θ; xk, t k) = ∂tu(θ; xk, t k) + N [u, ∂ xu, ∂ xx u]( θ; xk, t k). (4) The points (xk, t k), denoted as collocation points , correspond to a space-time sampling of the computational domain, where the PDE has to be fulfilled. Thus, LP DE approximates the square of the L2-norm of the residuals. Similarly, other loss terms concern initial and boundary conditions: 
+
+LI (θ) = 1
+
+NINIX
+
+> k=1
+
+u(θ; xk, 0) − gI (xk, 0) 2 , (5) 
+
+LD(θ) = 1
+
+NDNDX
+
+> k=1
+
+u(θ; xDk , t k) − gD(xDk , t k) 2 , (6) 
+
+LN (θ) = 1
+
+NNNNX
+
+> k=1
+
+∂nu(θ; xNk , t k) − gN (xNk , t k) 2 , (7) with dedicated samplings of initial and boundary subdomains. As can be observed, this approach is agnostic with regard to the representation of the solution. The only requirement is the ability to evaluate the space and time derivatives present in the loss terms. 
+
+2.2 Training procedure 
+
+The minimization of the loss function is the core of the approach, which determines the practical implementation and the accuracy and robustness of the method. Unfortunately, this may be a difficult optimization problem, characterized by a high-dimensional set of parameters 
+
+θ and, as pointed out by several studies [20, 37], a possibly non-convex and highly curved loss function lanscape. Due to the large dimension, the task is usually achieved using descent methods, updating the parameters according to: 
+
+θ(p+1) = θ(p) − ρ(p)G(∇θL(θ(p))) , (8) 3where ρ is the step length, also denoted as learning rate , and ∇θL the gradient of the loss func-tion. G is an operator that defines the algorithm. In most studies, the optimization is achieved in two distinct phases: a first one based on a stochastic first-order descent algorithm allowing a robust start, like ADAM [18], followed by a second-order quasi-Newton algorithm yielding a faster convergence, like L-BFGS [23]. Nevertheless, it remains a tedious optimization problem and several approaches have been proposed in the literature to improve the convergence [7]. The evaluation of the gradient of the loss function necessitates the differentiation of the different loss terms: 
+
+∇θL(θ) = ∇θLP DE (θ) + ∇θLI (θ) + ∇θLD(θ) + ∇θLN (θ), (9) with: 
+
+∇θLP DE (θ) = 2
+
+NP DE NP DE X
+
+> k=1
+
+{R (θ; xk, t k)} ∂θR(θ; xk, t k), (10) 
+
+∇θLI (θ) = 2
+
+NINIX
+
+> k=1
+
+u(xk, 0) − gI (xk) ∂θu(θ; xk, t k), (11) 
+
+∇θLD(θ) = 2
+
+NDNDX
+
+> k=1
+
+u(θ; xDk , t k) − gD(xDk , t k) ∂θu(θ; xk, t k), (12) 
+
+∇θLN (θ) = 2
+
+NNNNX
+
+> k=1
+
+∂nu(θ; xNk , t k) − gN (xNk , t k) ∂θu(θ; xk, t k). (13) As can be noticed, it is required to evaluate the derivative of the solution with respect to the parameters ∂θu, as well as the derivative of the residuals ∂θR. As the latter involves space and time derivatives of the solution, this results in a higher-order cross derivative evaluation. In the next sections, two possible representations for the solution are presented, focusing on their respective characteristics. 
+
+# 3 Neural representation 
+
+The Multi-Layer Perceptron (MLP) network is used in the PINNs methodology [27] to repre-sent the solution of the problem. It is composed of a set of L layers: one input layer, L − 2
+
+intermediate hidden layers and one output layer. Each intermediate layer l contains a set of 
+
+Nl neurons, each of them being connected to all neurons of the previous layer. The number of neurons in the input layer corresponds to the number of space and time coordinates, whereas the number of neurons in the output layer is the number of unknown fields, as depicted in Fig. (1). Thus, the values associated with the neurons of the first layer are simply the space-time coordinates (x, t ) of a given collocation point. The value of the neuron in the last layer predicts the solution u(θ; x, t ). Each neuron of the internadiate layers is a mathematical operator that applies a non-linear activation function α to the weighted sum of its own inputs plus a bias factor. Thus, the value of the ith neuron of the layer l writes: 
+
+f li = α(
+
+> Nl−1
+
+X
+
+> j=1
+
+wlij f l−1 
+
+> j
+
++ bli) (14) 4θxtu
+
+Figure 1: Multi-layer perceptron with 3 hidden layers of 5 neurons. where Nl−1 is the number of neurons in the l − 1th layer, wlij the weight of the connection between the neuron i and the neuron j of the layer l − 1 and bli is the bias. Hyperbolic tangent is usually employed as activation function for PINNs, because of its smoothness and non-linearity. No activation is usually applied to the last layer, then the predicted solution is just a linear combination of the NL−1 values obtained in the last but one layer. The use of the hidden layers can therefore be interpreted as the construction of NL−1 suitable functions to represent the solution. As summary, the output u(θ; x, t ) is obtained by propagating forward the input values (x, t ) through the network layers, resulting in a composition of the activation functions. Such a network is characterized by its weights and biases, which constitute the set of parameters θ to be calibrated during the training phase. The evaluation of the space and time derivatives consists in differentiating the output of the network with respect to its inputs. According to the forward evaluation achieved by com-position of the activation function, the most efficient approach to estimate the derivatives is based on a backpropagation algorithm [30], usually implemented using Automatic Differenti-ation (AD) techniques [2]. The derivatives of the loss function with respect to the parameters 
+
+θ (network weights and biases), required for the descent algorithm, are evaluated in the same way. 
+
+# 4 Spline representation 
+
+B-Splines are considered as a standard in Computer-Aided Design [8, 10], since they allow to represent exactly a broad class of curves / surfaces / volumes commonly encountered in engineering and permit a very intuitive definition and modification of geometrical objects through the handling of control points . In the present context, B-Spline functions are not in charge of describing a geometry, but representing the solution of a PDE problem. The B-Spline basis functions are defined using a so-called knot vector (Ξ 1, . . . , Ξl) ∈ Rl,which consists of l nondecreasing real numbers. This knot vector defines a discretization of the 
+
+parametric domain [Ξ 1, Ξl]. B-Spline basis functions (Bpi )i=1 ,··· ,n are polynomials and defined recursively in the parametric domain as [8]: 
+
+B0 
+
+> i
+
+(ξ) = 
+
+(
+
+1 if Ξi ≤ ξ < Ξi+1 
+
+0 otherwise (15) 
+
+Bpi (ξ) = ξ − Ξi
+
+Ξi+p − Ξi
+
+Bp−1 
+
+> i
+
+(ξ) + Ξi+p+1 − ξ
+
+Ξi+p+1 − Ξi+1 
+
+Bp−1 
+
+> i+1
+
+(ξ). (16) 5Note that the quotient 0/0 is assumed to be zero. The degree of the functions p, the number of knots l and functions n are related by l = n+p+1 [8]. Clamped knot vectors, i.e. knot vectors with first and last knots of multiplicity p + 1 , are usually used for representations of degree 
+
+p to impose interpolation and tangency conditions at both extremities [8]. This property can be exploited to impose initial, Dirichlet and Neumann boundary conditions. Therefore 
+
+Ξ1 = . . . = Ξ p+1 and Ξn+1 = . . . = Ξ n+p+1 . A set of B-Spline basis functions of degree two is illustrated in Fig. 2. 
+
+ξ
+
+Ξ1,2,3 Ξ4 Ξ5 Ξ6 Ξ7 Ξ8,9,10 
+
+B21 B22 B23 B24 B25 B26
+
+B27
+
+Figure 2: Seven quadratic B-Spline basis functions. Finally, a one-dimensional B-Spline function is obtained by associating a set of degrees of freedom (θi)i=1 ,··· ,n to the basis functions: 
+
+u(θ; ξ) = 
+
+> n
+
+X
+
+> i=1
+
+Bpi (ξ) θi, (17) This representation is used in CAD to define the coordinate of a parametric curve x(θ; ξ). In the CAD context, (θi)i=1 ,··· ,n are the coordinates of control points in the physical domain Ω.Note that this equation defines a mapping F from the parametric domain bΩ to the physical one Ω. In the context of PDE solving, the degrees of freedom constitute an intuitive way to control locally the value of the function, as depicted in Fig (3). On this plot, one can see the function u(θ; ξ) defined by the degrees of freedom (θi)i=1 ,...,n associated with the basis functions (Bpi )i=1 ,...,n shown previously, with the same colors. Note that the polygon of degrees of freedom is tangent to the function u at the knot parametric coordinates, which determine the support of each basis function. One can also notice that the function interpolates the degrees of freedom at both extremities and is tangent to the lines joining the two first and last degrees of freedom. This representation can be extended to multi-dimensional variables by introducing a ten-sorial product of the univariate basis functions: 
+
+u(θ; ξ1, · · · , ξ d) = 
+
+> n1
+
+X
+
+> i1=1
+
+· · · 
+
+> nd
+
+X
+
+> id=1
+
+Bp1 
+
+> i1
+
+(ξ1) · · · Bpd 
+
+> id
+
+(ξd) θi1,··· ,i d . (18) The time and space derivatives of the solution can be simply obtained by analytical dif-ferentiation of the function definition. Thus, the derivative of the solution with respect to the variable ξj writes: 
+
+∂ξj u(θ; ξ1, · · · , ξ j , · · · , ξ d) = 
+
+> n1
+
+X
+
+> i1=1
+
+· · · 
+
+> nd
+
+X
+
+> id=1
+
+Bp1 
+
+> i1
+
+(ξ1) · · · [Bpj 
+
+> ij
+
+]′(ξj ) · · · Bpd 
+
+> id
+
+(ξd) θi1,··· ,i d , (19) 6ξu(θ; ξ)
+
+θ1
+
+θ2
+
+θ3
+
+θ4
+
+θ5 θ6
+
+θ7
+
+Ξ1,2,3
+
+Ξ4
+
+Ξ5
+
+Ξ6
+
+Ξ7
+
+Ξ8,9,10 
+
+Figure 3: A quadratic B-Spline function. where B′ denotes for the derivative of the univariate B-Spline basis function. Its computation can be efficiently implemented using a dedicated algorithm, based on the fact that the deriva-tive of a B-Spline can be expressed as a B-Spline of lower degree [8]. Note that evaluating the derivatives in the Cartesian frame can be more complex, due to the possible composition with a geometrical mapping. This point will be detailed in the presentation of the last testcase. The differentiation of the loss function with respect to the degrees of freedom θ can also be achieved analytically. It relies on the derivatives of the solution, which simply writes: 
+
+∂θi 1,··· ,i d u(θ; ξ1, · · · , ξ d) = Bp1 
+
+> i1
+
+(ξ1) · · · Bpd 
+
+> id
+
+(ξd). (20) As explained above, the imposition of the initial / boundary values and derivatives is straightforward when clamped knot vectors are used. Indeed, in that case, the extremity of the B-Spline is only dependent on the extreme degrees of freedom, as shown in Fig. (3). For instance, in the case of a two-parameter B-Spline surface, the value of the B-Spline along the curve (ξ1 = Ξ 1, ξ 2) is only defined by the n2 degrees of freedom (θ1,i 2 )i2=1 ,...,n 2 . The value of the solution on this boundary can therefore be enforced independently from the training precedure by using a least-square projection: 
+
+(θ1,i 2 )i2=1 ,...,n 2 = ArgMin 
+
+Z
+
+> ∂ΩL
+
+u(θ; Ξ 1, ξ 2) − gD(ξ2)2 dξ 2, (21) where ∂ΩL is the boundary defined by ξ1 = Ξ 1. This problem is quadratic in θ and yields a linear system [8]. Note that the boundary solution is exact in this example if the Dirichlet condition gD(ξ2) is polynomial of degree p2 or less. For Neumann conditions, a similar ap-proach can be adopted, involving the first degree of freedom inside the domain to express the boundary slope, as illustrated in Fig. (3). 
+
+# 5 Properties of the two representations 
+
+In this section, we compare the properties of the two representations, in the perspective of the physics-informed learning procedure detailed above. 
+
+Support A first major difference between the two representations is the domain of influence of the degrees of freedom. For B-Spline bases, each function is non-zero over p + 1 knot 7intervals, as illustrated by Fig. 2. In contrast, functions generated by MLPs have infinite support since they are compositions of tanh activation functions. Consequently, the influence of each individual parameter θi is located in space and time for B-Spline representations, and not for MLP networks. Thus, some evaluations can be avoided for B-Splines when the collocation points are located outside the support of a given basis function. 
+
+Smoothness Since a C∞ function is usually employed as activation, e.g. tanh , the output of MLP networks are also C∞. B-Spline functions are C∞, except at the knots abscissae where a Cp−1 continuity is obtained by construction, if the knots are distinct [8]. 
+
+Linear independence The B-Spline functions form a polynomial basis, then they are lin-early independent and generate functions depending linearly on the degrees of freedom. The functions generated by the hidden layers of MLP networks are obviously non-linear with re-spect to θ and not independent in general. 
+
+Convexity For some problems, it is easy to prove the convexity of the loss function using a B-Spline representation. For instance, if one considers a one-dimensional Poisson equation 
+
+∂xx u = f associated with Dirichlet boundary conditions, the loss function simply writes 
+
+> 1
+> N
+
+P 
+
+> k
+
+|B′′ (ξk)T θ − f (ξk)|2 according to Eq. (3) and (17), with B′′ (ξk) a vector collecting the second-order derivatives of the basis functions. Then, the Hessian matrix of the loss function is 
+
+> 2
+> N
+
+P 
+
+> k
+
+B′′ (ξk) B′′ (ξk)T , which is positive-definite, for an adequate choice of collocation points. Therefore, the problem admits a unique solution. On the contrary, the loss functions obtained using MLP networks are globaly non-convex. Indeed, swapping the weights and biases of a network can result in the exact same output, yielding several minima. 
+
+Approximation capabilities It has been shown that MLP networks have the ability to represent a large variety of functions. In particular, a neural network with a single hidden layer and a non-polynomial activation function can approximate any continuous function to any desired accuracy [16]. Besides, B-Splines are known to have noticeable approximation properties. In particular, the error for approximating a smooth function decays at the optimal rate of O(hp+1 ) in the L∞ and L2 norms [8], where h is the knot interval. 
+
+Computation of derivatives As already explained, the computation of the derivatives for neural networks is achieved using AD techniques, whereas analytic expressions of derivatives can be used for B-Splines. Obviously, the recourse to AD facilitates the implementation, how-ever the evaluation of analytic derivatives is usually far more efficient in terms of computational time and memory use. 
+
+Account for geometry The neural networks consider as input the space coordinates, usu-ally expressed in Cartesian frame for the sake of simplicity. Nevertheless, other frames, e.g. cylindrical or spherical, can be used as well if more convenient. The situation is different for B-Splines, because the basis functions are defined in the parametric domain, which should be mapped to the physical domain by fitting. This mapping makes the expression of the derivatives in the Cartesian frame more complex, because the geometric mapping has to be differentiated as well. Nevertheless, this allows to match the boundary of the physical domain 8to B-Spline extremities, thus facilitating the imposition of the boundary conditions. This point will be especially illustrated in the last testcase. 
+
+Imposition of boundary conditions In the PINNs methodology, the imposition of the initial and boundary conditions is achieved by penalizing the residual term in the loss function, yielding a multi-objective training problem. It has been shown that the antagonism between the different loss terms is a cause of ill-conditioning [20, 37]. In contrast, the properties of B-Splines at the domain extremities, by the use of clamped knot vectors, allow to impose intial and boundary conditions by projection, independently from the training phase. This is especially important, because it reduces the loss function to the PDE residual only and, consequently, facilitates the training. Moreover, the degrees of freedom corresponding to the B-Spline extremities can be removed from the set of trained parameters, yielding a problem of reduced size. 
+
+Sampling For MLP networks, collocation points are usually chosen randomly, according to a given distribution that promotes space filling, e.g. Latin Hypercube Sampling (LHS). Re-sampling or mini-batches are commonly employed during the training phase, emphasizing the stochastic nature of the training. Regarding B-Spline representations, a similar strategy could obviously be adopted. However, the specific structure of B-Spline bases allows an alternate choice based on Greville abscissae, which are the mean locations of p consecutive knots in the knot vector gk = 1
+
+> p
+
+Ppi=1 Ξk+i. It has been shown that this set of points, whose cardinal is equal to the number of functions, allow a stable B-Spline interpolation and yields orders of convergence p and p − 1 for even and odd degrees respectively [17]. The resulting approach relies only on n collocation points per direction and is in fact similar to the isogeometric collocation method [29]. 
+
+Initialization The inital guess of the solution can be critical for the training, since descent algorithms are essentially local optimizers. The initialization of network parameters is usu-ally achieved randomly with a dedicated distribution, e.g. Xavier uniform initialization [15], because it is difficult to provide a guess for the network parameters. As consequence, the robustness of the resolution has to be assessed by performing several runs because different solutions may be found in practice depending on the initialization. On the contrary, the B-Spline solution can be initialized by intuiting a solution guess, since there is a direct rela-tionship between the B-Spline degrees of freedom and the solution, as illustrated in Fig. (3). Following this review of the properties of the two chosen representations, a set of compu-tational testcases are presented and analysed in the next section. 
+
+# 6 Computational Tests 
+
+6.1 Numerical setup 
+
+A set of problems with closed-form solution is now solved using both representations. Some numerical parameters common to all computations are detailed below. They have been selected according to the previous discussions and similar studies from the literature. 9Neural representation For MLP networks, one considers a set of different architectures, ranging from one to five hidden layers, composed of 8, 16, 32 and 64 neurons each. The activation function is always tanh . The sampling of the collocation points is achieved using a LHS technique and remains fixed during the whole training. The number of points is 2000 in the domain, plus 100 on each boundary. All boundary conditions are implemented as penalty terms in the loss function, with unitary weights. The network parameters are initialized with a Xavier uniform distribution. For each test, a set of 5 runs is performed to assess the robustness with respect to the initialization and sampling. The training is organized in two distinct phases: first, ADAM optimizer is used during 2000 iterations (fixed learning rate 
+
+10 −3), followed by BFGS optimizer until full convergence of the loss function. 
+
+Spline representation For B-Splines, one considers basis degrees ranging from 2 to 6, with an increasing number of degrees of freedom in each direction, depending on the case. A uniform knot vector is employed, with clamped extremities. All boundary conditions are taken into account by projection, except for the last testcase. The Greville abscissae are chosen as collocation points. The B-Splines are initialized with a constant value depending on the problem. The training is here performed in a single phase, using directly BFGS optimizer, until full convergence. 
+
+Error estimate The accuracy of the resolution is measured by computing the Root Mean Square Error (RMSE) and the Maximum Absolute Error (MaxAE). RMSE is estimated by computing the difference between the analytical solution u⋆ and the numerical one u, for a uniform grid including Nϵ = 512 points per direction: 
+
+ϵ2(θ) = 
+
+vuut 1
+
+N 2
+
+> ϵNϵ
+
+X
+
+> i=1
+> Nϵ
+
+X
+
+> j=1
+
+|u(θ; xi, t j ) − u⋆(xi, t j )|2 (22) The same grid is employed for the two representations, ensuring a fair comparison. MaxAE is also estimated using the same grid: 
+
+ϵ∞(θ) = max  
+
+> i,j =1 ,··· ,N ϵ
+
+|u(θ; xi, t j ) − u⋆(xi, t j )| (23) For neural representations, since a set of independant runs are performed for each test, the average, maximum and minimum values obtained are provided. Moreover, the absolute error fields |u(θ) − u⋆| obtained using the two representations are compared in all testcases, for configurations counting about 1200 degrees of freedom. 
+
+Computational time The comparison of the computational times required to reach a target accuracy would be obviously of great interest. However, runtime depends on several factors, like hardware characteritics, implementation, code language, etc. that make the comparison tedious and usually impossible to reproduce. Therefore, we do not provide computational times in the present work and prefer focus on error estimates. 10 6.2 Poisson equation 
+
+The first problem studied is a two-dimensional linear elliptic problem: 
+
+∂xx u + ∂yy u = 5 π2 sin( πx ) sin(2 πy ) ∀(x, y ) ∈] − 1, 1[ 2, (24) with the boundary conditions: 
+
+u(x, −1) = 2 x + 1 (25) 
+
+u(x, 1) = 2 x − 1 (26) 
+
+u(−1, y ) = −y − 2 (27) 
+
+u(1 , y ) = −y + 2 . (28) This problem admits as closed-form solution u(x, y ) = 2 x − y + sin( πx ) sin(2 πy ). For B-Splines, the solution is initialized with a zero field, except the degrees of freedom located at the boundaries, which are obtained by projection of the analytical solution. B-Spline representations are tested using 4, 8, 16, 32 and 64 degrees of freedom in each direction. The analytical solution can be seen in Fig. (4) and the variation in error as a function of the number of degrees of freedom is depicted in Fig. (6), with the same log scale for the two representations. Numerical values of error are provided in Tabs. (1-2). The absolute error fields are shown in Fig. (5). 
+
+Figure 4: Analytical solution for Poisson equation. As can be seen, the convergence of the error obtained using B-Spline representations cor-responds perfectly to the expected theoretical results. The error tends to zero as the number of parameters increases and convergence rates of value p and p − 1 are observed for even and odd degrees respectively. Results obtained using neural networks are very different. Whatever the network architecture, the error trajectories follow a similar trend, with a fast reduction of error for small networks and a low one for larger networks. It should be noticed that making the network deeper or larger yields similar effects. Both methods can reach the error level 10 −4
+
+with a few parameters (about 500 ), but neural networks fail in reducing the error below this threshold, contrary to B-Splines. As shown by the absolute error maps in Fig. (5), the error for the network is localized at the boundaries of the domain, which highlights an unbalanced loss formulation. For B-Splines, the tensorial nature of the representation can be obviously observed. 11 Layers Neurons d.o.f. ϵ2 ϵ∞
+
+min average max min average max 1 8 33 6.83e-01 9.81e-01 1.26e+00 3.15e+00 4.06e+00 4.84e+00 1 16 65 3.00e-04 6.26e-02 3.07e-01 1.03e-03 5.21e-01 2.58e+00 1 32 129 1.38e-04 3.41e-04 5.56e-04 6.05e-04 1.59e-03 2.85e-03 1 64 257 8.99e-05 1.48e-04 2.46e-04 5.27e-04 9.36e-04 1.30e-03 2 8 105 5.10e-03 7.96e-03 1.08e-02 3.29e-02 5.55e-02 7.36e-02 2 16 337 1.07e-03 1.54e-03 1.91e-03 8.81e-03 1.50e-02 1.74e-02 2 32 1185 1.05e-04 2.59e-04 3.54e-04 7.87e-04 2.50e-03 3.44e-03 2 64 4417 7.83e-05 1.66e-04 3.24e-04 8.84e-04 1.53e-03 2.77e-03 3 8 177 2.78e-03 3.08e-03 3.64e-03 2.12e-02 3.02e-02 3.36e-02 3 16 609 1.72e-04 3.37e-04 4.81e-04 1.92e-03 3.32e-03 4.14e-03 3 32 2241 9.39e-05 1.33e-04 2.03e-04 9.61e-04 1.14e-03 1.34e-03 3 64 8577 5.24e-05 8.28e-05 1.42e-04 4.86e-04 9.57e-04 1.42e-03 4 8 249 5.94e-04 1.40e-03 1.98e-03 4.09e-03 1.19e-02 1.83e-02 4 16 881 2.08e-04 2.67e-04 4.31e-04 1.93e-03 2.88e-03 5.06e-03 4 32 3297 6.66e-05 8.92e-05 1.15e-04 7.02e-04 9.32e-04 1.24e-03 4 64 12737 4.16e-05 6.26e-05 8.36e-05 5.26e-04 7.23e-04 1.09e-03 5 8 321 4.40e-04 7.40e-04 1.06e-03 4.48e-03 8.87e-03 1.29e-02 5 16 1153 1.78e-04 2.39e-04 2.85e-04 1.81e-03 2.36e-03 2.92e-03 5 32 4353 5.88e-05 8.26e-05 9.89e-05 5.85e-04 7.78e-04 1.00e-03 5 64 16897 3.92e-05 6.63e-05 8.46e-05 3.32e-04 6.80e-04 9.97e-04 Table 1: Errors for Poisson equation for MLP networks. 12 Degree d.o.f. ϵ2 ϵ∞
+
+2 25 7.51e-01 1.83e+00 2 81 1.39e-01 3.94e-01 2 289 2.23e-02 6.41e-02 2 1089 4.00e-03 9.13e-03 2 4225 8.22e-04 1.73e-03 3 36 3.62e-01 9.08e-01 3 100 9.63e-02 2.55e-01 3 324 2.37e-02 5.01e-02 3 1156 5.74e-03 1.16e-02 3 4356 1.40e-03 2.82e-03 4 49 5.99e-01 1.52e+00 4 121 1.91e-02 4.36e-02 4 361 6.64e-04 1.64e-03 4 1225 3.69e-05 8.35e-05 4 4489 2.23e-06 4.77e-06 5 64 6.09e-02 1.69e-01 5 144 1.13e-02 3.31e-02 5 400 2.82e-04 7.13e-04 5 1296 1.53e-05 3.21e-05 5 4624 8.92e-07 1.83e-06 6 81 1.17e-01 2.78e-01 6 169 2.60e-03 8.13e-03 6 441 2.15e-05 5.59e-05 6 1369 2.56e-07 6.17e-07 6 4761 3.78e-09 8.95e-09 Table 2: Errors for Poisson equation for B-Splines. 13 (a) Neural network (b) B-Spline basis 
+
+Figure 5: Error fields for Poisson equation (about 1200 parameters).  
+
+> (a) Neural network (b) B-Spline basis
+
+Figure 6: ϵ2 norm of error w.r.t. the number of degrees of freedom for Poisson equation. 14 6.3 Burgers equation with viscosity 
+
+As second problem, one considers the Burgers equation with a viscous term, which allows to introduce a non-linear hyperbolic term, whose influence is balanced by adjusting the viscosity coefficient ν:
+
+∂tu + u ∂ xu − ν∂ xx u = 0 ∀(x, t ) ∈] − 5, 20[ ×]1 , 4] . (29) This equation admits a closed-form solution for t > 0, for an initial state equal to a Dirac distribution 2νRδ (x) at t = 0 [41]: 
+
+u⋆(x, t ) = 
+
+r νπt 
+
+(eR − 1) e− x24νt 
+
+1 + 12 (eR − 1) erfc ( x 
+
+> 4νt
+
+) , (30) with erfc() the complement of the cumulative distribution function. The problem considered numerically is solved for the time interval ]1 , 4] with ν = 1 and R = 20 . The initial condition at t = 1 and the boundary conditions at x = −5 and x = 20 are set using the analytical solution, by projection for B-Splines and penalization for neural networks. The remaining B-Spline parameters are initialized with zero value. B-Spline representations are tested using 8, 16, 32, 64 and 128 parameters in each direction. The analytical solution is depicted in Fig. (7). It is characterized by a smooth shock traveling from left to right, with a progressive dissipation as time growth. 
+
+Figure 7: Analytical solution for Burgers equation with viscosity. The variation in error as a function of the number of parameters is depicted in Fig. (9) and provided in Tabs. (3-4). As can be seen, the presence of the non-linear hyperbolic term makes the problem more difficult. The method using B-Splines exhibits a high-level error when the number of parameters is low, whatever the degree employed, but succeeds in reducing the error when the bases are refined enough. The asymptotic convergence rates are approximately recovered. Error maps are presented in Fig. (8). Actually, the error is found located around the shock (Gibbs phenomenon), which cannot be solved accurately as long as there are not enough degrees of freedom in its vicinity. The situation is quite different using neural networks, that can obtain a good approximation of the solution with a low number of parameters, except single-layer networks. However, as for the previous problem, there seems to be a plateau at error level 10 −4, that cannot be exceeded. One can also notice that the dispersion of results obtained for each test is larger than the one observed for the previous problem. 15 Layers Neurons d.o.f. ϵ2 ϵ∞
+
+min average max min average max 1 8 33 3.53e-01 3.90e-01 4.45e-01 2.68e+00 2.96e+00 3.22e+00 1 16 65 1.08e-01 1.70e-01 2.06e-01 6.73e-01 1.11e+00 1.37e+00 1 32 129 2.40e-02 5.59e-02 9.11e-02 1.82e-01 4.16e-01 6.85e-01 1 64 257 1.06e-02 1.66e-02 3.22e-02 8.15e-02 1.51e-01 3.48e-01 2 8 105 7.85e-04 1.44e-03 2.23e-03 6.23e-03 1.03e-02 1.54e-02 2 16 337 1.71e-04 3.86e-04 7.79e-04 1.65e-03 4.22e-03 8.55e-03 2 32 1185 7.76e-05 1.90e-04 3.05e-04 1.44e-03 2.25e-03 3.02e-03 2 64 4417 6.32e-05 1.71e-04 2.54e-04 8.23e-04 1.87e-03 2.69e-03 3 8 177 1.73e-04 3.56e-04 5.50e-04 1.22e-03 2.46e-03 6.04e-03 3 16 609 9.30e-05 2.41e-04 4.30e-04 5.94e-04 1.90e-03 3.77e-03 3 32 2241 6.55e-05 1.59e-04 3.71e-04 4.45e-04 1.25e-03 2.67e-03 3 64 8577 3.51e-05 1.74e-04 5.75e-04 2.80e-04 1.53e-03 4.29e-03 4 8 249 1.36e-04 2.93e-04 6.90e-04 9.37e-04 2.22e-03 3.93e-03 4 16 881 6.70e-05 1.35e-04 2.36e-04 4.31e-04 1.41e-03 2.15e-03 4 32 3297 5.61e-05 1.16e-04 2.82e-04 4.92e-04 1.08e-03 2.35e-03 4 64 12737 5.01e-05 1.02e-04 2.53e-04 3.74e-04 8.75e-04 1.97e-03 5 8 321 1.70e-04 2.29e-04 3.15e-04 9.16e-04 1.62e-03 2.54e-03 5 16 1153 8.88e-05 1.21e-04 1.45e-04 4.78e-04 1.19e-03 1.53e-03 5 32 4353 4.96e-05 9.23e-05 1.41e-04 5.35e-04 7.95e-04 1.32e-03 5 64 16897 6.12e-05 9.28e-05 1.87e-04 4.06e-04 7.16e-04 1.21e-03 Table 3: Errors for Burgers equation with viscosity for MLP networks. 16 Degree d.o.f. ϵ2 ϵ∞
+
+2 81 1.68e+00 5.21e+00 2 289 5.12e-01 2.74e+00 2 1089 8.59e-02 9.12e-01 2 4225 1.26e-02 1.60e-01 2 16641 2.78e-03 3.04e-02 3 100 7.87e-01 2.97e+00 3 324 2.95e-01 1.90e+00 3 1156 4.41e-02 6.50e-01 3 4356 9.44e-03 1.23e-01 3 16900 2.55e-03 3.10e-02 4 121 1.54e+00 5.07e+00 4 361 3.40e-01 2.13e+00 4 1225 4.19e-02 6.27e-01 4 4489 1.90e-03 5.09e-02 4 17161 7.94e-05 2.19e-03 5 144 7.84e-01 2.82e+00 5 400 3.25e-01 2.09e+00 5 1296 3.87e-02 5.55e-01 5 4624 1.51e-03 4.47e-02 5 17424 3.75e-05 1.05e-03 6 169 1.51e+00 4.93e+00 6 441 3.14e-01 1.98e+00 6 1369 3.70e-02 5.46e-01 6 4761 1.24e-03 3.53e-02 6 17689 1.04e-05 4.35e-04 Table 4: Errors for Burgers equation with viscosity for B-Splines. 17 (a) Neural network (b) B-Spline basis 
+
+Figure 8: Error fields for Burgers equation with viscosity (about 1200 parameters).  
+
+> (a) Neural network (b) Spline basis
+
+Figure 9: ϵ2 norm of error w.r.t. the number of parameters for Burgers equation with viscosity. 18 6.4 Incompressible Navier-Stokes equations 
+
+We consider then the two-dimensional steady incompressible Navier-Stokes equations: 
+
+u ∂ xu + v ∂ yu − ν(∂xx u + ∂yy u) + p/ρ = 0 , (31) 
+
+u ∂ xv + v ∂ yv − ν(∂xx v + ∂yy v) + p/ρ = 0 , (32) 
+
+∂xu + ∂yv = 0 ∀(x, y ) ∈] − 1, 1[ 2, (33) where (u, v ) are the two components of the velocity and p the pressure. The density ρ and the viscosity ν are supposed constant. The main point of interest in this problem is to see how a system of equations is taken into account. When using neural networks, all unknown fields are modeled by a unique network with three outputs, which introduces a coupling between the fields in the representation. On the contrary, when using B-Splines, each unknown is represented by its own model in a fully uncoupled way, yielding an increase of the number of degrees of freedom by a factor three. The closed-form solution found by Kovaznay [19] is targeted: 
+
+u(x, y ) = 1 − eλx cos(2 πy ), (34) 
+
+v(x, y ) = λ
+
+2π eλx sin(2 πy ), (35) 
+
+p(x, y ) = 12 (1 − e2λx ), (36) with λ = 12 (R − √R2 + 16 π2) and R = U L/ν . This solution can be interpreted as the flow behind a two-dimensional grid. In the configuration studied, U = L = 1 , ν = 0 .02 and ρ = 1 .The computational domain is the square [−1, 1] × [−1, 1] . As previously, all the boundary conditions are set using the analytical solution, by projection for B-Splines and penalization for neural networks. B-Spline parameters are initialized with zero value, except at boundaries. B-Spline representations are tested using 8, 16, 32 and 64 parameters in each direction and each unknown field. The exact solution is shown on Fig. (10). The variation in error as a function of the number of parameters is depicted in Fig. (12), for the field u, while error values are provided in Tabs. (5-6). For B-Splines, the total number of parameters is reported, accounting for the three unknown fields. We find trends similar to those observed for the elliptic problem, except for the single-layer networks which exhibit higher error levels. Regarding B-Splines, the theoretical asymptotic convergence rates are perfectly recovered. The error maps in Fig. (11) show a perfectly symmetric error field for B-Splines, whereas networks cannot maintain the symetry of the solution due to the randomness of the sampling and initialization. 19 Layers Neurons d.o.f. ϵ2 ϵ∞
+
+min average max min average max 1 8 51 9.31e-02 1.94e-01 3.13e-01 3.45e-01 5.12e-01 1.03e+00 1 16 99 1.27e-02 2.06e-02 3.91e-02 3.19e-02 6.93e-02 1.22e-01 1 32 195 2.17e-03 4.88e-03 8.59e-03 1.22e-02 2.11e-02 3.75e-02 1 64 387 3.35e-04 5.54e-04 7.28e-04 2.48e-03 4.34e-03 5.99e-03 2 8 123 2.08e-03 4.04e-03 7.91e-03 5.85e-03 1.41e-02 2.85e-02 2 16 371 1.93e-04 3.35e-04 4.22e-04 8.30e-04 1.35e-03 1.68e-03 2 32 1251 1.88e-04 2.29e-04 2.64e-04 6.78e-04 9.64e-04 1.35e-03 2 64 4547 1.11e-04 1.43e-04 1.81e-04 6.14e-04 7.23e-04 9.03e-04 3 8 195 7.29e-04 1.01e-03 1.19e-03 3.02e-03 3.75e-03 4.63e-03 3 16 643 1.52e-04 2.09e-04 3.20e-04 7.07e-04 9.15e-04 1.16e-03 3 32 2307 1.07e-04 1.38e-04 1.81e-04 6.16e-04 7.05e-04 8.82e-04 3 64 8707 4.97e-05 6.18e-05 7.35e-05 2.23e-04 4.12e-04 6.08e-04 4 8 267 3.75e-04 5.75e-04 7.86e-04 1.49e-03 2.33e-03 3.44e-03 4 16 915 9.84e-05 1.62e-04 2.82e-04 5.10e-04 7.46e-04 1.22e-03 4 32 3363 8.29e-05 1.05e-04 1.37e-04 4.36e-04 4.78e-04 5.37e-04 4 64 12867 4.94e-05 6.13e-05 7.98e-05 3.33e-04 3.82e-04 4.79e-04 5 8 339 4.27e-04 4.71e-04 5.87e-04 1.17e-03 1.55e-03 2.24e-03 5 16 1187 9.91e-05 1.83e-04 2.43e-04 5.86e-04 8.66e-04 1.10e-03 5 32 4419 6.74e-05 1.04e-04 1.45e-04 4.21e-04 5.41e-04 7.92e-04 5 64 17027 3.04e-05 5.47e-05 8.93e-05 1.37e-04 3.78e-04 7.68e-04 Table 5: Errors for Navier-Stokes equations for MLP networks ( u field). 20 Degree d.o.f. ϵ2 ϵ∞
+
+2 243 6.98e-02 1.91e-01 2 867 4.90e-03 1.39e-02 2 3267 8.91e-04 2.35e-03 2 12675 2.14e-04 5.66e-04 3 300 3.58e-02 9.19e-02 3 972 7.33e-03 2.18e-02 3 3468 1.79e-03 5.34e-03 3 13068 4.69e-04 1.33e-03 4 363 9.79e-03 3.32e-02 4 1083 2.27e-04 5.93e-04 4 3675 1.24e-05 3.50e-05 4 13467 7.58e-07 2.14e-06 5 432 3.13e-03 1.16e-02 5 1200 8.54e-05 2.79e-04 5 3888 4.92e-06 1.48e-05 5 13872 3.06e-07 8.74e-07 6 507 1.52e-03 3.96e-03 6 1323 7.27e-06 1.74e-05 6 4107 8.97e-08 2.53e-07 6 14283 1.37e-09 5.31e-09 Table 6: Errors for Navier-Stokes equations for B-Splines ( u field). 21 Figure 10: Analytical solution for Kovaznay problem, for u (top), v (middle) and p (bottom). 22 (a) Neural network (b) B-Spline basis 
+
+Figure 11: Error fields for u for Navier-Stokes equations (about 1200 parameters).  
+
+> (a) Neural network (b) Spline basis
+
+Figure 12: ϵ2 norm of error w.r.t. the number of parameters for Navier-Stokes equations. 23 6.5 Compressible Euler equations 
+
+For the last case, the non-linear system of steady compressible Euler equations is considered: 
+
+∂x(ρu ) + ∂y(ρv ) = 0 (37) 
+
+∂x(ρu 2 + p) + ∂y(ρuv ) = 0 (38) 
+
+∂x(ρvu ) + ∂y(ρv 2 + p) = 0 (39) 
+
+∂x(u(ρE + p)) + ∂y(v(ρE + p)) = 0 (40) where ρ is the density, (u, v ) the velocity components, E the total energy and p = ρ(γ −1)( E − 
+
+> 12
+
+(u2 + v2)) the pressure. Note that there are no diffusion terms and the unsteady version of this system is purely hyperbolic. We consider here as testcase the flow between two cylinders, whose closed-form solution is depicted in Fig. (13) and writes: 
+
+ρ = 1 , (41) 
+
+u = − sin( θ) uθ, (42) 
+
+v = cos( θ) uθ, (43) 
+
+p = 1 + 175 2
+
+ r2
+
+2 − 32 ln (r) − 128 
+
+r2
+
+
+
+, (44) with uθ = 175 (−r + 16  
+
+> r
+
+). Contrary to the previous testcases, the computational domain is not a square, which impacts the learning process. This does not modify the implementation of the approach based on neural networks. Nevertheless, boundary conditions are now imposed on curved boundaries that do not correspond to constant x or y values, which makes the training more difficult. For B-Splines, a mapping is first defined between the parametric domain and the physical one by solving a least-square fitting problem, as commonly done in isogeometric analysis [9], yielding a relationship between the parametric coordinates and the Cartesian coordinates x(ξ1, ξ 2) and y(ξ1, ξ 2). This mapping is used to compute analytically the derivatives, e.g. ∂xu = ∂ξ1 u ∂ xξ1 + ∂ξ2 u ∂ xξ2. Thanks to this mapping, the boundaries of the computational domain still correspond to B-Spline extremities. The inlet and outlet boundary conditions, imposed at x = 0 and y = 0 boundaries, are provided by the analytical solution of the problem. On the two curved boundaries, only a slip boundary condition is prescribed for the velocity, i.e. ⃗ U ·⃗n. All boundary conditions are taken into account by penalization for neural networks, whereas B-Splines rely on projection methods for inlet and outlet conditions associated with penalization for the slip condition, which is not known beforehand. The variation in error as a function of the number of parameters is depicted in Fig. (15) in log scale and values are provided in Tabs. (7-8), for the pressure field p. As previously, one can observe a significant difference between the results obtained by the two representations. While the B-Splines exhibit an error tending to zero as the number of parameters increases and achieve a reduction of the error in agreement with the theoretical asymptotic convergence rates, the neural networks fail in reducing the error below 5 10 −5, whatever the architecture chosen. As shown in Fig. (14), for a number of parameters close to one thousand and two hundreds, B-Splines allow to reach an error level below 10 −5, whereas the error for neural networks remains around 10 −4. Again, the symmetry is lost by solving the problem with neural networks, contrary to B-Splines. 24 Layers Neurons d.o.f. ϵ2 ϵ∞
+
+min average max min average max 1 8 60 7.77e-04 1.46e-03 2.48e-03 3.01e-03 4.59e-03 9.37e-03 1 16 116 3.64e-04 8.87e-04 1.96e-03 1.28e-03 2.47e-03 4.77e-03 1 32 228 1.17e-04 1.81e-04 2.57e-04 4.02e-04 5.29e-04 6.64e-04 1 64 452 1.04e-04 1.33e-04 1.73e-04 3.32e-04 3.83e-04 4.35e-04 2 8 132 1.17e-04 1.88e-04 2.94e-04 3.38e-04 6.42e-04 1.02e-03 2 16 388 7.53e-05 1.30e-04 1.89e-04 1.87e-04 3.76e-04 6.93e-04 2 32 1284 5.40e-05 7.20e-05 1.06e-04 1.39e-04 1.90e-04 2.91e-04 2 64 4612 2.92e-05 7.68e-05 1.21e-04 1.68e-04 2.16e-04 2.72e-04 3 8 204 8.99e-05 1.40e-04 2.45e-04 2.85e-04 4.24e-04 6.03e-04 3 16 660 7.09e-05 1.29e-04 1.57e-04 2.22e-04 3.23e-04 3.73e-04 3 32 2340 4.55e-05 8.56e-05 1.07e-04 1.27e-04 2.03e-04 2.71e-04 3 64 8772 2.43e-05 5.32e-05 6.88e-05 1.28e-04 1.60e-04 1.80e-04 4 8 276 5.64e-05 1.24e-04 2.13e-04 2.22e-04 3.04e-04 4.54e-04 4 16 932 5.80e-05 9.52e-05 1.32e-04 1.56e-04 2.30e-04 2.98e-04 4 32 3396 3.49e-05 8.18e-05 1.09e-04 1.01e-04 1.89e-04 2.40e-04 4 64 12932 5.06e-05 7.30e-05 1.04e-04 1.20e-04 1.68e-04 2.50e-04 5 8 348 5.10e-05 7.82e-05 1.08e-04 1.71e-04 2.30e-04 3.51e-04 5 16 1204 3.32e-05 5.90e-05 9.44e-05 8.64e-05 1.59e-04 2.10e-04 5 32 4452 2.80e-05 6.64e-05 1.02e-04 1.13e-04 1.68e-04 2.57e-04 5 64 17092 3.82e-05 6.47e-05 9.37e-05 9.72e-05 1.56e-04 2.06e-04 Table 7: Errors for Euler equations for MLP networks ( p field). 25 Degree d.o.f. ϵ2 ϵ∞
+
+2 100 1.62e-03 4.78e-03 2 364 4.16e-04 1.24e-03 2 1156 9.46e-05 2.23e-04 2 4356 2.85e-05 1.33e-04 3 144 4.67e-04 1.38e-03 3 400 4.63e-05 1.26e-04 3 1296 3.99e-06 1.21e-05 3 4624 3.28e-07 9.28e-07 4 196 1.20e-04 2.69e-04 4 484 7.98e-06 1.87e-05 4 1444 6.14e-07 1.46e-06 4 4900 6.42e-08 1.21e-07 5 256 3.82e-05 8.94e-05 5 576 1.17e-06 2.95e-06 5 1600 3.27e-08 1.02e-07 5 5184 1.90e-09 6.08e-09 6 324 1.11e-05 2.87e-05 6 676 1.50e-07 4.70e-07 6 1764 1.22e-08 3.05e-08 6 5476 2.98e-10 8.90e-10 Table 8: Errors for Euler equation for B-Splines ( p field). 26 (a) density (b) velocity along x  
+
+> (c) velocity along y(d) pressure
+
+Figure 13: Analytical solution for compressible Euler equations.  
+
+> (a) Neural network (b) B-Spline basis
+
+Figure 14: Error fields for p for Euler equations (about 1200 parameters). 27 (a) Neural network (b) Spline basis 
+
+Figure 15: ϵ2 norm of error w.r.t. the number of parameters for p field for Euler equations. 28 7 Additional studies 
+
+The results presented previously have been obtained by using different representations for the solution, but also different kinds of sampling (LHS for networks vs Greville points for B-Splines) and different arithmetic precisions (single for networks vs double for B-Splines). Therefore additional investigations are carried out, before concluding about the role of the representation. 
+
+7.1 Sampling 
+
+Numerical experiments for B-Splines have been achieved by using Greville points to evaluate the residuals. This sampling is derived from a tensor product of distributions and its size increases with the number of degrees of freedom. On the contrary, a random sampling of fixed size has been employed for neural networks. To quantify the impact of this choice on the results, the problem corresponding to the Poisson equation is solved again using neural networks, but employing a sampling similar to Greville points, whose size is chosen to have approximately the same number of networks parameters and collocation points. The difference between the two samplings is illustrated in Fig. (16).  
+
+> (a) Latin Hypercube Sampling (b) Sampling based on Greville points
+
+Figure 16: Comparison of sampling methods for an approximate size of 2000 points. This study is conducted for a set of four-layer networks, including a number of neurons per layer ranging from 8 to 64 as previously. The variation in error as a function of the number of parameters is depicted in Fig. (17) in the same log scale as Fig. (6). Values of error are provided in Tab. (9). As seen, the change of sampling type and size has a negligible impact on the results. One can also notice that the variability of the results remains similar, although a deterministic sampling is employed. It proves that this variability mainly originates from the initialization of the networks. 29 Neurons d.o.f. ϵ2 ϵ∞
+
+min average max min average max LHS 8 249 5.94e-04 1.40e-03 1.98e-03 4.09e-03 1.19e-02 1.83e-02 16 881 2.08e-04 2.67e-04 4.31e-04 1.93e-03 2.88e-03 5.06e-03 32 3297 6.66e-05 8.92e-05 1.15e-04 7.02e-04 9.32e-04 1.24e-03 64 12737 4.16e-05 6.26e-05 8.36e-05 5.26e-04 7.23e-04 1.09e-03 Greville 8 249 1.33e-03 1.99e-03 2.65e-03 1.07e-02 1.26e-02 1.42e-02 16 881 1.56e-04 2.83e-04 5.03e-04 1.39e-03 2.56e-03 4.64e-03 32 3297 1.02e-04 1.14e-04 1.48e-04 1.02e-03 1.37e-03 2.07e-03 64 12737 3.70e-05 5.23e-05 6.07e-05 4.22e-04 5.36e-04 7.27e-04 Table 9: Errors for Poisson equation using different samplings (four layers). 
+
+Figure 17: ϵ2 norm of error w.r.t the number of degrees of freedom for Greville sampling. 30 7.2 Single / double precision 
+
+We investigate now the influence of the arithmetic precision on the results. Indeed, neural networks are usually implemented using single precision, for computational efficiency reeasons, but this choice may have a significant impact, as reported in [44]. In particular, the use of BFGS-like optimizers during the training may require a higher arithmetic accuracy when upgrading the Hessian matrix from differences of loss gradients. Therefore, the case concerning the Poisson equation is solved again, for the 4-layer networks, using double precision. The variation in error as a function of the number of network parameters is depicted in Fig. (18) and values are provided in Tab. (10). As can be observed, this parameter has a real impact on the results, since the error level drops of one order of magnitude. Nevertheless, the rate of error reduction remains limited: the increase from 32 to 64 neurons per layer yields a small error reduction although a large increase of the number of parameters. Moreover, the computational time has increased significantly. Neurons d.o.f. ϵ2 ϵ∞
+
+min average max min average max single 8 249 5.94e-04 1.40e-03 1.98e-03 4.09e-03 1.19e-02 1.83e-02 16 881 2.08e-04 2.67e-04 4.31e-04 1.93e-03 2.88e-03 5.06e-03 32 3297 6.66e-05 8.92e-05 1.15e-04 7.02e-04 9.32e-04 1.24e-03 64 12737 4.16e-05 6.26e-05 8.36e-05 5.26e-04 7.23e-04 1.09e-03 double 8 249 6.53e-05 1.24e-04 2.35e-04 7.17e-04 1.42e-03 2.47e-03 16 881 8.62e-06 1.57e-05 1.85e-05 9.61e-05 2.10e-04 3.16e-04 32 3297 5.27e-06 7.08e-06 9.32e-06 6.51e-05 8.41e-05 1.14e-04 64 12737 4.51e-06 5.66e-06 7.65e-06 4.11e-05 7.13e-05 8.94e-05 Table 10: Errors for Poisson equation using single and double precision (four layers). 
+
+Figure 18: ϵ2 norm of error w.r.t the number of degrees of freedom for single and double precision. 31 7.3 Comparison of training phase 
+
+Finally, it is interesting to examine more in depth the minimization of the training loss. As underlined previously, the convexity of the formulation based on B-Splines allows to solve the problem using directly the BFGS algorithm, whereas a first phase using ADAM is required when using neural networks. We illustrate in this section the differences observed using the two optimizers and the two representations. The configuration chosen corresponds to the Poisson case, solved using a 2-layer network with 32 neurons per layer and a B-Spline basis of degree 4 with 34 × 34 degrees of freedom, yielding about 1200 parameters for both representations. The history of the training loss functions, ϵ2 and ϵ∞ error norms are plotted in Fig. (19) using the same scales. Loss values are normalized to be unitary at start.   
+
+> (a) Network using Adam (b) Network using BFGS
+> (c) Network using Adam + BFGS (d) B-Splines using BFGS
+
+Figure 19: History of errors and losses during training phase. One can observe a very slow convergence of ADAM optimizer, when used alone (Fig. (19a)). If BFGS optimizer is employed directly from the initial network parameters, a fast convergence is obtained (Fig. (19b)), but towards a local minimum. Indeed, using BFGS after 2000 ADAM iterations yields lower loss values (Fig. (19c)). However, a far lower loss value is obtained for the B-Spline representation, with fewer iterations. Although these results are obtained for a 32 specific random initialization of the network, very similar plots are generally observed for other initial states, which highlights how the learning problem is conditioned differently depending on the representation used. 
+
+# 8 Discussion 
+
+The following lessons can be learnt from these numerical experiments: • Neural networks have the ability to approximate the solution of a PDE problem using just a few parameters . This has been noticed in particular when solving the Burgers equation, whose solution is characterized by a localized variation of value. The absence of compact support is certainly an advantage in this context, permitting a self-adaption mechanism focusing the degrees of freedom where needed. • Contrary to B-Splines, neural networks fail to reduce the error as much as would be desired . In particular, an increase of the number of parameters does not ensure that the error will be reduced accordingly. No asymptotic convergence has been established, whatever the case. • A significant variability in the results using neural networks has been reported, that seems to be of higher amplitude for convection-dominant problems. This variability is 
+
+due to the initialization of the network parameters , as shown by using a deterministic sampling. The ϵ2-norm of error typically exhibits a variability of factor 2 to 3, whereas variations of one order of magnitude can be observed for the ϵ∞-norm. This is a strong practical limitation of the use of neural networks, since one does not want to perform several random runs when solving an engineering problem. • The resolution of the loss minimization problem is far more difficult using neural net-works than using B-Splines. It has been shown that the optimization often lead to a local minimum and that the convergence rate may be very low, even if a quasi-Newton optimizer is employed. As consequences, a long iterative process has to be achieved and deceptive results may be obtained. Consequently, it seems that the error due to the optimization dominates the errors of quadrature and approximation .• The use of double precision can help to increase the efficiency of the training for neural networks, typically reducing the error by one order of magnitude but maintaining a low rate of convergence. • The use of B-Spline bases yields an efficient physics-informed learning procedure, in-cluding a fast convergence of the loss minimization and an established convergence rate as the number of degrees of freedom increases. This proves that the dominant error for B-Splines is the approximation error. Nevertheless, the tensorial nature of B-Splines makes this representation untractable when the dimension of the input (coordinates and other parameters) or the output (physical fields) increases. According to these observations, the bottleneck for physics-informed neural networks lies in the non-convexity and ill-conditioning of the loss function. This yields a slow convergence and a dependancy on the initialization. B-Splines are not affected by these limitations and can exhibit asymptotic convergence rates in accordance with the approximation theory, but suffer 33 from the curse of dimensionality. This lead to the two following questions: how to improve the convergence of the training of neural networks ? How to improve the scalability of B-Spline bases ? Regarding neural networks, several works can be found in the literature that attempt to identify the key factors limiting the convergence and find a remedy (see for instance [20, 28, 38]). As pointed out in this study, there are certainly several factors increasing the stiff-ness of the training: the aggregation of different terms in the loss function, the mix of data values and differential information, the non-localization of degrees of freedom, etc. Several approaches have been proposed to overcome these difficulties, such as adaptive penalty [11], natural gradient descent [26], preconditioning [31], implicitation of boundary data [35], adap-tive sampling [42], etc. However, as far as we know, none of the proposed methods has permitted to establish a clear convergence as the number of network parameters increases. This property is fundamental for engineering applications because it allows to pave the way towards the control of simulation error. Concerning B-Splines, an improvement of scalability and computational efficiency could be achieved by introducing either local refinement strategies, such as LR-B-Splines [4] or TH-B-Splines [14], that allow to focus the degrees of freedom in regions of interest, and adopt low-rank B-Spline representations [13, 25], that may yield a reduction of the dimensionality of the problem. 
+
+# 9 Conclusion 
+
+The objective of this work was to conduct a rigorous comparison between neural and spline representations in the perspective of physics-informed learning. Four PDE problems have been considered and the results have been compared, in terms of l2 and l∞ error norms, with a focus on the error reduction as the number of degrees of freedom increases. Moreover, the roles of the sampling, the arithmetic precision and the optimizer have been studied more in depth for one case. It has been found that the two representations exhibit different properties. On the one hand, neural networks can provide a rather good approximation of the solution with a few parameters, but suffers from difficulties during the training that prevent from achieving a high accuracy. On the other hand, B-Splines allow a rigourous control of errors, but have a low scalability due to their tensorial nature. Therefore, a possible perspective would consist in the hybridization or coupling of both representations to benefit from their respective advantages. 34 References 
+
+[1] J. A. Anderson. An introduction to neural networks . the MIT Press, 1995. [2] A. G. Baydin, B. A. Pearlmutter, A. A. Radul, and J. M. Siskind. Automatic differentia-tion in machine learning: a survey. Journal of Machine Learning Research , 18(153):1–43, 2018. [3] S. Bhatnagar, Y. Afshar, S. Pan, K. Duraisamy, and S. Kaushik. Prediction of aero-dynamic flow fields using convolutional neural networks. Computational Mechanics ,64(2):525–545, 2019. [4] A. Bressan. Some properties of LR-splines. Computer Aided Geometric Design , 30(8):778– 794, 2013. [5] G. Canali, N. Demo, and G. Rozza. Trainable spline representations for physics-informed learning. arXiv preprint arXiv:2607.15751 , 2026. [6] J.A. Cottrell, T.J.R. Hughes, and Y. Bazilevs. Isogeometric analysis : towards integration of CAD and FEA . John Wiley & sons, 2009. [7] S. Cuomo, V.S. Di Cola, F. Giampaolo, G. Rozza, M. Raissi, and F. Piccialli. Scien-tific Machine Learning Through Physics–Informed Neural Networks: Where we are and What’s Next. Journal of Scientific Computing , 92(3):88, July 2022. [8] C. De Boor. A Practical Guide to Splines . Springer Verlag, 1978. [9] R. Duvigneau. Isogeometric analysis for compressible flows using a Discontinuous Galerkin method. Computer Methods in Applied Mechanics and Engineering , 333(443– 461), 2018. [10] G. Farin. Curves and Surfaces for Computer-Aided Geometric Design . Academic Press, 1989. [11] B. Gao, R. Yao, and Y. Li. Physics-informed neural networks with adaptive loss weight-ing algorithm for solving partial differential equations. Computers & Mathematics with Applications , 181:216–227, 2025. [12] N. Geneva and N. Zabaras. Transformers for modeling physical systems. Neural Networks ,146:272–289, 2022. [13] I. Georgieva and C. Hofreither. An algorithm for low-rank approximation of bivariate functions using splines. Journal of Computational and Applied Mathematics , 310:80–91, 2017. Numerical Algorithms for Scientific and Engineering Applications. [14] C. Giannelli, B. Jüttler, and H. Speleers. THB-splines: The truncated basis for hierarchi-cal splines. Computer Aided Geometric Design , 29(7):485–498, 2012. Geometric Modeling and Processing 2012. [15] X. Glorot and Y. Bengio. Understanding the difficulty of training deep feedforward neural networks. In Yee Whye Teh and Mike Titterington, editors, Proceedings of the Thirteenth International Conference on Artificial Intelligence and Statistics , volume 9 of Proceedings of Machine Learning Research , pages 249–256, 2010. 35 [16] K. Hornik, M. Stinchcombe, and H. White. Multilayer feedforward networks are universal approximators. Neural Networks , 2(5):359–366, January 1989. [17] R. W. Johnson. Higher order b-spline collocation at the greville abscissae. Applied Numerical Mathematics , 52(1):63–75, 2005. [18] D. P. Kingma and J. Ba. Adam: A method for stochastic optimization, 2017. [19] L. I. G. Kovasznay. Laminar flow behind a two-dimensional grid. Mathematical Proceed-ings of the Cambridge Philosophical Society , 44(1):58–62, 1948. [20] A. Krishnapriyan, A. Gholami, S. Zhe, R. Kirby, and M. Mahoney. Characterizing pos-sible failure modes in physics-informed neural networks. Advances in neural information processing systems , 34:26548–26560, 2021. [21] S. Lee and D. You. Data-driven prediction of unsteady flow over a circular cylinder using deep learning. Journal of Fluid Mechanics , 879:217–254, 2019. [22] Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, and A. Anandkumar. Fourier neural operator for parametric partial differential equations. 
+
+arXiv preprint arXiv:2010.08895 , 2020. [23] D. C. Liu and J. Nocedal. On the limited memory bfgs method for large scale optimization. 
+
+Mathematical programming , 45(1):503–528, 1989. [24] L. Lu, P. Jin, G. Pang, Z. Zhang, and G. E. Karniadakis. Learning nonlinear operators via deeponet based on the universal approximation theorem of operators. Nature machine intelligence , 3(3):218–229, 2021. [25] A. Mantzaflaris, B. Jüttler, B. N. Khoromskij, and U. Langer. Low rank tensor methods in galerkin-based isogeometric analysis. Computer Methods in Applied Mechanics and Engineering , 316:1062–1085, 2017. Special Issue on Isogeometric Analysis: Progress and Challenges. [26] A. Munk, A. Mead, and F. Wood. Achieving high accuracy with pinns via energy nat-ural gradient descent. In Proceedings of the 40th International Conference on Machine Learning , ICML’23. JMLR.org, 2023. [27] M. Raissi, P. Perdikaris, and G. E. Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics , 378:686–707, February 2019. [28] P. Rathore, W. Lei, Z. Frangella, L. Lu, and M. Udell. Challenges in training pinns: a loss landscape perspective. In Proceedings of the 41st International Conference on Machine Learning , ICML’24, 2024. [29] A. Reali and T. J. R. Hughes. An Introduction to Isogeometric Collocation Methods ,pages 173–204. Springer Vienna, Vienna, 2015. [30] R. Rojas. The Backpropagation Algorithm , pages 149–182. Springer Berlin Heidelberg, Berlin, Heidelberg, 1996. 36 [31] T. De Ryck, F. Bonnet, S. Mishra, and E. de Bézenac. An operator preconditioning perspective on training in physics-informed machine learning, 2024. [32] H. Saidaoui, L. Espath, and R. Tempone. Deep nurbs—admissible physics-informed neural networks. Engineering with Computers , 40(6):4007–4021, 2024. [33] A. Sanchez-Gonzalez, J. Godwin, T. Pfaff, R. Ying, J. Leskovec, and P. W. Battaglia. Learning to simulate complex physics with graph networks. In Proceedings of the 37th International Conference on Machine Learning , ICML’20. JMLR.org, 2020. [34] J. Sirignano and K. Spiliopoulos. Dgm: A deep learning algorithm for solving partial differential equations. Journal of computational physics , 375:1339–1364, 2018. [35] N. Sukumar and A. Srivastava. Exact imposition of boundary conditions with distance functions in physics-informed deep neural networks. Computer Methods in Applied Me-chanics and Engineering , 389:114333, 2022. [36] F. Sun, Y. Liu, Q. Wang, and H. Sun. Pisl: Physics-informed spline learning for data-driven identification of nonlinear dynamical systems. Mechanical Systems and Signal Processing , 191:110165, 2023. [37] S. Wang, S. Sankaran, H. Wang, and P. Perdikaris. An Expert’s Guide to Training Physics-informed Neural Networks, August 2023. [38] S. Wang, X. Yu, and P. Perdikaris. When and why pinns fail to train: A neural tangent kernel perspective. Journal of Computational Physics , 449:110768, 2022. [39] Z. Wang, R. Romagnoli, S. Mowlavi, and Y. Nakahira. Physics-informed deep b-spline networks. arXiv preprint arXiv:2503.16777 , 2025. [40] E. Weinan and Y. Bing. The deep ritz method: a deep learning-based numerical algorithm for solving variational problems. Communications in Mathematics and Statistics , 6(1):1– 12, 2018. [41] G. B. Whitham. Linear and Nonlinear Waves . John Wiley & Sons, Ltd, 1999. [42] C. Wu, M. Zhu, Q. Tan, Y. Kartha, and L. Lu. A comprehensive study of non-adaptive and residual-based adaptive sampling for physics-informed neural networks. Computer Methods in Applied Mechanics and Engineering , 403:115671, 2023. [43] H. Wu, H. Luo, H. Wang, J. Wang, and M. Long. Transolver: A fast transformer solver for PDEs on general geometries. arXiv preprint arXiv:2402.02366 , 2024. [44] C. Xu, D. Liu, A. Nassereldine, and J. Xiong. FP64 is all you need: Rethinking failure modes in physics-informed neural networks, 2025. 37

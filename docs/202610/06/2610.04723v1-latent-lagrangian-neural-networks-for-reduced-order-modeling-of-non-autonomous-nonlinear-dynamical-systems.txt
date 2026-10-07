@@ -1,0 +1,841 @@
+Title: Latent-Lagrangian Neural Networks for Reduced Order Modeling of Non-autonomous Nonlinear Dynamical Systems
+
+URL Source: https://arxiv.org/pdf/2610.04723v1
+
+Published Time: Tue, 06 Oct 2026 01:18:52 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+> arXiv:2610.04723v1 [cs.CE] 3 Oct 2026
+
+# Latent-Lagrangian Neural Networks for Reduced Order Modeling of Non-autonomous Nonlinear Dynamical Systems 
+
+Anand Kumar Agrawal 1,Anders Thorin 1  
+
+> 1Université Paris-Saclay, CEA List, Palaiseau, France
+> Abstract This work proposes a latent Lagrangian-based framework for reduced-order modelling of forced nonlinear dynamical systems. In contrast with conventional Lagrangian or Hamiltonian neural networks, our approach learns a set of latent coordinates sufficient to capture the dynamics conjointly with two neural networks for the latent kinetic and latent potential energies, and leverages force supervision to eliminate the need for an ODE solver during training. Consistency of physical laws in the latent space is ensured through the principle of virtual work. Results show that the model effectively learns the subtle dynamics induced by the system’s nonlinearity and non-convex potential energy, and generalizes well to unseen forces and initial conditions. These observations confirm the physical relevance of the proposed approach, and its interest for model reduction.
+
+Keywords: Latent-Lagrangian Neural Networks, Reduced Order Modeling, Nonlinear Dynamics, Physics-Informed Learning, Non-autonomous Systems, Virtual Work 
+
+# 1. Introduction Nonlinear dynamical systems are ubiquitous in structural dynamics as well as in many other areas of science and engineering [7, 21, 23]. Developing accurate models for such systems is essential for predicting their future behavior, improving performance, and, in some applications, enabling effective control. These systems have widely been modeled using physics-based approaches, typically in the form of differential equations derived from first principles. These governing equations are then solved using classical numerical methods to simulate system behavior. However, obtaining such equations requires accurate modeling of both the constitutive response and energy dissipation mechanisms, which often involves sophisticated experimental procedures. For many real-world complex systems, this level of characterization is difficult or even infeasible. Data-driven modeling has emerged as a powerful alternative, leveraging machine learning tech-niques to infer system dynamics directly from observed data. Neural networks, in particular, have shown remarkable success in capturing intricate nonlinear relationships. However, conventional fully connected neural networks (FCNNs) typically model dynamics as memoryless black-box mappings between consecutive time steps (e.g., st 7 → st+1 ), relying solely on input–output data pairs [4]. These models do not capture temporal dependencies beyond a single step and often fail to generalize beyond the training data [18]. To overcome this issue, recurrent architectures such as Recurrent Neural Networks (RNNs) [16, 19], Long Short-Term Memory networks (LSTMs) [2], and Gated Recurrent Units (GRUs) [1] introduce an internal hidden state ht to capture temporal dependencies across multiple time steps. Usually these models define system evolution through discrete-time mappings of the form: 
+
+ht = fθ(ht−1, st), st+1 = gθ(ht),
+
+where st ∈ Rn is the observable system state, and θ denotes the learnable parameters. While this formulation allows RNNs to model more complex temporal behavior than FCNNs, the dynamics are still learned as discrete transitions without any explicit model of the underlying continuous-time system. In contrast, Neural Ordinary Differential Equations (Neural ODEs) [3, 15] model the system dynamics in continuous time via a parameterized vector field: 
+
+ds
+
+dt = fθ(s, t ),
+
+allowing the state trajectory s(t) to be computed via numerical integration. Neural ODEs provide a more natural framework for learning continuous-time dynamical systems, particularly in scenarios involving irregular temporal sampling. However, since each of the aforementioned architectures, FCNNs, RNNs, or Neural ODEs, completely ignore the physical laws governing the system dynamics they often suffer from limited interpretability, poor generalization, and data inefficiency. 1Another possibility is to exploit the strengths of both: the ability of data-driven approaches to learn system dynamics solely from input–output data, without the need for accurate constitutive models or energy-dissipation mechanisms, and the ability of physics-based modeling approaches to be consistent with physical laws. Recently, several attempts have been made to address the above-mentioned issues using neural networks which are constrained to satisfy some aspects of the physical behavior of the dynamical system either by modification of the loss function or by ingenious architectures. The Hamiltonian Neural Networks (HNNs) by Greydanus et al. (2019) [11] is one of the early examples of embedding physical structure into deep learning models for dynamical systems. HNNs learn a scalar-valued Hamiltonian from which the vector field of the system is derived using Hamilton’s equations. This formulation enforces the energy conservation as well as respects symplectic structure. However, HNNs require canonical coordinates, which limits their practical applicability. This limitation is addressed by Deep Lagrangian Networks (DeLaNs) [14] and Lagrangian neural network [5], which do not require canonical coordinates. DeLaNs learn a fully connected neural network with the following outputs: (1) the off-diagonal and diagonal elements of the Cholesky factor of the configuration-dependent inertia matrix, and (2) the generalized gravitational force vector (i.e., the gradient of the potential energy). These outputs are used within the structure of the Euler–Lagrange equations and used in the loss function, thereby incorporating a strong inductive bias based on Lagrangian mechanics. While DeLaNs are effective, their reliance on a quadratic structure of kinetic energy restricts their generality. On the other hand, Lagrangian Neural Networks (LNNs) [5, 6, 24] do not make any restriction on the structure of the kinetic energy and learn a general Lagrangian using a parameterized FCNN which is then used to form the vector field by enforcing the output of the network to satisfy the Euler-Lagrange equation. However, the monolithic modeling of the Lagrangian limits modular control over the architectures of potential and kinetic energies. Also, the results were demonstrated only on autonomous systems without the presence of forcing. Although these works (HNNs, DeLaNs, LNNs etc.) enhanced the interpretability and the generalization capacity of the neural models for the dynamical systems, they were not designed specifically towards model reduction and high-dimensional nonlinear dynamical systems. However, a recent work by Sharma et al. [22] focuses on dimensionality reduction by making use the ideas in LNN: it projects data onto a fixed POD subspace, identifies a linear Lagrangian ROM, and then augments it with structure-preserving ML terms to capture the missing nonlinear operators. Key limitations include dependency on a prescribed linear basis, step-size sensitivity from finite-difference derivative estimation, limited treatment of external forcing, and restricted architectural control over the kinetic and potential energy network-structure. Latent-Energy-Based Neural Networks (LEBNNs) by Pottier et al. [20] attempted to incor-porate physics similar to the case of LNNs and HNNs into the neural network model while also performing model order reduction by learning two autoencoders along with the potential energy network. Here, they addressed the statics of hyperelastic systems with non-convex strain energy using neural networks. The capability to reduce the model order of a mechanics problem using neu-ral networks while being physically consistent makes this work quite useful for high-dimensional statics problems. Key innovations in their work include the use of double autoencoders for compressing displacements and forces into low-dimensional latent spaces, learning a latent energy function from which forces are computed as gradients, and dealing with multiple equilibrium states through the minimization of latent energy. LEBNNs offer good performance and interpretability in static scenarios but are not formulated to handle time-dependent dynamics as they omit kinetic energy. Moreover, by learning latent forces separately from displacements using two independent autoencoders, they break the fundamental energy–force relationship, making the forces non-variational. As a result, the virtual work consistency may not hold between the latent and original coordinate spaces. This work aims to address the aforementioned limitations by developing a Latent-Lagrangian Neural Network (L-LNN), that can be seen as a variant of a Lagrangian NN [5, 6] modified so that the Lagrangian is learned in a low-dimensional latent space. Additionally, the training is performed in a manner that allows modular control over the architectures for kinetic and potential energy networks which allows the additional knowledge about the nature of these energies to 2be used in the design of their architectures. Apart from this, our networks are trained using force supervision which avoids using the ODE solver inside the training loop. It can also be seen as an extension of Latent-Energy Based NN (LEBNN) [20] to dynamics where the consistency between the force fields in the latent space and original space is ensured by balancing the virtual work done by these force fields. Therefore, this approach comprehensively enforces the governing mathematical model while being cost effective. The methodology involves simultaneous training of three fully connected neural networks (i.e., the auto-encoder, the potential energy, and the kinetic energy) using a single composite loss function formed by embedding the energy and dissipation-aware terms into the loss function of the neural networks through mean squared error in the true and predicted force as well as the reconstruction loss of the auto-encoder. Specifically, the neural networks are designed to satisfy the structure of the physics-based model through position-dependent mass and stiffness matrices which are written as Hessian of parameterized neural networks representing latent kinetic and potential energies, respectively. The damping matrix is modeled via a position-dependent linear combination of the mass and stiffness matrices (position-dependent Rayleigh damping). The above-mentioned approach ensures good predictive capability, as well as computational and data efficiency. Table 1: Comparison of learning-based physics models. T denotes kinetic energy, V potential energy. Feature Neural net Neural ODE HNN DeLaN LNN LEBNN LOpInf-SpM [22] Latent-LNN (ours) Can model dynami-cal systems 
+
+✓ ✓ ✓ ✓ ✓ ✗ ✓ ✓
+
+Learns differential equations 
+
+✗ ✓ ✓ ✓ ✓ ✗ ✓ ✓
+
+Learns exact conser-vation laws 
+
+✗ ✗ ✓ ✓ ✓ ✓∗ ✓ ✓
+
+Learns from arbitrary coords. 
+
+✓ ✓ ✗ ✓ ✓ ✓ ✓ ✓
+
+Learns arbitrary La-grangians 
+
+✗ ✗ ✗ ✗ ✓ no T ✓ ✓
+
+Separate control over architectures of T , V
+
+✗ ✗ ✗ ✗ ✗ no T ✗ ✓
+
+Model Order Reduc-tion 
+
+✗ ✗ ✗ ✗ ✗ ✓ ✓ ✓
+
+Joint learning of la-tent space and T -V
+
+✗ ✗ ✗ ✗ ✗ no T ✗ ✓
+
+> ∗
+
+Static energy conser-vation only. We validate the effectiveness of our approach through numerical experiments on nonlinear damped dynamical systems. This work contributes to the advancement of data-driven dynamical system modeling by incorporating physical principles, thereby improving both interpretability and generalization capabilities of the models. Table 1 provides a summary of the comparison of the state-of-the-art approaches with the approach developed in work. The key contributions of this work can be summarized as follows: 1. We use an autoencoder to learn latent coordinates z ∈ Rd from generalized coordinates 
+
+q.Subsequently, obtain the latent velocities and accelerations from the latent coordinates by using derivative based relationship between them. 2. Potential V (z) and kinetic energy T (z, ˙z) are modeled via separate neural networks, 3this provides modular control over the network architectures for the potential and kinetic energies, as opposed to using a monolithic network for learning the Lagrangian. 3. In the proposed approach, the variational structure is preserved in the relationship between the forces in the latest space and the forces in the original space by enforcing the virtual work consistency which ensures that forces are derived from energy gradients and respect the energy -force duality under differentiation. In contrast, LEBNN learns latent forces separately, breaking the energy–force relationship and lacking a principled projection to physical space. 4. The model is trained using force supervision as opposed to the super-vision based on the trajectory data which helps in avoiding the use of an ODE-solver inside the training loop 5. Modular and interpretable energy components The remainder of this paper is organized as follows: Section 2 presents the developed methodology. Section 3 details the results obtained from performance validation on two benchmark nonlinear dynamical systems. Section 4 concludes the paper and provides future directions. 
+
+# 2. Proposed method: Latent-Lagrangian Neural Networks This section details the latent Lagrangian-based methodology proposed in this work for the reduced-order modeling of the non-autonomous nonlinear dynamical systems. The methodology involves simultaneous training of three neural networks: an auto-encoder for the dimensionality reduction, one for the potential energy network and another for the kinetic energy network. The loss function encodes the structure of the governing Lagrangian equation by incorporating the discrepancy between the predicted and the true force values as well as a reconstruction loss of the autoencoder. The detailed discussion of the formulation of the training strategy is presented in the following subsections. 
+
+# 2.1. Latent-Space Kinematics via Autoencoder Let q ∈ Rn be the vector of generalized coordinates of the system. The encoder part E of the autoencoder maps these vectors to z ∈ Rm
+
+where m ≤ n:
+
+z = E(q). (2.1) The decoder part D maps z to a reconstruction ˆq of the generalized coordinates: 
+
+ˆq = D(z), (2.2) Once the autoencoder is trained, ˆq should be as close as q as possible. The discrepancy between these two is the reconstruction error , defined precisely later. The transformation of vectors of generalized velocity ˙q and acceleration ¨q that is consistent with the coordinate transformation performed in (2.1) can be achieved by the application of chain rule as given in (2.3) and (2.5) respectively. The latent velocity vector is obtained using the chain rule as follows: 
+
+˙z = J(q) ˙ q (2.3) where, the Jacobian of the encoder is defined as:‘ 
+
+J(q) = ∂z
+
+∂q ∈ Rm×n (2.4) To compute the latent acceleration vector, differentiate with respect to time: 
+
+¨z = ddt (J(q) ˙ q) = J(q)¨ q + dJ
+
+dt ˙q (2.5) 4where, J depends on t implicitly via q(t), therefore, the time derivative is computed as given by: 
+
+ dJ
+
+dt 
+
+
+
+> ij
+
+=
+
+> n
+
+X
+
+> k=1
+
+∂2zi
+
+∂q j ∂q k
+
+˙qk (2.6) Here,  dJ
+
+> dt
+
+ 
+
+> ij
+
+denotes the (i, j )-th entry of the time derivative of the Jacobian matrix dJ 
+
+> dt
+
+, i.e., the rate of change of ∂z i 
+
+> ∂q j
+
+. Thus, the full latent acceleration becomes: 
+
+[¨ z]i =
+
+> n
+
+X
+
+> j=1
+
+∂z i
+
+∂q j
+
+¨qj +
+
+> n
+
+X
+
+> j=1
+> n
+
+X
+
+> k=1
+
+∂2zi
+
+∂q j ∂q k
+
+˙qj ˙qk (2.7) where, [¨ z]i denotes the i-th component of the latent acceleration vector ¨z. Equation (2.7) splits the acceleration into an inertial term and a geometric term, also referred to as linear and non-linear acceleration terms in the literature. 
+
+# 2.2. Latent-Space Lagrangian Dynamics via Potential and Kinetic Energy Networks The latent descriptions of the generalized coordinates, z, and velocities, ˙z obtained in Subsection 2.1 can be utilized to define a Lagrangian in the latent space as: 
+
+L(z, ˙z) = T (z, ˙z) − V (z) (2.8) where, T (z, ˙z) denotes the kinetic energy in the latent space and can be modeled using either of two neural network architectures the parameters of which are denoted generically by θ:• A structured neural network that outputs a kinetic energy with coordinate-dependent symmetric mass matrix, and quadratic form in generalized velocity as 12 ˙z⊤Wθ(z) ˙ z. This mimics classical mechanical formulations and maintains interpretability. • An unconstrained neural network Tθ(z, ˙z) that directly maps inputs to scalar kinetic energy, offering more modeling flexibility. Both are trainable and differentiable with respect to their parameters, and either can be used in the force derivation depending on the problem at hand. Potential energy V (z) is learned using a separate fully connected neural network. These neural networks for kinetic and potential energy are used together to derive the latent dynamics using the Euler-Lagrange equation: 
+
+ddt 
+
+ ∂L
+
+∂ ˙z
+
+
+
+− ∂L
+
+∂z = flatent (2.9) Expanding the terms: 
+
+ddt 
+
+ ∂L
+
+∂ ˙z
+
+
+
+= ∂2T∂ ˙z2 ¨z + ∂2T∂z∂ ˙z ˙z (2.10) 
+
+∂L
+
+∂z = ∂T ∂z − ∂V ∂z (2.11) The latent-space force is then: 
+
+flatent = ∂2T∂ ˙z2 ¨z
+
+| {z } 
+
+> inertial
+
++ ∂2T∂z∂ ˙z ˙z
+
+| {z } 
+
+> mixed
+
+− ∂T ∂z|{z} 
+
+> non-conservative
+
++ ∂V ∂z|{z} 
+
+> potential
+
+(2.12) 52.3. Incorporating Damping and Final Force Expression Damping is often introduced in structural mechanics as a linear combination of the mass and damping matrices, a method known as Rayleigh damping. In this work, a similar approach was used, however including a position-dependency in the mass and damping matrices, corresponding to the Hessian matrices of kinetic and potential energies. The weights of the linear combination α, β are learnable scalars, so that the final force becomes: 
+
+fz ≈ HT ¨z + ( αHT + βHV ) ˙ z + ∂V ∂z + ∂2T∂ ˙z∂z ˙z − ∂T ∂z (2.13) with the Hessians matrices HT = ∂2T∂ ˙z2 and HV = ∂2V∂z2 .
+
+# 2.4. Force relations via virtual work consistency The predicted latent-space force vector 
+
+fz ∈ Rm, obtained from the Euler–Lagrange equation in the latent space, must be projected back to the original coordinate space q ∈ Rn to compare with the known physical force ftrue ∈ Rn. In order to be consistent with the principle of virtual work , this projection is achieved through the transpose of the encoder Jacobian (see Eq. (2.4): 
+
+ˆfq = J⊤fz (2.14) Under a virtual displacement δq, the corresponding displacement in latent space is δz = Jδq.The virtual work done in both spaces should be equal: 
+
+f ⊤ 
+
+> z
+
+δz = ˆf ⊤ 
+
+> q
+
+δq (2.15) Substituting δz = Jδq, we get: 
+
+f ⊤ 
+
+> z
+
+Jδq = ˆf ⊤ 
+
+> q
+
+δq ⇒ ˆfq = J⊤fz (2.16) This ensures that the predicted force in the original coordinates is consistent with the variational principle and is physically meaningful. 
+
+# 2.5. Formulation of the Loss Function All networks are trained together by minimizing the loss function that is defined in this section. The loss function is formulated by utilizing the reconstructed generalized coordinate vector ˆq obtained from the decoder D in equation (2.2) and the predicted force vector ˆfq in equation (2.14) as defined in equation (2.17). This final loss function is minimized for the simultaneous learning of the parameters of all the networks as well as the parameters ( α, β ) used to incorporate damping in equation (2.13). 
+
+Ltotal = Lrecon + Lforce = ∥ˆq − q∥2 + λ∥ˆfq − ftrue ∥2 (2.17) where Lrecon denotes the reconstruction loss, Lforce represents the force loss and the λ is a weighting parameter that controls the relative importance of the reconstruction loss and the force loss. A similar formulation of the loss function, wherein the force-matching term employed in the present work is substituted with a weighted discrepancy in the lift coefficient, has been adopted in prior studies on observable-augmented autoencoders [8, 9]. Specifically, the primary reconstruction term in [9] corresponds to the mean squared error on the vorticity field, whereas in [8], it pertains to the pressure field; in both cases, the auxiliary lift loss is scaled by a factor selected via L-curve analysis to balance the importance to the field accuracy with aerodynamic interpretability. 
+
+# 2.6. Graphical and algorithmic summaries The details of the computer implementation of the developed methodology is provided in the form of a pseudo code in Algorithm 1. Also, a schematic of the forward pass of the composite neural network training is shown in Figure 1. 6Latent-Space Kinematics 
+
+> via Autoencoder
+> Pot. Energy
+> NN
+> Kin. Energy
+> NN
+> Lagrangian Networks
+> Enforcing
+> virtual work
+> consistency
+> Force determination through
+> Lagrange's Eqs.
+
+Figure 1: Graphical representation of Latent-LNN 
+
+Algorithm 1 Latent Energy-Based Neural Network Training with Force Supervision 
+
+Require: Dataset D = {q, ˙q, ¨q, f true }, networks: AE (q), T (z, ˙z), V (z), scalars α, β, λ, learning rate η, number of epochs N
+
+1: for each epoch = 1 to N do 
+
+2: for each mini-batch {q, ˙q, ¨q, f true } ∈ D do 
+
+3: Encode z ← Encoder (q)
+
+4: Decode ˆq ← Decoder (z)
+
+5: Compute Jacobian J = ∂z/∂q and Hessian H = ∂2z/∂q 2
+
+6: Compute latent velocity: ˙z ← J ˙q
+
+7: Compute latent acceleration: ¨z ← J ¨q + P   
+
+> j,k ∂2z∂q j∂q k
+
+˙qj ˙qk
+
+8: Evaluate energies: T ← T (z, ˙z), V ← V (z)
+
+9: Compute gradients: • HT ← ∂2T /∂ ˙z2
+
+• HV ← ∂2V /∂z 2
+
+• ∇z V ← ∂V /∂z 
+
+• ∂2T /∂ ˙z∂z , ∂T /∂z 
+
+10: Compute latent-space force: 
+
+fz ← HT ¨z + ( αH T + βH V ) ˙ z + ∇z V + ∂2T∂ ˙z∂z ˙z − ∂T ∂z 
+
+11: Compute encoder Jacobian: Jenc ← ∂z/∂q 
+
+12: Project to physical coordinates: ˆfq ← J⊤
+
+> enc
+
+fz
+
+13: Compute total loss: L ← λ∥ ˆfq − ftrue ∥2 + ∥ˆq − q∥2
+
+14: Backpropagate and update parameters of AE , T , V , α, β using optimizer 
+
+15: end for 
+
+16: end for 
+
+17: return Trained networks AE , T , V , and scalars α, β
+
+73. Validation methodology The present section outlines the validation approach adopted to demonstrate the performance and relevance of the proposed Latent-Lagrangian Neural Network framework for model reduction. To this end, two different dynamical systems are used. The validation process begins with generating the training data from each of these dynamical systems. 
+
+Algorithm 2 Validation workflow after training the networks 
+
+Require: Trained models (from Algorithm 1): Autoencoder AE , Kinetic Energy Network T (z, ˙z),Potential Energy Network V (z); parameters: damping scalars (α, β ), forcing fq(t); initial conditions q(0) , ˙q(0) .
+
+Latent-Space Simulation:  
+
+> 1:
+
+Encode q(0) into latent coordinates: z(0) = AE. encoder (q(0)) . 
+
+> 2:
+
+Map initial velocity: ˙z(0) = J(q(0)) ˙ q(0) , with J = ∂z/∂q . 
+
+> 3:
+
+Initialize latent state: y(0) = [ z(0) , ˙z(0)] . 
+
+> 4:
+
+for each timestep t do  
+
+> 5:
+
+Compute latent mass matrix HT = ∂2T∂ ˙z2 . 
+
+> 6:
+
+Compute stiffness matrix HV = ∂2V∂z 2 and elastic force ∇z V . 
+
+> 7:
+
+Compute mixed term ∂2T∂ ˙z∂z ˙z and − ∂T ∂z . 
+
+> 8:
+
+Form damping matrix: C = αH T + βH V . 
+
+> 9:
+
+Map external force fq(t) from physical to latent space:  
+
+> 10:
+
+fz (t) = J⊤
+
+> dec
+
+fq(t), with Jdec = ∂ ˆq∂z . 
+
+> 11:
+
+Solve latent ODE:  
+
+> 12:
+
+HT (z, ˙z)¨ z + C(z, ˙z) ˙ z + ∇z V (z) 
+
+> 13:
+
++
+
+ ∂2T∂ ˙z∂z 
+
+
+
+˙z − ∂T ∂z = fz (t). 
+
+> 14:
+
+Update latent state [z(t), ˙z(t)] using ODE solver.  
+
+> 15:
+
+end for Decode trajectories back to original space:  
+
+> 16:
+
+q(t) = AE. decoder (z(t)) , ˙q(t) = J(z(t)) ˙ z(t).
+
+True-System Simulation:  
+
+> 17:
+
+Define nonlinear spring–mass model with damping and forcing in (q, ˙q). 
+
+> 18:
+
+Solve ground-truth system with solve_ivp to obtain qtrue (t), ˙qtrue (t).
+
+Validation:  
+
+> 19:
+
+Compute relative errors:  
+
+> 20:
+
+eqi = ∥qtrue  
+
+> i
+
+− qN N i ∥∥qtrue  
+
+> i
+
+∥ , e ˙qi = ∥ ˙qtrue  
+
+> i
+
+− ˙qN N i ∥∥ ˙qtrue  
+
+> i
+
+∥ . 
+
+> 21:
+
+Plot NN response vs. true response, error histories, and energy contours. These training data are then used to train the autoencoders and the latent-space energy networks using Algorithm 1 for the corresponding system. After which, the learned networks are evaluated by following the approach summarized in Algorithm 2. This involves obtaining the equations of motion (or the vector field) using the learned energy networks and comparing the decoded response (generalized coordinates, generalized velocity) obtained from the learned system with that of the true system of equations. To further strengthen the validation process, we have also made comparison between the learned and true topologies of the kinetic and potential energies. Further details of the two nonlinear dynamical systems used for validation, for the generation of the training data, and the details for the training are provided in subsequent subsections. 
+
+# 3.1. Nonlinear systems used for validation Both the aforementioned dynamical systems that are used for the purpose of validating the proposed method are detailed here. The first system is a two-degree-of-freedom (2-DOF) system with nonconvex potential energy, as shown in Figure 2. Despite its low-dimensional configuration space, the presence of large deflections and the nonconvexity 8of its potential energy give rise to a rich dynamics that exhibits nonlinearity and the existence of stable and unstable equilibria. Apart from this, its low dimensionality also allows the visual comparison between the learned and the true topologies of the kinetic and potential energy. The same system without the presence of dynamic behaviour and damping was used to assess the performance and relevance of Latent-Energy-Based NNs [20], which were proposed for static problems as mentioned in section 1. To make the description unambiguous, the mathematical model for this system has been presented in the appendix A.1. 
+
+kx
+
+ky
+
+mq2
+
+q1⃗ ftrue 
+
+Figure 2: 2-DOF system used to assess and compare the proposed architecture. Springs are linear, but the geometry is nonlinear (large displacements). From [20]. 
+
+k(q)
+
+mq1
+
+k(q)
+
+mq2
+
+k(q)
+
+mq3
+
+k(q)
+
+mq4
+
+k(q)
+
+mq5
+
+k(q)⃗ftrue 
+
+Figure 3: Schematic of the 5-DOF nonlinear system. The last mass is subject to an external load. Springs have a nonlinear behaviour (cubic nonlinearity). The second system is a 5-DOF dynamical system with Duffing-like nonlinearities, depicted in Figure 3. Its potential energy includes a non-quadratic term: 
+
+V = 12 qT Kq + α∗
+
+4
+
+ q41 + q42 + q43 + q44 + q45
+
+ . (3.1) In contrast to the low-dimensional 2-DOF case, this system provides a higher-dimensional configuration space and offers the ability to further assess the scalability and robustness of the proposed method when applied to a more complex multi-degree-of-freedom nonlinear system, in particular for model reduction, by choosing a latent space dimension smaller than the number of DOFs. The mathematical description for this system has been presented in the appendix A.2. 
+
+# 3.2. Data-generation and training For both systems, the training data contains several time series for displacement, velocity, acceleration, and force. The data were collected by numerically simulating the equations of motion for these systems, which are provided in appendix A.1 and A.2. Further details of the training data and the system parameters used during simulation to generate it are provided below. For generation of the dataset for the 2-DOF case, the parameters of the model in appendix A.1 were set as m = 1 , kx = ky = 1 , cx = cy = 0 .1, with initial conditions q1(0) = q2(0) = ˙ q1(0) = ˙q2(0) = 0 , and external excitations Fext1 , F ext2 ∈ [−5, 5] , ω1, ω 2 ∈ [0 , 5] . For 50 randomly selected combinations of force amplitudes and forcing frequencies within the specified ranges, the system of differential equations was integrated over a duration of ten seconds using the fourth-order Runge–Kutta method with a time-step of 0.01 sec. The resulting 50 time series of generalized coordinates and velocities, together with the corresponding time series of accelerations and forces, were assembled to form the dataset for the latent Lagrangian neural network corresponding to the 2-DOF system. Once the dataset was generated, the L-LNN was trained using 80% of the dataset, following the procedure outlined in Algorithm 1, with the key hyperparameter values summarized in Table 2. Source code to reproduce the training data and the results will be provided on request. On the other hand, for the 5-DOF case the parameters of the model in appendix A.2 were set as m = 1 , k = 1 , c = 0 .9, α∗ = 0 .5 with initial conditions qi(0) = ˙ qi(0) = 0 , ∀i = 1 , . . . , 5, and 9external excitation applied at the fifth DOF as Fext (t) = Fext sin( ωt ), Fext ∈ [−1, 1] , ω ∈ [0 , 5] .
+
+For 70 randomly chosen combinations of force amplitudes and forcing frequencies within the specified ranges, the equations of motion were integrated for ten seconds using the fourth-order Runge–Kutta method with a time-step of 0.01 sec. The resulting time series of generalized coordinates, velocities from these 70 simulations and the corresponding accelerations and forces were then assembled to construct the dataset for learning the parameters of the latent Lagrangian neural network for the 5-DOF system. Following the generation of the dataset, the training of the L-LNN was carried out using 80% of the dataset in accordance with Algorithm 1, and the corresponding values of the key hyperparameters are listed in Table 2. It is important to note that the hyperparameter λ, present in Eq. (2.17), plays a critical role in controlling the relative weighting between reconstruction accuracy and the enforcement of the physics-based regularization within the model. In the present study, several values of λ were explored for both systems under consideration. For the first system, namely the 2DOF case, three different values of λ (λ = 1 , 0.05 , and 
+
+0.005 ) were evaluated. The results indicated that neither the final prediction accuracy nor the convergence behavior exhibited significant sensitivity to the choice of λ within this range. Consequently, the results reported for this system correspond to λ = 1 , selected arbitrarily. In contrast, similar investigations for the 5DOF system revealed a strong dependence on the choice of λ. Specifically, the value of this hyperparameter was found to significantly affect both the convergence rate and the robustness of the trained model with respect to model uncertainty, as assessed through repeated training with different random seeds. Among the tested values, λ = 0 .005 consistently produced the most stable and reliable performance; therefore, the corresponding results are reported for the 5DOF case. Additionally, it is worth noting the specific constraints on the choice of activation functions in the proposed approach.The incorporation of the Euler-Lagrange equation into the loss func-tion through force terms requires the computation of network Hessians, rendering the widely adopted ReLU activation function unsuitable for this approach, as they will always yield a zero Hessian. Conversely, the tanh and sigmoid activation functions would induce vanishing gradients. Consequently, we adopted the GELU activation function in this study. Nevertheless, both ELU and GELU activations exhibited similar outcomes in terms of training efficiency and prediction accuracy in the early explorations. Table 2: Values of Hyperparameters Hyperparameter 2-DOF 5-DOF Initialization (PE) Xavier (Uniform) [10] Xavier (Uniform) Encoder: hidden depth and width 1 and 64 1 and 64 Decoder: hidden depth and width 1 and 64 1 and 64 PE, hidden depth and width 3 and 128 3 and 128 KE, hidden depth and width 1 and 128 1 and 64 Learning rate(initial) 1E-04 1E-04 Batch size 256 400 Scheduler ReduceLROnPlateau ReduceLROnPlateau 
+
+λ 1.0 0.005 Activation function GeLU [12] GeLU [12] 
+
+# 4. Performance Validation: Results and Discussion In this section, we present and discuss the main results obtained by applying the contribution presented in Section 2, following the validation method described in Section 3, to both test cases, namely the 2-DOF and 5-DOF nonlinear systems. For each system, the predicted response and the learned energy topology are compared against those obtained from the corresponding true vector field. Further, to assess the robustness of the developed model with respect to uncertainty arising from variability in learned parameters and the stochastic nature of the training process, the variance in prediction errors was evaluated across multiple training runs using different random seeds for both test cases. In addition, to examine the robustness of the learned models to uncertainty due to noise in the data, 10 models were trained using noisy datasets generated by introducing zero-mean Gaussian noise with a standard deviation equal to 5% of the standard deviation of the original signals. The observations and implications from the aforementioned comparison and the analysis of robustness to uncertainty in model as well as data are detailed in the following subsections. −10
+
+> q1 (m)  Latent NN Ground truth
+> −0.02 00.02 Error in  q1
+> (m)
+> −2
+> −101
+> q2 (m)  Latent NN Ground truth
+> −0.04
+> −0.02 00.02 Error in  q2
+> (m)
+
+Figure 4: 2-DOF system: displacements predicted through learned system vs the true displace-ments. The relative errors eqi computed as per Algorithm 2 are 0.012 for q1 and 0.016 for q2.−101˙q1 (m/s)   
+
+> Latent NN Ground truth −0.02 00.02 Error in ˙ q1
+> (m/s)
+> −2
+> −101˙q2 (m/s)
+> Latent NN Ground truth −0.02 00.02 0.04 Error in ˙ q2
+> (m/s)
+
+Figure 5: 2-DOF system: velocities predicted through learned system vs the true velocities. The relative errors e ˙qi computed as per Algorithm 2 is 0.019 for ˙q1 and 0.020 for ˙q2.
+
+# 4.1. 2-DOF Nonlinear dynamical system with nonconvex potential energy The training data generated for the 2-DOF system (detailed in section 3.1) by following the method mentioned in section 3.2 has been used to implement Algorithm 1. This results in a set of three trained neural networks: an autoencoder, networks representing potential and kinetic energy functions in the latent space of dimension two, which is equal to the original dimension of the configuration space in this test case. After obtaining the trained networks, their performance has been evaluated by obtaining the equations of motion (or the vector field) and comparing the numerically calculated response (generalized coordinates, generalized velocity) from the learned system with the response obtained from the true system of equations, following the validation workflow presented in Algorithm 2. The forcing functions used during validation are arbitrarily chosen as F1(t) = 0 .5(sin(2 t) + sin(4 t)) and F2(t) = sin(2 t) + sin(4 t); the initial conditions are q1(0) = 0 .3, q2(0) = 0 .4˙q1(0) = ˙ q2(0) = 0 . Note that, in contrast to the training data generation phase, the displacement initial conditions used during validation are deliberately chosen to be nonzero and nonsymmetric, and the applied forcing functions are non-harmonic. This setup is intended to demonstrate the ability of the method to capture the underlying physics even when the initial conditions and forcing functions differ from those utilized in the generation of training data. Figures 4 and 5 show the results of the above-mentioned comparison between the responses obtained via learned models and the ground truth. Despite non-trivial responses, the relative errors as defined in 11 (a) Vtrue (q) (b) Vlearned (E(q))    
+
+> (c) Ttrue ( ˙ q)(d) Tlearned (E(q), J (q) ˙ q)
+
+Figure 6: Comparison of energy topology. The learned energies are converted in terms of original coordinates q1, q 2 and ˙q1, ˙q2 to make a direct comparison of the contour lines relevant. Algorithm 2, for the displacement components were below 2%, and the velocity responses also registered a relative error of around 2%. It must be noted that the model does not explicitly incorporate the time information during training, but still getting such close match in the time evolution of the response is encouraging. We attribute it to the principled enforcement of strong physical bias in the loss function, which validates the efficacy of the approach developed in this work. Another important observation is that, in the proposed methodology, the time step used during training is independent of the time step employed during inference from the reduced model. For instance, reproducing the results shown in Figures 4 and 5 with twice the step size produced indistinguishable plots. The relative errors obtained with time steps of 0.02 s and 0.01 s were identical when rounded to two decimal places. Source code to reproduce the figures has been provided as supplementary material. To further evaluate and interpret the learned system, the learned energy contours have been compared with the true energy contours. Because the system was chosen as a 2-DOF system, the energies are fully characterized by their contour plots (in 2D), offering an insightful comparison between ground truth and learned potential and kinetic energies, see Figure 6. The contours are obtained by plotting the energies with respect to their corresponding independent variables; for the kinetic energy, which depends on both the generalized coordinates and velocities, the coordinates are fixed at zero. It is evident from the results that the potential energy contours reproduce the multiple equilibrium wells of the nonlinear system, while the kinetic energy contour correctly reflects the isotropy of the inertia. However, it must be noticed that even though the locations of the critical points were correctly captured and the shapes of the contours match quite well qualitatively, the exact values of the learned potential energy differ slightly from those of 12 the true values. The reason for this may be that the critical points depend on the gradient of potential energy, which is explicitly a part of the loss function, while the potential energy function itself does not appear in the loss function. This is not worrisome in terms of response (as we have seen in the results) and the stiffness behaviour because the equations of motion depend only on the gradients of the energies, which are learned correctly because of their presence in the loss function. 1 200.51
+
+·10 −5
+
+Degree of freedom Variance of error  Displacement Velocity 
+
+Figure 7: Variance of Relative Errors in Displacement and Velocity Responses (2-DOF System) The above-mentioned discussion on the learned kinetic and potential energy networks indicated that, unlike monolithic LNNs, which learn the Lagrangian as a single scalar function, the separation of potential and kinetic energy networks in L-LNN provides clear interpretability. It is worth mentioning that even though the parameters of the kinetic and potential energy networks are learned simultaneously using a unified loss function, the stiffness characteristics are encoded exclusively in the potential energy network, whereas inertia effects are captured by the kinetic energy network. Overall, the close agreement between learned and true energy contours and the response curves demonstrates that L-LNN not only predicts accurate trajectories but also recovers the governing energy structure of the system. This dual capability is crucial for extrapolation, stability analysis, and model interpretability in high-dimensional nonlinear dynamics. However, to further demonstrate the reliability of the obtained results and to evaluate the robustness of the proposed model with respect to model uncertainty, the latent-LNN was trained using three different random seeds, and the variance in the relative errors of the predicted displacement and velocity responses was computed. The results shown in Figure 7 indicate that the variability in the predicted responses across different random seeds was relatively small (i.e., of the order of 10 −5), suggesting that the developed model exhibits stable performance with respect to stochastic variations in the training process. −10
+
+> q1 (m)  Latent NN Ground truth
+> −0.100.1Error in  q1
+> (m)
+> −2
+> −101
+> q2 (m)  Latent NN Ground truth
+> −0.100.1Error in  q2
+> (m)
+
+Figure 8: 2-DOF system: displacements predicted through system trained with noisy data vs the true displacements. The relative errors eqi computed as per Algorithm 2 is 0.051 for q1 and 0.062 for q2.13 −101˙q1 (m/s)   
+
+> Latent NN Ground truth −0.100.1Error in ˙ q1
+> (m/s)
+> −2
+> −101˙q2 (m/s)
+> Latent NN Ground truth −0.100.1Error in ˙ q2
+> (m/s)
+
+Figure 9: 2-DOF system: velocities predicted through system trained with noisy data vs the true velocities. The relative errors e ˙qi computed as per Algorithm 2 are 0.097 for ˙q1 and 0.083 for ˙q2.Furthermore, to assess the robustness of the model to noisy inputs and to evaluate its direct applicability to experimental scenarios, additional models were trained using noisy datasets generated by introducing zero-mean Gaussian noise with a standard deviation equal to 5% of the standard deviation of the original signals. The corresponding responses are presented to illustrate the effect of data noise on the prediction error. Although a moderate increase in the relative errors is observed, the overall agreement between the learned and reference responses remains satisfactory, indicating that the developed model maintains reliable predictive capability in the presence of noise in the data. Notably, an alternative strategy in practical applications could include a data preprocessing step to reduce noise prior to model training; however, directly training the model using noisy datasets provides a more stringent assessment of the robustness of the proposed framework. The 2-DOF case offered the possibility to directly compare the level sets of the energies in 2D. However, for this precise reason, it does not give insight into model reduction, since the latent dimension equals the original dimension. This shortcoming is overcome in the next section with validation on a higher-dimensional system. 
+
+# 4.2. 5-DOF Nonlinear dynamical system with cubic nonlinearity This subsection will further strengthen the validity of the developed approach by implementing it for the 5-DOF system shown in Figure 3 and detailed in section 3.1. The training data generated for this system, as described in Section 3.2, has been used to implement Algorithm 1. As before, this implementation yields three jointly-trained neural networks: an autoencoder and two networks representing the potential and kinetic energy functions in the latent space. For this system, the latent space dimension was chosen to be 4, representing a reduction from the original 5-dimensional configuration space. Further reduction in dimension led to higher relative errors. After obtaining the trained networks, their performance has been evaluated by obtaining the equations of motion (or the vector field) and comparing the numerically calculated response (generalized coordinates, generalized velocity) from the learned system with that of the true system of equations, following the validation workflow presented in Algorithm 2. The forcing functions used during validation is F (t) = 0 0 0 0 F5(t)T where F5(t) = 
+
+P4 
+
+> n=1
+
+sin(2 nt ) and the initial conditions are q1(0) = 0 .1, q2(0) = 0 .2, q3(0) = 0 .3, q4(0) = 0 .4,
+
+q5(0) = 0 .5 and v1(0) = · · · = v5(0) = 0 . Note that, again, in contrast to the training data generation, validation uses nonzero, nonsymmetric initial displacements and non-harmonic forcing, thereby testing the method’s ability to capture the underlying physics under conditions distinct from those used in training. Figures 10 and 11 show the results of the above-mentioned comparison between the learned response with that of the ground truth. The displacement responses predicted via the learned vector field exhibit excellent agreement with the true system responses across all five degrees of freedom. The relative errors for each of the displacement components remain small, with 
+
+eq1 = 12 .1% , eq2 = 10 .5% , eq3 = 7 .9% , eq4 = 4 .3% , and eq5 = 2 .3% . The predicted displacement 14 −0.100.1
+
+> q1 (m)  Latent NN Ground truth
+
+−0.01 00.01 0.02 Error in  q1
+
+> (m)
+
+−0.200.2
+
+> q2 (m)  Latent NN Ground truth
+
+00.02 0.04 Error in  q2
+
+> (m)
+
+−0.200.20.4
+
+> q3 (m)  Latent NN Ground truth
+
+00.02 Error in  q3
+
+> (m)
+
+−0.200.20.4
+
+> q4 (m)  Latent NN Ground truth
+
+−0.01 00.01 Error in  q4
+
+> (m)
+
+0 5 10 15 20 25 30 
+
+−0.500.5Time (s) 
+
+> q5 (m)  Latent NN Ground truth
+
+0 5 10 15 20 25 30 
+
+−0.01 00.01 Time (s) Error in  q5
+
+> (m)
+
+Figure 10: 5-DOF system: displacements predicted through learned system vs true displacements. The relative error eqi computed as per Algorithm 2 are respectively 0.12, 0.10, 0.079, 0.043 and 0.023, for i from 1 to 5. −0.10˙q1 (m/s)  
+
+> Latent NN Ground truth
+
+−0.02 00.02 Error in ˙ q1
+
+> (m/s)
+
+−0.2
+
+−0.100.1˙q2 (m/s) 
+
+> Latent NN Ground truth
+
+−0.04 
+
+−0.02 00.02 0.04 Error in ˙ q2
+
+> (m/s)
+
+−0.200.2˙q3 (m/s)  
+
+> Latent NN Ground truth
+
+−0.02 00.02 0.04 Error in ˙ q3
+
+> (m/s)
+
+−0.4
+
+−0.200.2˙q4 (m/s)  
+
+> Latent NN Ground truth
+
+−0.02 0Error in ˙ q4
+
+> (m/s)
+
+0 5 10 15 20 25 30 
+
+−1
+
+−0.500.5Time (s) ˙q5 (m/s) 
+
+> Latent NN Ground truth
+
+0 5 10 15 20 25 30 
+
+−0.02 00.02 0.04 Time (s) Error in ˙ q5
+
+> (m/s)
+
+Figure 11: 5-DOF system: velocities predicted through learned system vs true velocities. The relative errors e ˙qi computed as per Algorithm 2 are respectively 0.21, 0.16, 0.094, 0.033 and 0.018, for i from 1 to 5. 15 (a) Ttrue ( ˙ q) (b) Tlearned (E(q), J (q) ˙ q)
+
+Figure 12: 5-DOF system: Kinetic Energy Comparison responses accurately capture both amplitude and phase characteristics of the system motion. Similarly, for the velocity responses, the neural predictions closely follow the ground-truth. The relative errors are 21% and 16 .4% for the relatively slower components ˙q1 and ˙q2 respectively, while they remain below 10% for the other velocity components. In terms of time evolution of the system, the overall match is very good, demonstrating the model’s capability to generalize well across all states of the 5-DOF nonlinear system. Such a close agreement between the predicted and the true displacement and velocity functions substantiates the validity of the developed methodology which stems from its ability to maintain the virtual work consistency during the projection of latent force vectors to the original space, and the enforcement of bias from Euler-Lagrange equation in the loss function even when the latent space dimension is smaller than the original dimension of the configuration space. Although the complete energy surface in the 5D configuration space cannot be visualized, we compare the 2D slices by keeping the other dimensions fixed at zero for both the learned potential and Kinetic energy with the true ones, as shown in Figure 12 and Figure 13. As expected, the contours did not match exactly for the 5-DOF system due to the difference in the latent dimension and the original dimension of the configuration space. For this case, the circular contours of the true kinetic energy do not retain their exact structure for the learned kinetic energy function due to the inevitable cross-coupling terms and redistribution of kinetic energy associated with different velocity components that arise due to the encoding of five dimensions in a four-dimensional latent space. However, the learned kinetic energy approximates the scale of the true kinetic energy well, and the general quadratic form and convex nature of the kinetic energy are well preserved. Similarly, in the case of potential energy, the distortions and rotations visible in the learned potential energy function with respect to the true potential energy can be attributed to the encoding of five coordinates into four latent coordinates. Thus, the observed deviations are not simply the artefacts of training but are inevitable when the reduction 16 (a) Vtrue (q) (b) Vlearned (E(q)) 
+
+Figure 13: 5-DOF system: Potential Energy Comparison 1 2 3 4 50246
+
+·10 −4
+
+Degree of freedom Variance of error  Displacement Velocity 
+
+Figure 14: Variance of Relative Errors in Displacement and Velocity Responses (5-DOF System) of dimensionality of the system is involved. However, it must be noticed that the deviations in potential energy are slightly more than the kinetic energy; this might be due to the fact that the kinetic energy network possesses a strong bias in its architecture, which is enforced to be quadratic in the latent velocity. Similar to the first test case of the 2DOF system, to assess the reliability of the obtained results and the robustness of the proposed model with respect to model uncertainty, the latent-LNN has been trained using three different random seeds, and the variance in the relative errors of the predicted displacement and velocity responses have been evaluated. The result shown in Figure 14 indicate that the variability across different random seeds is quite small (i.e., of the order of 10 −4), suggesting stable model performance with respect to stochastic variations in the training process. 17 −0.100.1            
+
+> q1 (m)  Latent NN Ground truth
+> −0.04
+> −0.02 00.02 Error in  q1
+> (m)
+> −0.200.2
+> q2 (m)  Latent NN Ground truth
+> −0.04
+> −0.02 00.02 Error in  q2
+> (m)
+> −0.200.20.4
+> q3 (m)  Latent NN Ground truth
+> −0.04
+> −0.02 00.02 0.04 Error in  q3
+> (m)
+> −0.200.20.40.6
+> q4 (m)  Latent NN Ground truth
+> −0.05 0Error in  q4
+> (m) 0510 15 20 25 30
+> −0.500.5Time (s)
+> q5 (m)  Latent NN Ground truth
+> 0510 15 20 25 30
+> −0.05 0Time (s) Error in  q5
+> (m)
+
+Figure 15: 5-DOF system: displacements predicted through system trained with noisy data vs the true displacements. The relative errors eqi computed as per Algorithm 2 are 0.22, 0.12, 0.12, 0.13 and 0.096, for i from 1 to 5. Furthermore, to examine robustness to noisy inputs and evaluate direct applicability to experimental scenarios, additional models were trained using datasets mixed with zero-mean Gaussian noise having a standard deviation equal to 5% of that of the original signals. It should be noted that directly adding noise to the same dataset used in the noise-free case did not yield satisfactory accuracy. This was primarily because the responses of the first and second masses (from the left fixed end) had magnitudes comparable to the noise level added to the response of the fifth mass, where the external forcing was applied during data generation. As a result, the signal-to-noise ratio for the lower-amplitude responses became unfavorable, which adversely affected the training accuracy. To mitigate this issue, the noise was added to a dataset generated by exciting the second mass as well in addition to the fifth mass with ω ∈ [0 , 12] ,thereby increasing the richness of the training data and enabling more accurate learning of the system dynamics. Furthermore, the number of response samples used for training in the noisy case corresponds to 80 % of 100 samples, as opposed to 80 % of 70 samples in the noise-free case. The displacement and velocity responses obtained from the system trained using the noisy dataset and the corresponding relative errors are presented in figures 15 and 17. These figures clearly demonstrate the effect of data noise on prediction errors. Although a noticeable increase in relative errors is observed compared to the noise-free case, the overall agreement between the predicted and true responses remains satisfactory, depicting predictive capability in the presence of noise. While noise reduction through data preprocessing can be employed in practice to improve accuracy, directly training on noisy datasets for this validation study provided a more stringent assessment of the robustness of the proposed framework. Hence, it can be inferred from the discussion of the results presented in this subsection that the developed approach has the ability to closely estimate the original trajectory even when the energies (Lagrangian) are learned in a latent space of dimension lower than the original dimension of the configuration space. In addition, the modular approach for learning the Lagrangian by decomposing it into separate potential and kinetic energy networks not only enhances the control over the network architectures but also improves interpretability. 18 −0.100.1˙q1 (m/s)                 
+
+> Latent NN Ground truth −0.05 00.05 Error in ˙ q1
+> (m/s)
+> −0.2
+> −0.100.1˙q2 (m/s)
+> Latent NN Ground truth −0.04
+> −0.02 00.02 Error in ˙ q2
+> (m/s)
+> −0.200.2˙q3 (m/s)
+> Latent NN Ground truth −0.05 00.05 0.1Error in ˙ q3
+> (m/s)
+> −0.4
+> −0.200.2˙q4 (m/s)
+> Latent NN Ground truth −0.05 00.05 Error in ˙ q4
+> (m/s) 0510 15 20 25 30
+> −1
+> −0.500.5Time (s) ˙q5 (m/s)
+> Latent NN Ground truth
+> 0510 15 20 25 30
+> −0.04
+> −0.02 00.02 0.04 Time (s) Error in ˙ q5
+> (m/s)
+
+Figure 16: 5-DOF system: velocities predicted through system trained with noisy data vs the true velocities. The relative errors e ˙qi computed as per Algorithm 2 are 0.73, 0.18, 0.34, 0.16, 0.035, for i for 1 to 5. Figure 17: Comparison of Velocity Results for the Noisy 5-DOF System Finally, it is worth mentioning that the obtained results demonstrate highly accurate prediction of displacement and velocity responses for both test cases. However, it is important to note that precise long-term response prediction in chaotic systems is fundamentally limited due to their sensitive dependence on initial conditions. In such systems, small discrepancies in the initial state grow exponentially over time, leading to divergence of trajectories even for well-trained models. Consequently, the primary objective in chaotic dynamics is not the exact prediction of individual trajectories but rather the faithful reproduction of the system’s long-term statistical and dynamical properties [13, 17]. 
+
+# 5. Conclusion A new physically grounded framework for the reduced-order modelling of high-dimensional nonlinear dynamical systems has been developed. The method is based on learning the Lagrangian of a dynamical system in a latent space of smaller dimension by decomposing it into three neural networks: one autoencoder for the generalized coordinates, one for learning the potential energy, and another one for the kinetic energy. This can be seen either as an extension of Lagrangian NNs to model reduction, or as an extension of Latent-Energy-based NNs to dynamics. The parameters of each of these networks have been learned simultaneously using a common loss function derived from the Euler-Lagrange Equations and the virtual work principle. The efficacy of the developed framework has been validated by demonstrating its performance in predicting the behaviour of two different nonlinear dynamical systems. It showed a remarkable predictive performance via training with less than 60 time series of 10 seconds duration each for both the test cases. Moreover, some of its salient features, such as the modular control over the network architectures for the representation of the potential and the virtual work consistency between the true and the latent force fields, provided us not just the better control over their architectures but an improved interpretability of the learned energies as well. The 19 encouraging results obtained for the prototypical problems will motivate their future application to physics-informed data-driven reduced order modelling of more challenging nonlinear mechanical systems in the research community. 
+
+Acknowledgements The authors would like to thank Louen Pottier for helpful discussions on LLNN and the choice of test cases, which contributed to this work. The authors also thank the reviewers for their constructive comments, which helped improve the manuscript. 
+
+References 
+
+[1] Bonassi , Fabio, Farina , Marcello, Scattolini , Riccardo. On the stability properties of gated recurrent units neural networks . Systems & Control Letters 157:105049, 2021. [2] Bonassi , Fabio, Terzi , Enrico, Farina , Marcello, Scattolini , Riccardo. “Lstm neural networks: input to state stability and probabilistic safety verification.” Learning for Dynamics and Control . PMLR. 2020: 85– 94. [3] Chen , Ricky TQ, Rubanova , Yulia, Bettencourt , Jesse, Duvenaud , David K. Neural ordinary differential equations . Advances in neural information processing systems 31, 2018. [4] Choi , Hee-Sun et al. Data-driven simulation for general-purpose multibody dynamics using deep neural networks . Multibody System Dynamics 51(4):419–454, 2021. [5] Cranmer , Miles, Greydanus , Sam, Hoyer , Stephan, Battaglia , Peter, Spergel , David, Ho , Shirley. 
+
+Lagrangian neural networks . arXiv preprint arXiv:2003.04630, 2020. [6] Díaz , Viviana Alejandra, Salomone , Leandro Martín, Zuccalli , Marcela. Lagrangian neural networks for nonholonomic mechanics . Chaos, Solitons & Fractals 199:116867, 2025. [ https://doi.org/10.1016/j.chaos. 2025.116867 ]. [7] Emam , Samir A., Diab , Ibrahim K., Inman , Daniel J. Nonlinear vibration of a cantilever bistable symmetric laminate using a sdof model . Nonlinear Dynamics:1–24, 2025. [ 10.1007/s11071-025-11333-7 ]. [8] Fukami , Kai, Iwatani , Yuta, Maejima , Soju, Asada , Hiroyuki, Kawai , Soshi. Compact representation of transonic airfoil buffet flows with observable-augmented machine learning . Journal of Fluid Mechanics 1021:A39, 2025. [9] Fukami , Kai, Taira , Kunihiko. Grasping extreme aerodynamics on a low-dimensional manifold . Nature Communications 14(1):6480, 2023. [10] Glorot , Xavier, Bengio , Yoshua. “Understanding the difficulty of training deep feedforward neural networks.” 
+
+Proceedings of the Thirteenth International Conference on Artificial Intelligence and Statistics . Edited by Yee Whye Teh, Mike Titterington. Volume 9. Proceedings of Machine Learning Research. Chia Laguna Resort, Sardinia, Italy: PMLR, 2010: 249–256. [11] Greydanus , Samuel, Dzamba , Misko, Yosinski , Jason. Hamiltonian neural networks . Advances in neural information processing systems 32, 2019. [12] Hendrycks , Dan, Gimpel , Kevin. Gaussian error linear units (gelus) . arXiv preprint arXiv:1606.08415, 2016. [13] Linot , Alec J, Graham , Michael D. Deep learning to discover and predict dynamics on an inertial manifold .Physical Review E 101(6):062209, 2020. [14] Lutter , M, Ritter , C, Peters , Jan. “Deep lagrangian networks: using physics as model prior for deep learning.” International Conference on Learning Representations (ICLR 2019) . OpenReview. net. 2019. [15] Massaroli , Stefano, Poli , Michael, Park , Jinkyoo, Yamashita , Atsushi, Asama , Hajime. “Dissecting neural odes.” Advances in Neural Information Processing Systems . Edited by H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, H. Lin. Volume 33. Curran Associates, Inc., 2020: 3952–3963. [16] Mohajerin , Nima, Waslander , Steven L. Multi-step prediction of dynamic systems with recurrent neural networks . 2018. arXiv: 1806.00526 [cs.NE] .[17] Nakamura , Taichi, Fukami , Kai, Hasegawa , Kazuto, Nabae , Yusuke, Fukagata , Koji. Convolutional neural network and long short-term memory based reduced order surrogate for minimal turbulent channel flow . Physics of Fluids 33(2), 2021. [18] Pan , Shaowu, Duraisamy , Karthik. Long-time predictive modeling of nonlinear dynamical systems using neural networks . Complexity 2018(1):4801012, 2018. [19] Park , Yonggi, Gajamannage , Kelum, Jayathilake , Dilhani I., Bollt , Erik M. Recurrent neural networks for dynamical systems: applications to ordinary differential equations, collective motion, and hydrological modeling . 2022. arXiv: 2202.07022 [math.DS] .[20] Pottier , Louen, Thorin , Anders, Chinesta , Francisco. Latent-energy-based nns: an interpretable neural network architecture for model-order reduction of nonlinear statics in solid mechanics . Journal of the Mechanics and Physics of Solids 194:105953, 2025. [21] Rega , Giuseppe. A retrospective and prospective journey through nonlinear dynamics in mechanics: reflections and memoirs . Nonlinear Dynamics:1–55, 2025. [22] Sharma , Harsh, Najera-Flores , David A, Todd , Michael D, Kramer , Boris. Lagrangian operator inference enhanced with structure-preserving machine learning for nonintrusive model reduction of mechanical systems .Computer Methods in Applied Mechanics and Engineering 423:116865, 2024. [23] Strogatz , Steven H. Nonlinear Dynamics and Chaos: With Applications to Physics, Biology, Chemistry, and Engineering . 3rd. Chapman and Hall/CRC, 2024. [ 10.1201/9780429398490 ]. 
+
+20 [24] Tripura , Tapas, Panda , Satyam, Hazra , Budhaditya, Chakraborty , Souvik. Data-driven discovery of interpretable lagrangian of stochastically excited dynamical systems . Computer Methods in Applied Mechanics and Engineering 427:117032, 2024. 
+
+# A. Equations of motion for the test cases 
+
+# A.1. 2-DOF nonlinear spring-mass system The 2-DOF spring-mass system can be mathemati-cally described by the generalized coordinates q1(t) and q2(t), thus, the equations of motions can be given as follows: 
+
+m¨q1 + ∂V ∂q 1
+
++ cx ˙q1 = F1(t), (A.1) 
+
+m¨q2 + ∂V ∂q 2
+
++ cy ˙q2 = F2(t). (A.2) The initial conditions are specified as 
+
+q1(0) = q1,0, ˙q1(0) = v1,0, (A.3) 
+
+q2(0) = q2,0, ˙q2(0) = v2,0. (A.4) where the potential energy of the system is given as: 
+
+V (q1, q 2) = 12 kx
+
+ Lx − L0x
+
+2 + 12 ky
+
+ Ly − L0y
+
+2, (A.5) such that 
+
+Lx =
+
+q
+
+(L0x + q1)2 + q22 , (A.6) 
+
+Ly =
+
+q
+
+q21 + ( L0y + q2)2. (A.7) and the kinetic energy is 
+
+T = 12 m   ˙q21 + ˙ q22
+
+ = 12 m ˙q21 + 12 m ˙q22 . (A.8) the rest of the parameters can be described as follows: • m: mass of the particle. • kx, k y: spring stiffness constants in the x and y directions. • L0x, L 0y: free lengths of the springs in the x and y directions (their natural lengths without load). • cx, c y: viscous damping coefficients in the x and y directions. • F1(t) and F2(t) are external forcing functions which are chosen to be harmonic for training as: Fext1 sin( ω1t) and Fext2 sin( ω2t).
+
+• Fext1 , F ext2 : amplitudes of the external harmonic forces in the x and y directions. • ω1, ω 2: forcing frequencies corresponding to Fext1 and Fext2 .• q1,0, q 2,0: initial displacements. • v1,0, v 2,0: initial velocities. 21 A.2. 5-DOF nonlinear spring–mass system If we denote the generalized coordinates as q1(t),
+
+q2(t), q3(t), q4(t), and q5(t), the 5-DOF system can be mathematically described by the following matrix equation: 
+
+M ¨q(t) + C ˙q(t) + Keff (q) q(t) = F (t), (A.9) The initial conditions for this system are specified as: 
+
+q(0) = q0, ˙q(0) = v0. (A.10) where the effective stiffness matrix is 
+
+Keff (q) = K + Knl (q). (A.11) The equations for kinetic and potential energy of this system can be described as: The kinetic energy is 
+
+T = 12 ˙qT M ˙q = m
+
+2
+
+  ˙q21 + ˙ q22 + ˙ q23 + ˙ q24 + ˙ q25
+
+ . (A.12) and the expression for potential energy is 
+
+V = 12 qT Kq + α∗
+
+4
+
+ q41 + q42 + q43 + q44 + q45
+
+ . (A.13) The system parameters are described below: • Displacement/Generalized coordinate vector: 
+
+q(t) = q1(t) q2(t) q3(t) q4(t) q5(t)T .
+
+• Mass matrix: 
+
+M = m
+
+
+
+1 0 0 0 00 1 0 0 00 0 1 0 00 0 0 1 00 0 0 0 1
+
+ .
+
+• Damping matrix: 
+
+C = c
+
+
+
+2 −1 0 0 0
+
+−1 2 −1 0 00 −1 2 −1 00 0 −1 2 −10 0 0 −1 2
+
+ .
+
+• Linear stiffness matrix: 
+
+K = k
+
+
+
+2 −1 0 0 0
+
+−1 2 −1 0 00 −1 2 −1 00 0 −1 2 −10 0 0 −1 2
+
+ .
+
+• Nonlinear stiffness matrix: 
+
+Knl (q) = α∗
+
+
+
+q21 0 0 0 00 q22 0 0 00 0 q23 0 00 0 0 q24 00 0 0 0 q25
+
+ .
+
+here α∗ is the nonlinear stiffness coefficient that controls the strength of the cubic restoring force contribution. 22 • External force vector: 
+
+F (t) = 0 0 0 0 Fext sin( ωt )T .
+
+23

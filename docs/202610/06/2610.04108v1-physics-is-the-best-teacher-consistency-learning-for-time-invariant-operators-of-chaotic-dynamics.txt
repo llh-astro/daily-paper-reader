@@ -1,0 +1,909 @@
+Title: Physics is the Best Teacher: Consistency Learning for Time-Invariant Operators of Chaotic Dynamics
+
+URL Source: https://arxiv.org/pdf/2610.04108v1
+
+Published Time: Tue, 06 Oct 2026 00:23:45 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# Physics is the Best Teacher: Consistency Learning for Time-Invariant Operators of Chaotic Dynamics 
+
+Lufang Chiang 1,2∗† Jiachen Yao 2∗ Thomas Y.L. Lin 3 Anima Anandkumar 21National Taiwan University 2California Institute of Technology 3University of Washington 
+
+Abstract 
+
+Accelerating the prediction of long-term behavior in chaotic systems is crucial in scientific computing. However, existing methods rely on numerical solvers or autoregressive models that advance one small step at a time, which makes long horizons expensive. We instead view this problem as learning the system’s time-invariant evolution operator, which jumps the state across a large time span in a single evaluation. To this end, we derive the consistency equations a time-invariant operator must satisfy, with differential and compositional objectives in physical time. These equations also connect the learned operator to the physics-prescribed instant dynamics, enabling physics embedding in consistency learning. Across five chaotic systems, we find that physics-distilled consistency makes both short-term trajectories and long-term statistics more accurate. The learned operator survives temporal extrapolation and requires one-tenth as many evaluations as autoregressive rollout, offering an efficient route to long-term simulation of chaotic dynamics. 
+
+1 Introduction 
+
+Predicting the long-term behavior of chaotic systems is a core task of scientific computing, from weather forecasting [1–3] to the simulation of fluids [4, 5]. Chaotic systems amplify perturbations exponentially [6, 7], so a numerical integrator has to take steps small enough that the discretization error does not grow much along the trajectory, and the cost of simulations over a long horizon is therefore prohibitive. An operator trained at a fixed step and rolled out autoregressively [8–10] spends as many function evaluations (NFE) as the solver takes steps, and the error compounds across them. A neural ODE or a Continuous Flow Operator (CFO) [11, 12] replaces the fixed step with an integrator over a learned instantaneous velocity, but still trades solver precision against many NFEs. To accelerate the prediction, one can view the problem as learning a time-invariant evolution operator of an autonomous system. For autonomous dynamics ∂tut = v(ut), this operator takes a state and an elapsed time to the future state, i.e., ψ(ut, ∆t) = ut+∆ t. Because ψ depends on elapsed rather than absolute time, the same model applies from every starting time and can jump directly to any requested horizon in a single evaluation. Recent work learns related operators for molecular and physical dynamics [13–15], while one-step generative models use a similar idea to compress many sampling steps into one [16–19]. Across these settings, the shared computational goal is to replace repeated integration with direct evaluation of a learned operator. Learning that operator is especially demanding for chaotic dynamics [20–22]: it must represent strong sensitivity to the input state while remaining consistent with one autonomous law over a continuum of horizons [23, 24]. What remains unclear is how to formulate these consistency conditions systematically in physical time, and how much imposing them buys over fitting trajectory data alone. Fitting trajectory data alone does not ensure that the learned operator follows the same dynamical law across all horizons. A finite set of trajectories directly constrains the operator only at observed states and sampled time intervals, leaving its behavior at intermediate horizons underdetermined. An autonomous flow must also satisfy two structural conditions: splitting a time interval into two steps must not change the predicted state [15, 25], and the derivative with respect to the horizon must      
+
+> ∗Equal contribution. Correspondence to Anima Anandkumar <anima@caltech.edu> .
+> †Work done during the SURF program at Caltech. Preprint. arXiv:2610.04108v1 [cs.LG] 2 Oct 2026 (b) Ours: Time-Invariant Operator for any-step in physical time
+> Lagrangian
+> Eulerian
+> Semigroup
+> (c) Consistency Learning by Distillation or
+> averaged velocity
+> Self-Distillation
+> (a) Autoregressive / Neural ODE: with same fixed
+> Student
+> NFEs
+> NFE for any
+> differential consistency
+> elapsed time
+> physical field
+> time-invariant operator
+> instantaneous velocity
+> Lagrangian
+> Physics-Distillation
+> Eulerian
+> how to choose ?
+> autonomous governing eq.:
+
+Figure 1: Overview. (a) Autoregressive models and neural ODEs advance in small steps and need many NFEs. (b) We propose consistency conditions for a time-invariant operator that jumps any ∆t
+
+in one step. (c) The model itself or the governing equations supply the velocity in these conditions. equal the system’s velocity field evaluated at the evolved state [26]. Regression alone guarantees neither condition, so even a model that fits the observed transitions need not represent the flow of an autonomous differential equation [25]. Enforcing these conditions links predictions across horizons and provides supervision beyond the sampled transitions. The consistency conditions give physics a teaching role in learning time-invariant evolution operators. When the governing equations are known, their velocity field supplies the instantaneous velocity needed to construct targets for the differential consistency objectives. Physics thus enters the consistency targets, shifting the methodology from hard constraints and PINN-style equation residuals [27] to the supervision source. Alternatively, the model can supply its own velocity estimate from its learned “average” velocity at zero horizon. Both choices use the same consistency objectives for distillation [26], which lets us ask whether physics is a better teacher than the model itself. In summary, our contributions are the following. • We explore the design space of consistency learning for time-invariant evolution operators by deriving two differential forms and a compositional form in physical time, each yielding a training objective on the averaged velocity field to promote stability. • We instantiate the same differential consistency objectives with either the model or the governing physics as the teacher. Through controlled comparisons, we show that physics distillation consistently outperforms self-distillation. • We compare all the design choices on five representative chaotic systems, inside and beyond the training horizon, and find that the Eulerian form with a physics teacher stands out. 
+
+2 Consistency Learning for Time-Invariant Operators 
+
+We consider autonomous dynamics ∂tut = v(ut) on a state space U, where v is the instantaneous velocity field. The time-invariant evolution operator ψ : U × [0 , ∆tmax ] → U sends a state and an elapsed time to the state reached after advancing by that much. Here, we follow [14, 17, 18] and parameterize it through the averaged velocity ¯v, the mean of v over the elapsed time, 
+
+ψθ (u, ∆t) ≜ u + ∆ t ¯vθ (u, ∆t). (1) In practice, the goal is to learn the evolution operator ψθ from collected trajectories, ensuring we can supervise ¯vθ directly through the secant between two frames, 
+
+Ldata (θ) = Eut, ∆t
+
+h
+
+¯vθ (ut, ∆t) − ut+∆ t−ut
+
+> ∆t
+> 2
+
+i
+
+. (2) 
+
+Consistency of a time-invariant operator. For a time-invariant operator ψ, the prediction satisfies time-shift invariance and does not depend on absolute time: from the state the trajectory has reached after s, advancing by the remaining ∆t − s lands where advancing by ∆t from the start does. Differentiating that statement in s ties the horizon derivative of ψ to the velocity field, in two equivalent ways depending on whether the velocity is read at the start or at the end of the jump, and writing that intermediate state as ψ(ut, s ) instead gives the composition rule. In terms of the averaged 2Table 1: Average prediction results over the five systems. Five metrics averaged over three seeds and over the five systems by geometric mean, with DH and ED2 in 10 −2 and Etrans in 10 −3. Out-of-distribution means the model is trained on only half of the horizon and rolled out fully. Shading marks the physics-distilled rows, and bold the best method in each column of a block. Sections D and E define the metrics and the training setup, and Section G gives the table system by system.                                                                                                                                
+
+> in distribution out of distribution
+> Method NFE EL2Dstsp DHED2Etrans EL2Dstsp DHED2Etrans
+> Evolution operator
+> Data 100 0.46 0.20 3.1 2.5 1.7 0.44 0.18 2.9 1.6 1.1 Semigroup 100 0.46 0.21 3.4 3.3 1.9 0.44 0.18 2.9 1.3 1.3 Eulerian-self 100 0.45 0.22 3.5 3.8 1.6 0.43 0.17 2.6 1.6 1.4 Lagrangian-self 100 0.45 0.21 3.4 3.2 1.5 0.48 0.18 2.9 2.0 0.94
+> Eulerian-phys 100 0.28 0.17 2.0 0.94 0.93 0.27 0.17 2.1 0.87 1.1 Lagrangian-phys 100 0.31 0.22 2.7 1.9 1.2 0.30 0.17 2.0 1.4 1.1
+> Baselines
+> AR v-pred 1000 0.27 0.17 1.8 1.0 0.48 0.26 0.17 1.6 1.2 0.50
+> AR x-pred (cond. t)1000 0.64 0.35 4.7 5.3 2.1 1.2 3.8 28 35 19 AR x-pred (uncond. t)1000 0.59 0.24 4.3 3.5 1.6 0.57 0.23 3.8 2.8 1.3 CFO 4000 0.30 0.17 1.9 1.0 0.82 1.2 1.7 12 10 4.9
+
+velocity, and following [17], the operator satisfies the three consistency conditions below: 
+
+Eulerian: ¯v(ut, ∆t) = v(ut) + ∆ t D¯v(ut, ∆t)[ v(ut)] − ∂∆t ¯v(ut, ∆t), (3) 
+
+Lagrangian: ¯v(ut, ∆t) = v ut + ∆ t ¯v(ut, ∆t) − ∆t ∂ ∆t ¯v(ut, ∆t), (4) 
+
+Semigroup: ψ(ut, ∆t) = ψ ψ(ut, α ∆t), (1 − α)∆ t, α ∈ [0 , 1] . (5) Section B states the assumptions and proves all three. What remains is how to impose them on a learned operator, since fitting Equation (2) constrains ¯vθ only through the endpoint of each jump, without providing any other supervision on the structure in between. 
+
+Imposing the conditions. For differential consistency, Equations (3) and (4) both call for the instantaneous velocity v, and the operator can supply v itself, since the tangent condition ¯v(u, 0) = 
+
+v(u) holds by construction (Proposition B.2), which makes the objective a self-distillation . When the governing equations ∂tut = v(ut) = F(ut) are known, v can be read from F instead, which makes it a physics-distillation . This gives Eulerian-self and Lagrangian-self against Eulerian-phys and 
+
+Lagrangian-phys for elucidating the velocity teacher, and Semigroup as the point in the design space with no velocity guidance at all. To see which condition is the better thing to learn from, we square the residual of each and add it to the data term, 
+
+L(θ) = Ldata (θ) + w Lcons (θ), (6) where Lcons is the residual of the consistency equation and w controls its weight. Details on the horizon weighting and the stop-gradient are given in Section B; Section F sweeps how sharply that weighting grows with the horizon; Section I relates consistency conditions to previous works. 
+
+3 Experiments 
+
+Setup. We use five chaotic systems from the dysts catalogue [7], Lorenz, Chen, Rössler, Thomas and Halvorsen, measuring every metric in their Lyapunov times Tλ. Each dataset holds 10 ,000 trajectories of 5Tλ, detailed in Section C, and every method shares one MLP with residual connections, with or without conditioning on time, with hyperparameters tuned by Vizier [28] on the validation split and every cell run over three seeds, detailed in Section E. The baselines are an autoregressive model (AR) that predicts either the next state ( x-pred) or the velocity ( v-pred), and CFO [12], a continuous-time model that predicts instantaneous velocity, trained on a polynomial interpolant of the data points. For a compact overview, Section A lists each method’s defining equation, NFE, and average prediction error. Rolling out five Lyapunov times costs the evolution operator 100 evaluations, the AR baselines 
+
+1000 , and CFO 4000 . We first train on the full trajectory and evaluate at the endpoint (in distribution), and then train on the first half and evaluate at the endpoint of the full trajectory (out of distribution). Besides the relative L2 error for short-term accuracy, we report long-term metrics on the distribution the model settles into, detailed in Section D. 
+
+Choice of teacher. Tables 1, 2 and 7 compare the five consistency objectives against the data-only control. The physics-distillation objectives improve on the control by a factor of 1.6 at 5Tλ and a factor of 3 at Tλ, and the same holds for the long-term statistics, while self-distillation stays level with it. The difference lies in how each teacher constrains the operator. The consistency conditions in Section 2 require the operator to be the flow of some velocity field, but self-distillation velocity does 3Table 2: Five-Lyapunov-time accuracy. EL2 (5 Tλ) on each of the five systems, mean ± std over three seeds, with each method at its native number of evaluations, stated in the NFE column. In-distribution means every model is trained on the full horizon, and out-of-distribution means it is trained on the first half and rolled out to the full horizon. Shading marks the physics-distilled objectives and bold the best method within each block. Section G gives the same table at one Lyapunov time.                                                                                                                                          
+
+> Lorenz Chen Rössler Thomas Halvorsen Method NFE in-dist OOD in-dist OOD in-dist OOD in-dist OOD in-dist OOD
+> Evolution operator
+> Data 100 0.32 ±0.05 0.25 ±0.04 0.26 ±0.03 0.27 ±0.03 0.53 ±0.06 0.53 ±0.02 0.90 ±0.04 0.92 ±0.04 0.56 ±0.09 0.52 ±0.01
+> Semigroup 100 0.30 ±0.06 0.24 ±0.03 0.27 ±0.02 0.29 ±0.04 0.54 ±0.05 0.54 ±0.01 0.88 ±0.09 0.90 ±0.07 0.55 ±0.09 0.52 ±0.03
+> Eulerian-self 100 0.27 ±0.06 0.24 ±0.01 0.27 ±0.03 0.30 ±0.04 0.56 ±0.02 0.50 ±0.04 0.89 ±0.07 0.83 ±0.05 0.50 ±0.02 0.49 ±0.02
+> Lagrangian-self 100 0.22 ±0.03 0.31 ±0.14 0.31 ±0.05 0.32 ±0.06 0.56 ±0.06 0.54 ±0.03 0.85 ±0.15 0.87 ±0.04 0.55 ±0.07 0.56 ±0.02
+> Eulerian-phys 100 0.14 ±0.06 0.13 ±0.03 0.15 ±0.01 0.13 ±0.02 0.45 ±0.03 0.44 ±0.03 0.64 ±0.07 0.61 ±0.06 0.31 ±0.01 0.32 ±0.02
+> Lagrangian-phys 100 0.14 ±0.01 0.12 ±0.02 0.15 ±0.01 0.17 ±0.04 0.52 ±0.06 0.51 ±0.04 0.62 ±0.02 0.62 ±0.05 0.39 ±0.03 0.37 ±0.05
+> Baselines
+> AR v-pred 1000 0.11 ±0.03 0.094 ±0.023 0.19 ±0.05 0.21 ±0.04 0.27 ±0.06 0.30 ±0.07 0.82 ±0.09 0.78 ±0.06 0.27 ±0.02 0.25 ±0.02
+> AR x-pred (cond. t)1000 0.50 ±0.07 0.75 ±0.08 0.45 ±0.07 1.0 ±0.5 0.61 ±0.01 0.71 ±0.11 1.1 ±0.1 2.1 ±0.6 0.68 ±0.12 1.8 ±0.4
+> AR x-pred (uncond. t)1000 0.42 ±0.12 0.39 ±0.12 0.47 ±0.03 0.45 ±0.07 0.49 ±0.05 0.57 ±0.02 1.1 ±0.1 1.1 ±0.0 0.72 ±0.12 0.57 ±0.03
+> CFO 4000 0.14 ±0.02 0.55 ±0.06 0.19 ±0.04 0.30 ±0.03 0.47 ±0.05 8.7 ±5.8 0.80 ±0.07 2.1 ±0.5 0.25 ±0.03 0.88 ±0.08 Data (100 NFE)
+> Lorenz, x(t)
+> E-phys (100 NFE) L-phys (100 NFE) AR v-pred (1000 NFE)
+> 012345
+> Lyapunov times
+> CFO (4000 NFE)
+
+Figure 2: Temporal extrapolation. One test trajectory’s x-coordinate on Lorenz, the truth in gray and one method per row. Every model is trained on the first half only, so no model saw the shaded half. 0.1 1 
+
+> consistency weight w
+> 0.7 11.5 2
+> L2 relative to Data
+> SE-self L-self E-phys L-phys
+
+Figure 3: Consistency strength. Validation relative L2 error against the consistency weight, as a fraction of the data-only model’s error, averaged over the five systems. E-phys and L-phys are fed the governing equations; the other three are fed the model’s own velocity. not strictly enforce that the velocity matches the physical one. Substituting the governing equations selects a single member of that family, and constrains the operator at every horizon rather than only at the frames the data samples. Figure 3 is consistent with this reading, as the physics curves fall below the control while the weight grows and the self-distilled ones rise above it. The operator also needs 10 × fewer evaluations than the best baseline, and the two baselines that use absolute time break down out of distribution, while the same network without the time input does not. Figure 2 shows one trajectory past the training horizon, where the operator trained with physics-distillation stays on the truth and CFO leaves it first. 
+
+Choice of form. Under a physics teacher, Eulerian is ahead of Lagrangian, though the two stay close and most cells of Table 2 do not separate them, and what differs between the two is where F is evaluated. Eulerian evaluates F at the data state, so its target is fixed by the data and does not move while the operator trains. Lagrangian evaluates F at the operator’s own predicted endpoint, so its target is bootstrapped on the current prediction and follows the model’s own error, which may be the harder signal to learn from. The choice of form matters far less than the choice of teacher. 
+
+4 Conclusion 
+
+In this work, we learn the time-invariant evolution operator of an autonomous system from the consistency conditions it must satisfy, with either the model itself or the governing equations as the teacher. Across five chaotic systems, self-distillation carries little supervision and lands on the data-only control, while physics-distillation improves on it in and beyond the training horizon, where the baselines that read absolute time break down. While we lay out this design space, we do not test every choice in it, and leave a direct test of what separates the two differential forms to future work. 4Declaration of LLM Usage 
+
+Large language models (LLMs) were used to assist with writing and formatting, to examine proofs, and to support code development. All LLM-assisted text, proof assessments, and code were subse-quently reviewed by the authors. LLMs did not contribute to the development of the core methods in this research. 
+
+Acknowledgments and Disclosure of Funding 
+
+Anima Anandkumar is supported in part by Bren endowed chair, ONR (MURI grant N00014-23-1-2654), and the AI2050 senior fellow program at Schmidt Sciences. Lufang Chiang is supported in part by the Babar SURF Fellowship. Jiachen Yao is supported in part by the Naren and Vinita Gupta Fellowship. 
+
+References 
+
+[1] Jaideep Pathak, Shashank Subramanian, Peter Harrington, Sanjeev Raja, Ashesh Chattopadhyay, Morteza Mardani, Thorsten Kurth, David Hall, Zongyi Li, Kamyar Azizzadenesheli, Pedram Hassanzadeh, Karthik Kashinath, and Animashree Anandkumar. Fourcastnet: A global data-driven high-resolution weather model using adaptive fourier neural operators, 2022. URL 
+
+https://arxiv.org/abs/2202.11214 .[2] Remi Lam, Alvaro Sanchez-Gonzalez, Matthew Willson, Peter Wirnsberger, Meire Fortunato, Ferran Alet, Suman Ravuri, Timo Ewalds, Zach Eaton-Rosen, Weihua Hu, Alexander Merose, Stephan Hoyer, George Holland, Oriol Vinyals, Jacklynn Stott, Alexander Pritzel, Shakir Mohamed, and Peter Battaglia. Learning skillful medium-range global weather forecasting. 
+
+Science , 382(6677):1416–1421, 2023. doi: 10.1126/science.adi2336. [3] Kaifeng Bi, Lingxi Xie, Hengheng Zhang, Xin Chen, Xiaotao Gu, and Qi Tian. Accurate medium-range global weather forecasting with 3D neural networks. Nature , 619(7970):533– 538, 2023. doi: 10.1038/s41586-023-06185-3. [4] Dmitrii Kochkov, Jamie A. Smith, Ayya Alieva, Qing Wang, Michael P. Brenner, and Stephan Hoyer. Machine learning–accelerated computational fluid dynamics. Proceedings of the National Academy of Sciences , 118(21):e2101784118, 2021. doi: 10.1073/pnas.2101784118. [5] Tobias Pfaff, Meire Fortunato, Alvaro Sanchez-Gonzalez, and Peter W. Battaglia. Learn-ing mesh-based simulation with graph networks. In International Conference on Learning Representations , 2021. URL https://openreview.net/forum?id=roNqYL0_XP .[6] Julien Clinton Sprott. Chaos and Time-Series Analysis . Oxford University Press, 2003. [7] William Gilpin. Chaos as an interpretable benchmark for forecasting and data-driven modelling. In Advances in Neural Information Processing Systems, Datasets and Benchmarks Track , 2021. URL https://arxiv.org/abs/2110.05266 .[8] Zongyi Li, Nikola Borislavov Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhat-tacharya, Andrew M. Stuart, and Anima Anandkumar. Fourier neural operator for parametric partial differential equations. In International Conference on Learning Representations , 2021. URL https://openreview.net/forum?id=c8P9NQVtmnO .[9] Johannes Brandstetter, Daniel E. Worrall, and Max Welling. Message passing neural PDE solvers. In International Conference on Learning Representations , 2022. URL https:// openreview.net/forum?id=vSix3HPYKSU .[10] Zaijun Ye, Chen-Song Zhang, and Wansheng Wang. Recurrent neural operators: Stable long-term pde prediction, 2025. URL https://arxiv.org/abs/2505.20721 .[11] Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David K. Duvenaud. Neural ordinary differential equations. In Advances in Neural Information Processing Systems , volume 31, pages 6572–6583. Curran Associates, Inc., 2018. URL https://proceedings.neurips.cc/ paper_files/paper/2018/file/69386f6bb1dfed68692a24c8686939b9-Paper.pdf .5[12] Xianglong Hou, Xinquan Huang, and Paris Perdikaris. CFO: Learning continuous-time PDE dynamics via flow-matched neural operators. In International Conference on Learning Repre-sentations , 2026. URL https://openreview.net/forum?id=IQhaeSzyup .[13] Hanru Bai, Yuncheng Zhou, and Difan Zou. Physics-informed neural pde solvers via spatio-temporal meanflow, 2026. URL https://arxiv.org/abs/2605.08915 .[14] Winfried Ripken, Michael Plainer, Gregor Lied, Thorben Frank, Oliver T. Unke, Stefan Chmiela, Frank Noé, and Klaus-Robert Müller. Learning Hamiltonian flow maps: Mean flow consistency for large-timestep molecular dynamics. In Proceedings of the 43rd International Conference on Machine Learning . PMLR, 2026. [15] Yuxiang Luo and Andrew Perrault. Recovering physical dynamics from discrete observations via intrinsic differential consistency, 2026. URL https://arxiv.org/abs/2605.08454 .[16] Yang Song, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. Consistency models. In 
+
+Proceedings of the 40th International Conference on Machine Learning , volume 202 of 
+
+Proceedings of Machine Learning Research , pages 32211–32252. PMLR, 2023. URL 
+
+https://proceedings.mlr.press/v202/song23a.html .[17] Nicholas M. Boffi, Michael S. Albergo, and Eric Vanden-Eijnden. Flow map matching with stochastic interpolants: A mathematical framework for consistency models. Transactions on Ma-chine Learning Research , 2025. URL https://openreview.net/forum?id=cqDH0e6ak2 .[18] Zhengyang Geng, Mingyang Deng, Xingjian Bai, Zico Kolter, and Kaiming He. Mean flows for one-step generative modeling. In Advances in Neural Informa-tion Processing Systems , volume 38, pages 84032–84054, 2025. doi: 10.52202/ 085713-2534. URL https://proceedings.neurips.cc/paper_files/paper/2025/ hash/6d13e085b79d454da5910e4ca82a3d9d-Abstract-Conference.html .[19] Zidong Wang, Yiyuan Zhang, Xiaoyu Yue, Xiangyu Yue, Yangguang Li, Wanli Ouyang, and Lei Bai. Transition models: Rethinking the generative learning objective. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 29178– 29189, 2026. URL https://openaccess.thecvf.com/content/CVPR2026/html/Wang_ Transition_Models_Rethinking_the_Generative_Learning_Objective_CVPR_ 2026_paper.html .[20] Florian Hess, Zahra Monfared, Manuel Brenner, and Daniel Durstewitz. Generalized teacher forcing for learning chaotic dynamics. In Proceedings of the 40th International Conference on Machine Learning , volume 202 of Proceedings of Machine Learning Research , pages 13017–13049. PMLR, 2023. URL https://arxiv.org/abs/2306.04406 .[21] Chuwei Wang, Julius Berner, Zongyi Li, Di Zhou, Jiayun Wang, Jane Bae, and Anima Anandku-mar. Beyond closure models: Learning chaotic-systems via physics-informed neural operators. In D3S3: Data-driven and Differentiable Simulations, Surrogates, and Solvers Workshop @ NeurIPS , 2024. URL https://arxiv.org/abs/2408.05177v4 .[22] Yuanzhao Zhang and William Gilpin. Zero-shot forecasting of chaotic systems. In Interna-tional Conference on Learning Representations , 2025. URL https://arxiv.org/abs/2409. 15771 .[23] Georgia Koppe, Hazem Toutounji, Peter Kirsch, Stefanie Lis, and Daniel Durstewitz. Identifying nonlinear dynamical systems via generative recurrent neural networks with applications to fMRI. 
+
+PLOS Computational Biology , 15(8):e1007263, 2019. doi: 10.1371/journal.pcbi.1007263. URL 
+
+https://arxiv.org/abs/1902.07186 .[24] Daniel Durstewitz, Christoph Jürgen Hemmer, Florian Hess, Charlotte Ricarda Doll, and Lukas Eisenmann. Position: Why a Dynamical Systems Perspective is Needed to Advance Time Series Modeling. In Proceedings of the 43rd International Conference on Machine Learning ,2026. URL https://openreview.net/forum?id=h2R3VYWpBm .[25] Lennon J. Shikhman. Semigroup consistency as a diagnostic for learned physics simulators. In ICML 2026 Workshop on AI for Physics (AI4Physics) , 2026. URL https://openreview. net/forum?id=MeAFOZnrvM .6[26] Nicholas M. Boffi, Michael S. Albergo, and Eric Vanden-Eijnden. How to build a con-sistency model: Learning flow maps via self-distillation. In Advances in Neural Infor-mation Processing Systems , volume 38. Curran Associates, Inc., 2025. doi: 10.52202/ 085713-1121. URL https://proceedings.neurips.cc/paper_files/paper/2025/ hash/2ff3605c9e442d55156d99fe4f5f228d-Abstract-Conference.html .[27] Maziar Raissi, Paris Perdikaris, and George E. Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics , 378:686–707, 2019. [28] Daniel Golovin, Benjamin Solnik, Subhodeep Moitra, Greg Kochanski, John Karro, and D. Sculley. Google Vizier: A service for black-box optimization. In Proceedings of the 23rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining , pages 1487–1495, 2017. URL https://doi.org/10.1145/3097983.3098043 .[29] Ernst Hairer, Syvert P. Nørsett, and Gerhard Wanner. Solving Ordinary Differential Equations I: Nonstiff Problems , volume 8 of Springer Series in Computational Mathematics . Springer, Berlin, Heidelberg, 2nd edition, 1993. doi: 10.1007/978-3-540-78862-1. URL https://doi. org/10.1007/978-3-540-78862-1 .[30] M. S. M. Noorani, I. Hashim, R. Ahmad, S. A. Bakar, E. S. Ismail, and A. M. Zakaria. Comparing numerical methods for the solutions of the Chen system. Chaos, Solitons & Fractals ,32(4):1296–1304, 2007. URL https://doi.org/10.1016/j.chaos.2005.12.036 .[31] S. A. Eftekhari and A. A. Jafari. Numerical simulation of chaotic dynamical systems by the method of differential quadrature. Scientia Iranica , 19(5):1299–1315, 2012. doi: 10.1016/j. scient.2012.08.003. URL https://doi.org/10.1016/j.scient.2012.08.003 .[32] Julien Clinton Sprott and Konstantinos E. Chlouverakis. Labyrinth chaos. International Journal of Bifurcation and Chaos , 17(6):2097–2108, 2007. URL https://doi.org/10. 1142/S0218127407018245 .[33] Julien Clinton Sprott. Elegant Chaos: Algebraically Simple Chaotic Flows . World Scientific, 2010. URL https://doi.org/10.1142/7183 .[34] Edward N. Lorenz. Deterministic nonperiodic flow. Journal of the Atmospheric Sciences , 20 (2):130–141, 1963. URL https://doi.org/10.1175/1520-0469(1963)020<0130:DNF> 2.0.CO;2 .[35] Guanrong Chen and Tetsushi Ueta. Yet another chaotic attractor. International Jour-nal of Bifurcation and Chaos , 9(7):1465–1466, 1999. URL https://doi.org/10.1142/ S0218127499001024 .[36] Otto E. Rössler. An equation for continuous chaos. Physics Letters A , 57(5):397–398, 1976. URL https://doi.org/10.1016/0375-9601(76)90101-8 .[37] René Thomas. Deterministic chaos seen in terms of feedback circuits: Analysis, synthesis, “labyrinth chaos”. International Journal of Bifurcation and Chaos , 9(10):1889–1905, 1999. URL https://doi.org/10.1142/S0218127499001383 .[38] Nikola Kovachki, Zongyi Li, Burigede Liu, Kamyar Azizzadenesheli, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Neural operator: Learning maps between function spaces with applications to PDEs. Journal of Machine Learning Research , 24(89):1–97, 2023. URL https://arxiv.org/abs/2108.08481 .[39] Wilhelm Kutta. Beitrag zur näherungsweisen integration totaler differentialgleichungen. 
+
+Zeitschrift für Mathematik und Physik , 46:435–453, 1901. [40] Jonas M. Mikhaeil, Zahra Monfared, and Daniel Durstewitz. On the difficulty of learning chaotic dynamics with RNNs. In Advances in Neural Information Processing Systems , volume 35, 2022. URL https://arxiv.org/abs/2110.07238 .7[41] Peter Grassberger and Itamar Procaccia. Measuring the strangeness of strange attractors. Physica D: Nonlinear Phenomena , 9(1-2):189–208, 1983. doi: 10.1016/0167-2789(83)90298-1. URL 
+
+https://doi.org/10.1016/0167-2789(83)90298-1 .[42] George Datseris, Inga Kottlarz, Anton P. Braun, and Ulrich Parlitz. Estimating fractal di-mensions: A comparative review and open source implementations. Chaos: An Interdisci-plinary Journal of Nonlinear Science , 33(10):102101, 2023. doi: 10.1063/5.0160394. URL 
+
+https://arxiv.org/abs/2109.05937 .[43] Stanislaw M. Ulam. A Collection of Mathematical Problems . Interscience Publishers, 1960. [44] Jan-Hendrik Prinz, Hao Wu, Marco Sarich, Bettina Keller, Martin Senne, Martin Held, John D. Chodera, Christof Schütte, and Frank Noé. Markov models of molecular kinetics: Generation and validation. The Journal of Chemical Physics , 134:174105, 2011. URL https://doi. org/10.1063/1.3565032 .[45] Stuart P. Lloyd. Least squares quantization in PCM. IEEE Transactions on Information Theory ,28(2):129–137, 1982. URL https://doi.org/10.1109/TIT.1982.1056489 .[46] William Peebles and Saining Xie. Scalable diffusion models with transformers. In IEEE/CVF International Conference on Computer Vision , 2023. URL https://arxiv.org/abs/2212. 09748 .[47] Xingyou Song, Sagi Perel, Chansoo Lee, Greg Kochanski, and Daniel Golovin. Open source Vizier: Distributed infrastructure and API for reliable and flexible blackbox optimization. In 
+
+International Conference on Automated Machine Learning , 2022. URL https://arxiv.org/ abs/2207.13676 .[48] Diederik P. Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In Interna-tional Conference on Learning Representations , 2015. URL https://arxiv.org/abs/1412. 6980 .[49] Tong Qin, Kailiang Wu, and Dongbin Xiu. Data driven governing equations approximation using deep neural networks. Journal of Computational Physics , 395:620–635, 2019. URL 
+
+https://arxiv.org/abs/1811.05537 .[50] Kevin Frans, Danijar Hafner, Sergey Levine, and Pieter Abbeel. One step diffusion via shortcut models. In International Conference on Learning Representations , 2025. URL 
+
+https://arxiv.org/abs/2410.12557 .[51] Linqi Zhou, Mathias Parger, Ayaan Haque, and Jiaming Song. Terminal velocity matching. In 
+
+International Conference on Learning Representations , 2026. URL https://arxiv.org/ abs/2511.19797 .[52] Junfeng Chen and Kailiang Wu. Deep-OSG: Deep learning of operators in semigroup. Journal of Computational Physics , 493:112498, 2023. URL https://arxiv.org/abs/2302.03358 .8A Method Cheatsheet 
+
+Table 3 collects the definitions of all methods in Table 1. For the evolution operators, write h = ∆ t
+
+and ψθ (u, h ) = u + h¯vθ (u, h ). The model’s own velocity at a state u is ¯vθ (u, 0) , and D¯vθ (u, h )[ ·]
+
+denotes the Fréchet derivative with respect to the state, acting on a velocity. The consistency conditions in the table are training constraints: we minimize the expected squared difference between their two sides, with the right-hand side held under stop-gradient. These terms supplement the data MSE with weight w(∆ t/ ∆tmax )p, where p = 2 and w is tuned per system, as in Equations (6) and (32). Expectations are over training states and horizons, and also over the split fraction α ∈ [0 , 1] .Table 3: Method definitions for the benchmark tables. The evolution-operator rows give the training objective or consistency condition; the baseline rows give the prediction rule. NFE is the number of network evaluations used to reach five Lyapunov times in either evaluation regime. The final column reports the average relative L2 error at five Lyapunov times from Table 1. Physics-distilled rows are shaded, and bold marks the lowest error within each group and evaluation regime. 
+
+Method Equation and distinguishing feature NFE Avg. EL2 ↓
+
+ID / OOD 
+
+Evolution operator: elapsed-time step h
+
+Data-only L = E
+
+h
+
+¯vθ (ut, h ) − ut+h−ut
+
+> h
+> 2
+
+i
+
+.Paired-trajectory MSE ( h > 0). 100 0.46 / 0.44 Semigroup ψθ (u, h ) = ψθ
+
+ ψθ (u, αh ), (1 − α)h.One jump agrees with two composed jumps. 100 0.46 / 0.44 Eulerian-self ¯vθ (u, h ) = ¯ vθ (u, 0) + hD ¯vθ (u, h )[¯ vθ (u, 0)] − h∂ h ¯vθ (u, h ).Model velocity at the starting state u.100 0.45 / 0.43 Lagrangian-self ¯vθ (u, h ) = ¯ vθ
+
+ u + h¯vθ (u, h ), 0 − h∂ h ¯vθ (u, h ).Model velocity at the predicted endpoint. 100 0.45 / 0.48 Eulerian-phys ¯vθ (u, h ) = F(u) + hD ¯vθ (u, h )[ F(u)] − h∂ h ¯vθ (u, h ).Governing-equation velocity at the starting state u.100 0.28 / 0.27 
+
+Lagrangian-phys ¯vθ (u, h ) = F u + h¯vθ (u, h ) − h∂ h ¯vθ (u, h ).Governing-equation velocity at the predicted endpoint. 100 0.31 / 0.30 
+
+Baselines 
+
+AR v-pred ut+δt = ut + δt f θ (ut).Velocity prediction; fixed one-frame step δt .1000 0.27 / 0.26 
+
+AR x-pred (cond. t) ut+δt = fθ (ut, t ).Direct next-state prediction conditioned on absolute time. 1000 0.64 / 1.2 AR x-pred (uncond. t) ut+δt = fθ (ut).Direct next-state prediction without time conditioning. 1000 0.59 / 0.57 CFO ∂tut = fθ (ut, t ), integrated with RK4. Continuous-time velocity conditioned on absolute time. 4000 0.30 / 1.2 
+
+In the baseline rows, fθ denotes the separately trained network of the corresponding baseline, which returns the next state or a velocity as its row shows. In the baseline prediction rules, ut denotes the current rollout state. The Eulerian and Lagrangian equations differ in where the velocity is evaluated and whether a derivative with respect to the state is required; within either form, self and physics variants differ only in the velocity source. Their full expressions and stop-gradient placement appear in Equations (33) to (35), and training uses the normalized physical field in Equation (38). The rollout step counts and CFO’s four network evaluations per RK4 step are specified in Section D. 9B Proofs and learning objectives 
+
+To make the time-invariant formulation precise, we work in the autonomous setting throughout this appendix and define every symbol used in the consistency equations. 
+
+B.1 Consistency Equations Symbol definitions. We use the following notation throughout this appendix. • H is the Hilbert space of solution states, and U ⊂ H is the set of admissible states on which the dynamics are defined. • t ∈ [0 , T ] is the physical time, and ∆t ∈ [0 , ∆tmax ] is the elapsed prediction horizon. • ut ∈ U denotes the exact solution state at time t.• v : U → H is the autonomous velocity field, and the exact trajectory satisfies ∂tut = v(ut).• ψ : U × [0 , ∆tmax ] → U is the time-invariant evolution operator, where ψ(ut, ∆t) predicts the state after elapsed time ∆t.• Dψ (u, ∆t) : H → H denotes the Fréchet derivative of the map u 7 → ψ(u, ∆t) with respect to the state variable, and Dψ (u, ∆t)[ h] is its action on a direction h ∈ H .• ∂∆tψ(u, ∆t) denotes the partial derivative of ψ with respect to the elapsed-time argument. 
+
+Assumptions. Assume that the trajectory u : [0 , T ] → U , the velocity field v, and the operator ψ
+
+are continuously differentiable, that the operator does not change the state over zero elapsed time, 
+
+ψ(u, 0) = u, and that it satisfies the time-shift invariance along one trajectory, 
+
+ψ(ut, ∆t) = ψ(ut+s, ∆t − s), (7) for every shift s ∈ [0 , ∆t]. So that every state the proofs below evaluate lies on the trajectory, we take the base time in t ∈ [0 , T − ∆tmax ] and the horizon in ∆t ∈ [0 , ∆tmax ], which places ut+∆ t
+
+inside [0 , T ] for every horizon we consider. 
+
+Proposition B.1 (Consistency equations) . Under the assumptions above, the time-invariant evolution operator satisfies, for every ut and every ∆t ∈ [0 , ∆tmax ]:(i) the Eulerian consistency equation 
+
+∂∆tψ(ut, ∆t) = Dψ (ut, ∆t)[ v(ut)]; (8) 
+
+(ii) the Lagrangian consistency equation 
+
+∂∆tψ(ut, ∆t) = v(ψ(ut, ∆t)) . (9) 
+
+Proof of Equation (8). Fix t and ∆t, and define 
+
+g(s) ≜ ψ(ut+s, ∆t − s), s ∈ [0 , ∆t]. (10) By Equation (7), g is constant in s: every pair (ut+s, ∆t−s) lands on the same endpoint, so g′(0) = 0 .Applying the chain rule gives 
+
+g′(0) = Dψ (ut, ∆t)
+
+ dds ut+s s=0 
+
+
+
++ ∂∆tψ(ut, ∆t) dds (∆ t − s) s=0 
+
+. (11) Using dds ut+s|s=0 = ∂tut = v(ut) and dds (∆ t − s)|s=0 = −1, we obtain 
+
+0 = g′(0) = Dψ (ut, ∆t)[ v(ut)] − ∂∆tψ(ut, ∆t). (12) Rearranging proves Equation (8). 
+
+Proof of Equation (9). Taking s = ∆ t in Equation (7) and using ψ(u, 0) = u gives 
+
+ψ(ut, ∆t) = ψ(ut+∆ t, 0) = ut+∆ t, (13) so the operator advances the exact trajectory. Differentiating in ∆t and using the dynamics ∂tut =
+
+v(ut) gives 
+
+∂∆tψ(ut, ∆t) = dd∆t ut+∆ t = v(ut+∆ t) = v(ψ(ut, ∆t)) , (14) which is Equation (9). 10 B.2 Differential Equations 
+
+Suppose the evolution operator admits the averaged-velocity parameterization 
+
+ψ(ut, ∆t) = ut + ∆ t ¯v(ut, ∆t). (15) Here ¯v(ut, ∆t) plays the role of an averaged velocity over the horizon ∆t, and we assume it is jointly continuously differentiable in the state and the horizon. Without that regularity the parameterization leaves ¯v(ut, 0) free, since the factor ∆t annihilates it at zero horizon, and Proposition B.2 can fail. 
+
+Lemma B.2 (Boundary condition) . The averaged velocity is anchored to the instantaneous velocity at zero horizon, 
+
+¯v(ut, 0) = v(ut). (16) 
+
+Proof. Differentiating the parameterization in ∆t and evaluating at ∆t = 0 gives 
+
+∂∆tψ(ut, ∆t) ∆t=0 =
+
+h
+
+¯v(ut, ∆t) + ∆ t ∂ ∆t ¯v(ut, ∆t)
+
+i
+
+> ∆t=0
+
+= ¯ v(ut, 0) . (17) Evaluating Equation (9) at ∆t = 0 gives 
+
+∂∆tψ(ut, ∆t) ∆t=0 = v ψ(ut, 0)  = v(ut). (18) Equating the two proves Equation (16). 
+
+Proposition B.3 (Differential consistency equations) . Under Equations (8) and (9) respectively, the averaged velocity satisfies: (i) the Eulerian equation 
+
+¯v(ut, ∆t) = v(ut) + ∆ t (D¯v(ut, ∆t)[ v(ut)] − ∂∆t ¯v(ut, ∆t)) ; (19) 
+
+(ii) the Lagrangian equation 
+
+¯v(ut, ∆t) = v(ut + ∆ t ¯v(ut, ∆t)) − ∆t ∂ ∆t ¯v(ut, ∆t). (20) 
+
+Proof of Equation (19). The product rule gives 
+
+∂∆tψ(ut, ∆t) = ¯ v(ut, ∆t) + ∆ t ∂ ∆t ¯v(ut, ∆t). (21) Since ψ(·, ∆t) is the identity plus ∆t ¯v(·, ∆t), linearity of the derivative gives 
+
+Dψ (ut, ∆t)[ v(ut)] = v(ut) + ∆ t D ¯v(ut, ∆t)[ v(ut)] . (22) Substituting Equations (21) and (22) into Equation (8) gives 
+
+¯v(ut, ∆t) + ∆ t ∂ ∆t ¯v(ut, ∆t) = v(ut) + ∆ t D ¯v(ut, ∆t)[ v(ut)] . (23) Rearranging proves Equation (19). 
+
+Proof of Equation (20). The left-hand side of Equation (9) is Equation (21). Substituting the parameterization into its right-hand side gives 
+
+v(ψ(ut, ∆t)) = v(ut + ∆ t ¯v(ut, ∆t)) . (24) Therefore Equation (9) reads 
+
+¯v(ut, ∆t) + ∆ t ∂ ∆t ¯v(ut, ∆t) = v(ut + ∆ t ¯v(ut, ∆t)) , (25) and moving the ∆t ∂ ∆t ¯v(ut, ∆t) term to the right-hand side proves Equation (20). 
+
+B.3 Semigroup Property 
+
+The semigroup property composes the horizon from two shorter jumps. It follows directly from Equation (7) and uses no differential structure for learning. 
+
+Proposition B.4 (Semigroup property) . For ∆t1, ∆t2 ≥ 0 with ∆t1 + ∆ t2 ≤ ∆tmax ,
+
+ψ(ut, ∆t1 + ∆ t2) = ψ ψ(ut, ∆t1), ∆t2
+
+. (26) 
+
+Proof. As in the proof of Equation (9), the operator advances the exact trajectory, ψ(ut, ∆t1) = 
+
+ut+∆ t1 . Taking s = ∆ t1 in Equation (7) with horizon ∆t1 + ∆ t2 gives 
+
+ψ(ut, ∆t1 + ∆ t2) = ψ ut+∆ t1 , ∆t2
+
+ = ψ ψ(ut, ∆t1), ∆t2
+
+, (27) which is Equation (26). 11 B.4 Learning Objectives 
+
+Following the parameterization in Section B.2, the model is ψθ (u, ∆t) ≜ u + ∆ t ¯vθ (u, ∆t), and each equation yields a learning objective by squaring its residual. Because the data are trajectories, we first use a regression loss on the averaged velocity as the data term, 
+
+Ldata (θ) = Eut, ∆t> 0
+
+h
+
+¯vθ (ut, ∆t) − ut+∆ t−ut
+
+> ∆t
+> 2
+
+i
+
+. (28) For the consistency losses, the instantaneous velocity v is supplied by the model’s own boundary value ¯vθ (·, 0) (self-distillation, Proposition B.2), and the Semigroup objective uses a fraction α to randomize the split. The losses take expectations over states ut and horizons ∆t. The sampling distribution of ∆t is compared in Section F, and other implementation choices in Section E. 
+
+LE(θ) = Eut,∆t
+
+h
+
+v(ut) − ¯vθ (ut, ∆t) − ∆t ∂∆t ¯vθ (ut, ∆t) − D¯vθ (ut, ∆t)[ v(ut)]  2i
+
+, (29) 
+
+LL(θ) = Eut,∆t
+
+h
+
+v ψθ (ut, ∆t) − ¯vθ (ut, ∆t) − ∆t ∂ ∆t ¯vθ (ut, ∆t) 2i
+
+, (30) 
+
+LS(θ) = Eut,∆t,α 
+
+h
+
+ψθ (ut, ∆t) − ψθ
+
+ ψθ (ut, α ∆t), (1 − α)∆ t 2i
+
+. (31) We also weight the consistency term with the time-dependent coefficient w (∆ t/ ∆tmax )p:
+
+L(θ) = Ldata (θ) + w L(p)cons (θ), w ≥ 0, (32) where L(p)cons is one of Equations (29) to (31) with (∆ t/ ∆tmax )p inside the expectation. The compari-son over p is deferred to Section F. Here, p = 0 means a constant weight; we perform hyperparameter tuning for w, and w = 0 is the data-only control. 
+
+Stop-gradient placement. Let sg[ ·] denote the stop-gradient operator, the identity in the forward pass with zero derivative in the backward pass. Every consistency target is built from the model’s own predictions, so a gradient taken through the target would let each objective train its own output. For stability, the whole target is therefore frozen under a single stop-gradient, and each objective regresses the direct evaluation onto it. As implemented, Equations (29) to (31) carry their stop-gradients as 
+
+LE(θ) = Eut,∆t
+
+h
+
+¯vθ (ut, ∆t) − sg v(ut) + ∆ t D¯vθ (ut, ∆t)[ v(ut)] − ∂∆t ¯vθ (ut, ∆t) 2i
+
+, (33) 
+
+LL(θ) = Eut,∆t
+
+h
+
+¯vθ (ut, ∆t) − sg v ut + ∆ t ¯vθ (ut, ∆t) − ∆t ∂ ∆t ¯vθ (ut, ∆t) 2i
+
+, (34) 
+
+LS(θ) = Eut,∆t,α 
+
+h
+
+ψθ (ut, ∆t) − sg ψθ
+
+ ψθ (ut, α ∆t), (1 − α)∆ t 2i
+
+. (35) 
+
+B.5 Physics-Distillation 
+
+Instead of using the model’s own boundary value in Section B.4, we can use the governing equations 
+
+F (physics-distillation) to supply the instantaneous velocity, 
+
+∂tut = v(ut) = F(ut). (36) 
+
+Normalized coordinates. Let C be the number of state channels, let μ ∈ RC and σ ∈ RC be the per-channel mean and standard deviation of the states in the training set, and let diag( σ) be the diagonal matrix with entries σ along the channel axis. We train entirely in normalized coordinates, where states are z-scored, z = diag( σ)−1(u − μ), and time is rescaled to the unit interval, so a trajectory of K snapshots (indexed from 0 to K − 1) with sampling time interval δt spans the normalized time τ ∈ [0 , 1] , with physical time t = τ T span , where Tspan ≜ (K − 1) δt .Every objective of Section B.4 is evaluated in these coordinates, and every reported metric is computed in physical units after inverting the normalization. Following this normalization, the governing equations F use the chain rule for physics-distillation, 
+
+∂τ z = Tspan diag( σ)−1 ∂tu = Tspan diag( σ)−1 F μ + diag( σ) z, (37) Thus for implementation, model training uses the normalized governing equations 
+
+Fnorm (z) ≜ Tspan diag( σ)−1 F μ + diag( σ) z. (38) 12 C Datasets 
+
+Each dataset holds 10 ,000 trajectories of one chaotic system, stored as tensors of 1001 frames in a three-dimensional state space and split into 9000 training, 500 validation, and 500 test trajectories. We generate all five datasets using the official implementation of dysts [7]. Since we target long-term behavior, every trajectory starts on the attractor, drawn by the on-attractor initial-condition sampler of dysts: it integrates one long reference orbit and takes the starting points from it, so the dataset is a set of overlapping windows of that orbit and inherits its invariant measure. We space the starting points by a fixed interval along the reference, since random draws would repeat some of them. Every window is a segment of the same autonomous flow, so absolute time carries no information about what comes next, and the data determines exactly the time-invariant operator of Section 2. From each starting point, DOP853 [29] then integrates the trajectory, keeping the estimated relative error of every step below 10 −10 . We run each trajectory for five Lyapunov times, so consecutive frames are 0.005 Lyapunov times apart; see Section B.5 for the normalization. We split the trajectories in their order along the reference, so every test trajectory starts more than 155 Tλ after the last training trajectory ends, with the validation trajectories in between. 
+
+Lyapunov exponents and times. A deterministic system is chaotic when its long-term behavior is bounded, aperiodic, and sensitive to initial conditions [6]. The sensitivity is quantified by the largest Lyapunov exponent: start two trajectories from a state u0 and its perturbation u0 + δu 0, write δu t for their difference at time t, and define, for almost every initial state on the attractor, 
+
+λmax = lim  
+
+> t→∞
+
+lim 
+
+> ∥δu 0∥→ 0
+
+1
+
+t ln ∥δu t∥∥δu 0∥ , (39) and sensitivity corresponds to λmax > 0: nearby states diverge exponentially fast. Its inverse, the Lyapunov time Tλ ≜ 1/λ max , is the time over which a small error grows by a factor of e, so it is the natural time unit for comparing systems that run at different speeds. Because the horizon and every metric are denominated in Lyapunov times, λmax is pinned to published values at exactly the constants we integrate, listed in Table 4 together with the governing equations of each system. Table 4: The five systems. Parameters, the largest Lyapunov exponent λmax , and its source.                           
+
+> System Parameters λmax Source Lorenz (σ, ρ, β ) = (10 ,28 ,8/3) 0.9056 Sprott [6] Chen (a, b, c ) = (35 ,3,28) 2.0272 Noorani et al. [30], Eftekhari and Jafari [31] Rössler (a, b, c ) = (0 .2,0.2,5.7) 0.0714 Sprott [6] Thomas b= 0 .10.055 Sprott and Chlouverakis [32] Halvorsen a= 1 .30.6928 Sprott [33]
+
+Lorenz. The classical model of atmospheric convection, with its two-winged attractor [34], 
+
+
+
+˙x = σ(y − x),
+
+˙y = x(ρ − z) − y, 
+
+˙z = xy − βz. 
+
+(40) 
+
+Chen. A close relative of Lorenz with a stronger twist, chaotic more than twice as fast [35], 
+
+
+
+˙x = a(y − x),
+
+˙y = ( c − a)x − xz + cy, 
+
+˙z = xy − bz. 
+
+(41) 
+
+Rössler. The simplest spiral-type chaotic flow, with the single quadratic term zx [36], 
+
+
+
+˙x = −y − z, 
+
+˙y = x + ay, 
+
+˙z = b + z(x − c).
+
+(42) 13 Thomas. A cyclically symmetric flow with sinusoidal feedback, known for labyrinth chaos [37], 
+
+
+
+˙x = sin y − bx, 
+
+˙y = sin z − by, 
+
+˙z = sin x − bz. 
+
+(43) 
+
+Halvorsen. A cyclically symmetric quadratic flow with a single strange attractor [33], 
+
+
+
+˙x = −ax − 4y − 4z − y2,
+
+˙y = −ay − 4z − 4x − z2,
+
+˙z = −az − 4x − 4y − x2.
+
+(44) 
+
+D Evaluation metrics 
+
+Here, we define each metric used in our experiments mathematically for short-term and long-term evaluation, and provide some implementation details for the long-term Markovian metrics. 
+
+D.1 Evaluation setup 
+
+We compute every metric on the test set of 500 held-out trajectories, each with 1001 frames in a 
+
+d-dimensional state space, measured in physical units. In our chaotic-systems setting, we compare 
+
+d = 3 dimensional systems with different Lyapunov time scales, with details in Section C. Here, time is indexed 0, . . . , 1000 and spans exactly five Lyapunov times for each system, so frame 200 
+
+sits at 1Tλ and frame 1000 at 5Tλ on every system. A hat marks a quantity produced by the model (prediction ˆu, power spectrum ˆp); the same symbol without a hat is its ground-truth counterpart. 
+
+D.2 Relative L2 error 
+
+For short-term behavior, we first use the relative L2 error as the pointwise metric, which follows the classical convention [8, 12, 38]. For the 500 test trajectories, we write ui,j ∈ Rd for frame j of the 
+
+i-th test trajectory, and then we define the k-call prediction of the horizon H (in frames) for the i-th trajectory by the feedback recursion 
+
+ˆu(0)  
+
+> i
+
+= ui, 0, ˆu(n) 
+
+> i
+
+= Mθ
+
+ ˆu(n−1)  
+
+> i
+
+, H/k , n = 1 , . . . , k, (45) where Mθ represents the model’s output under step size H/k , and we report the average over the per-trajectory relative L2 errors, 
+
+EL2 (H) = 1500 
+
+> 500
+
+X
+
+> i=1
+
+ˆu(k) 
+
+> i
+
+− ui,H 2
+
+ui,H 2 + ε , ε = 10 −8. (46) We report H = 200 (one Lyapunov time, Section G) and H = 1000 (five Lyapunov times), and each method uses the following k: the evolution operator at k = 20 and k = 100 , AR at k = 200 and 
+
+k = 1000 , and CFO at the same k as AR, with four times the evaluations from its RK4 solver [39]. We measure at the horizon rather than aggregating over the whole trajectory, as CFO [12] does. 
+
+D.3 Long-term statistics 
+
+In chaotic systems, nearby trajectories separate exponentially, so no prediction stays aligned with the true trajectory beyond a few Lyapunov times [40]. The meaningful long-term target is instead the statistics of the motion on the attractor, so we also evaluate the model’s output in distributional and transition aspects [7, 20–23]. From the 500 test initial states, each model rolls 50 Tλ: AR and CFO roll 10 ,000 native frames and keep every tenth, and the evolution operator rolls 1000 native steps of ∆tmax = 0 .05 Tλ (10 frames), so every model lands on the same 500 × 1000 × 3 array sampled every 10 frames, while the evolution operator runs 10 times cheaper than AR. For the ground truth, the reference is the high-accuracy solution (DOP853 [29]) at the same times, and the first 5Tλ are discarded; the remainder is flattened over trajectories and times into two clouds of 450 ,000 states each, one from the model’s runs and one from the reference’s. The two clouds capture the model’s and the truth’s long-term behavior on the attractor. 14 D.4 Correlation dimension 
+
+The attractor is a fractal, and its correlation dimension measures how the number of neighboring state pairs grows with distance [41]. We write un ∈ Rd for the n-th state of the flattened reference cloud (Section D.3), N for the number of states, and # for the size of a set, and then the correlation sum 
+
+C(r) = #{(n, n ′) : n̸ = n′, ∥un − un′ ∥2 ≤ r}
+
+N (N − 1) (47) scales as rD2 at small r, and the exponent D2 is the correlation dimension. We estimate it by subsampling each cloud to 10 ,000 states and fitting the slope of log C(r) against log r by least squares [42]. We report ED2 = | ˆD2 − D2|, where D2 is estimated from the reference cloud and ˆD2
+
+from the model’s cloud. The difference catches a model whose runs blur the attractor’s fine structure into a thicker set, even when every state stays close to the attractor. 
+
+D.5 State-space divergence 
+
+For the distributional distance, we use Dstsp , which asks whether the model’s states are distributed over the state space like the truth’s [23]. For each trajectory, we place a unit-variance Gaussian on every state, so the trajectory becomes a density over the state space. Dstsp is the Kullback–Leibler (KL) divergence from the reference density p to the model density ˆp,
+
+Dstsp =
+
+Z
+
+p(x) log p(x)ˆp(x) dx. (48) The integral is estimated by Monte Carlo sampling [20], using the implementation of the dysts benchmark [7], and averaged over a fixed subsample of 64 trajectory pairs. Because the densities live in the full state space, this also catches joint structure that per-coordinate comparisons miss. 
+
+D.6 Power-spectrum distance 
+
+For the model’s output, we also compare the long-term temporal behavior through its power spectrum. For each coordinate c, every trajectory is standardized over time, and its spectrum is the squared magnitude of its discrete Fourier transform. The spectra are averaged over the 500 trajectories, smoothed with a Gaussian kernel over frequency bins [20], and normalized to sum to one, giving a distribution over frequencies pc for the reference and ˆpc for the model. The distance is the Hellinger distance averaged over the coordinates, 
+
+DH = 1
+
+d
+
+X
+
+> c
+
+s 12
+
+X
+
+> f
+
+p ˆpc(f ) − ppc(f )
+
+2
+
+∈ [0 , 1] , (49) with f running over the frequency bins. It is zero when the spectra coincide and one when they do not overlap, so a model oscillating at the wrong frequencies scores high even if it stays on the attractor. 
+
+D.7 Transition-matrix error 
+
+The metrics above check where the model spends its time and at which frequencies it oscillates, but not how it moves between regions of the attractor, so we also compare the switching dynamics [43, 44]: for Lorenz the two regions are the two wings of the butterfly [34], and for the other systems they are the two halves found by clustering. We split the reference cloud into two clusters by k-means [45] and label every state of both runs by its nearest cluster center; a state too far from both centers has escaped the attractor and is labeled OFF . With zi,m ∈ { 0, 1, OFF } the label of trajectory i at step m, the transition matrix is 
+
+Pab = #{(i, m ) : zi,m = a, z i,m +1 = b}
+
+#{(i, m ) : zi,m = a, z i,m +1 ̸ = OFF } , (50) the probability that the next step (one step = 10 frames) lands in region b given the current region a.We report the transition-matrix error 
+
+Etrans = 12
+
+ | ˆP01 − P01 | + | ˆP10 − P10 |, (51) with P estimated from the reference runs and ˆP from the model, which asks whether the model switches between the two regions at the right rate. Algorithm 1 states the full computation. 15 Algorithm 1 Transition-matrix error.       
+
+> def transition_error(U, U_hat):
+> # U: truth free run, [B, N, d] # U_hat: model free run, [B, N, d], same time grid
+> ## split the truth attractor into two regions Z = standardize(U.reshape(-1, d)) C = kmeans(Z, k=2).centers # [2, d]
+> r = 3 * cluster_radii(Z, C).max() # escape threshold
+> ## label every state, count transitions def assign(X): # labels in {0, 1, OFF}
+> z, dist = nearest(standardize(X), C) # uses U’s mean/std
+> return where(dist > r, OFF, z) def transition(X): z = assign(X) # [B, N]
+> s, t = z[:, :-1], z[:, 1:] # consecutive steps
+> return [[mean(t[(s == a) & (t != OFF)] == b) for b in (0, 1)] for a in (0, 1)] ## compare the model’s matrix to the truth’s P = transition(U) P_hat = transition(U_hat) return (abs(P_hat[0][1] - P[0][1]) + abs(P_hat[1][0] - P[1][0])) / 2
+
+E Implementation details 
+
+Model architecture. We compare all methods on the same MLP with residual connections, using four blocks of hidden width 128 , and 341 ,379 parameters in total. Each block applies a LayerNorm, a GELU activation, and a linear layer. The output of each block is divided by four so that the time derivative with respect to ∆t does not grow with depth. For time conditioning, the step size ∆t enters every block through AdaLN-Zero [46] on the sinusoidal features [∆ t, sin(2 πf k∆t), cos(2 πf k∆t)] ,with four frequencies fk spaced linearly in [1 , 8] , and a two-layer network with a zero-initialized output layer maps them to a learnable scale and shift. 
+
+Method details. For the AR and CFO baselines, the model either predicts the instantaneous or average velocity ( v-pred), which is multiplied by the time step ∆t, or the next state ( x-pred) directly. For the evolution operator, the network outputs the averaged velocity ¯vθ (u, ∆t) and the operator itself is ψθ (u, ∆t) = u + ∆ t ¯vθ (u, ∆t), so one forward pass covers the whole horizon. 
+
+Hyperparameter tuning. All tuning uses the official implementation of Vizier 3 [28, 47], and selects hyperparameters by the relative L2 error on the validation set. For each task, the data-only control first searches the learning rate and the EMA decay over 12 or 16 trials, then fixes the best pair for every consistency objective, for which we search only the weight w over 6 trials. The AR and CFO baselines search the learning rate alone over 6 trials. All searches run on seed 0, and seeds 
+
+1 and 2 retrain the selected cells unchanged. For the out-of-distribution tasks, we reuse the values tuned on the corresponding in-distribution task without any further search. 
+
+Training. Table 5 lists the training hyperparameters shared by all methods, which follow the official implementation of CFO 4 [12]. The AR baselines train on the fixed one-frame step and CFO on absolute time, as in their original implementations. For the evolution operator, each training batch draws states ut from the training trajectories and step sizes ∆t, with details in Section F. The model selected for evaluation is the checkpoint with the best validation relative L2 error, checked every 
+
+5000 iterations, using the EMA weights for the evolution operator. 
+
+> 3https://github.com/google/vizier
+> 4https://github.com/shannon-hou/CFO_official
+
+16 Table 5: Training settings. Fixed settings above, and the ranges searched by Vizier below. 
+
+Hyperparameter Value 
+
+Training 
+
+Optimizer Adam ( β1 = 0 .9, β2 = 0 .99 ) [48] LR scheduler constant Batch size 2048 
+
+Iterations 200 ,000 
+
+Validation interval 5000 iterations Random seeds 0, 1, 2
+
+Vizier search space 
+
+Learning rate [10 −5, 10 −3], log scale EMA decay (evolution operator) log 10 (1 − ema) ∈ [−4, −1] 
+
+Consistency weight w log 10 w ∈ [−2, 1.5] 
+
+F Ablation studies 
+
+Sampling distribution and largest step ( ∆tmax ). We follow Hamiltonian Flow Maps [14] and draw the training step from one frame up to ∆tmax as 0.98 Beta(1 , 2) + 0 .02 Uniform , which we call Beta, and we ablate that choice here against uniform and log-uniform at two values of ∆tmax 
+
+on the Lorenz tasks, with the results in Figure 4. The largest step matters more than the distribution. At ∆tmax = 5 Tλ every error is around 0.5 or worse whichever distribution we draw from, and at 
+
+∆tmax = 0 .05 Tλ the distribution moves the error of the data-only model and the ones fed their own velocity by about a factor of two, while the physics-distilled ones change much less. We leave for future work what kind of sampling distribution suits this setting best. 
+
+Adaptive weight coefficient ( p). Figure 5 sweeps the exponent of the graded consistency weight with the distribution fixed to Beta and ∆tmax = 0 .05 Tλ. The exponent moves the error far less than either of the other two settings, and the physics-distilled objectives lead at every value of it. Data S E-self L-self E-phys L-phys 
+
+> 0.0 0.5 1.0
+> L2(5 Tλ)
+
+Δtmax = 0.05 Tλ   
+
+> Data SE-self L-self E-phys L-phys
+
+Δtmax = 5 Tλ      
+
+> Data SE-self L-self E-phys L-phys
+> 0.0 0.5 1.0
+> L2(5 Tλ)
+> Data SE-self L-self E-phys L-phys
+
+in distribution out of distribution   
+
+> Beta uniform log-uniform
+
+Figure 4: Sampling distribution and largest step. EL2 (5 Tλ) on Lorenz at p = 2 , averaged over three seeds, for the three distributions of the training step, and each panel pair splits by ∆tmax .17 Data S E-self L-self E-phys L-phys 
+
+0.00 0.05 0.10 0.15 0.20 0.25 0.30 
+
+> L2(5 Tλ)
+
+in distribution 
+
+Data S E-self L-self E-phys L-phys 
+
+out of distribution 
+
+Data p = 0 p = 1 p = 2 Figure 5: Adaptive weight coefficient. EL2 (5 Tλ) on Lorenz under the Beta distribution at ∆tmax =0.05 Tλ, averaged over three seeds. The data-only model has no consistency term, so it is drawn once. 
+
+G Additional results 
+
+G.1 Wall-clock time 
+
+In addition to measuring NFE, we also measure the wall-clock time to roll out five Lyapunov times on each of the five systems, with every method on the same network, listed in Table 6. The evolution operators differ only in their training objective, so we time the data-only model for all of them. Table 6: Wall-clock time. Time to roll out one trajectory over five Lyapunov times on each of the five systems with a single NVIDIA RTX 4090, mean ± std over 100 test trajectories, with each method at its native NFE. Shading marks the evolution operator and bold the shortest time in each column. 
+
+Time (ms) Method NFE Lorenz Chen Rössler Thomas Halvorsen AR v-pred 1000 404.9 ± 1.5 396.9 ± 1.3 398.4 ± 1.7 401.0 ± 1.1 401.5 ± 1.1 CFO 4000 1668.7 ± 4.9 1636.4 ± 4.3 1642.2 ± 2.7 1650.3 ± 4.0 1665.5 ± 3.2 Evolution operator 100 45.1 ± 0.1 44.3 ± 0.2 44.0 ± 0.1 45.0 ± 0.8 44.8 ± 0.2 
+
+G.2 Short horizon results 
+
+Table 1 reports the endpoint at five Lyapunov times, and by then every model has drifted far from the truth. Here we add the accuracy at one Lyapunov time, where they are all still close to it. Table 7: One-Lyapunov-time accuracy. EL2 (1 Tλ), ×10 −2, mean ± std over three seeds, with each method at its native step size, stated in the NFE column. Shading marks the physics-distilled block and bold the lowest error in each column of a block. 
+
+Lorenz Chen Rössler Thomas Halvorsen Method NFE in-dist OOD in-dist OOD in-dist OOD in-dist OOD in-dist OOD 
+
+Evolution operator 
+
+Data 20 0.99 ±0.27 0.71 ±0.10 0.66 ±0.03 0.64 ±0.09 3.1 ±0.8 2.9 ±0.3 2.8 ±0.5 2.5 ±0.4 1.4 ±0.4 1.3 ±0.1 
+
+Semigroup 20 0.97 ±0.17 0.63 ±0.09 0.70 ±0.04 0.67 ±0.10 3.3 ±0.8 3.1 ±0.9 3.1 ±1.2 2.6 ±0.3 1.5 ±0.4 1.2 ±0.2 
+
+Eulerian-self 20 0.91 ±0.39 0.73 ±0.35 0.64 ±0.13 0.74 ±0.22 3.4 ±0.3 2.5 ±0.6 2.5 ±0.3 2.2 ±0.1 1.2 ±0.2 1.0 ±0.1 
+
+Lagrangian-self 20 0.71 ±0.19 0.83 ±0.19 1.1 ±0.4 0.86 ±0.24 3.5 ±1.1 2.8 ±0.5 2.4 ±0.7 2.4 ±0.3 1.5 ±0.7 1.5 ±0.2 
+
+Eulerian-phys 20 0.36 ±0.21 0.44 ±0.30 0.18 ±0.01 0.16 ±0.02 1.4 ±0.1 1.2 ±0.2 0.79 ±0.04 0.82 ±0.10 0.36 ±0.02 0.38 ±0.05 
+
+Lagrangian-phys 20 0.29 ±0.05 0.31 ±0.13 0.25 ±0.04 0.24 ±0.03 3.0 ±1.6 2.0 ±0.2 0.93 ±0.14 0.86 ±0.16 0.57 ±0.02 0.51 ±0.08 
+
+Baselines 
+
+AR v-pred 200 0.22 ±0.07 0.19 ±0.01 0.32 ±0.09 0.36 ±0.10 0.53 ±0.14 0.59 ±0.10 2.6 ±1.2 2.2 ±0.8 0.29 ±0.01 0.29 ±0.04 
+
+AR x-pred (cond. t) 200 2.7 ±1.2 1.3 ±0.3 2.3 ±0.8 1.8 ±0.6 9.1 ±2.6 3.3 ±0.4 12 ±3 11 ±2 3.4 ±1.1 2.5 ±0.5 
+
+AR x-pred (uncond. t) 200 2.2 ±1.7 2.4 ±1.0 2.6 ±0.3 2.9 ±1.7 2.6 ±0.9 3.8 ±0.2 15 ±5 6.3 ±1.5 4.1 ±1.7 2.3 ±0.6 
+
+CFO 800 0.32 ±0.03 0.24 ±0.03 0.39 ±0.11 0.36 ±0.12 2.5 ±1.0 1.6 ±0.4 1.6 ±0.3 1.3 ±0.2 0.33 ±0.06 0.41 ±0.01 
+
+18 G.3 Per-system results 
+
+Tables 8 and 9 list the numbers behind Table 1, one for the models trained on the whole horizon and one for the models trained on half of it. Each gives all five metrics on each of the five systems. Besides finding that physics-distillation is a better teacher for learning this evolution operator, we also find that AR v-pred is a good choice for autoregressive rollout on chaotic dynamics. Table 8: In-distribution results. Five metrics on five chaotic systems, averaged over three seeds, with DH and ED2 in 10 −2 and Etrans in 10 −3. Shading marks the physics-distilled rows and bold the best method in each column of a block. Sections D and E define the metrics and the training setup. 
+
+Lorenz Chen Rössler Method NFE EL2 Dstsp DH ED2 Etrans EL2 Dstsp DH ED2 Etrans EL2 Dstsp DH ED2 Etrans 
+
+Evolution operator 
+
+Data 100 0.32 0.36 1.2 0.52 0.62 0.26 0.63 2.0 1.3 0.55 0.53 0.19 8.0 29 28 Semigroup 100 0.30 0.32 1.2 0.83 0.65 0.27 0.60 2.1 1.4 0.70 0.54 0.30 10 40 27 Eulerian-self 100 0.27 0.39 1.2 0.31 0.46 0.27 0.58 2.2 0.77 0.63 0.56 0.31 10 45 14 Lagrangian-self 100 0.22 0.37 1.1 0.59 0.49 0.31 0.62 1.9 1.4 0.40 0.56 0.27 10 40 13 Eulerian-phys 100 0.14 0.37 1.0 0.47 0.47 0.15 0.61 1.6 0.46 0.41 0.45 0.10 2.4 5.2 2.8 
+
+Lagrangian-phys 100 0.14 0.38 1.0 0.48 0.43 0.15 0.60 1.4 0.78 0.60 0.52 0.38 9.7 51 8.0 
+
+Baselines 
+
+AR v-pred 1000 0.11 0.38 1.0 0.46 0.61 0.19 0.62 1.8 0.59 0.54 0.27 0.096 1.6 1.4 0.22 
+
+AR x-pred (cond. t) 1000 0.50 0.36 1.3 0.49 0.87 0.45 0.69 3.6 1.2 0.78 0.61 0.17 15 35 8.7 AR x-pred (uncond. t) 1000 0.42 0.37 1.3 0.30 0.47 0.47 0.66 2.9 1.1 1.4 0.49 0.099 6.0 5.8 2.0 CFO 4000 0.14 0.36 1.1 0.77 0.65 0.19 0.58 1.7 0.71 0.73 0.47 0.11 3.5 2.6 0.74 Thomas Halvorsen Method NFE EL2 Dstsp DH ED2 Etrans EL2 Dstsp DH ED2 Etrans 
+
+Evolution operator 
+
+Data 100 0.90 0.14 5.1 2.2 1.8 0.56 0.048 3.3 2.2 0.89 Semigroup 100 0.88 0.13 4.5 2.1 2.4 0.55 0.050 3.7 3.9 0.74 Eulerian-self 100 0.89 0.16 6.4 27 3.2 0.50 0.046 3.2 2.6 0.86 Lagrangian-self 100 0.85 0.15 5.6 1.7 2.6 0.55 0.049 3.8 6.0 1.1 Eulerian-phys 100 0.64 0.13 3.8 0.85 2.2 0.31 0.046 2.1 0.75 0.57 Lagrangian-phys 100 0.62 0.13 3.5 0.73 2.2 0.39 0.047 2.7 1.7 0.54 
+
+Baselines 
+
+AR v-pred 1000 0.82 0.14 4.5 1.1 1.2 0.27 0.045 1.3 3.0 0.28 
+
+AR x-pred (cond. t) 1000 1.1 2.2 9.3 75 6.1 0.68 0.052 3.6 2.9 1.2 AR x-pred (uncond. t) 1000 1.1 0.59 12 32 4.6 0.72 0.053 5.4 8.9 1.8 CFO 4000 0.80 0.13 3.4 0.31 1.6 0.25 0.048 1.1 2.8 0.68 
+
+19 Table 9: Out-of-distribution results. The same five metrics on the five systems, averaged over three seeds, with DH and ED2 in 10 −2 and Etrans in 10 −3. Every model is trained on the first half of the horizon and rolled out to all of it. Shading marks the physics-distilled rows and bold the best method in each column of a block. Sections D and E define the metrics and the training setup. 
+
+Lorenz Chen Rössler Method NFE EL2 Dstsp DH ED2 Etrans EL2 Dstsp DH ED2 Etrans EL2 Dstsp DH ED2 Etrans 
+
+Evolution operator 
+
+Data 100 0.25 0.38 1.0 0.28 0.45 0.27 0.61 2.8 0.67 0.98 0.53 0.14 7.7 27 4.9 Semigroup 100 0.24 0.39 1.2 0.31 0.52 0.29 0.63 2.2 0.78 0.71 0.54 0.12 6.7 14 3.7 Eulerian-self 100 0.24 0.36 1.2 0.72 0.55 0.30 0.57 2.2 0.38 1.4 0.50 0.11 3.3 10 6.1 Lagrangian-self 100 0.31 0.35 1.1 0.38 0.44 0.32 0.60 2.5 0.90 0.45 0.54 0.13 4.8 19 3.5 
+
+Eulerian-phys 100 0.13 0.35 1.1 0.38 0.37 0.13 0.58 1.5 0.50 0.65 0.44 0.12 2.4 4.2 3.9 Lagrangian-phys 100 0.12 0.42 0.95 0.53 0.69 0.17 0.63 1.7 0.78 0.63 0.51 0.10 2.9 8.2 4.8 
+
+Baselines 
+
+AR v-pred 1000 0.094 0.39 1.0 1.1 0.57 0.21 0.57 1.7 0.91 0.64 0.30 0.098 1.7 0.78 0.26 
+
+AR x-pred (cond. t) 1000 0.75 64 41 32 21 1.0 1.5 34 21 19 0.71 0.089 8.4 8.7 1.7 AR x-pred (uncond. t) 1000 0.39 0.41 1.3 0.34 0.29 0.45 0.65 3.7 1.5 1.5 0.57 0.093 5.8 4.0 2.9 CFO 4000 0.55 0.44 3.8 1.0 2.2 0.30 0.67 2.8 1.1 0.39 8.7 24 81 71 150 Thomas Halvorsen Method NFE EL2 Dstsp DH ED2 Etrans EL2 Dstsp DH ED2 Etrans 
+
+Evolution operator 
+
+Data 100 0.92 0.13 4.3 1.1 0.88 0.52 0.047 2.2 1.7 0.90 Semigroup 100 0.90 0.14 5.2 0.90 2.1 0.52 0.047 2.5 1.1 1.1 Eulerian-self 100 0.83 0.13 4.8 1.2 1.9 0.49 0.048 3.0 3.1 0.53 Lagrangian-self 100 0.87 0.14 4.1 0.77 1.5 0.56 0.049 4.0 5.8 0.72 Eulerian-phys 100 0.61 0.12 3.7 0.46 2.3 0.32 0.047 2.5 1.3 0.84 Lagrangian-phys 100 0.62 0.13 2.9 1.0 1.7 0.37 0.044 2.3 1.3 0.42 
+
+Baselines 
+
+AR v-pred 1000 0.78 0.13 3.5 1.0 1.4 0.25 0.046 1.1 3.3 0.23 
+
+AR x-pred (cond. t) 1000 2.1 14 34 84 25 1.8 6.3 44 110 150 AR x-pred (uncond. t) 1000 1.1 0.57 7.8 13 2.1 0.57 0.049 3.9 6.7 1.4 CFO 4000 2.1 22 38 88 8.9 0.88 0.10 8.5 17 2.3 
+
+20 G.4 Error curves 
+
+That endpoint is one point on a curve, and Figure 6 shows the whole of it, in distribution and out of it. Every model runs at its own step size, so the evolution operator spends ten times fewer evaluations than AR v-pred and forty times fewer than CFO. 0 2.5 510 −4 
+
+10 −2 
+
+10 0
+
+> L2
+
+Lorenz 
+
+0 2.5 5
+
+Chen 
+
+0 2.5 5
+
+Lyapunov times Thomas 
+
+0 2.5 5
+
+Halvorsen 
+
+0 2.5 5
+
+Rössler 
+
+Data E-phys L-phys AR v-pred (1000 NFE) CFO (4000 NFE) 0 2.5 510 −4 
+
+10 −2 
+
+10 0
+
+> L2
+
+Lorenz 
+
+0 2.5 5
+
+Chen 
+
+0 2.5 5
+
+Lyapunov times Thomas 
+
+0 2.5 5
+
+Halvorsen 
+
+0 2.5 5
+
+Rössler 
+
+Data E-phys L-phys AR v-pred (1000 NFE) CFO (4000 NFE) 
+
+Figure 6: Error curves. EL2 against time on the five systems, averaged over three seeds with one-standard-deviation bands, and the dotted line is the relative error 0.3 of Figure 2. Top: in distribution. Bottom: out of distribution, with the half beyond the training window shaded. 
+
+G.5 Combined Differential Identities 
+
+We also try to use both differential identities of Equations (3) and (4) for training the evolution operator, as follows: 
+
+L(θ) = Ldata (θ) + w1 L(p)E (θ) + w2 L(p)L (θ), w1, w 2 ≥ 0, (52) with the two residuals of Equations (29) and (30) and both weights searched by Vizier, at p = 2 and with every other setting of Section E unchanged. Table 10 compares all the original Eulerian and Lagrangian objectives with their combined version. Table 10: Combined differential identities. EL2 (5 Tλ) on each of the five systems, mean ± std over three seeds, for each differential identity on its own and for the combination of Equation (52). Shading marks the physics-distilled block and bold the lowest error in each column of a block.                                                                               
+
+> Lorenz Chen Rössler Thomas Halvorsen Consistency term in-dist OOD in-dist OOD in-dist OOD in-dist OOD in-dist OOD
+> Self-distillation
+> Eulerian 0.27 ±0.06 0.24 ±0.01 0.27 ±0.03 0.30 ±0.04 0.56 ±0.02 0.50 ±0.04 0.89 ±0.07 0.83 ±0.05 0.50 ±0.02 0.49 ±0.02
+> Lagrangian 0.22 ±0.03 0.31 ±0.14 0.31 ±0.05 0.32 ±0.06 0.56 ±0.06 0.54 ±0.03 0.85 ±0.15 0.87 ±0.04 0.55 ±0.07 0.56 ±0.02
+> Eulerian +Lagrangian 0.25 ±0.02 0.25 ±0.02 0.26 ±0.03 0.30 ±0.05 0.57 ±0.04 0.54 ±0.05 0.76 ±0.12 0.90 ±0.04 0.50 ±0.01 0.48 ±0.01
+> Physics-distillation
+> Eulerian 0.14 ±0.06 0.13 ±0.03 0.15 ±0.01 0.13 ±0.02 0.45 ±0.03 0.44 ±0.03 0.64 ±0.07 0.61 ±0.06 0.31 ±0.01 0.32 ±0.02
+> Lagrangian 0.14 ±0.01 0.12 ±0.02 0.15 ±0.01 0.17 ±0.04 0.52 ±0.06 0.51 ±0.04 0.62 ±0.02 0.62 ±0.05 0.39 ±0.03 0.37 ±0.05
+> Eulerian +Lagrangian 0.12 ±0.02 0.12 ±0.04 0.14 ±0.01 0.15 ±0.04 0.41 ±0.02 0.43 ±0.07 0.62 ±0.02 0.60 ±0.02 0.36 ±0.07 0.36 ±0.00
+
+21 H Related work 
+
+Learning dynamics from trajectories. Autoregressive models [8–10] and flow-map learning methods [49] learn a fixed-step update on a uniform time grid and roll it out. Neural ODEs [11] and CFO [12] learn the instantaneous velocity instead. CFO fits a spline through each trajectory and matches its time derivative by flow matching, so it trains on irregular time grids without backpropa-gating through a solver. Both families still advance in small steps at inference. 
+
+Accelerating many-step models. Consistency models [16], shortcut models [50], MeanFlow [18], Terminal Velocity Matching [51], and flow maps [17, 26] replace many sampling steps with one or a few by learning the map between two generative times. Spatio-Temporal MeanFlow [13] carries this map into physical time with the governing equations, between absolute start and end times. Hamiltonian Flow Maps [14] instead learn it over the elapsed time from the governing equations alone, in the Eulerian form. Deep-OSG [52], Consistent Vector Flow [15], and a semigroup consistency diagnostic [25] build on the semigroup property. We derive all three consistency conditions of flow maps for one time-invariant evolution operator of an autonomous system in physical time, which unifies these elapsed-time works. We take the velocity from either the model or the governing equations, providing a more general paradigm for distillation and physics-informed learning. 
+
+I Connection to other methods 
+
+Here we connect to previous work on accelerating many-step sampling models into fewer evaluations, including flow maps for generative modeling and Hamiltonian flow maps for molecular dynamics. 
+
+Flow maps. Flow maps [17, 26] learn the map Xs,t that carries a sample at generative time s to time t along a drift bt, written as Xs,t (x) = x + ( t − s) vs,t (x) through an average velocity, and three conditions characterize it: 
+
+∂tXs,t (x) = bt
+
+ Xs,t (x),∂sXs,t (x) + ∇Xs,t (x) bs(x) = 0 ,Xu,t 
+
+ Xs,u (x) = Xs,t (x).
+
+(53) An autonomous system runs on physical time and is time-invariant: its drift is a fixed field v, so Xs,t 
+
+depends on t − s rather than the absolute times s and t. Thus principally, the substitution 
+
+
+
+ψ(u, ∆t) = Xs, s +∆ t(u),
+
+¯v(u, ∆t) = vs, s +∆ t(u),bt ≡ v, 
+
+(54) carries Equation (53) onto it: with ∂tXs,t = ∂∆tψ and ∂sXs,t = −∂∆tψ, the first two become Equation (4) and Equation (3), and the third becomes Equation (5). Our contribution is to extend flow-map consistency learning to autonomous physical dynamics and explore the design space, with the governing equations providing supervision through the differential consistency conditions. 
+
+Hamiltonian flow maps. Hamiltonian Flow Maps (HFM) [14] learn the same object on the phase space of a system with Hamiltonian H, writing the map as (x, p )T + ∆ t ¯u(x, p, ∆t), where the mean displacement field ¯u averages (v, f )T over the elapsed time, and impose the MeanFlow Identity [18] 
+
+¯u(x, p, ∆t) − ∆t ddt ¯u(x, p, ∆t) = ( v, f )T, (55) where v = ˙x = ∂H/∂p is the velocity and f = ˙p = −∂H/∂x the force. Expanding the total derivative along the trajectory as ddt ¯u = D¯u[( v, f )T] − ∂∆t ¯u turns Equation (55) into 
+
+¯u(x, p, ∆t) = ( v, f )T + ∆ t D¯u(x, p, ∆t)[( v, f )T] − ∂∆t ¯u(x, p, ∆t), (56) which is Equation (3) on the state z = ( x, p )T with F(z) = ( v, f )T, so HFM is our Eulerian-phys. The main difference between the two is the supervision target. HFM focuses (i) on (x, p ), a position and a momentum, and on their time derivatives (v, f ), a velocity and a force; (ii) without paired data for a data term. In our setting, we extend it to general physics F and learn with a small amount of real paired data from trajectories. The two supervisions are complementary, since F fixes the velocity at any state while the trajectories fix the endpoint of each jump. 22 J Qualitative results 
+
+The tables report the long-run behavior as single numbers. Figure 7 shows what those numbers measure: the attractor structure each model produces over a 50 Tλ trajectory, plotted as a cloud, and the power spectrum of one of its coordinates. Lorenz         
+
+> x–z
+> GT Data E-phys L-phys AR v-pred CFO
+> f
+> power spectrum
+> x(t)
+> Chen
+> x–z
+> fx(t)
+> Thomas
+> x–y
+> fx(t)
+> Halvorsen
+> x–y
+> fx(t)
+> Rössler
+> x–z
+> 0.0 2.5 5.0
+> fz(t)
+
+Figure 7: Long-term statistics on all five systems. One column per method on seed 0, showing the attractor cloud of the 50 Tλ free run with the truth in gray behind it, and the power spectrum of one coordinate on one trajectory. The frequency f is in units of the Lyapunov rate λmax .23
