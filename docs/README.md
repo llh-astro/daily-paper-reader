@@ -41,17 +41,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-06</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-07</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 22 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 13 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
-    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>2 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>10</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>12</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>4</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>9</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-07 00:07:57 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-08 00:07:18 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -62,7 +62,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>2026-10-06 日报完成 22 篇论文筛选，精读 10 篇、速读 12 篇，重点锁定 JWST 系外行星大气反演与逃逸岩蒸气探测。最值得看的是《A Missing Latent, Not a Missing Simulator》提出的半径增强推断方法（9.0 分），以及 BD+05 4868 Ab 中候选 O I 7774 Å 吸收所暗示的逃逸岩蒸气外流（9.0 分）。普通读者可从这两篇入手，先了解 JWST 数据如何被更稳健地解读，再关注岩质行星大气逃逸的观测证据。</p>
+<p>今日筛出13篇文献，精读4篇、速读9篇，重点锁定系外行星大气与恒星—行星变率。最值得看的是两篇9分精读：LTT 9779 b 的 CRIRES+ 观测未探测到氦透射谱、却在昼侧探测到水，以及 Ariel Tier 3 用宽波段时域光谱同时探索恒星与行星变率。普通读者可先读这两篇，再按兴趣速览 Gaia 多行星探测、EAGLE 星系宜居带或 COMPASS 原恒星复杂有机分子。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -71,12 +71,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">10 篇</strong>
+    <strong class="dpr-home-dashboard-count">4 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="A Missing Latent, Not a Missing Simulator: Radius-Augmented Inference for Real JWST Retrieval">A Missing Latent, Not a Missing Simulator: Radius-Augmented Inference for Real JWST Retrieval</span></li><li><span class="dpr-home-dashboard-paper-title" title="Candidate O I 7774 Å Absorption from an Escaping Rock-Vapor Outflow of BD+05 4868 Ab">Candidate O I 7774 Å Absorption from an Escaping Rock-Vapor Outflow of BD+05 4868 Ab</span></li><li><span class="dpr-home-dashboard-paper-title" title="Irradiated Atmospheres VII. Effect of Mixing Energy Flux on Atmosphere-Interior Coupling}">Irradiated Atmospheres VII. Effect of Mixing Energy Flux on Atmosphere-Interior Coupling}</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Exploring the ultrahot Neptune LTT 9779 b with CRIRES+. Non-detection of helium transmission spectra and detection of H$_2$O on the dayside">Exploring the ultrahot Neptune LTT 9779 b with CRIRES+. Non-detection of helium transmission spectra and detection of H$_2$O on the dayside</span></li><li><span class="dpr-home-dashboard-paper-title" title="Ariel Tier 3 Observations: An Opportunity to Explore both Stellar and Planetary Variability through Broad Wavelength Time-domain Spectroscopy">Ariel Tier 3 Observations: An Opportunity to Explore both Stellar and Planetary Variability through Broad Wavelength Time-domain Spectroscopy</span></li><li><span class="dpr-home-dashboard-paper-title" title="Quantitative schlieren imaging of a laser-ionized plasma channel in atomic vapor using symbolic regression">Quantitative schlieren imaging of a laser-ionized plasma channel in atomic vapor using symbolic regression</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>7</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>3</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>3</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -84,12 +84,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">12 篇</strong>
+    <strong class="dpr-home-dashboard-count">9 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Giant impacts preferentially remove low-mass atmospheres: a generalised scaling law for impact-driven atmospheric loss">Giant impacts preferentially remove low-mass atmospheres: a generalised scaling law for impact-driven atmospheric loss</span></li><li><span class="dpr-home-dashboard-paper-title" title="Comparison of neural and spline representations for physics-informed learning">Comparison of neural and spline representations for physics-informed learning</span></li><li><span class="dpr-home-dashboard-paper-title" title="Who Drives the System? Classifying Mean-Field Particle Systems from Trajectory Data">Who Drives the System? Classifying Mean-Field Particle Systems from Trajectory Data</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Detecting multiple planets in Gaia data using Bayesian model selection">Detecting multiple planets in Gaia data using Bayesian model selection</span></li><li><span class="dpr-home-dashboard-paper-title" title="Life in the Cosmic Neighbourhood: Galactic Habitable Zones in the EAGLE Simulations">Life in the Cosmic Neighbourhood: Galactic Habitable Zones in the EAGLE Simulations</span></li><li><span class="dpr-home-dashboard-paper-title" title="Complex Organic Molecules in Protostars with ALMA Spectral Surveys (COMPASS): I. Overview of the ALMA Large Program">Complex Organic Molecules in Protostars with ALMA Spectral Surveys (COMPASS): I. Overview of the ALMA Large Program</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">ai-physics <strong>6</strong></span><span class="dpr-home-dashboard-tag">exoplanets <strong>6</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">exoplanets <strong>6</strong></span><span class="dpr-home-dashboard-tag">ai-physics <strong>2</strong></span><span class="dpr-home-dashboard-tag">xrl-symbolic <strong>1</strong></span></div>
 </section>
 </div>
 

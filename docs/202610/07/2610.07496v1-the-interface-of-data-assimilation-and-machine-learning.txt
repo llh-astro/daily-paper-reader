@@ -1,0 +1,419 @@
+Title: The interface of data assimilation and machine learning
+
+URL Source: https://arxiv.org/pdf/2610.07496v1
+
+Published Time: Wed, 07 Oct 2026 00:32:18 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# The interface of data assimilation and machine learning 
+
+# Eviatar Bach 5 October 2026 
+
+Abstract 
+
+A slightly older version of this article will appear in the book Weather and Climate: Applications of Machine Learning and Artificial Intelligence by Driscoll et al. (2027). If you would like to cite this, please use Bach, E. (2027). The Interface of Data Assimilation and Machine Learning. In S. Driscoll, K. M. R. Hunt, L. Mansfield, R. Swaminathan, H. Wei, E. Bach, & A. Peard, Weather and Climate: Applications of Machine Learning and Artificial Intelligence . Elsevier. 
+
+# 1 Introduction 
+
+Data assimilation (DA) is the process of combining forecasts from a model with observations in order to optimally estimate the state of a system. This is critical for chaotic systems, such as the atmosphere, since if observations are not continually assimilated the model will quickly lose skill. DA is routinely performed (usually every 6 hours) at operational forecasting centres around the world. In this chapter we will discuss the interface of machine learning (ML) and DA. This is still an emerging and quickly developing field, and this chapter tries to give an overview of some of the main topics and methods. We only overview methods in a cursory way, with pointers to the wider literature. A more mathe-matical and comprehensive overview of the topics discussed here is provided in Bach et al. [2026c], and some of the exposition here is based on the latter. See also the review papers of Cheng et al. [2023], Bocquet [2023]. 
+
+# 2 Data assimilation fundamentals 
+
+A classic textbook on DA from a meteorological perspective is Kalnay [2002], and is still one of the best books on the subject. Other recommended references that take a more mathematical perspective are Law et al. [2015], Asch et al. [2016], Sanz-Alonso et al. [2023]. A good review paper on DA in the geosciences is Carrassi et al. [2018]. We use here the notation of Ide et al. [1997], which is common in the meteorological and oceanographic literature. An important topic in DA is that of uncertainty quantification, which is naturally expressed in a Bayesian framework. Within this framework DA is known as filtering and smoothing . In this chapter we will generally focus on the problem of state estimation , which instead tries to obtain a point estimate. However, many of the methods discussed below can be extended to the Bayesian problem of estimating the posterior, and we will point to further resources when this is the case. A unified Bayesian perspective on many of these topics is taken in Bach et al. [2026c]. We begin by considering a system that evolves according to a hidden true state xt in time according to 
+
+xt(ti+1 ) = M (xt(ti)) , (1) where we assume access to the forecast model M .It is also common to consider a noisy version of the preceding equation, 
+
+xt(ti+1 ) = M (xt(ti)) + η(ti), (2) where 
+
+η(ti) ∼ N (0, Q). (3) 1arXiv:2610.07496v1 [physics.ao-ph] 5 Oct 2026 Observation Forecast Truth Time    
+
+> ti ti+1 ti+2 ti+3
+> Analysis
+
+Figure 1: A schematic of the data assimilation cycle. The forecast and analysis are shown as probability distributions, in keeping with the probabilistic formulation of DA. The noise η is often used to capture the impact of model error : a source of error growth due to the deficiencies in our model of the system. Note that model error will typically be biased (not centred at zero) and state-dependent; we will address that case later in the chapter. Then, we have access to observations obtained by 
+
+y(ti) = H(xt(ti)) + ε(ti), (4) where 
+
+ε(ti) ∼ N (0, R). (5) 
+
+H is called the observation operator , mapping from the state space of the model to the observation space. Note that both M and H can vary in time in general, but for simplicity we assume they are time-independent. The problem of data assimilation (DA) is to estimate the true states {xt(ti)}ni=0 given the model 
+
+M and observations {y(ti)}ni=0 . DA algorithms alternate between forecast and analysis steps: 1. Forecast : Given the analysis state at time ti, use the model M to forecast to the next time ti+1 .2. Analysis : Given the forecast state at time ti+1 , assimilate the observations y(ti+1 ) to produce the analysis at time ti+1 .The forecast–assimilation cycle is shown in Figure 1. Different DA algorithms differ in how they implement these steps. In the subsections that follow, we will cover three popular DA algorithms: 3DVar, 4DVar, and the ensemble Kalman filter. 3DVar and 4DVar are both known as variational methods .
+
+Reanalysis , or retrospective analysis, refers to the process of producing a “best estimate” of the atmosphere’s state in the past, over an extended period of time, by assimilating all possible observations using a consistent numerical weather prediction (NWP) model version. Reanalysis datasets are often used in studying climate and, as we shall see, play an important role in the training of ML models. 
+
+# 2.1 3DVar 
+
+Suppose that in addition to the observation y(ti), we have at ti a “first guess” or prior for the state estimate. This is known as the background , and denoted by xb(ti). We take this background to be distributed as 
+
+xb(ti) ∼ N (xt(ti), B(ti)); that is, the background has error covariance matrix B.2An analysis xa(ti), given the observations and background, is obtained by minimising the cost function 
+
+Ji(x) = 12 (x − xb(ti)) ⊤B(ti)−1(x − xb(ti)) + 12 (y(ti) − H(x)) ⊤R−1(y(ti) − H(x)) , (6a) 
+
+xa(ti) = arg min 
+
+> x
+
+Ji(x). (6b) This is called the 3DVar (3-dimensional variational) method. For a linear observation operator H = H,the solution can be explicitly written as 
+
+xa(ti) = xb(ti) + B(ti)H⊤(HB (ti)H⊤ + R)−1(y(ti) − Hx b(ti)); (7) this form is referred to as optimal interpolation .Typically, 3DVar is performed sequentially, such that the background at time ti+1 is obtained by applying the forecast model to the last analysis: 
+
+xb(ti+1 ) = M (xa(ti)) .
+
+One thus only needs to specify a background at time t0, xb(t0). In this setting, the background xb
+
+can be denoted as the forecast xf.While simple, 3DVar has the disadvantage of needing to specify the background covariance matrix 
+
+B. Methods to do this are discussed in Kalnay [2002]. Moreover, B is often taken to be fixed in time, meaning that the background uncertainty cannot vary dynamically. Dynamic forecast covariance is one of the key advantages of the ensemble Kalman filter, discussed below. 
+
+# 2.2 4DVar 
+
+2.2.1 Strong constraint 
+
+The 4DVar (4-dimensional variational) method, specifically the strong constraint variant, extends 3DVar over multiple observation times t0, . . . , t n using the following cost function: 
+
+J(x(t0)) = 12 (x(t0) − xb(t0)) ⊤B(t0)−1(x(t0) − xb(t0)) (8a) + 12
+
+> n
+
+X
+
+> i=0
+
+(y(ti) − H(x(ti))) ⊤R−1(y(ti) − H(x(ti))) ,
+
+xa(t0) = arg min 
+
+> x
+
+J(x). (8b) The optimisation is over the initial condition x(t0) since 
+
+x(ti) = ( M ◦ · · · ◦ M| {z } 
+
+> itimes
+
+)( x(t0)) ,
+
+where ◦ indicates function composition. The trajectory x(t0), . . . , x(tn) is therefore constrained to be a trajectory of the model; thus the name “strong constraint”. 4DVar, as with 3DVar, can also be applied in a sequential way. This is often done by splitting the times t0, . . . , t n into shorter blocks, applying 4DVar to each of these, taking the background of one block to be the analysis at the end of the previous block. The typical method for optimising the 4DVar cost function involves the linear tangent model , a linearised version of the dynamics. Obtaining and maintaining the linear tangent model for an NWP model often requires a great deal of human effort; avoiding this difficulty is an appeal for the use of ML discussed below. 32.2.2 Weak constraint 
+
+We can account for model error by adding an extra term to the cost function. This is called weak constraint 4DVar :
+
+J(x(t0), . . . , x(tn)) = 12 (x(t0) − xb(t0)) ⊤B(t0)−1(x(t0) − xb(t0)) (9a) + 12
+
+> n
+
+X
+
+> i=0
+
+(y(ti) − H(x(ti))) ⊤R−1(y(ti) − H(x(ti))) + 12
+
+> n
+
+X
+
+> i=1
+
+(x(ti) − M (x(ti−1))) ⊤Q−1(x(ti) − M (x(ti−1))) ,
+
+xa(t0), . . . , xa(tn) = arg min 
+
+> x(t0),..., x(tn)
+
+J(x(t0), . . . , x(tn)) . (9b) Note that here the solution to the optimisation is no longer constrained to be a trajectory of the model, thus the name “weak constraint”. Hence, the optimisation is no longer over just the initial condition, rather the whole trajectory. 
+
+# 2.3 Ensemble Kalman filter 
+
+The ensemble Kalman filter (EnKF) takes a different approach than the variational methods discussed above. The EnKF evolves an ensemble of states to represent the estimated uncertainty at a given time. This dynamic uncertainty is a key advantage over variational methods. In the forecast step, the model is applied to each ensemble member, obtaining a forecast ensemble {xf 
+
+> j
+
+}mj=1 , and in the analysis step the observations are assimilated, resulting in an analysis ensemble {xa 
+
+> j
+
+}mj=1 .The most basic form of the EnKF is the stochastic EnKF which, in the case that the observation operator is linear ( H = H), is given by 
+
+xf 
+
+> j
+
+(ti+1 ) = M (xa 
+
+> j
+
+(ti)) + ηj (ti), ηj (ti) ∼ N (0, Q), (10a) 
+
+xa 
+
+> j
+
+(ti+1 ) = xf 
+
+> j
+
+(ti+1 ) + K(ti)( y(ti) + εj (ti) − Hx f 
+
+> j
+
+(ti+1 )) , εj (ti) ∼ N (0, R), (10b) 
+
+K(ti) = Pf(ti)H⊤(HP f(ti)H⊤ + R)−1, (10c) 
+
+xf(ti) = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+xf 
+
+> j
+
+(ti), (10d) 
+
+xa(ti) = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+xa 
+
+> j
+
+(ti), (10e) 
+
+Pf(ti) = 1
+
+m
+
+> m
+
+X
+
+> j=1
+
+(xf 
+
+> j
+
+(ti) − xf(ti))( xf 
+
+> j
+
+(ti) − xf(ti)) ⊤, (10f) where an initial forecast ensemble {xf 
+
+> j
+
+(t0)}mj=1 must also be specified. At each time ti the analysis ensemble mean xa(ti) is taken to be the estimate of the system state. Note the similarity between (10b) and the optimal interpolation solution of 3DVar (7). The EnKF can be thought of as applying 3DVar to each ensemble member, using an empirical covariance matrix 
+
+Pf rather than a background covariance matrix B.The EnKF can also be applied for nonlinear observation operators by replacing PfH⊤ by the sample cross-covariance between the ensemble and the ensemble in observation space, and HP fH⊤ by the covariance of the ensemble in observation space. For high-dimensional systems, the EnKF generally needs two modifications to cope with sampling error: inflation and localisation. Inflation increases the forecast covariance matrix by a factor α > 1: 
+
+Pf(ti) → αPf(ti).
+
+Localisation modifies Pf such that correlations between locations far from each other in physical space are damped, in order to lessen the impact of spurious long-range correlations [Carrassi et al., 2018]. Furthermore, EnKFs are typically implemented as ensemble square-root filters, in which a covariance 4matrix is not explicitly formed [Tippett et al., 2003]. A popular implementation of the EnKF, which is both a square-root filter and implements localisation, is the local ensemble transform Kalman filter [LETKF, Hunt et al., 2007]. Variational and ensemble algorithms have their strengths and weaknesses [Kalnay et al., 2007], and are both widely used. Hybrid ensemble–variational methods combine the strengths of both approaches, and usually have the best performance [Carrassi et al., 2018]. 
+
+# 3 Machine learning for data assimilation 
+
+In what follows, we will consider the training of ML algorithms abstractly as an optimisation problem for parameters θ. In the presentation of the algorithms, we will not discuss specific ML architectures in order to maintain generality. θ could represent, for instance, the weights and biases of a neural network. We also avoid discussing specific optimisation methods, instead presenting cost functions J(θ) to be minimised with respect to θ. In many of these cases, optimisation will require automatic differentiation 
+
+to compute gradients of the cost function. Automatic differentiation is an important component of many ML software libraries. In some cases discussed below, the methods will require the gradients of the forecast model, the observation operator, and/or the DA algorithm, which may pose practical difficulties for implementation. 
+
+# 3.1 Using data assimilation to learn a model 
+
+Probably the most widespread application of the combination of ML and DA is in learning an ML forecast model, or learning a model error correction to an existing physics-based model. 
+
+3.1.1 Learning a forecast model using reanalysis 
+
+Reanalysis is widely used to train ML forecast models. This is, indeed, how most of the ML weather models discussed in Chapter 4 were trained. Why train on reanalysis? Consider the alternatives: 1. Why not train directly on observations? Observations are typically sparse and noisy, and irregular in space and time. Reanalysis functions as a physics-based interpolator, being generally more accurate than the observations themselves, and available at every point on the model grid at regular time intervals. 2. Why not train directly on model output? If we train on physics-based model output, we cannot do better than the model itself, and would inherit any inaccuracies it might have. We add two caveats to these points. Although reanalysis will generally have less model bias than raw model output, it will still have some remaining bias. This has led to attempts to train directly on observations (see section 3.6). On the other hand, training on model output can be useful if one is looking for a computationally cheap surrogate rather than trying to capture as faithfully as possible the system’s true dynamics. Consider a reanalysis dataset {xa(ti)}ni=0 , defined for times t0, . . . , t n. Then, we would like to train a one-step ML prediction model, M ML , which predicts the state at time ti+1 when given as input the state at time ti. This model has parameters θ. We can use a cost function of the form 
+
+J(θ) = 1
+
+n
+
+> n−1
+
+X
+
+> i=0
+
+∥xa(ti+1 ) − M ML (xa(ti); θ)∥2. (11) It is often useful to include multi-step terms in the cost function; i.e., to penalise ∥xa(ti+2 ) −
+
+M ML (M ML (xa(ti))) ∥2, ∥xa(ti+3 ) − M ML (M ML (M ML (xa(ti)))) ∥2, etc. This technique, known as roll-out , helps the ML forecast model to have better long-term behaviour and stability, but comes with additional training cost. Recent approaches have made use of probabilistic scoring rule–based cost functions rather than the mean-square one in (11). The training data is still reanalysis, but an ensemble of ML predictions is used as the forecast, and the scoring rule rewards accurate probabilistic performance. A common choice of scoring rule is the continuous ranked probability score (CRPS), which has the appealing 5Observation Analysis increment Forecast Truth Analysis Time    
+
+> ti ti+1 ti+2 ti+3
+
+Figure 2: A schematic showing analysis increments in the presence of a systematic model bias. In this case, the forecast model is biased upwards, and the analysis increments point in the opposite direction. Note that the analysis still retains some of the bias. theoretical property of being strictly proper (see also Chapter 6 for more on the CRPS). An example of a (hybrid) ML model trained in this way is NeuralGCM [Kochkov et al., 2024]. See Bach et al. [2026c, Chapter 11] for more information on scoring rules and their use in learning. 
+
+3.1.2 Learning a model error correction using analysis increments 
+
+Another way to use reanalysis is to learn model error corrections to improve an imperfect physics-based model. As noted above, reanalysis generally has less model bias than raw model output, since the model forecast is “nudged” towards the observations, which are usually assumed to be unbiased but noisy. These nudges towards the observations, that is AI( ti) = xa(ti) − xf(ti), are called analysis increments . A simple schematic is shown in Figure 2. The idea of this method [Danforth et al., 2007, Farchi et al., 2021] is to learn systematic patterns in past analysis increments to improve the model, even when observations are not available. The whole analysis increment will not be predictable without the observations, but some patterns might be. For instance, if the analysis consistently pushes the forecast in a given direction, to counteract a model bias, the average of the past analysis increments will reflect this bias, and we can improve a forecast xf(ti) by adding this averaged analysis increment: 
+
+xf(ti) → xf(ti) + AI ,
+
+where AI is the average of past analysis increments. More generally, an ML model AI ML can be trained to predict the analysis increment as a function of the forecast state; this allows one to potentially capture state-dependent biases. A cost function 
+
+J(θ) = 1
+
+n + 1 
+
+> n
+
+X
+
+> i=0
+
+∥AI( ti) − AI ML (xf(ti); θ)∥2.
+
+After optimising for θ, the optimal θ∗ can be used for future times tj ,
+
+xf(tj ) → xf(tj ) + AI ML (xf(tj ); θ∗).
+
+Such methods have been successfully applied in large-scale NWP settings [Chen et al., 2022a, Farchi et al., 2025]. 
+
+3.1.3 Online methods 
+
+The previous two methods relied on there being a database of past analysis states produced using a physics-based model. These methods are called offline , in the sense that DA does not need to be applied during the training process once this database is available. This is advantageous in terms of computational efficiency, since performing DA repeatedly is typically very expensive. The disadvantage 6of these methods is that analysis/reanalysis does not totally remove the impact of model error, as previously discussed. An alternative class of online methods incorporate data assimilation into the training process [see Bach et al., 2026c, Chapter 8 for an overview]. These methods can be used both for learning a forecast model, learning a model error correction, or learning an unknown model error covariance Q (for more on the latter see Tandeo et al. [2020]). They are typically based on maximum likelihood : given an observation dataset {y(ti)}ni=0 , we would like to choose the parameters that maximise the likelihood of the observations: 
+
+θ∗ = arg max 
+
+> θ
+
+P({y(ti)}ni=0 |θ).
+
+Using rules of conditional probability, we can rewrite the likelihood 
+
+P({y(ti)}ni=0 |θ) = 
+
+Z
+
+P({y(ti)}ni=0 |{ xt(ti)}ni=0 , θ)P({xt(ti)}ni=0 |θ) dxt(t0) . . . d xt(tn).
+
+This demonstrates the difficulty of the optimisation problem posed above: in order to estimate the likelihood, we must first estimate the underlying states {xt(ti)}ni=0 , which is the task of DA. We will not go into further details here, but online methods typically work by iteratively applying training and assimilation steps. Methods to do this include ones based on expectation–maximisation [Bocquet et al., 2020] and the autodifferentiable EnKF [Chen et al., 2022b]. Such online methods are much more expensive than the offline ones, but they are not limited by the errors in analysis. To our knowledge, such methods have not yet been applied in operational NWP settings. Another approach is to perform DA with an augmented state vector that also includes the ML parameters θ [Gottwald and Reich, 2021a,b]. More recently, the European Centre for Medium-Range Weather Forecasts (ECMWF) is testing a system wherein an offline training stage is followed by online tuning with DA [Farchi et al., 2025]. 
+
+# 3.2 Applying data assimilation to a machine learning model 
+
+Once an ML model is trained, in order to use it for forecasting, we must apply DA to it. Ostensibly, this involves replacing M with M ML in any DA algorithm, such as those discussed in Section 2. If the ML model is a close enough approximation to the true system dynamics, i.e., M ML ≈ M , then it can be shown that the estimated trajectory will stay close to the hypothetical trajectory estimated using the true dynamics. Furthermore, even if the ML model is unstable for long rollouts, a common problem, frequent DA can prevent blow-up [Adrian et al., 2025]. See Chapter 6 in Bach et al. [2026c] for further theoretical results. In practice, it is important for DA that the ML model accurately capture the error growth char-acteristics of the system, as well as the covariance structure between variables. Platt et al. [2023] consider enforcing the former during the training process. Application of DA to global ML atmospheric models has thus far yielded mixed results. In experi-ments with synthetic observations, Adrian et al. [2025], Li et al. [2024], Kotsuki et al. [2025] achieved reasonable results, although it was found that the ML models did not always accurately capture error covariances. Experiments with real surface pressure observations proved less successful, with poor es-timation of cross-variable covariances [Slivinski et al., 2025]. Other works with more simplified models have also demonstrated the potential of DA with ML forecast models [Chattopadhyay et al., 2022, Penny et al., 2022]. The use of ML forecast models in DA has several potential advantages compared to the use of physics-based models. Reduced computational expense is an attractive prospect, since DA is among the most computationally expensive tasks in operational weather forecasting centres. Additionally, ML forecast models may offer other advantages for variational and ensemble methods, as we now outline. A potential advantage of using ML models with 4DVar is that, since these models are usually implemented using ML libraries that allow for automatic differentiation, the linear tangent model can be obtained relatively easily, or the 4DVar cost function differentiated directly [Tian et al., 2026, Solvik et al., 2025]. However, Tian et al. [2026] notes that the linear tangent model of ML models can exhibit unphysical noise that may cause robustness issues. A potential appeal of using ML models for ensemble DA, on the other hand, is that due to their being typically computationally cheaper to run once trained, one can potentially afford much larger ensembles than otherwise feasible with physics-based models. Such large ensembles, if they accurately 7captured the time-evolving probability distribution of the system, could potentially improve ensemble DA. Methods that combine physics-based with ML ensembles have also been proposed [Chattopadhyay et al., 2023, Bach and Ghil, 2023, Bach et al., 2024, Voort et al., 2025]. 
+
+# 3.3 Learning the analysis step 
+
+Existing DA methods, while very powerful, typically make simplifying assumptions that make them suboptimal in realistic settings. Most methods are based on Gaussian assumptions that are not always satisfied. A recent and rapidly developing topic is learning the analysis step itself [McCabe and Brown, 2021, Bach et al., 2025, Bocquet et al., 2024, Hammoud et al., 2024, Bach et al., 2026b]. Abstractly, the analysis step of a DA algorithm takes as input a forecast at time ti, xf(ti), and an observation at ti, y(ti), to produce an analysis xa(ti). We can now think of learning a function 
+
+xa,ML (xf, y; θ) with the same inputs. Integrating this ML analysis step into the forecast–analysis cycle and measuring how closely it tracks the true trajectory, we obtain the cost function 
+
+J(θ) = 1
+
+n + 1 
+
+> n
+
+X
+
+> i=0
+
+∥xt(ti) − xa(ti; θ)∥2, (12a) 
+
+xa(ti; θ) = xa,ML (xf(ti), y(ti); θ), (12b) 
+
+xf(ti+1 ) = M (xa(ti)) . (12c) This presupposes that a synthetic truth {xt(ti)}ni=0 , along with simulated observations {y(ti)}ni=0 ,have been produced according to (1) and (4). Note that optimising (12a) requires the gradient of the forecast model M .In the case that the available model is highly imperfect, the preceding approach may not be a good one, since the synthetic “truth” is not representative of the true system dynamics. To avoid the problem of model error, one can directly train on observations 
+
+J(θ) = 1
+
+n + 1 
+
+> n
+
+X
+
+> i=0
+
+∥y(ti) − H(xa(ti; θ)) ∥2, (13a) 
+
+xa(ti; θ) = xa,ML (xf(ti), y(ti); θ), (13b) 
+
+xf(ti+1 ) = M (xa(ti)) . (13c) However, this latter formulation requires care to avoid overfitting to the observations, since they are used as both input and in the cost function; see Mallia-Parfitt and Br¨ ocker [2016]. Optimising this cost function requires the gradient of H in addition to the gradient of M .These learning problems are amortised , in the sense that once trained, the learned analysis step can be used in the future for DA without retraining. This relies, however, on the assumption that the model dynamics and observation network do not change in time, and that n is sufficiently large to adequately generalise to unseen data. Probabilistic methods that attempt to not only match the true state as closely as possible, but also to get correct Bayesian uncertainty quantification, have also been proposed. A framework based on transport maps was introduced in Spantini et al. [2022], one based on variational inference in Bach et al. [2025], and one based on scoring rules in Bach et al. [2026a]. Learning the analysis step can be done to attempt to learn a more accurate analysis than that provided by traditional algorithms. A different task is to directly emulate an existing algorithm for reducing computational expense; this can be done using supervised learning with a history of paired forecasts, observations, and analysis states. Alternatively, one can directly use the variational cost functions from 3DVar or 4DVar to train an ML emulator of these algorithms [Filoche et al., 2023, Keller and Potthast, 2024, Zinchenko and Greenberg, 2024]. For instance, taking the 3DVar cost function (6) and replacing the minimisation over states by a minimisation over parameters: 
+
+J(θ) = 12
+
+xa(ti; θ) − xb(ti)⊤ B(ti)−1 xa(ti; θ) − xb(ti) (14) + 12 [y(ti) − H(xa(ti; θ))] ⊤ R−1 [y(ti) − H(xa(ti; θ))] ,
+
+xa(ti; θ) = xa,ML (xb(ti), y(ti); θ). (15) The same idea can be applied to 4DVar. 83.4 Assimilation in a latent space 
+
+Recall that autoencoders (see Chapter 1) learn a low-dimensional latent space for a given dataset. An active area of research has been to perform DA in such a latent space [Melinc and Zaplotnik, 2024, Pasmans et al., 2025], for high-dimensional systems such as the atmosphere. One might want to assimilate in the latent space for two reasons: 1. DA is costly in high dimensions. If the assimilation step can be performed in a lower-dimensional latent space, the computational cost can be significantly reduced. 2. DA methods, as discussed in Section 2, typically make Gaussian assumptions. Variational autoen-coders impose Gaussian structure on the latent space, so Gaussian DA methods can potentially be more accurately applied here than in a non-Gaussian full space. Suppose one has trained an autoencoder on time-series of the system of choice, resulting in an encoder E and decoder D. Then, to perform assimilation in the latent space at time ti, we compute the latent space representation of the forecast as 
+
+zf(ti) = E(xf(ti)) .
+
+For an ensemble forecast, the encoder would be applied to each ensemble member, obtaining a latent space ensemble {zf 
+
+> j
+
+(ti)}mj=1 . We then define the latent space observation operator to be 
+
+H′ = H ◦ D;that is, to get from a point in the latent space to one in the observation space, one first applies the decoder to return to the full space, and then the observation operator. Now, one can apply a DA algorithm to the latent space forecast zf(ti) and observation y(ti), with observation operator H′, to obtain the latent space analysis za(ti). To obtain a full space analysis one can apply the decoder, 
+
+xa(ti) = D(za(ti)) .
+
+We have not yet addressed how to obtain the latent space forecast covariance matrix. In the case of the EnKF, this can be directly estimated from the latent space ensemble. For 3DVar, the background covariance can be estimated from consecutive latent space states [Melinc and Zaplotnik, 2024]. 
+
+# 3.5 Generative data assimilation 
+
+We have thus far focused on the problem of state estimation: obtaining a good point estimate of the system state at a given time. Filtering, as discussed in Section 2, is the problem of instead estimating a probability distribution over possible states. Specifically, one wants to estimate the 
+
+filtering distribution ,
+
+P(xt(ti)|{ y(tj )ij=0 }); that is, the conditional probability of the state at ti given all the observations from time t0 to time ti.An emerging area of research applying ML to DA is to approximately sample this distribution using generative ML. Specifically, several approaches have used diffusion models as priors for generative DA [Rozet and Louppe, 2023, Bao et al., 2024, Yang et al., 2025]. Diffusion models are discussed in Chapter 6. One approach is to first obtain a generative model that can approximately sample from the probabil-ity distribution P(xt) by training on either simulated time-series or reanalysis. Once this unconditional model is trained, there are various approaches to sample from the approximate distribution conditioned on observations. While such methods seem promising, the issue of how to perform conditional sampling with diffusion models in a principled and tractable way is a difficult one [Zhao et al., 2025]. Methods for conditioning that have been used for generative DA include diffusion posterior sampling [Rozet and Louppe, 2023] and CoPaint [Yang et al., 2025]. Another approach is to directly train a conditional diffusion model, with the disadvantage that the trained model is specific to the observation network used in training. See Hodyss and Morzfeld [2026] for a review of these approaches. 93.6 End-to-end approaches 
+
+End-to-end approaches attempt to predict future observations given past observations. These methods no longer distinguish between forecast and analysis steps, dispensing with a physics-based model as well as traditional DA. The idea is to train a model yML that takes as input some number M of past observations, 
+
+{y(tj )}i−1 
+
+> j=i−M
+
+, and output a predicted observation at time ti.Such a model can be trained using a loss function such as 
+
+J(θ) = 1
+
+n − M + 1 
+
+> n
+
+X
+
+> i=M
+
+∥y(ti) − yML ({y(tj )}i−1 
+
+> j=i−M
+
+; θ)∥2; (16) we now no longer rely on a physics-based model nor reanalysis. One of the advantages of this approach is that, by training on observations, one can avoid the model biases present in reanalysis. The cost of training on raw observations, however, is that one discards much of the important information contained within the reanalysis, which functions as a physics-based interpolator between sparse and noisy observations; see section 3.1.1. Furthermore, the predicted observations may themselves be sparse and indirect. Recent successful examples of this approach include Alexe et al. [2024], Allen et al. [2025]. It should be noted, however, that the latter was trained first using reanalysis and then “fine-tuned” using observations. Purely observation-based approaches, such as Alexe et al. [2024], have thus far not reached the skill of leading physics-based models nor ML models trained on reanalysis. 
+
+# References 
+
+M. Adrian, D. Sanz-Alonso, and R. Willett. Data Assimilation with Machine Learning Surrogate Models: A Case Study with FourCastNet. Artificial Intelligence for the Earth Systems , 4(3), 2025. doi:10.1175/AIES-D-24-0050.1. M. Alexe, E. Boucher, P. Lean, E. Pinnington, P. Laloyaux, A. McNally, S. Lang, M. Chantry, C. Bur-rows, M. Chrust, F. Pinault, E. Villeneuve, N. Bormann, and S. Healy. GraphDOP: Towards skilful data-driven medium-range weather forecasts learnt and initialised directly from observations, 2024. URL http://arxiv.org/abs/2412.15687 . arXiv:2412.15687. A. Allen, S. Markou, W. Tebbutt, J. Requeima, W. P. Bruinsma, T. R. Andersson, M. Herzog, N. D. Lane, M. Chantry, J. S. Hosking, and R. E. Turner. End-to-end data-driven weather prediction. 
+
+Nature , pages 1–3, 2025. doi:10.1038/s41586-025-08897-0. M. Asch, M. Bocquet, and M. Nodet. Data Assimilation: Methods, Algorithms, and Applications .Fundamentals of Algorithms. Society for Industrial and Applied Mathematics, 2016. ISBN 978-1-61197-453-9. doi:10.1137/1.9781611974546. E. Bach and M. Ghil. A Multi-Model Ensemble Kalman Filter for Data Assimilation and Forecasting. Journal of Advances in Modeling Earth Systems , 15(1):e2022MS003123, 2023. doi:10.1029/2022MS003123. E. Bach, V. Krishnamurthy, S. Mote, J. Shukla, A. S. Sharma, E. Kalnay, and M. Ghil. Im-proved subseasonal prediction of South Asian monsoon rainfall using data-driven forecasts of os-cillatory modes. Proceedings of the National Academy of Sciences , 121(15):e2312573121, 2024. doi:10.1073/pnas.2312573121. E. Bach, R. Baptista, E. Luk, and A. Stuart. Learning Optimal Filters Using Variational Inference, 2025. URL http://arxiv.org/abs/2406.18066 . arXiv:2406.18066. E. Bach, R. Baptista, J. Br¨ ocker, B. Chen, and A. Stuart. Learning Probabilistic Filters with Strictly Proper Scoring Rules, June 2026a. URL http://arxiv.org/abs/2606.26497 . arXiv:2606.26497 [cs.LG]. E. Bach, R. Baptista, E. Calvello, B. Chen, and A. Stuart. Learning enhanced ensemble filters. Journal of Computational Physics , 547:114550, 2026b. doi:10.1016/j.jcp.2025.114550. 10 E. Bach, R. Baptista, D. Sanz-Alonso, and A. Stuart. Machine Learning for Inverse Problems and Data Assimilation . arXiv, 2026c. doi:10.48550/arXiv.2410.10523. arXiv:2410.10523. F. Bao, Z. Zhang, and G. Zhang. A score-based filter for nonlinear data assimilation. Journal of Computational Physics , 514:113207, 2024. doi:10.1016/j.jcp.2024.113207. M. Bocquet. Surrogate modeling for the climate sciences dynamics with machine learning and data assimilation. Frontiers in Applied Mathematics and Statistics , 9, 2023. ISSN 2297-4687. doi:10.3389/fams.2023.1133226. M. Bocquet, J. Brajard, A. Carrassi, and L. Bertino. Bayesian inference of chaotic dynamics by merging data assimilation, machine learning and expectation-maximization. Foundations of Data Science , 2(1):55, 2020. doi:10.3934/fods.2020004. M. Bocquet, A. Farchi, T. S. Finn, C. Durand, S. Cheng, Y. Chen, I. Pasmans, and A. Car-rassi. Accurate deep learning-based filtering for chaotic dynamics by identifying instabilities with-out an ensemble. Chaos: An Interdisciplinary Journal of Nonlinear Science , 34(9):091104, 2024. doi:10.1063/5.0230837. A. Carrassi, M. Bocquet, L. Bertino, and G. Evensen. Data assimilation in the geosciences: An overview of methods, issues, and perspectives. Wiley Interdisciplinary Reviews: Climate Change , 9 (5):e535, 2018. doi:10.1002/wcc.535. A. Chattopadhyay, M. Mustafa, P. Hassanzadeh, E. Bach, and K. Kashinath. Towards physics-inspired data-driven weather forecasting: integrating data assimilation with a deep spatial-transformer-based U-NET in a case study with ERA5. Geoscientific Model Development , 15(5):2221–2237, 2022. doi:10.5194/gmd-15-2221-2022. A. Chattopadhyay, E. Nabizadeh, E. Bach, and P. Hassanzadeh. Deep learning-enhanced ensemble-based data assimilation for high-dimensional nonlinear dynamical systems. Journal of Computational Physics , 477:111918, 2023. doi:10.1016/j.jcp.2023.111918. T.-C. Chen, S. G. Penny, J. S. Whitaker, S. Frolov, R. Pincus, and S. Tulich. Correcting Systematic and State-Dependent Errors in the NOAA FV3-GFS Using Neural Networks. Journal of Advances in Modeling Earth Systems , 14(11):e2022MS003309, 2022a. doi:10.1029/2022MS003309. Y. Chen, D. Sanz-Alonso, and R. Willett. Autodifferentiable Ensemble Kalman Filters. SIAM Journal on Mathematics of Data Science , 4(2):801–833, 2022b. doi:10.1137/21M1434477. S. Cheng, C. Quilodr´ an-Casas, S. Ouala, A. Farchi, C. Liu, P. Tandeo, R. Fablet, D. Lucor, B. Iooss, J. Brajard, D. Xiao, T. Janjic, W. Ding, Y. Guo, A. Carrassi, M. Bocquet, and R. Arcucci. Machine Learning With Data Assimilation and Uncertainty Quantification for Dynamical Systems: A Review. 
+
+IEEE/CAA Journal of Automatica Sinica , 10(6):1361–1387, 2023. doi:10.1109/JAS.2023.123537. C. M. Danforth, E. Kalnay, and T. Miyoshi. Estimating and Correcting Global Weather Model Error. 
+
+Monthly Weather Review , 135(2):281–299, 2007. doi:10.1175/MWR3289.1. A. Farchi, P. Laloyaux, M. Bonavita, and M. Bocquet. Using machine learning to correct model error in data assimilation and forecast applications. Quarterly Journal of the Royal Meteorological Society ,147(739):3067–3084, 2021. doi:10.1002/qj.4116. A. Farchi, M. Chrust, M. Bocquet, and M. Bonavita. Development of an offline and online hybrid model for the Integrated Forecasting System. Quarterly Journal of the Royal Meteorological Society ,151(768):e4934, 2025. doi:10.1002/qj.4934. A. Filoche, J. Brajard, A. Charantonis, and D. B´ er´ eziat. Learning 4DVAR Inversion Directly from Observations. In J. Mikyˇ ska, C. de Mulatier, M. Paszynski, V. V. Krzhizhanovskaya, J. J. Dongarra, and P. M. Sloot, editors, Computational Science – ICCS 2023 , Lecture Notes in Computer Science, pages 414–421, Cham, 2023. Springer Nature Switzerland. ISBN 978-3-031-36027-5. doi:10.1007/978-3-031-36027-5 32. 11 G. A. Gottwald and S. Reich. Combining machine learning and data assimilation to forecast dynamical systems from noisy partial observations. Chaos: An Interdisciplinary Journal of Nonlinear Science ,31(10):101103, 2021a. doi:10.1063/5.0066080. G. A. Gottwald and S. Reich. Supervised learning from noisy observations: Combining machine-learning techniques with data assimilation. Physica D: Nonlinear Phenomena , 423:132911, 2021b. doi:10.1016/j.physd.2021.132911. M. A. E. R. Hammoud, N. Raboudi, E. S. Titi, O. Knio, and I. Hoteit. Data Assimilation in Chaotic Systems Using Deep Reinforcement Learning. Journal of Advances in Modeling Earth Systems , 16 (8):e2023MS004178, 2024. doi:10.1029/2023MS004178. D. Hodyss and M. Morzfeld. Using Diffusion Models to Do Data Assimilation. Monthly Weather Review , 154(2):165–182, 2026. doi:10.1175/MWR-D-25-0125.1. Publisher: American Meteorological Society Section: Monthly Weather Review. B. R. Hunt, E. J. Kostelich, and I. Szunyogh. Efficient data assimilation for spatiotemporal chaos: A local ensemble transform Kalman filter. Physica D: Nonlinear Phenomena , 230(1):112–126, 2007. doi:10.1016/j.physd.2006.11.008. K. Ide, P. Courtier, M. Ghil, and A. C. Lorenc. Unified Notation for Data Assimilation: Operational, Sequential and Variational. Journal of the Meteorological Society of Japan. Ser. II , 75(1B):181–189, 1997. doi:10.2151/jmsj1965.75.1B 181. E. Kalnay. Atmospheric Modeling, Data Assimilation and Predictability . Cambridge University Press, New York, 2002. ISBN 978-0-521-79629-3. E. Kalnay, H. Li, T. Miyoshi, S.-C. Yang, and J. Ballabrera-Poy. 4-D-Var or ensemble Kalman filter? 
+
+Tellus , 59(5), 2007. doi:10.1111/j.1600-0870.2007.00261.x. J. D. Keller and R. Potthast. AI-based data assimilation: Learning the functional of analysis estima-tion, 2024. URL http://arxiv.org/abs/2406.00390 . arXiv:2406.00390 [physics]. D. Kochkov, J. Yuval, I. Langmore, P. Norgaard, J. Smith, G. Mooers, M. Kl¨ ower, J. Lottes, S. Rasp, P. D¨ uben, S. Hatfield, P. Battaglia, A. Sanchez-Gonzalez, M. Willson, M. P. Brenner, and S. Hoyer. Neural general circulation models for weather and climate. Nature , 632(8027):1060–1066, 2024. doi:10.1038/s41586-024-07744-y. S. Kotsuki, K. Shiraishi, and A. Okazaki. Ensemble data assimilation to diagnose AI-based weather prediction models: a case with ClimaX version 0.3.1. Geoscientific Model Development , 18(20): 7215–7225, 2025. doi:10.5194/gmd-18-7215-2025. K. Law, A. Stuart, and K. Zygalakis. Data Assimilation: A Mathematical Introduction . Number 62 in Texts in Applied Mathematics. Springer International Publishing, 2015. ISBN 978-3-319-20325-6. doi:10.1007/978-3-319-20325-6. Y. Li, W. Han, H. Li, W. Duan, L. Chen, X. Zhong, J. Wang, Y. Liu, and X. Sun. FuXi-En4DVar: An Assimilation System Based on Machine Learning Weather Forecasting Model Ensuring Physical Con-straints. Geophysical Research Letters , 51(22):e2024GL111136, 2024. doi:10.1029/2024GL111136. N. Mallia-Parfitt and J. Br¨ ocker. Assessing the performance of data assimilation algorithms which employ linear error feedback. Chaos: An Interdisciplinary Journal of Nonlinear Science , 26(10): 103109, 2016. doi:10.1063/1.4965029. M. McCabe and J. Brown. Learning to Assimilate in Chaotic Dynamical Systems. In 
+
+Advances in Neural Information Processing Systems , volume 34, pages 12237–12250. Cur-ran Associates, Inc., 2021. URL https://proceedings.neurips.cc/paper/2021/hash/ 65cc2c8205a05d7379fa3a6386f710e1-Abstract.html .B. Melinc and ˇZ. Zaplotnik. 3D-Var data assimilation using a variational autoencoder. Quarterly Journal of the Royal Meteorological Society , 150(761):2273–2295, 2024. doi:10.1002/qj.4708. 12 I. Pasmans, Y. Chen, T. Sebastian Finn, M. Bocquet, and A. Carrassi. Ensemble Kalman filter in latent space using a variational autoencoder pair. Quarterly Journal of the Royal Meteorological Society , page e70070, 2025. doi:10.1002/qj.70070. S. G. Penny, T. A. Smith, T.-C. Chen, J. A. Platt, H.-Y. Lin, M. Goodliff, and H. D. I. Abar-banel. Integrating Recurrent Neural Networks With Data Assimilation for Scalable Data-Driven State Estimation. Journal of Advances in Modeling Earth Systems , 14(3):e2021MS002843, 2022. doi:10.1029/2021MS002843. J. A. Platt, S. G. Penny, T. A. Smith, T.-C. Chen, and H. D. I. Abarbanel. Constraining chaos: Enforcing dynamical invariants in the training of reservoir computers. Chaos: An Interdisciplinary Journal of Nonlinear Science , 33(10):103107, 2023. doi:10.1063/5.0156999. F. Rozet and G. Louppe. Score-based Data Assimilation. Advances in Neural Information Processing Systems , 36:40521–40541, 2023. URL https://proceedings.neurips.cc/paper_files/paper/ 2023/hash/7f7fa581cc8a1970a4332920cdf87395-Abstract-Conference.html .D. Sanz-Alonso, A. Stuart, and A. Taeb. Inverse Problems and Data Assimilation . London Mathemat-ical Society Student Texts. Cambridge University Press, Cambridge, 2023. ISBN 978-1-00-941432-6. doi:10.1017/9781009414319. L. C. Slivinski, J. S. Whitaker, S. Frolov, T. A. Smith, and N. Agarwal. Assimilating Observed Surface Pressure Into ML Weather Prediction Models. Geophysical Research Letters , 52(6):e2024GL114396, 2025. doi:10.1029/2024GL114396. K. Solvik, S. G. Penny, and S. Hoyer. 4D-Var Using Hessian Approximation and Backpropagation Ap-plied to Automatically Differentiable Numerical and Machine Learning Models. Journal of Advances in Modeling Earth Systems , 17(4):e2024MS004608, 2025. doi:10.1029/2024MS004608. A. Spantini, R. Baptista, and Y. Marzouk. Coupling Techniques for Nonlinear Ensemble Filtering. 
+
+SIAM Review , 64(4):921–953, 2022. doi:10.1137/20M1312204. P. Tandeo, P. Ailliot, M. Bocquet, A. Carrassi, T. Miyoshi, M. Pulido, and Y. Zhen. A Re-view of Innovation-Based Methods to Jointly Estimate Model and Observation Error Covariance Matrices in Ensemble Data Assimilation. Monthly Weather Review , 148(10):3973–3994, 2020. doi:10.1175/MWR-D-19-0240.1. X. Tian, D. Holdaway, and D. Kleist. Evaluating Machine Learning Weather Models for Data Assim-ilation: Fundamental Limitations in Tangent Linear and Adjoint Properties. Geophysical Research Letters , 53(2):e2025GL119402, 2026. doi:10.1029/2025GL119402. M. K. Tippett, J. L. Anderson, C. H. Bishop, T. M. Hamill, and J. S. Whitaker. Ensem-ble square root filters. Monthly Weather Review , 131(7):1485–1490, 2003. doi:10.1175/1520-0493(2003)131 <1485:ESRF >2.0.CO;2. J. v. d. Voort, M. Verlaan, and H. Kekkonen. Balancing Accuracy and Speed: A Multi-Fidelity Ensemble Kalman Filter with a Machine Learning Surrogate Model, 2025. URL http://arxiv. org/abs/2512.12276 . arXiv:2512.12276 [cs]. S. Yang, C. Nai, X. Liu, W. Li, J. Chao, J. Wang, L. Wang, X. Li, X. Chen, B. Lu, Z. Xiao, N. Boers, H. Yuan, and B. Pan. Generative assimilation and prediction for weather and climate, 2025. URL 
+
+http://arxiv.org/abs/2503.03038 . arXiv:2503.03038. Z. Zhao, Z. Luo, J. Sj¨ olund, and T. Sch¨ on. Conditional sampling within generative diffusion models. 
+
+Philosophical Transactions of the Royal Society A: Mathematical, Physical and Engineering Sciences ,383(2299):20240329, 2025. doi:10.1098/rsta.2024.0329. V. Zinchenko and D. S. Greenberg. Combined Optimization of Dynamics and Assimilation with End-to-End Learning on Sparse Observations, 2024. URL http://arxiv.org/abs/2409.07137 .arXiv:2409.07137 [physics]. 13

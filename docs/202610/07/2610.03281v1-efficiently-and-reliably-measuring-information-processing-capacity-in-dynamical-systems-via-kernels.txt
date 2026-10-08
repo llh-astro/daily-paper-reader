@@ -1,0 +1,1675 @@
+Title: Efficiently and Reliably Measuring Information Processing Capacity in Dynamical Systems via Kernels
+
+URL Source: https://arxiv.org/pdf/2610.03281v1
+
+Published Time: Mon, 05 Oct 2026 01:13:40 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+## Efficiently and Reliably Measuring Information Processing Capacity in Dynamical Systems via Kernels 
+
+Alessio Benavoli, ∗ Felix Binder, † and Cangxiong Chen ‡
+
+Trinity College Dublin, Dublin, Ireland. 
+
+(Dated: October 5, 2026) Information Processing Capacity (IPC) is a powerful system-agnostic metric for quantifying a dynamical system’s computational capability and is widely used in quantum reservoir computing. However, standard IPC suffers from severe computational limitations. Computing IPC involves estimating how well the system can reconstruct, via linear regression, an (in principle) infinite family of orthogonal polynomial functions of delayed inputs. In practice, this evaluation must be made finite, so we need only to consider polynomials up to a chosen maximum degree. Moreover, the computational complexity for computing IPC grows combinatorially with the considered maximum degree and delay. Here, we introduce Kernel-IPC (KIPC), a scalable framework that uses kernel methods to compute the total IPC without explicitly enumerating basis functions. This allows us to account for the full (infinite) basis (without degree truncation). We also provide a null-hypothesis test for statistically comparing the KIPC of two dynamical systems. We validate KIPC on an echo state network and demonstrate its utility for quantum reservoir computing on a disordered spin chain. 
+
+I. INTRODUCTION 
+
+The Information Processing Capacity (IPC) is asystem-agnostic metric to quantify the ability of a dy-namical system to perform arbitrary transformations on an input signal. Originally proposed in [1], the evaluation of the processing capacity is based on discrete inputs and discrete system states. The idea is brilliant and simple. Assuming the dynamical system has the fading memory property, [1] shows that the input-output map belongs to a fading memory Hilbert space. Therefore, since any function in this space can be represented as a linear com-bination of its basis functions, a way to evaluate the IPC of a system is to assess its ability to reconstruct elements of this basis via linear regression from its internal states. Thus, the IPC can be interpreted as the total number of linearly independent functions of the input signal that the system can compute. This provides a powerful frame-work for comparing the IPC of different dynamical sys-tems. As a system-agnostic metric, it offers a more prin-cipled alternative for quantifying informational capacity than evaluating performance across a suite of standard benchmark tasks (e.g., NARMA, delay line, etc.). In [1] it is shown that the elements of this basis can be chosen as orthogonal polynomials (e.g., Legendre polyno-mials) of delayed input signals. The reason is related to the Volterra-series representation of fading-memory sys-tems [2]. Extensions of IPC have been discussed in [3–            
+
+> ∗alessio.benavoli@tcd.ie; School of Computer Science and Statis-tics, Trinity College Dublin. Trinity Quantum Alliance, Unit 16, Trinity Technology and Enterprise Centre, Pearse Street, Dublin 2, Ireland
+> †School of Physics. Trinity Quantum Alliance, Unit 16, Trinity Technology and Enterprise Centre, Pearse Street, Dublin 2, Ire-land
+> ‡School of Computer Science and Statistics, Trinity College Dublin.
+
+5]. In particular, [3] discusses how to compute IPC for time-variant systems, while the standard IPC can only be applied to time-invariant systems. Instead, [4] derives a connection between the IPC and the performance of the dynamical system acting as a reservoir to solve a specific benchmark task. Finally, [5] introduces the innovation capacity to extend IPC to deal with a noisy reservoir. IPC is particularly fundamental in quantum reservoir computing (QRC). Because QRC is a rapidly evolving field actively exploring diverse hardware platforms [6– 8] and architectural designs, IPC provides a standard-ised task-independent framework to systematically eval-uate and compare how different physical dynamics and reservoir configurations convert quantum resources into functional computational capacity. Indeed, a substantial body of literature on QRC relies extensively on IPC to evaluate and compare: (i) different QRC architectures; (ii) alternative strategies for embedding the input signal into quantum states; (iii) different read-out approaches; (iv) the impact of measurement back-action: [9–31] IPC is powerful but also has some serious drawbacks .The IPC cannot be computed for all elements of the ba-sis of the Hilbert space of fading-memory functions, as this basis is infinite-dimensional. To keep the computa-tion feasible, IPC must be truncated by setting a max-imum degree and delay for the evaluating polynomials (but the number of such basis functions grows combina-torially with the polynomial degree and the maximum de-lay). Consequently, standard IPC calculations are prac-tically limited to systems with lower nonlinearity and de-lays. This issue is further exacerbated by standard early-stopping heuristics, which halt calculations of IPC terms (which are summed to compute the total IPC) within a given degree once consecutive terms yield negligible ca-pacity. Because the calculation of IPC terms is performed in an arbitrary order (typically graded-lexicographical or-der), early stopping prematurely skips later terms which, despite coming later in the lexicographical order, may be arXiv:2610.03281v1 [quant-ph] 2 Oct 2026 2easier for the system to reconstruct and, therefore, con-tribute to the total IPC. Therefore, in papers using IPC, the computation of total IPC is often accompanied by a warning stating that the reported total-IPC may be underestimated due to truncation, see for instance [29, Appendix B]. In this paper, we address this issue by showing how kernels can be used to compute the total IPC without explicitly enumerating all basis functions, and so avoid-ing the drawbacks discussed above. This enables us to compute the IPC without imposing an upper bound on the polynomial degree and, consequently, to capture all possible nonlinearities. As a result, we obtain an efficient and scalable approach for estimating the IPC of highly nonlinear dynamical systems, which we call Kernel-IPC (KIPC). Additionally, we provide a way to statistically compare the KIPC of two dynamical systems using a sin-gle null-hypothesis test. This solves another prominent issue with the standard IPC, which instead requires a separate hypothesis test for each element of the basis function, which can lead to a high false discovery rate due to spurious correlations. We demonstrated these im-provements in practice using an Echo State Network as a test-bed dynamical system. Finally, we showed how the efficiency and reliability of KIPC can be leveraged to drive research in QRC, focusing specifically on a disor-dered quantum spin chain reservoir.   
+
+> II. BACKGROUND A. Information Processing Capacity
+
+Consider a discrete-time ns-dimensional dynamical system S. We use t to denote the time index (with 
+
+t = 0 , 1, 2, . . . , n T ), xt ∈ Rns the state at time t, ut ∈ R
+
+the input signal at time t and ˆ yt ∈ R the output sig-nal at time t. Additionally, we use the notation without subscript, e.g., u, to generically refer to the signal. The dynamical system S we consider is as follows: 
+
+S :
+
+ xt+1 = f (xt, u t+1 )ˆyt = ˆ w⊤xt + ˆ w0
+
+(1) where ˆ w ∈ Rns and ˆ w0 ∈ R are parameters. These pa-rameters are tunable. We will refer to (1) as a reservoir computing system if S has the fading memory property 
+
+[2]: an input–output system S is said to exhibit fading memory if two input signals u, v which are close in the recent past, but not necessarily close in the remote past, yield present outputs which are close. The input signal u is assumed to be a zero-mean, i.i.d. sequence. We use the vector u = [ u1, u 2, . . . ]⊤ to denote the input sequence. The total information processing ca-pacity [1] of S is defined as: Ctot (S, B, u ) := 
+
+> ∞
+
+X
+
+> d=1
+
+Cd(S, Bd, u ), with Cd(S, Bd, u ) := X
+
+> b∈B d
+
+Cd(S, b, u )(2) where B is a basis of the Hilbert space of the fading mem-ory functions [1]. A typical choice for B are orthogonal polynomials of the input signal. In this case, we denote with Bd the set of all polynomials of degree d in this basis function and b is a generic term of this basis func-tion. Each term is a polynomial of degree d of delayed input signals; we will provide an example in the next paragraph. The (single) information processing capacity (IPC) term is then defined as: Cd(S, b, u ) := 1 − min  
+
+> ˆw,ˆw0
+> nT
+
+P
+
+> t=1
+
+(bt − ˆw⊤xt − ˆw0)2
+
+b⊤b , (3) which expresses the capacity of S of reconstructing an individual element b of the basis B from its states xt
+
+via linear estimation (with linear regression parameters ˆw, ˆw0). Since the bias term ˆ w0 is explicitly included in the linear regression model, the columns of xt are gen-erally assumed to be centered to zero mean [1]. Accord-ingly, we assume zero-mean centered xt for the rest of this work. A zero reconstruction error for the element b
+
+leads to a maximum capacity of C d(S, b, u ) = 1. Dambre et al. [1] proved the following asymptotic (nT → ∞ ) bound: 0 ≤ Ctot (S, B, u ) ≤ ns, (4) where ns is the dimension of the state xt. Therefore, the total capacity of a reservoir cannot exceed the number of its states. We now describe how these basis functions in Bd
+
+are constructed and summarise the main issues of this method. 
+
+a. Constructing an orthogonal basis Let us de-note the τ -delayed input sequence with u(τ ) =[uτ +1 , u τ +2 , . . . ]⊤ for τ = 1 , 2, . . . and let Pd(u(τ )) de-note the evaluation of a polynomial of degree d ele-mentwise on the elements of the input sequence, i.e., 
+
+Pd(u(τ )) = [ Pd(uτ +1 ), Pd(uτ +2 ), . . . ]⊤. Then the basis 
+
+Bd is constructed as follows. The first-order polynomials are B1 = {P 1(u(1) ), P1(u(2) ), P1(u(3) ), P1(u(4) ), . . . },and the second-order are 
+
+B2 = {P 2(u(1) ), P2(u(2) ), P2(u(3) ), P2(u(4) ), . . . 
+
+P1(u(1) )P1(u(2) ), P1(u(1) )P1(u(3) ), P1(u(1) )P1(u(4) )
+
+P1(u(2) )P1(u(3) ), P1(u(2) )P1(u(4) ), . . . }.
+
+(5) 3Note that, B2 also includes the product of polynomials of degree 1. B3 is equal to: 
+
+B3 = {P 3(u(1) ), P3(u(2) ), P3(u(3) ), P3(u(4) ), . . . 
+
+P2(u(1) )P1(u(2) ), P2(u(1) )P1(u(3) ), . . . 
+
+P1(u(1) )P1(u(2) )P1(u(3) ), P2(u(1) )P1(u(3) )P1(u(4) ), . . . },
+
+(6) and it includes all polynomials of degree 3, comprising the products of polynomials of degree two and degree one, and the product of polynomials of degree one. If each element of the input sequence ui is generated uniformly at random in [ −1, 1], then by choosing Leg-endre polynomials, Pd = Ld, the collection of polyno-mials B1 ∪ B 2 ∪ B 3 ∪ . . . forms an orthonormal basis of the Hilbert space of fading memory functions. Instead, if ui ∼ N (0 , 1/2) (Gaussian distributed), then one can choose Hermite polynomials, Pd = Hd, to form an or-thonormal basis. For practical numerical evaluation of the IPC in (3), a cutoff [1] in the length of the input sequence and a max-imum delay τmax must be defined, since the IPC cannot be computed for all elements of the basis of the Hilbert space of fading memory functions, as the basis is infinite-dimensional. For instance, by choosing τmax = 3, B1
+
+will only have three terms {P 1(u(1) ), P1(u(2) ), P1(u(3) )},with 
+
+P1(u(τ ))= [ 
+
+> τ
+
+z }| {
+
+P1(0) , . . . , P1(0) , P1(uτ +1 ), P1(uτ +2 ), . . . , P1(unT )] ⊤
+
+for τ ≤ 3, where we have assumed a fixed length nT , so that b in (3) belongs to RnT .
+
+b. Issues of the current method to compute IPC 
+
+These are the main issues of the current method to com-pute IPC as mentioned in the Introduction. 
+
+Issue 1: The number of terms in each Bd increases com-binatorially with d and τmax as 
+
+|B d| =
+
+τmax + d − 1
+
+d
+
+
+
+. (7) For instance, for τmax = 20 and d = 10, |B d| =20 , 030 , 010. Therefore, calculating the IPC re-quires an exhaustive search over combinations of orthogonal polynomials and time delays, which causes the computational cost to grow combinatori-ally with increasing polynomial degree. In practice, this requires restricting the search to relatively low maximum degrees and short maximum delays. In [1, Supplementary, Sec. 3.3], this restriction is jus-tified by the following implicit assumption. 
+
+Assumption 1. The capacities of a dynamical system generally decrease when the degree of the polynomial and the delay increase. 
+
+In [1, Supplementary, Sec. 3.3], the authors moti-vate Assumption 1 on the basis of two empirical observations: (1) in the systems considered experi-mentally, capacity generally decreases as the poly-nomial degree increases; and (2) for physical sys-tems with fading memory, capacity decreases, on average, as the delay increases. 
+
+Issue 2: Consider two reservoirs Sa, Sb with same maximum capacities, i.e., Ctot (Sa, B, u ) =Ctot (Sb, B, u ) = ns. Additionally, assume that Sa
+
+exhibits only low-degree nonlinearities, while Sb
+
+is highly nonlinear (and so it performs poorly on linear memory tasks, e.g., fitting the elements of the basis B1). The total information capacity C tot 
+
+cannot distinguish between these two reservoirs, although it would be natural (also in view of Assumption 1) to prefer the system Sa.
+
+Issue 3: Due to the use of finite statistics (i.e., a finite time series of length nT ) which introduces spuri-ous correlations, capacities cannot be estimated re-liably. To mitigate the effects of these numerical errors, which affect the value of the total capacity when τmax and d are large, [1] suggest perform-ing hypothesis testing to remove IPC terms with small values. Under an independence assumption (which is, in fact, violated [1]), they show that the total capacity is a sum of χ2-distributed vari-ables. Consequently, they define a threshold r via 
+
+P (χ2 > r ) = p with p = 0 .0001 and then use the threshold r to eliminate all small IPC terms (assuming they are due to spurious correlations). They then double this threshold to account for the fact that the total IPC is not the sum of indepen-dent χ2 terms. This procedure is heuristic and, more importantly, does not adjust for multiple test-ing (Bonferroni-like corrections) – the number of tests becomes large when τmax and d are large. This means that the total IPC will mostly of the case be inflated due to spurious correlations when τmax and 
+
+d are large. 
+
+Issue 4: In the computation of total IPC, the choice of the particular orthogonal basis of polynomial is de-termined by the distribution of u, for example, Leg-endre polynomials are used if u is uniformly dis-tributed in [ −1, 1]. However, the distribution of u
+
+may be non-standard and unknown and, therefore, the IPC is not optimally calculable with the formu-las (2).  
+
+> III. COMPUTING IPC THROUGH KERNELS
+
+This section presents the main contribution of the pa-per. Building on the background material, we show how kernels can be used to compute the total IPC without explicitly considering all basis functions and, therefore, 4avoiding the previously discussed drawbacks. Consider the function 
+
+f (ut) = 
+
+> d
+
+X
+
+> n=0
+
+γnPn(ut),
+
+which is a linear combination of polynomial functions of degree n. Assuming that the coefficients satisfy γn ∼N (0 , σ 2
+
+> n
+
+) independently for n = 0 , . . . , d , then f is zero-mean Gaussian distributed with covariance (or kernel function) 
+
+E[f (ut)f (ut′ )] = kd(ut, u t′ ) = 
+
+> d
+
+X
+
+> n=0
+
+σ2 
+
+> n
+
+Pn(ut)Pn(ut′ ),
+
+where ut, u t′ are two inputs at time t and, respectively, t′.We are interested in the limit d → ∞ for various systems of orthogonal polynomials and we want to choose σ2 
+
+> n
+
+so that the limit converges to a known (preferably simple) closed-form function. This leads to the following general problem: for a given family of orthogonal polynomials {P n}n≥0, find a se-quence of variances {σ2
+
+> n
+
+}n≥0 such that the infinite series defining k∞(ut, u t′ ) converges and can be identified with a familiar kernel. Fortunately, this problem has already been solved for a broad class of orthogonal polynomials, often in the context of mathematical physics .
+
+Proposition 1. For Hermite polynomials, assuming that 
+
+σ2 
+
+> n
+
+= ρn 
+
+> 2nn!
+
+, we have that the following infinite series con-verges: 
+
+> ∞
+
+X
+
+> n=0
+
+ρn
+
+2nn! Hn(ut)Hn(ut′ )= 1√1−ρ2 exp 
+
+ −ρ2(u2  
+
+> t+u2
+> t′)+2 ρu tut′
+> 1−ρ2
+
+
+
+=: KHerm (ut, u t′ ),
+
+(8) 
+
+with ut, u t′ ∈ R and ρ ∈ (0 , 1) .For Laguerre polynomials, assuming that σ2 
+
+> n
+
+= 
+
+> n!ρn
+> Γ( n+α+1)
+
+, we have that: 
+
+> ∞
+
+X 
+
+> n=0
+> n!ρn
+> Γ( n+α+1)
+
+G(α) 
+
+> n
+
+(u)G(α) 
+
+> n
+
+(ut′ )= 1(uu t′ ρ)α/ 2(1 −ρ) e− ρ(u+ut′ )1−ρ Iα
+
+ 2√uu t′ ρ
+
+> 1−ρ
+
+
+
+=: KLag (u, u t′ ),
+
+(9) 
+
+with u, u t′ ∈ R+, α > −1 and ρ ∈ (0 , 1) , where Iα denotes the modified Bessel function of the first kind. For Jacobi polynomials, assuming that σ2 
+
+> n
+
+= 
+
+> n!( α+β+1) nρn
+> (α+1) n(β+1) n
+
+, we have that: 
+
+> ∞
+
+X 
+
+> n=0
+> n!( α+β+1) nρn
+> (α+1) n(β+1) n
+
+P (α,β ) 
+
+> n
+
+(ut)P (α,β ) 
+
+> n
+
+(ut′ )= (1 + ρ)−α−β−1F4
+
+ α+β+1 2 , α+β+2 2 ; α + 1 , β + 1;   
+
+> (1 −ut)(1 −ut′)ρ
+> (1+ ρ)2
+
+, (1+ ut)(1+ ut′ )ρ
+
+> (1+ ρ)2
+
+
+
+=: KJac (ut, u t′ )(10) 
+
+with ut, u t′ ∈ [−1, 1] ρ ∈ (0 , 1) , α + β > −1, where (·)n is Pochhammer’s symbol (for the rising factorial) and F4 is Appel’s hypergeometric function. 
+
+The first kernel is known as Mehler kernel [32]. It also corresponds to the Green’s function of the Hamilto-nian for the quantum harmonic oscillator and it is also related to the square-exponential kernel [33, Sec. 4.3]. The second one for Laguerre polynomials is known as 
+
+Hardy-Hille formula [34]. The last one is known as Bai-ley’s formula [35]. We recall that the Jacobi polynomials 
+
+P (α,β ) 
+
+> n
+
+(z) are a class of polynomials, which are orthog-onal with respect to the weight (1 − z)α(1 + z)β on the interval [ −1, 1] and, that, the Chebyshev and Legendre, (and others) polynomials, are special cases of the Jacobi polynomials. We then exploit the following result. Note that, if ut, u t′ ∼ N (0 , 1/2), then 
+
+Z
+
+KHerm (ut, u t′ )Hn(ut′ )N (ut′ ; 0 , 1/2) du t′ = ρnHn(ut),
+
+and, therefore, the kernel in (8) has eigenfunctions Hn
+
+and eigenvalues ρn. In the rest of the paper, we will focus on Legendre polynomials. 
+
+Corollary 1. For α, β = 0 , Jacobi polynomials reduce to Legendre polynomials, and Bailey’s formula (10) can be rewritten as 
+
+> ∞
+
+X
+
+> n=0
+
+ρnLn(ut)Ln(ut′ )= 2
+
+π    
+
+> R
+> r 2t2(ut,u t′)
+> t1(ut,u t′)−t2(ut,u t′)
+> 
+
+√t1(ut,u t′ )−t2(ut,u t′ ) := KLeg (ut, u t′ ),
+
+(11) 
+
+where t1(ut, u t′ ) = 1 − 2utut′ ρ + ρ2, t2(ut, u t′ ) =2ρp1 − u2
+
+> t
+
+p1 − u2 
+
+> t′
+
+and R(z) = R π/ 20
+
+> dθ
+
+√1−z2 sin 2(θ) is the complete elliptic integral of the first kind. 
+
+The proof of this corollary and next theorems is in Appendix A 1. This kernel was derived in [36] to find sharp estimates for the Jacobi heat kernels, in Corollary 1 instead we show its derivation from Bailey’s formula. Note that, if u, u t′ ∼ Unif( −1, 1), then 
+
+Z
+
+KLeg (u, u t′ )Ln(ut′ )Unif( ut′ ; −1, 1) du t′ = ρn 
+
+> 2n+1
+
+Ln(u),
+
+(12) and, therefore, the kernel in (11) has eigenfunctions Ln
+
+and eigenvalues ρn/(2 n + 1). To extend the previous kernel from a scalar to an 
+
+m-dimensional vector of delayed input-signals, that is, 
+
+ut := [ ut−1, u t−2, . . . , u t−m]⊤ ∈ Rm, we can use the ten-sor product. Given a kernel k : R × R → R, the tensor product kernel, k⊗ : Rm × Rm → R, is defined as 
+
+K⊗(ut, ut′ ) := 
+
+> m
+
+Y 
+
+> τ=1
+
+K(ut−τ , u t′−τ ), (13) 5that is, by considering the product of m kernels each one defined on a specific element of the vector ut. The basis functions of the tensor product kernel are the ten-sor products of the individual basis functions. There-fore, if we build a tensor product kernel from the infinite dimensional kernels, such as for instance KLeg (ut, u t′ ), the tensor product kernel will include the product of all polynomials of any degree of the elements of the vector 
+
+ut ∈ Rm. This leads to the general expression 
+
+K⊗(ut, ut′ ) = 
+
+> m
+
+Y 
+
+> τ=1
+> ∞
+
+X
+
+> n=0
+
+λnPn(ut−τ )Pn(ut′−τ )= X
+
+> ι∈Nm
+
+λιP⊗ 
+
+> ι
+
+(ut)P⊗ 
+
+> ι
+
+(ut′ )(14) where we use Pn to denote generically an orthonormal polynomial of degree n which has been scaled to have normalisation one (with respect to the corresponding probability measure), λi is the scaled eigenvalue (e.g., 
+
+λi = ρi for Hermite and λi = ρi/(2 i + 1) for Legendre) and λι and P⊗ 
+
+> ι
+
+(ut) denote the product of the eigenvalues and polynomials based on the signature ι. For instance, for the Legendre case, assuming that m = 4 and ι =(2 , 1, 1, 3), we have that λ(2 ,1,1,3) = ρ2 
+
+> 5
+> ρ
+> 3
+> ρ
+> 3
+> ρ3
+> 7
+
+= ρ7 
+
+> 315
+
+and 
+
+P⊗
+
+> (2 ,1,1,3)
+
+(ut) = P2(ut−1)P1(ut−2)P1(ut−3)P3(ut−4). We will now derive the main result of the paper: the kernel-IPC (KIPC) metric. 
+
+Theorem 1. Let X = [ x1, . . . , xnT ]⊤ ∈ RnT ×ns be the regressor matrix including the states of the dynamical sys-tem S and U = [ u1, . . . , unT ]⊤ ∈ RnT ×τmax the matrix of the delayed inputs. Then 
+
+lim  
+
+> nT→∞
+
+1
+
+nT
+
+T r (Π K⊗(U, U )) = X
+
+> ι∈Nm
+
+λι
+
+(P⊗ 
+
+> ι
+
+(U )) ⊤ΠP⊗ 
+
+> ι
+
+(U )(P⊗ 
+
+> ι
+
+(U )) ⊤P⊗ 
+
+> ι
+
+(U )= X
+
+> ι∈Nm
+
+λιIP C ι
+
+(15) 
+
+where Π = X(X⊤X)−1X⊤ is the projection matrix de-fined by X and IP C ι is the expression (3) for the element of the basis function bι.
+
+We have just shown that 1 
+
+> nT
+
+Tr(Π K⊗(U, U )) computes the total IPC, with two important differences from the standard definition in (3). First, the sum extends to in-finity: we do not need to truncate it, so the kernel-total IPC considers polynomials of all possible degrees. Sec-ond, the weights λι differ: in the standard total IPC these weights are all equal to one (since practitioners cannot evaluate infinitely many IPC terms, the infinite sum must be truncated in practice), whereas in the kernel-total IPC we have λι < 1 for ι̸ = 0, with the eigenvalues decreas-ing as the degree increases (and the sum goes to infinity). The condition λι < 1 is required to ensure that the series in (14) converges. 
+
+Remark 1. The fact that we make the eigenvalues λι
+
+in (15) to decrease with increasing degree reflects the implicit standard practice for computing IPC. In the standard computation of total IPC it is not possible to evaluate the capacities for all basis functions, which are infinite. Since one does not know in advance which func-tions the dynamical system can compute and, therefore, which basis functions to evaluate, the standard strategy [1] for computing the total IPC starts with polynomials of degree one and then increases the degree until the capacity falls below a given threshold. In other words, this strategy assigns more importance to lower-degree than to higher-degree polynomials in the basis func-tions. In KIPC, this is exactly the importance that the weights λι capture and, therefore, in KIPC we make Assumption 1 explicit by introducing the weights λι. As-sumption 1 also states that the weights should decrease with the delay, we will discuss about this in Section III B. Hereafter, we provide an useful asymptotic bound for KIPC. 
+
+Theorem 2. Let λ0, . . . , λ ns be the largest eigenvalues in the set {λι}ι∈Nm in (14) , then KIPC is bounded by 
+
+lim  
+
+> nT→∞
+
+1
+
+nT
+
+T r (Π K⊗(U, U )) ≤
+
+> ns
+
+X
+
+> n=0
+
+λn. (16) The asymptotic upper bound in (16) for KIPC is the analogue of (4) for the standard total-IPC. 
+
+Example 1. Assume τmax = m = 8 and consider the following two regression matrices: 
+
+X1 = [ L1(U·1), L2(U·1), L2(U·1)L1(U·2)] ,X2 = [ L1(U·1), L50 (U·1), L2(U·1)L1(U·2)] ,
+
+where U·i denotes the i-th column of the matrix U de-fined in Theorem 1. Since the regression matrices are constructed directly from Legendre polynomials, the the-oretical standard total IPC satisfies 
+
+Ctot (X1, L, u ) = C tot (X2, L, u ) = 3 ,
+
+in the limit nT → ∞. This follows by (4) . How-ever, due to the presence of the degree-50 polynomial 
+
+L50 in X2 and assuming the components of X2 are un-known, systematically recovering L50 (and thus obtain-ing Ctot (X2, L, u ) ≈ 3) would require evaluating at least 
+
+P50 
+
+> d=1
+
+ m+d−1
+
+> d
+
+ = 1 , 916 , 797 , 310 individual IPC terms. This cannot be obtained computationally and, as a result, the total IPC for X2 will be incorrectly estimated as 2 due to truncation. With kernel IPC, we do not need to worry about that as it considers all the possible degrees. Theoretically, from 
+
+(12) , we have that lim nT →∞ 1 
+
+> nT
+
+Tr(Π 1K⊗(U, U )) = ρ 
+
+> 3
+
++ 
+
+> ρ2
+> 5
+
++ ρ2 
+
+> 5
+> ρ
+> 3
+
+and lim nT →∞ 1 
+
+> nT
+
+Tr(Π 2K⊗(U, U )) = ρ 
+
+> 3
+
++ ρ50  
+
+> 101
+
++ 
+
+> ρ2
+> 5
+> ρ
+> 3
+
+, where Πi = Xi(X⊤ 
+
+> i
+
+Xi)−1X⊤ 
+
+> i
+
+for i = 1 , 2. These are asymptotic values ( nT → ∞ ). Hereafter, we provide a finite statistic example. We generated X1 and X2 with different nT and computed KIPC for ρ = 0 .95 :6
+
+nT 
+
+> 1
+> nT
+
+Tr(Π iK⊗(U, U )) 10 4 10 5 3 · 10 5 8 · 10 5
+
+i = 1 0.829 0.583 0.561 0.556 
+
+i = 2 0.651 0.399 0.383 0.376 The theoretical values are ≈ 0.5543 (i=1) and ≈ 0.3745 
+
+(i=2) and we can see that KIPC is converging to those values with increasing nT . The computational time is 0.4s ( nT = 10 4), 22s ( nT = 10 5), 173s ( nT = 3 · 10 5)and 1200s ( nT = 8 · 10 5) on a laptop with Nvidia GPU RTX PRO 3000 Blackwell. 
+
+From the numerical example above, it can be seen that, for finite nT , the quantity 1 
+
+> nT
+
+Tr(Π K⊗(U, U )) yields an upward-biased estimate of KIPC. We now pro-vide an unbiased estimator. Note that the quantity  
+
+> 1
+> nT
+
+Tr(Π K⊗(U, U )) can be decomposed as 1
+
+nT
+
+Tr(Π K⊗(U, U )) = 1
+
+n2
+
+> TnT
+
+X
+
+> i=1
+
+nT Πii K⊗(U, U )ii 
+
++ 1
+
+n2
+
+> TnT
+
+X
+
+> i=1
+> nT
+
+X 
+
+> j=1 , j ̸=i
+
+nT Πij K⊗(U, U )ij ,
+
+(17) which is therefore a V-statistic (see for instance [37]), since the function Π ij K⊗(U, U )ij = Πji K⊗(U, U )ji is symmetric. V-statistics are biased (for finite nT ). We can obtain an unbiased estimator of KIPC (for finite nT )by removing the diagonal term and dividing the second term by nT (nT − 1) (the number of terms in the sum) instead of n2 
+
+> T
+
+.
+
+Proposition 2. For finite nT , an unbiased estimator for KIPC is 
+
+\KIPC := 1
+
+nT − 1
+
+> nT
+
+X
+
+> i=1
+> nT
+
+X 
+
+> j=1 , j ̸=i
+
+Πij K⊗(U, U )ij . (18) This corresponds to a U-statistic (see for instance [37]). This expression also shows that, although the matrices Π, K ⊗(U, U ) are of dimension nT × nT . we can compute the KIPC without explicitly allocating these matrices in memory. Appendix A 2 details the algorithm we use to compute KIPC. 
+
+Remark 2. The computational complexity of computing KIPC is O(m n 2 
+
+> T
+
+), where m = τmax . The dependence on 
+
+m arises from (13). 
+
+Example 2. We repeat the numerical experiment in Ex-ample 1 by using the unbiased estimator in (18) .
+
+nT
+
+\KIPC in Eq. (18) 10 4 10 5 3 · 10 5
+
+i = 1 0.552 0.554 0.554 
+
+i = 2 0.373 0.374 0.374 We recall that the theoretical values are approximately 0.5543 (i=1) and 0.3745 (i=2). We observe that the un-biased KIPC estimator converges to these values much more quickly, reaching near-accurate estimates already for nT = 10 4. The computational time is exactly the same as in Example 1. 
+
+Finally, in standard IPC it is common to divide the to-tal IPC in the linear versus nonlinear contribution. The linear contribution is computed only considering the ele-ments of the basis P1 (degree one polynomials). We can also separate the linear versus nonlinear contribution in KIPC. 
+
+Corollary 2. Let us define the finite dimensional kernel 
+
+K(lin ) 
+
+> ⊗
+
+(U, U ) := 
+
+> τmax
+
+X 
+
+> τ=1
+
+λ1,τ P1(ut−τ )P1(ut′−τ ), (19) 
+
+where we use λ1,τ to denote the weight corresponding to the degree one polynomial for the delay τ (in the Legen-dre case λ1,τ = ρ/ 2, see (11) ). The linear-component of 
+
+\KIPC is then 
+
+\KIPC lin = 1
+
+nT − 1
+
+> nT
+
+X
+
+> i=1
+> nT
+
+X 
+
+> j=1 , j ̸=i
+
+Πij K(lin ) 
+
+> ⊗
+
+(U, U )ij (20) 
+
+and the nonlinear-component of KIPC can be computed as the difference \KIPC nonlin = \KIPC − \KIPC lin .
+
+Example 3. We repeat the numerical experiment in Ex-ample 2 with nT = 10 5 to compute \KIPC lin , \KIPC nonlin 
+
+nT = 10 5
+
+\KIPC lin \KIPC nonlin 
+
+i = 1 0.316 0.238 
+
+i = 2 0.316 0.058 In both cases ( i = 1 , 2), the theoretical linear KIPC is 
+
+ρ/ 3 ≈ 0.316 , because for both X1, X 2 the only linear com-ponent is L1(U·1).
+
+We have seen that, through KIPC, we have addressed 
+
+Issue 1 , since we can compute the information capac-ity without imposing an upper bound on the polynomial degree and, consequently, we account for all possible non-linearities. Moreover, this can be done efficiently – in a fraction of a second for nT = 10 4, as discussed in Exam-ple 1. Additionally, we have addressed Issue 2 by automati-cally down-weighting higher-degree polynomials. This is also evident in Example 1, where two reservoirs with the same rank (the rank of X1, X 2 is rank=3) have different capacities, with the second exhibiting a lower capacity due to the higher-degree polynomial term L50 . 
+
+> A. Hypothesis testing
+
+We can use KIPC to statistically assess whether two reservoirs, Sa and Sb, driven by the same input signal of 7length nT , exhibit significantly different capacities. Be-cause the \KIPC estimator in (18) is unbiased, under the null hypothesis H0 (i.e., H0: Sa and Sb are equivalent), we have ∆ := 1
+
+nT − 1
+
+> nT
+
+X
+
+> i=1
+> nT
+
+X 
+
+> j=1 , j ̸=i
+
+(Π (a) 
+
+> ij
+
+− Π(b) 
+
+> ij
+
+)K⊗(U, U )ij , (21) is such that E[∆] = 0, where the expectation is taken with respect to the distribution of the input signal. Ad-ditionally, under the null-hypothesis, the two projection matrices Π a, Πb are projecting on the same space and, therefore, the difference Π a − Πb reflects purely random variations. Therefore, Π a − Πb and K⊗(U, U ) can be assumed to be independent. Therefore, we can use a permutation-based approach to compute the distribution under H0. This permutation-based approach is com-monly used in kernel-based hypothesis testing, see for instance [38]. Let π be a permutation of the signal u and let Uπ be the corresponding matrix, define 
+
+dπ := 1
+
+nT − 1
+
+> nT
+
+X
+
+> i=1
+> nT
+
+X 
+
+> j=1 , j ̸=i
+
+(Π (a) 
+
+> ij
+
+− Π(b) 
+
+> ij
+
+)K⊗(Uπ , U π )ij ,
+
+(22) Note that, Π a − Πb is not permuted. Then, we can ap-proximate the distribution under H0 by collecting the sample statistics D = {dπ : π = 1 , . . . , n samples } for 
+
+nsamples different random-permutations. Since the dis-tribution under H0 is symmetric around zero (because Πa − Πb can be positive or negative with equal proba-bility), we can use the α/ 2 and 1 − α/ 2 percentiles of D
+
+to perform an α-level two-sided p-value-based hypothesis test. 
+
+Example 4. We again consider X1, X 2 in Example 1 and additionally 
+
+X3 = [ L1(U·2), L2(U·2), L2(U·2)L1(U·3)] ,X4 = [ L1(U·2), L50 (U·2), L2(U·2)L1(U·3)] ,
+
+It is evident that X1, X 3 and X2, X 4 have the same KIPC: ≈ 0.5543 (i=1,3) and ≈ 0.3745 (i=2,4). We select nT = 10 4 and perform a hypothesis testing with α = 0 .05 and nsamples = 300 to test the difference in capacity between these four reservoirs. The result is shown in Figure 1. It is evident that we cannot reject the null-hypothesis (with significance α) for the comparisons 
+
+X1, X 3 and X2, X 4. Conversely, we can reject the null (as expected) for the comparisons X1, X 2 and X3, X 4.
+
+Therefore, we have also resolved Issue 3 . By adopting the kernel approach, we perform a single joint hypothesis test to assess the significance of differences in capacity. Conversely, computing total IPC requires a separate hy-pothesis test for each term. Evaluating millions of such terms necessitates corrections for multiple comparisons, which can either severely impair statistical power if prop-erly applied, or artificially inflate the total IPC if omitted. 
+
+Remark 3. When using KIPC, it is often desirable to establish a threshold of significance (that is, a capacity difference that can be statistically assessed) for a single isolated system (e.g., Sa), without explicitly requiring a comparative baseline against a second system ( Sa vs. Sb). To compute such threshold of significance, in practice, we can evaluate a small number of samples dπ of 
+
+dπ := 1
+
+nT − 1
+
+> nT
+
+X
+
+> i=1
+> nT
+
+X 
+
+> j=1 ,,j ̸=i
+
+Π(a) 
+
+> ij
+
+K⊗(Uπ , U π )ij (23) by using different random permutations, to estimate the order of magnitude required for a capacity difference to be statistically significant. This informal (more conser-vative) approach corresponds to evaluating Π (a) against an ideal baseline Π (b) with a smaller or equal rank.   
+
+> B. The choice of ρ
+
+As discussed in Remark 1, in KIPC, we make Assump-tion 1 explicit by choosing weights λι that decrease with the degree. For the Legendre kernel, this decay is given by ρi/(2 i + 1), where i denotes the degree of the poly-nomial. This weighting is explicit, in the sense that, for instance, the polynomial L1(ut−1)L1(ut−2)L3(ut−1) has weight   ρ
+
+> 3
+
+   ρ
+
+> 3
+
+  ρ3
+
+> 7
+
+
+
+.The weights depend on a parameter ρ ∈ (0 , 1). Ide-ally, one would choose ρ ≈ 1, but when ρ → 1 this leads to numerical instability. Note indeed that, in (11), for ut = ut′ = 1 and ρ = 1, KLeg (1 , 1) = ∞. For 
+
+ρ ≈ 1, this numerical instability produces an increase in the significance threshold in the hypothesis testing discussed in Section III A, requiring a greater nT to as-sess significance. Therefore, to avoid this issue, we set 
+
+ρ = 0 .95 in our experiments. This implies, for instance, that a nonlinearity of degree 50 receives a weight of 
+
+ρ50 /101 ≈ 0.000762. To reliably distinguish reservoirs with differences on the order of 0 .000762, nT must be chosen so that these variations are statistically signifi-cant. We can determine a lower bound for nT by using the method described in Section III A. 
+
+Example 5. We consider again 1 and compare 
+
+X1 = [ L1(U·1), L2(U·1), L2(U·1)L1(U·2)] ,X5 = [ L1(U·1), L2(U·1), L2(U·1)L1(U·2), L50 (U·2)] ,
+
+The theoretical KIPC is: 0.554325 (i=1) and ≈
+
+0.554325 + 0 .000762 = 0 .555087 (i=5). We select nT =10 4 and perform a hypothesis testing with α = 0 .05 and 
+
+nsamples = 300 to test the difference in capacity between these two reservoirs. Figure 2a shows that, for nT = 10 4,we can just reject the null-hypothesis (with significance 
+
+α) for the comparison X1, X 5. The difference is clearly significant for nT = 2 .5 · 10 4 as shown in Figure 2b and certainly significant for nT = 10 5 as shown in Figure 2c. We also estimate the significance based on the procedure 8−0.0006 −0.0004 −0.0002 0.0000 0.0002 0.0004 0.0006 0.0008 0200 400 600 800 1000 1200 1400 1600 Density 
+
+(a) Comparing X1 vs. X3−0.0008 −0.0006 −0.0004 −0.0002 0.0000 0.0002 0.0004 0.0006 0200 400 600 800 1000 1200 1400 1600 Density (b) Comparing X2 vs. X40.000 0.025 0.050 0.075 0.100 0.125 0.150 0.175 0200 400 600 800 1000 1200 1400 1600 Density 
+
+(c) Comparing X1 vs. X2 or X3 vs. X4
+
+FIG. 1: Hypothesis Testing: the null-distribution is in blue; the difference between the KIPC for the two reservoirs being compared (∆) is indicated by the red-continuous vertical line; the α/ 2 and 1 − α/ 2 percentiles are indicated by the dashed black vertical lines. Notice that we cannot reject the null-hypothesis (with significance α) for the comparisons X1, X 3 and X2, X 4. However, we can reject the null for comparisons X1, X 2 and X3, X 4.
+
+described in Remark 3, which only uses one reservoir ma-trix – the one with higher-rank, X5 in this case. Using 30 
+
+samples, the estimated significance at α = 0 .05 for |∆| is equal to 0.00103 (nT = 10 4) and 0.00041 (nT = 5 · 10 4)and 0.00008 (nT = 10 5). With this more conservative approach, we can see that nT = 10 5 is more than enough to detect the nonlinearity ρ50 /101 ≈ 0.000762 .
+
+Assumption 1 also states that capacities should de-crease with the delay. In KIPC, this can be achieved by using a different ρ for each kernel in the product in (13). For instance, considering again the polynomial 
+
+L1(ut−1)L1(ut−2)L3(ut−1), we would have the weight 
+
+  ρ1
+
+> 3
+
+   ρ2
+
+> 3
+
+  ρ31
+
+> 7
+
+
+
+, with ρ1 > ρ 2, where ρτ is the weight corresponding to the delay τ . While this is possible and straightforward, we do not implement it in this paper and instead use the same ρ for each delay. 
+
+C. Gram matrix 
+
+For finite nT , when evaluating 1 
+
+> nT
+
+T r (Π K⊗(U, U )), we are in practice computing 1 
+
+> nT
+
+Tr  Π PnT 
+
+> i=1
+
+γiviv⊤
+
+> i
+
+, where (γi, vi) denotes the eigenvalue-eigenvector decomposition of the kernel matrix (Gram matrix) K⊗(U, U ). There-fore, with KIPC we always evaluate the information ca-pacity with respect to an orthogonal basis. This prop-erty holds even when the input signal u is not dis-tributed according to the reference measure that orthog-onalises the underlying polynomials defining the kernel (e.g., u ∼ Unif( −1, 1) for the Legendre kernel). Conse-quently, KIPC automatically resolves Issue 4 .
+
+IV. NUMERICAL EXPERIMENTS 
+
+In the following numerical experiments, we will always use the Legendre kernel defined in (11). We evaluate the information processing capacity of a classical RC, an 
+
+echo-state network . The goal is to show the issues dis-cussed for IPC and how KIPC addresses them. This will demonstrate the greater reliability as well as the greater efficiency (in computational time) of KIPC. We will then use KIPC to quantify the information processing capacity of a QRC, specifically a disordered quantum spin chain reservoir .9−0.0008 −0.0006 −0.0004 −0.0002 0.0000 0.0002 0.0004 0.0006 0250 500 750 1000 1250 1500 1750 Density 
+
+(a) nT = 10 4−0.0006 −0.0004 −0.0002 0.0000 0.0002 0500 1000 1500 2000 2500 3000 3500 4000 Density (b) nT = 2 .5 · 10 4−0.0006 −0.0004 −0.0002 0.0000 02500 5000 7500 10000 12500 15000 17500 Density 
+
+(c) nT = 10 5
+
+FIG. 2: Hypothesis Testing for X1 vs. X5: the null-distribution is in blue; the difference between the KIPC for the two reservoirs being compared (∆) is indicated by the red-continuous vertical line; the α/ 2 and 1 − α/ 2 percentiles are indicated by the dashed black vertical lines. Notice that we can reject the null-hypothesis in each of the comparisons between X1 and X5.
+
+A. Echo-state network 
+
+An echo-state network (ESN) is defined as [39]: 
+
+xt+1 = tanh ( sW 2xt + 0 .7˜ ut+1 ) (24) ˜ut+1 = W1(0 .5ut+1 + 0 .5) p (25) where u ∈ Unif( −1, 1), W1 ∈ Rns×1, and W2 ∈ Rns×ns
+
+have elements randomly drawn from Unif( −1, 1), s > 0 is the spectral radius, and the number of states is ns = 50. We evaluate the IPC across s ∈ { 0.1, 0.2, . . . , 1.7} for 
+
+p = 1 (standard ESN) and p = 9 (highly nonlinear ESN). Note that setting p = 9 means applying a nonlinear (polynomial) transformation to the input signal before feeding it into the ESN. This is not standard practice in ESNs; we adopt it here because it allows us to clearly il-lustrate Issues 1–3 that affect the computation of total IPC. We run simulations for 210,000 time steps, discarding the first 10,000 as warm-up and repeat the experiment for M C = 10 (Monte Carlo) runs. For standard total-IPC, we consider all polynomial de-grees from 1 to 10 with corresponding maximum delays set to 
+
+{30 , 30 , 30 , 27 , 25 , 20 , 17 , 14 , 11 , 10 }. (26) The reduction of the delay at the increase of the poly-nomial degree is standard practice in the computation of total-IPC – it is necessary to prevent the combinatorial explosion in the number of terms ( Issue 1 ). For KIPC, we only fix the maximum delay to 30, as it implicitly accounts for all degrees up to infinity. The total-IPC is upper bounded by 50 (the rank of the matrix X). For KIPC, the upper bound is 13.11 from Theorem 2 (dis-carding the contribution of the constant term, which we do not include, as discussed in Section II A, assuming the columns of the matrix X have been centred to have zero mean). Figure 4 summarises the results. The left column of Figure 4 shows the results for p = 1. For the total-IPC, shown in Figures 4a and 4c, we report the usual breakdown of IPC contributions by nonlinearity order – we computed it using the Python ipc-module [40]. Each color represents the IPC term C d(S, Ld, u ) relative to the degree d = 1 , . . . , 10. They are plotted one above the other, so that their upper envelope corresponds to the total-IPC. Figures 4a and 4c differ only in their threshold scal-ing factors (3 and the more aggressive 5, respectively), which are used to filter out spurious correlations in the high-degree terms, as described in Issue 3 . The total-IPC (the upper envelope of these curves) can be com-10 pared to KIPC in Figure 4e, where it peaks for a spec-tral radius s ∈ [0 .9, 1] and then declines for s > 1 due to unstable ESN dynamics. Note that, also for KIPC we reported KIP C lin , which corresponds to C 1(S, L1, u ) in total-IPC. Comparing Figure 4a with Figure 4e, it is evident that total-IPC underestimates the capacity when the spectral radius approaches the edge of instability ( s = 1). Indeed, KIPC in Figure 4e indicates that the capacity reaches its maximum at s = 1, whereas, according to total-IPC, the capacity begins to decrease already before reaching 
+
+s = 1. As s → 1, the system’s response to the input becomes increasingly nonlinear, and this behavior is not well captured by total-IPC due to Issue 1 and Issue 3. This drawback for total-IPC was already observed by Dambre et al. [1]. In contrast, KIPC can detect the increase of nonlinear behaviour as s → 1. For p = 9, a threshold scaling factor of 3 is insufficient to eliminate the spurious correlations that unphysically push the total IPC above the ESN rank limit of 50 (Fig-ure 4b). We have to use the stronger threshold factor of 5 to get rid of this unphysical behaviour, however in this way we also remove non-spurious IPC terms under-estimating the IPC, Issue 3 . This is evident from the comparison of Figure 4b and Figure 4d. The KIPC in Figure 4f instead evaluates all degree terms rather than capping them at degree 10 and moreover the uncertainty (vertical bars) is very low in the stable dynamics ESN region ( s < 1) showing that KIPC is much more reli-able than total-IPC. Note that, for simplicity of notation, when we refer to KIPC and KIPC lin we mean \KIPC and 
+
+\KIPC lin , so we omit the hat notation hereafter. Comparing Figure 4d with Figure 4f for s = 1, it is even more evident that the nonlinear behavior of ESN when it approaches s = 1 is not well captured by total-IPC. Indeed the total-IPC for s = 1 is 35, which is way below the expected maximum 50. Instead, KIPC tells us that the maximum information capacity is still reached for s = 1. To validate that this behaviour of the total-IPC is due to the truncation ( Issue 1 ), we re-run KIPC for p = 9 with a maximum delay of τmax = 15, which makes the computed values more consistent with the truncation in (26) used to compute the total-IPC. Figure 3 shows that the capacity computed by KIPC starts to decrease at 
+
+s = 0 .9. Since KIP C lin only marginally exhibits this decrease, the reduction of τmax primarily affects the non-linear terms. This clearly explains why the total-IPC underestimates the capacity at s = 1. Comparing Figure 4e with Figure 4f, we observe that the KIPC values for p = 9 are lower than those for p = 1. This is fully consistent with Assumption 1, which favours systems with lower linearity over highly nonlinear ones (therefore, addressing Issue 2 ). Indeed, the standard implementation of an ESN does not apply a polynomial transformation to the inputs. Finally, we report the computation time (on the same GPU as in Example 1) required to compute the total IPC 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 spectral radius 01234567KIPC 
+
+> KIPC KIPC lin
+
+FIG. 3: p = 9: KIPC with τmax = 15. Notice that the capacity computed by KIPC starts to decrease at 
+
+s = 0 .9. Since KIP C lin only marginally exhibits this decrease, the reduction of τmax primarily affects the nonlinear terms. and KIPC in Figure 4 for each value of the spectral radius (with nT = 200 , 000). It can be noted that computing KIPC is 10-times faster – it also yields correct results, since it does not truncate the maximum polynomial de-gree.   
+
+> Stand. IPC KIPC-Leg time (sec) 2750 280
+
+TABLE I: Computational time comparison between standard IPC and KIPC-Leg. Notice that computing KIPC is 10-times faster.  
+
+> B. Disordered quantum spin chain reservoir
+
+We consider the disordered all-to-all transverse-field Ising model as the substrate for the quantum reservoir (QRC) numerical application. This choice is motivated by its rich dynamics as the transverse-field strength h
+
+and disorder amplitude W are varied. Several works have shown that these regimes strongly influence QRC performance [12, 23, 30, 41], using benchmarks (such as NARMA and delay) and standard total IPC [30] (but re-stricting the polynomial degree to at most 4). Here, we aim to strengthen this analysis by using KIPC to shed additional light on the performance of this QRC. The reservoir is defined by the Hamiltonian with on-site disorder [12]: 
+
+H =
+
+> N
+
+X
+
+> i>j =1
+
+Jij σxi σxj + 12
+
+> N
+
+X
+
+> i=1
+
+(h + wi) σzi , (27) where N is the number of spins, h is the magnetic field, 
+
+wi is the on-site disorder, σai (a = x, y, z ) are the Pauli matrices, and Jij are the spin–spin couplings. To gener-ate the reservoir, the parameters are randomly generated 11 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 
+
+> spectral radius
+
+010 20 30 40 50 
+
+> IPC
+> Rank 12345678910
+
+(a) p = 1: IPC with threshold scaled by 3 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 
+
+> spectral radius
+
+020 40 60  
+
+> IPC
+> Rank 12345678910
+
+(b) p = 9: IPC with threshold scaled by 3 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 
+
+> spectral radius
+
+010 20 30 40 50 
+
+> IPC
+> Rank 123456
+
+(c) p = 1: IPC with threshold scaled by 5 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 
+
+> spectral radius
+
+010 20 30 40 50  
+
+> IPC
+> Rank 12345678910
+
+(d) p = 9: IPC with threshold scaled by 5 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 spectral radius 01234567KIPC 
+
+> KIPC KIPC lin
+
+(e) p = 1: KIPC 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 spectral radius 01234567KIPC  
+
+> KIPC KIPC lin
+
+(f) p = 9: KIPC 
+
+FIG. 4: Computation of total-IPC and KIPC for the ESN numerical experiment. The left-column plots are relative to the case p = 1, while the right-column plots to p = 9. Section IV A contains a detailed analysis of the plots. In the KIPC-plots, shaded regions represent 95% confidence intervals computed over the Monte Carlo runs. 
+
+Jij ∈ Unif( −1/2, 1/2) and wi ∈ Unif( −W, W ). Following the approach of previous work, we consider two param-eter sweeps. In case 1, we vary the average transverse-field strength h at vanishing disorder ( W = 0). In case 2, we vary the disorder strength W at fixed average field (h = 10). Phase-diagram analyses indicate [12] that, across these sweeps, the system undergoes transitions be-tween distinct dynamical phases. We therefore expect the IPC to vary over the sweeps. We recall that a QRC algorithm can be divided into three steps: (i) inject an input into the reservoir system; (ii) let the reservoir (i.e., the spin network defined in (27)) evolve; (iii) extract information from the reservoir using all or some of its degrees of freedom via an output layer. We inject [12] the input signal {u1, u 2, . . . , u nT }, with 
+
+uk ∈ Unif( −1, 1), into the qubit 1 at every time step k.12 This spin state is updated every ∆ t = 10 steps as 
+
+ρ(k)1 = |ψ˜uk ⟩⟨ ψ˜uk |, |ψ˜uk ⟩ := p1 − ˜uk |0⟩ + p˜uk |1⟩,
+
+where ˜ u = 0 .5( uk + 1) ∈ [0 , 1]. The reservoir is then let to evolve: 
+
+ρ(k∆t) = e−iH ∆t
+
+ρ(k)1 ⊗Tr 1
+
+ ρ(( k −1)∆ t)
+
+eiH ∆t, (28) where e−iH ∆t is the unitary dynamics operator and Tr 1{·} denotes the partial trace over the first qubit. For the output layer we use the following observables [12]: the single-qubit expectations ⟨σxi ⟩, ⟨σyi ⟩, and ⟨σzi ⟩
+
+for each qubit i, together with all distinct two-qubit cor-relations ⟨σxi σxj ⟩ with i < j . In practice, at each time step k we first update ρ(k∆t) via Eq. (28), then compute the feature vector by evaluating ⟨O⟩k = Tr( O ρ (k∆t)) for each observable O; this corresponds to an idealised readout in which measurement back-action is neglected, whereas in a physical implementation the same statis-tics would be estimated by repeating the experiment over many runs and performing measurements on identically prepared copies of the reservoir. In the simulations, we set N = 8 qubits, yielding a total of 52 output signals. Consequently, the matrix X
+
+in Theorem 1 has rank 52, which make it comparable to the ESN considered in the previous section (rank 50). We run simulations for 21,000 time steps, discarding the first 1,000 as a warm-up, and repeat the experiment for M C = 30 Monte Carlo runs. Note that simulating the reservoir is computationally demanding due to the dimension of the density-matrix ρ(kδt ) of 2 8 × 28. For this reason, we limit nT to 20,000 when computing KIPC. Figure 5 reports the computed KIPC for the two cases 
+
+case 1: We observe that the KIPC (and KIPC lin ) is large for small h and then decreases for h > 0.1 (phase transition), eventually reaching a plateau. This be-haviour is consistent with what is reported in [12, Fig. 4] for the squared Pearson correlation coeffi-cient between the true and predicted output in the NARMA10 task. 
+
+case 2: We observe that the KIPC (and KIPC lin ) in-creases up to W ∈ [3 , 5] (phase transition) and then decreases towards 0. This trend also agrees with the NARMA10 results in [12, Fig. 4]. A key additional insight provided by KIPC is that, as W
+
+increases, the nonlinear contribution KIPC nonlin =KIPC − KIPC lin grows up to W = 3 (vertical line). For W > 3, KIPC lin starts to decrease while KIPC nonlin continues to increase, leading to a max-imum KIPC at W = 5 (note that the exact max-imiser may not be at W = 5 due to the step size used in our experiments). This behaviour is inter-esting because, unlike in ESNs where KIPC and KIPC lin peak at the same spectral radius, here the maxima do not coincide. To the best of our knowl-edge, this property of the ‘disordered quantum spin chain reservoir’ has not been reported before. Over-all, this illustrates that KIPC can provide new in-sights into QRC.  
+
+> C. Software
+
+The KIPC algorithm is implemented in Python. The source code for computing the metric and replicating the experiments is available at https://github.com/ benavoli/KernelIPC . 
+
+> V. CONCLUSIONS
+
+In this work, we have introduced a kernel-based ap-proach, the kernel-based information processing capac-ity (KIPC) to measure the information processing ca-pacity metric of a dynamical system. Compared to the total-IPC metric introduced by Dambre et al. [1], our approach resolves several key limitations. First, we can compute the information capacity without imposing an upper bound on the polynomial degree, therefore ac-counting for all possible non-linearities. Moreover, this computation can be performed efficiently. Through a permutation-based test, we also show that we can sta-tistically compare the KIPC of two dynamical systems using a single null-hypothesis test. This solves another prominent issue with the standard IPC, which instead re-quires a separate test for each element of the basis func-tion. We demonstrated these improvements in practice using an Echo State Network as a test-bed dynamical system. Finally, we showed how the efficiency and relia-bility of KIPC can be leveraged to drive research in quan-tum reservoir computing (QRC), focusing specifically on a disordered quantum spin chain reservoir. While KIPC confirmed several previously known properties regarding the IPC for this QRC architecture, it also allowed us to discover an interesting phenomenon: a misalignment be-tween the maximum of the linear KIPC component and the nonlinear KIPC components. This finding warrants further investigation. As future work, we plan to replace the permutation testing we use for determining the distribution of the null-hypothesis with a parametric approximation of the null distribution computed analytically from its moments and, therefore, requiring only a small computational overhead compared to KIPC (permutation testing in-stead requires computing the KIPC nsamples times). This is similar to the approach used in kernel-based indepen-dence testing, where a Gamma distribution is employed to approximate the null distribution [38]. Another valu-able improvement would be to replace the null-hypothesis significance test with a Bayesian framework to more eas-ily distinguish between statistical and practical signifi-cance, similar to the approach in [42]. Finally, we plan to exploit the connection between IPC and Volterra series 13 −2 −1 0 1 2log 10 (h) 234567KIPC 
+
+> KIPC KIPC lin
+
+(a) case 1 −2 −1 0 1 2log 10 (W) 01234567KIPC  
+
+> KIPC KIPC lin
+
+(b) case 2 
+
+FIG. 5: Computation of KIPC for the QRC numerical experiment. Shaded regions represent 95% confidence intervals computed over the Monte Carlo runs. In subfigure 5a, We observe that the KIPC (and KIPC lin ) is large for small h and then decreases for h > 0.1 (phase transition), eventually reaching a plateau. In subfigure 5b, we observe that the KIPC (and KIPC lin ) increases up to W ∈ [3 , 5] (phase transition) and then decreases towards 0. Section IV B contains detailed analysis. to investigate whether it is possible to tailor KIPC more closely to the computational characteristics of QRC. The work of [43] provides a first step in this direction by offer-ing a kernel interpretation for QRC architectures based on quantum linear dynamic networks. 
+
+ACKNOWLEDGMENTS 
+
+We wish to acknowledge the support of the author community in using REVTEX, offering suggestions and encouragement, testing new versions, . . . . 
+
+Appendix A: Appendixes 1. Proofs 
+
+a. Proof of Corollary 1 We exploit the following in-tegral representation 
+
+F4
+
+  12 , 1; 1 , 1; X, Y  = 1
+
+> π
+
+Z π
+
+> 0
+
+dψ 
+
+q
+
+1 − X − Y − 2√XY cos ψ
+
+which can be derived from [44]. Since  
+
+> 2√p+q
+
+R
+
+q 2qp+q
+
+
+
+=
+
+Z π
+
+> 0
+> dθ
+
+√p+q−2q sin 2(θ/ 2) 
+
+=
+
+Z π
+
+> 0
+> dθ
+
+√p+q−q(cos( θ)−1) 
+
+=
+
+Z π
+
+> 0
+> dθ
+
+√p−q cos( θ) , (A1) we can then rewrite 
+
+F4
+
+  12 , 1; 1 , 1; X, Y  = 2
+
+> π
+
+√1−X−Y +2 √XY 
+
+R
+
+q 4XY  
+
+> 1−X−Y+2 √XY
+
+
+
+. (A2) Since X = (1 −x)(1 −x′)r 
+
+> (1+ r)2
+
+, Y = (1+ x)(1+ x′)r
+
+> (1+ r)2
+
+F4
+
+  12 , 1; 1 , 1; X, Y 
+
+= 2( r+1) 
+
+> π
+> q
+> 1+ r2−2rxx ′+2 r
+
+√(1 −x2)(1 −x′2)
+
+(A3) 
+
+· R
+
+r 4r(1 −x2)(1 −x′2)1+ r2−2rxx ′+2 r√(1 −x2)(1 −x′2)
+
+
+
+.
+
+where r = ρ. By exploiting (10), we can then simplify (r + 1) and prove the result (11). 14 
+
+b. Proof of Theorem 1 We introduce the notation 
+
+X = [ x1, . . . , xnT ]⊤ ∈ RnT ×ns and U = [ u1, . . . , unT ]⊤ ∈
+
+RnT ×τmax . From (14), we have that K⊗(U, U ) is a matrix whose ij -element is 
+
+{K⊗(U, U )}ij = K⊗(ui, uj ).
+
+Its i-th eigenvalue and eigenvector are: 
+
+K⊗(U, U )vi = ˆλivi,
+
+where v⊤ 
+
+> i
+
+vi = 1. It can then be shown, see for instance [33, Sec. 4.3.2], that, for finite nT ,
+
+ϕi(uj ) ≈ √nT (vi)j ,
+
+where ϕi is the i-th eigenfunction of the kernel. Since 
+
+v⊤ 
+
+> i
+
+K⊗(U, U )vi = ˆλi = 1 
+
+> nT
+
+ϕ⊤ 
+
+> i
+
+(U )K⊗(U, U )ϕi(U ) ≈ λi 
+
+> nT
+
+,where λi is the corresponding eigenvalue of the the kernel function. Therefore, for nt → ∞ , ˆλi 
+
+> nT
+
+is an estimator for the kernel function eigenvalue λi. Therefore, since 
+
+T r (Π K⊗(U, U )) = 
+
+> nT
+
+X
+
+> i=1
+
+ˆλiv⊤ 
+
+> i
+
+Πvi =
+
+> nT
+
+X
+
+> i=1
+
+ˆλi
+
+v⊤ 
+
+> i
+
+Πvi
+
+v⊤ 
+
+> i
+
+vi
+
+,
+
+and, as shown in (14), since ϕι(uj ) is equal to P⊗ 
+
+> ι
+
+(uj ) = 
+
+P⊗ 
+
+> ι
+
+(uj )/
+
+q
+
+(P⊗ 
+
+> ι
+
+(uj )) ⊤P⊗ 
+
+> ι
+
+(uj ), we have that lim  
+
+> nT→∞
+
+1
+
+nT
+
+T r (Π K⊗(U, U )) = X
+
+> ι∈Nm
+
+λι
+
+(P⊗ 
+
+> ι
+
+(U )) ⊤ΠP⊗ 
+
+> ι
+
+(U )(P⊗ 
+
+> ι
+
+(U )) ⊤P⊗ 
+
+> ι
+
+(U )(A4) Now consider the IPC term: Cd(S, P⊗ 
+
+> ι
+
+, u ) = 1 − min  
+
+> ˆw,ˆw0
+
+PTt=1 (P⊗ 
+
+> ι
+
+(ut) − ˆw⊤xt − ˆw0)2
+
+P⊗ 
+
+> ι
+
+(U )⊤P⊗ 
+
+> ι
+
+(U ) ,
+
+(A5) From the properties of linear regression, we can write the optimal prediction 
+
+Y = ˆ w⊤X + ˆ w0 = Π P⊗ 
+
+> ι
+
+(U ),
+
+where Π = X(X⊤X)−1X⊤ is the projection matrix (op-tionally including a column of ones to account for the intercept term) and, therefore, Cd(S, P⊗ 
+
+> ι
+
+, u ) = 1 − min  
+
+> ˆw,ˆw0
+
+PTt=1 (P⊗ 
+
+> ι
+
+(ut) − ˆw⊤xt − ˆw0)2
+
+P⊗ 
+
+> ι
+
+(U )⊤P⊗ 
+
+> ι
+
+(U )= 1 − (P⊗ 
+
+> ι
+
+(U ) − ΠP⊗ 
+
+> ι
+
+(U )) ⊤(P⊗ 
+
+> ι
+
+(U ) − ΠP⊗ 
+
+> ι
+
+(U )) 
+
+P⊗ 
+
+> ι
+
+(U )⊤P⊗ 
+
+> ι
+
+(U )= P⊗ 
+
+> ι
+
+(U )⊤ΠP⊗ 
+
+> ι
+
+(U )
+
+P⊗ 
+
+> ι
+
+(U )⊤P⊗ 
+
+> ι
+
+(U ) , (A6) where we have exploited Π 2 = Π. From this result, it follows that lim  
+
+> nT→∞
+
+1
+
+nT
+
+T r (Π K⊗(U, U )) = X
+
+> ι∈Nm
+
+λι
+
+(P⊗ 
+
+> ι
+
+(U )) ⊤ΠP⊗ 
+
+> ι
+
+(U )(P⊗ 
+
+> ι
+
+(U )) ⊤P⊗ 
+
+> ι
+
+(U )= X
+
+> ι∈Nm
+
+λιIP C ι.
+
+(A7) 
+
+c. Proof of Theorem 2 The bound lim  
+
+> nT→∞
+
+1
+
+nT
+
+T r (Π K⊗(U, U )) ≤
+
+> ns
+
+X
+
+> n=0
+
+λn. (A8) follows from Theorem 1 by noticing that the left hand side is maximised by taking as projection matrix Π the 
+
+ns eigenvectors of K⊗(U, U ) corresponding to the largest eigenvalues. 
+
+d. Proof of Proposition 2 The proof follows directly from the decomposition as V-statistic: 1
+
+nT
+
+Tr(Π K⊗(U, U )) = 1
+
+n2
+
+> TnT
+
+X
+
+> i=1
+
+nT Πii K⊗(U, U )ii 
+
++ 1
+
+n2
+
+> TnT
+
+X
+
+> i=1
+> nT
+
+X 
+
+> j=1 , j ̸=i
+
+nT Πij K⊗(U, U )ij ,
+
+by noticing that the first term vanishes asymptotically and, therefore, introduces a bias for finite nT . By neglect-ing the diagonal term, we obtain an unbiased estimator, a U-statistic: 1
+
+nT
+
+Tr(Π K⊗(U, U )) = 1
+
+nT (nT − 1) 
+
+> nT
+
+X
+
+> i=1
+> nT
+
+X 
+
+> j=1 , j ̸=i
+
+nT Πij K⊗(U, U )ij ,
+
+The non diagonal term includes nT (nT − 1) terms, this is the reason why we have changed the denominator in the first fraction. 
+
+e. Proof of Corollary 2 It follows directly from the definition of K(lin ) and Proposition 2. 
+
+2. Computation of KIPC 
+
+We can efficiently compute KIPC by working with 
+
+B×B blocks of the kernel matrix K⊗(U, U ). Additionally we use the SVD decomposition of X = V ΣZ⊤ to write Π as V V ⊤, so that T r (Π K⊗(U, U )) = T r (V ⊤K⊗(U, U )V ), where the matrix in the second T r has dimensions 
+
+r × r, where r ≤ τmax is the rank of X. In the below algorithm, we assume that n = kB for some integer k.15 
+
+Algorithm 1: Block-wise Computation of the un-biased KIPC 1  
+
+> nT−1
+
+Tr(Π K⊗(U, U )) 
+
+Input: Signal u ∈ Rn, feature matrix X ∈ Rn×d,kernel evaluation function K⊗(·, ·), max delay τmax , block size B
+
+Output: Unbiased KIPC 
+
+/* SVD decomposition so that Π = V V ⊤ */  
+
+> 1
+
+Xcentered = X − 1 
+
+> n
+
+1n1⊤ 
+
+> n
+
+X; 
+
+> 2
+
+(V, r ) ← ComputeSVD( Xcentered ); 
+
+/* Build delay embedding representation */  
+
+> 3
+
+U ← BuildDelayed( u, τ max ) ; // U ∈ Rn×r 
+
+> 4
+
+n, r ← Shape( V ); 
+
+/* Init. V ⊤KV accumulator matrix */  
+
+> 5
+
+A ← 0r×r
+
+/* Block-wise processing of kernel blocks */  
+
+> 6
+
+for i ← 0 to n − 1 step B do  
+
+> 7
+
+Ii ← { i, . . . , min( i + B − 1, n − 1) }; 
+
+> 8
+
+Xi ← V [Ii, :], Zi ← U [Ii, :];  
+
+> 9
+
+Yi ← 0|Ii|× r ; 
+
+> 10
+
+for j ← 0 to n − 1 step B do  
+
+> 11
+
+Ij ← { j, . . . , min( j + B − 1, n − 1) }; 
+
+> 12
+
+Xj ← V [Ij , :], Zj ← U [Ij , :]; 
+
+/* Evaluate kernel matrix block */  
+
+> 13
+
+Gij ← K⊗(Zi, Z j ); 
+
+/* Enforce unbiased estimator */  
+
+> 14
+
+if i = j then  
+
+> 15
+
+diag( Gij ) ← 0;  
+
+> 16
+
+Yi ← Yi + Gij Xj ; 
+
+> 17
+
+A ← A + X⊤ 
+
+> i
+
+Yi; 
+
+> 18
+
+KIPC ← 1 
+
+> n−1
+
+Tr( A);  
+
+> 19
+
+return KIPC; 
+
+[1] J. Dambre, D. Verstraeten, B. Schrauwen, and S. Massar, Information processing capacity of dynamical systems, Scientific reports 2, 514 (2012). [2] S. Boyd and L. Chua, Fading memory and the problem of approximating nonlinear operators with volterra se-ries, IEEE Transactions on circuits and systems 32 , 1150 (2003). [3] T. Kubota, H. Takahashi, and K. Nakajima, Unifying framework for information processing in stochastically driven dynamical systems, Physical Review Research 3,043135 (2021). [4] T. H¨ ulser, F. K¨ oster, K. L¨ udge, and L. Jaurigue, Deriving task specific performance from the information process-ing capacity of a reservoir computer, Nanophotonics 12 ,937 (2023). [5] A. M. Polloreno, Innovation capacity of dynamical learn-ing systems, arXiv preprint arXiv:2601.07257 (2026). [6] K. Nakajima, Physical reservoir computing—an intro-ductory perspective, Japanese Journal of Applied Physics 
+
+59 , 060501 (2020). [7] M. Goldmann, C. R. Mirasso, I. Fischer, and M. C. Sori-ano, Exploiting transient dynamics of a time-multiplexed reservoir to boost the system performance, in 2021 Inter-national Joint Conference on Neural Networks (IJCNN) 
+
+(IEEE, 2021) pp. 1–8. [8] F. K¨ oster, D. Ehlert, and K. L¨ udge, Limitations of the recall capabilities in delay-based reservoir computing sys-tems, Cognitive Computation 15 , 1419 (2023). [9] Q. Vinckier, F. Duport, A. Smerieri, K. Vandoorne, P. Bienstman, M. Haelterman, and S. Massar, High-performance photonic reservoir computer based on a co-herently driven passive cavity, Optica 2, 438 (2015). [10] K. Harkhoe and G. Van der Sande, Task-independent computational abilities of semiconductor lasers with de-16 
+
+layed optical feedback for reservoir computing, in Pho-tonics , Vol. 6 (MDPI, 2019) p. 124. [11] S. Ort´ ın and L. Pesquera, Delay-based reservoir comput-ing: tackling performance degradation due to system re-sponse time, Optics Letters 45 , 905 (2020). [12] R. Mart´ ınez-Pe˜ na, G. L. Giorgi, J. Nokkala, M. C. So-riano, and R. Zambrini, Dynamical phase transitions in quantum reservoir computing, Physical Review Letters 
+
+127 , 100502 (2021). [13] S. Ghosh, K. Nakajima, T. Krisnanda, K. Fujii, and T. C. Liew, Quantum neuromorphic computing with reservoir computing networks, Advanced Quantum Technologies 
+
+4, 2100053 (2021). [14] P. Mujal, R. Mart´ ınez-Pe˜ na, J. Nokkala, J. Garc´ ıa-Beni, G. L. Giorgi, M. C. Soriano, and R. Zambrini, Oppor-tunities in quantum reservoir computing and extreme learning machines, Advanced Quantum Technologies 4,2100027 (2021). [15] J. Nokkala, R. Mart´ ınez-Pe˜ na, G. L. Giorgi, V. Pa-rigi, M. C. Soriano, and R. Zambrini, Gaussian states of continuous-variable quantum systems provide univer-sal and versatile reservoir computing, Communications Physics 4, 53 (2021). [16] D. Nishioka, T. Tsuchiya, W. Namiki, M. Takayanagi, M. Imura, Y. Koide, T. Higuchi, and K. Terabe, Edge-of-chaos learning achieved by ion-electron–coupled dy-namics in an ion-gating reservoir, Science Advances 8,eade1156 (2022). [17] W. Xia, J. Zou, X. Qiu, and X. Li, The reservoir learn-ing power across quantum many-body localization tran-sition, Frontiers of Physics 17 , 33506 (2022). [18] N. G¨ otting, F. Lohof, and C. Gies, Exploring quantum-ness in quantum reservoir computing, Physical Review A 
+
+108 , 052427 (2023). [19] R. Mart´ ınez-Pe˜ na, J. Nokkala, G. L. Giorgi, R. Zambrini, and M. C. Soriano, Information processing capacity of spin-based quantum reservoir computing systems, Cog-nitive Computation 15 , 1440 (2023). [20] D. Fry, A. Deshmukh, S. Y.-C. Chen, V. Rastunkov, and V. Markov, Optimizing quantum noise-induced reservoir computing for nonlinear and chaotic time series predic-tion, Scientific Reports 13 , 19326 (2023). [21] T. Kubota, Y. Suzuki, S. Kobayashi, Q. H. Tran, N. Ya-mamoto, and K. Nakajima, Temporal information pro-cessing induced by quantum noise, Physical Review Re-search 5, 023057 (2023). [22] S. Tsunegi, T. Kubota, A. Kamimaki, J. Grollier, V. Cros, K. Yakushiji, A. Fukushima, S. Yuasa, H. Kub-ota, K. Nakajima, et al. , Information processing capacity of spintronic oscillator, Advanced Intelligent Systems 5,2300175 (2023). [23] A. Palacios, R. Mart´ ınez-Pe˜ na, M. C. Soriano, G. L. Giorgi, and R. Zambrini, Role of coherence in many-body quantum reservoir computing, Communications Physics 
+
+7, 369 (2024). [24] S. ˇCindrak, B. Donvil, K. L¨ udge, and L. Jaurigue, En-hancing the performance of quantum reservoir comput-ing and solving the time-complexity problem by artificial memory restriction, Physical Review Research 6, 013051 (2024). [25] A. Sannia, R. Mart´ ınez-Pe˜ na, M. C. Soriano, G. L. Giorgi, and R. Zambrini, Dissipation as a resource for quantum reservoir computing, Quantum 8, 1291 (2024). [26] G. Llodr` a, P. Mujal, R. Zambrini, and G. L. Giorgi, Quantum reservoir computing in atomic lattices, Chaos, Solitons & Fractals 195 , 116289 (2025). [27] Y. Jing, P. Wang, S. Zhang, Z. Zeng, S.-J. Liang, and W. Chen, Quantum transport reservoir computing, Phys-ical Review Applied 24 , 044036 (2025). [28] S. ˇCindrak, K. L¨ udge, and L. Jaurigue, From krylov com-plexity to observability: Capturing phase space dimen-sion with applications in quantum reservoir computing, Physical Review Research 7, L042039 (2025). [29] M. Hahto and J. Nokkala, Smarter usage of measure-ment statistics can greatly improve continuous variable quantum reservoir computing, New Journal of Physics 
+
+27 , 094510 (2025). [30] N. Keenan and R. Zambrini, Storage, scrambling, and loss of information in the quantum reservoir computing paradigm, arXiv preprint arXiv:2608.07677 (2026). [31] Y. Hou, J. Hua, Z. Wu, W. Xia, Y. Chen, X. Li, Z. Li, X. Peng, and J. Du, High-accuracy temporal prediction via experimental quantum reservoir computing in corre-lated spins, Physical Review Letters 136 , 120602 (2026). [32] F. G. Mehler, On the expansion of a function of arbitrar-ily many variables in terms of laplace functions of higher order., (1866). [33] C. K. Williams and C. E. Rasmussen, Gaussian processes for machine learning , Vol. 2 (MIT press Cambridge, MA, 2006). [34] G. Hardy, Summation of a series of polynomials of la-guerre, Journal of the London Mathematical Society 1,138 (1932). [35] H. M. Srivastava, A note on certain identities involv-ing series of legendre polynomials, Quarterly of Applied Mathematics 44 , 691 (1987). [36] D. Hanrahan and D. Kosz, Sharp estimates for jacobi heat kernels in conic domains, Journal of Approximation Theory 293 , 105921 (2023). [37] Y. V. Boroskikh, U-statistics in Banach Spaces (Walter de Gruyter GmbH & Co KG, 2020). [38] A. Gretton, K. Fukumizu, C. Teo, L. Song, B. Sch¨ olkopf, and A. Smola, A kernel statistical test of independence, Advances in neural information processing systems 20 
+
+(2007). [39] H. Jaeger and H. Haas, Harnessing nonlinearity: Predict-ing chaotic systems and saving energy in wireless com-munication, science 304 , 78 (2004). [40] K. Inoue, T. Kubota, Q. Hoan Tran, N. Akashi, R. Ter-ajima, T. Kabayama, J. Guan, and K. Nakajima, Reser-voir computing bootcamp—From Python/NumPy tuto-rial for the complete beginners to cutting-edge research topics of reservoir computing, Chaos: An Interdisci-plinary Journal of Nonlinear Science 36 , 023109 (2026). [41] D. Yuan, S.-Y. Zhang, Y. Wang, L.-M. Duan, and D.-L. Deng, Quantum information scrambling in quantum many-body scarred systems, Physical Review Research 
+
+4, 023095 (2022). [42] A. Benavoli and C. de Campos, Bayesian independence test with mixed-type variables, in 2021 IEEE 8th Inter-national Conference on Data Science and Advanced An-alytics (DSAA) (2021) pp. 1–13. [43] A. Benavoli and F. C. Binder, Quantum wiener architec-ture for quantum reservoir computing, Physical Review A 114 , 012433 (2026). [44] M. J. Schlosser, Multiple hypergeometric series: Appell series and beyond, Computer algebra in quantum field theory: integration, summation and special functions , 17 
+
+305 (2013).
