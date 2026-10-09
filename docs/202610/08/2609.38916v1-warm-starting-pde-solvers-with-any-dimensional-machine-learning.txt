@@ -1,0 +1,1553 @@
+Title: Warm-starting PDE solvers with any-dimensional machine learning
+
+URL Source: https://arxiv.org/pdf/2609.38916v1
+
+Published Time: Thu, 01 Oct 2026 00:50:57 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# Warm-starting PDE solvers with any-dimensional machine learning 
+
+## Wilson G. Gregory 1, George A. Kevrekidis 2, Ben Blum-Smith 3, and Soledad Villar 31Department of Statistics and Irving Institute for Cancer Dynamics, Columbia University 
+
+> 2
+
+## Division of Applied Mathematics, Brown University 
+
+> 3
+
+## Department of Applied Mathematics and Statistics, Johns Hopkins University 
+
+Abstract 
+
+Any-dimensional machine learning models, such as graph neural networks (GNNs), can be naturally trained and evaluated on inputs of different sizes and dimensions. Inspired by the GNN transferability literature, we show mathematical conditions under which a partial differential equation (PDE) learning-based solver can be trained in small dimensions and directly applied to solve a higher dimensional PDE in a zero-shot fashion. These conditions are based on symmetries in both the partial differential equation and the initial data. When the equations satisfy the symmetries but the data does not, which is the case for many PDEs arising from physics, we show that our theory gives a principled way of warm-starting low-dimensional PDE solvers for higher dimensional PDEs. We apply this method on the heat equation, Burgers’ equation, and the compressible Navier–Stokes equations, improving the performance in both zero-shot and typical training regimes on high dimensional data. For example, we train a surrogate model on 2D Navier–Stokes data and achieve better results on 3D test data than a baseline surrogate model trained on 3D data, while only using 12% of the flops and 20% of the total data size. 
+
+# 1 Introduction 
+
+In machine learning practice, it is common to use models that are defined on a fixed set of parameters and can be evaluated on inputs of arbitrary size or dimension. These were formalized as any-dimensional machine learning models in Eitan Levin’s PhD thesis [26]. They are often defined on objects modulo certain symmetries, and can have uniform expressivity across input sizes or dimensions due to a phenomenon known as representation stability [10, 54]. For example, graph neural networks operate on graphs of arbitrary size and structure, and transformer models can handle variable-length sequences, reusing the same weights across positions, where the positional encoding adapts to length. There is a vast literature that explains the mechanism that allows any-dimensional models to generalize across input sizes or dimensions. This started with the study of transferability or size generalization of graph neural networks [45, 25, 24, 51, 38], and it was recently generalized beyond graphs [31, 29]. In the literature on machine learning for PDEs, neural operators were designed with the purpose of generalizing across resolutions [36, 33, 19], but there is not much theory explaining if, how, or why a trained PDE solver can generalize to different spatial domains. The closest setting to the one considered here aggregates data from different dimensions and/or coordinate systems for PDE identification [40, 41]. Some empirical success in generalizing across dimensions has been made in the realm of foundational models for physics. For example, the Walrus model [39] approaches the problem by embedding low dimensional data in a higher dimensional space, and treating all inputs as higher dimensional. However, this approach introduces a computational hurdle. Accurate PDE simulations often require data sets with high resolution [32, 55], which is a challenge when the images scale as O(N n) with side length N and dimension n. Ideally, we would like a machine learning model that exploits the efficiency benefits of a low dimensional space, and could be adapted to higher 1arXiv:2609.38916v1 [stat.ML] 30 Sep 2026 dimensions. In this work, we use the any-dimensional machine learning framework to identify mathematical conditions under which PDE solvers can exactly generalize across spatial dimensions. Using the intuition gained from this exercise, we develop a method that also applies when these conditions do not hold: namely, using a pretrained PDE solver in low dimensions to warm-start the learning of a PDE solver in higher dimensions. We empirically show that this method provides a computational advantage in more general settings. This work is inspired by the transferability framework for graph neural networks, and more generally the any-dimensional learning and representation stability literature (see Appendix A for a brief literature review). This framework relies on some form of symmetry: the function class must be constrained so it does not grow without bounds as the input grows. The main assumption we make is that the PDE is symmetric with respect to spatial Euclidean transformations. For physics applications, Euclidean symmetry is a natural assumption because the fundamental laws of physics are homogeneous and isotropic. Therefore, many PDEs arising from physics satisfy Euclidean symmetries (e.g., Navier–Stokes, the Boltzmann equation, the heat equation, etc.). Note that for our warm-starting procedure, only the equation needs to fulfill a symmetry assumption—not the initial data, boundary conditions, or domain. We remark that the mathematical framework would allow us to potentially replace the Euclidean symmetry assumptions with other symmetries (coordinate permutation, Poincar´ e symmetry, or affine symplectic symmetries, for example) with additional work. However, some form of assumption constraining the function class will always be required to be able to generalize across dimensions. 
+
+Our contributions 
+
+(a) We develop a framework in which a PDE can be defined across dimensions if it is expressed in terms of orthogonally invariant differential operators on jet space. Examples of such operators include the Laplacian and the Dirichlet energy density. (b) We explicitly describe conditions under which the solution of a PDE in Rn expressed in terms of O( n)-invariant differential operators (as in (a)) can be lifted to a solution of a corresponding PDE in 
+
+Rn+1 .(c) We propose a mathematically principled method to lift learning-based PDE solvers from dimension n to dimension n + 1. Under the assumptions of (b), we show that it maps PDE solutions in n dimensions to PDE solutions in n + 1 dimensions. When the assumptions of (b) are not satisfied, we develop the Nepo warm-start method to provide an advantageous starting point for ( n + 1)-dimensional solvers. (d) We demonstrate the Nepo warm-start approach with the heat equation, Burgers’ equation, and the compressible Navier–Stokes equations. The warm-start allows, for example, a Navier–Stokes model trained only on 2D data to outperform one trained on 3D data while using 12% of the flops and 20% of the total data size. 
+
+# 2 Any-dimensional PDEs 
+
+Consider a partial differential equation 
+
+∂u ∂t = D
+
+
+
+x1, . . . , x n, u, ∂u ∂x 1
+
+, . . . , ∂u ∂x n
+
+, . . . 
+
+
+
+(1) characterizing the time evolution of some smooth function u : Rn × [0 , ∞) → R. We denote ut : Rn → R apoint in the time evolution, but we sometimes drop the subscript t for notational convenience (so that u can also denote just a smooth function Rn → R). A priori, it is necessary to pin down n before it is even possible to write down such an equation: it controls the inputs that appear on the right side. On the other hand, the starting point for our investigation is the 2observation that certain important partial differential equations are written in a language that is meaningful without committing to some specific n. For example, the heat equation has the form 
+
+∂u ∂t = ∆ u, (2) and the Laplacian operator ∆ is defined on (adequately differentiable) functions on Rn for any n. We begin by seeking a general conceptual framework into which such examples fit. If the equation has partial derivatives of order at most k, then the function D defining the partial differential equation is defined on the kth-order jet space 
+
+Jk(Rn) := 
+
+ 
+
+x1, . . . , x n, u, ∂u ∂x 1
+
+, . . . , ∂u ∂x n
+
+, ∂2u∂x 21
+
+, ∂2u∂x 1∂x 2
+
+, . . . , ∂ku∂x kn
+
+ 
+
+= Rn × Un,k (3) where Rn is the space domain of the partial differential equation, with coordinates x1, . . . , x n, and Un,k := 
+
+RNn,k has coordinates corresponding to the function u and all its partial derivatives up to kth order, of which together there are Nn,k :=  n+kk
+
+ in total. The space Jk(Rn) is a (trivial) fiber bundle (the jet bundle ) with base Rn and fiber Un,k .We want to consider differential operators that, like the Laplacian, are defined in every dimension. To do so, we consider an n-indexed sequence of functions Dn : Jk(Rn) → R, giving us an n-indexed family of partial differential equations 
+
+∂u ∂t = Dn
+
+
+
+x, u, ∂u ∂x , . . . , ∂ku∂xk
+
+
+
+(4) (where x abbreviates x1, . . . , x n and ∂j u/∂ xj abbreviates the collection of partial derivatives of order j). We will define a condition (the compatibility condition ) under which we may regard the Dn as “the same”. 
+
+Definition 2.1. Let πn : Rn+1 → Rn be the projection 
+
+(x1, . . . , x n, x n+1 ) 7 → (x1, . . . , x n) to the first n coordinates. Given a smooth function u ∈ C∞(Rn), we can pull it back along πn, yielding a function ϕn(u) ∈ C∞(Rn+1 ):
+
+ϕn(u) := u ◦ πn. (5) 
+
+This defines an embedding ϕn : C∞(Rn) → C∞(Rn+1 ).
+
+We may think of the embedding ϕn as a ‘duplication’ embedding on smooth functions, as visualized in Definition 2.1, where we extend a 2D scalar field as a constant in the new coordinate. Given a smooth function u ∈ C∞(Rn), we can construct a section of the jet bundle Jk(Rn), i.e. a function in 
+
+C∞(Rn, U n,k ) that sends x ∈ Rn to the evaluations of u and all its partial derivatives up to the kth order, at 
+
+x. This section is called the kth prolongation of u, and we will denote it su. The embedding ϕn just defined can be extended to an induced embedding, which we also call ϕn, from the set C∞(Rn, U n,k ) of smooth sections of Jk(Rn) into the set C∞(Rn+1 , U n+1 ,k ) of smooth sections of Jk(Rn+1 ), by extending the effect of 
+
+ϕn to prolongations. By construction, the pulled-back function ϕn(u) does not depend on the last coordinate 
+
+xn+1 , so all partial derivatives involving xn+1 vanish, while the values of all partial derivatives involving only 
+
+x1, . . . , x n coincide with the corresponding partial derivative of u evaluated at ( x1, . . . , x n). Therefore we make the following definition: 
+
+Definition 2.2. We define an embedding of the fiber of Jk(Rn)˜ϕn : Un,k → Un+1 ,k (6) 3by zero-padding in all the coordinates corresponding to a partial derivative involving xn+1 . We define an embedding of sections of Jk(Rn) in sections of Jk(Rn+1 ) by 
+
+ϕn : C∞(Rn, U n,k ) → C∞(Rn+1 , U n+1 ,k ) (7) 
+
+s 7 → (x 7 → ˜ϕn(s(πn(x)))) , (8) 
+
+where s ∈ C∞(Rn+1 , U n+1 ,k ) is an abitrary section. 
+
+Note that the ϕn in (8) specializes to the ϕn in (5) when k = 0, so the notation is justified. An n-indexed family of functions Dn : Jk(Rn) → R, defining a sequence of differential equations as in (4), also induces an 
+
+n-indexed family of maps bDn : C∞(Rn, U n,k ) → C∞(Rn), (9) 
+
+bDn(s)( x) := Dn(x, s (x)) . (10) We are interested in establishing a theory under which the following diagram commutes: 
+
+C∞(Rn, U n,k ) C∞(Rn+1 , U n+1 ,k ) C∞(Rn+2 , U n+2 ,k )
+
+C∞(Rn) C∞(Rn+1 ) C∞(Rn+2 )    
+
+> ... ϕn
+> bDn
+> ϕn+1
+> bDn+1
+> ...
+> bDn+2
+> ... ϕnϕn+1 ...
+
+(11) This is a bare minimum requirement if we hope to think of the Dn as being “the same differential equation in different dimensions”. But it is not enough by itself. This diagram depends on the choice of the particular orthogonal projection πn : Rn+1 → Rn mentioned in Definition 2.1; composing either the domain or codomain with an isometry would lead to a different projection π′ 
+
+> n
+
+: Rn+1 → Rn, which would in turn produce a different embedding ϕ′ 
+
+> n
+
+: C∞(Rn) ,→ C∞(Rn+1 ) defined by pullback along π′
+
+> n
+
+, and different embeddings ˜ϕ′ 
+
+> n
+
+: Un,k ,→ Un+1 ,k and ϕ′ 
+
+> n
+
+: C∞(Rn, U n,k ) ,→ C∞(Rn+1 , U n+1 ,k ) defined by the effect of this new pullback on prolongations. Therefore the sense in which the Dn’s are “the same” is not forced to depend on a choice of coordinates, we ask that (11) commute for these alternative ϕ′
+
+> n
+
+’s as well. We give a sufficient condition on the Dn that guarantees this coordinate-free strengthening of (11): 
+
+Proposition 2.3. If a family of functions Dn : Jk(Rn) → R makes (11) commute as written (i.e., with the family of embeddings ϕn as above), and the Dn do not depend on x ∈ Rn and thus are functions only of Un,k ,and if furthermore they are invariant with respect to the natural action of the orthogonal group O( n) on Un,k ,then (11) would also commute with any choice of ϕ′ 
+
+> n
+
+as above in place of ϕn.
+
+The hypothesis of Proposition 2.3 will be called the compatibility condition . The proof is in Section B. The action of O( n) on Un,k mentioned in Proposition 2.3 is isomorphically its action on 
+
+R ⊕ Rn ⊕ Sym 2(Rn) ⊕ · · · ⊕ Sym k(Rn), (12) where Sym j (Rn) is the set of symmetric tensors of order j—this is because the collection of partial derivatives of order j forms a symmetric tensor. 
+
+Remark 2.1. The compatibility condition given here is the point at which a symmetry requirement enters our theory. The proposition says that this condition guarantees that the equations Dn satisfy (11) without being committed to a particular choice of origin and orthonormal coordinates in each Rn. In this sense, it is a natural condition in the context of equations modeling physical phenomena, since the laws of physics have no such commitment. 
+
+Remark 2.2. The compatibility condition only imposes a symmetry constraint on the differential equation itself, not the initial data or the boundary conditions. The compatibility condition gives us the general framework that the heat equation illustrates: any Dn
+
+satisfying it can meaningfully be applied to Jk(Rn) for all sufficiently high n. In fact, if one fixes the degree and order of the PDE, then there is a fixed, finite basis of differential operators, independent of n, in which 4the Dn’s can be expressed uniformly in n. The Laplacian ∆ u (order 2, degree 1) and the Dirichlet energy density ∥∇ u∥2 (order 1, degree 2) are representative examples of such operators (see Example C.1 for more examples). This can be understood in terms of representation stability for the orthogonal group, as explained in Appendix C. 
+
+# 3 Any-dimensional solution operators 
+
+We now address the question of compatibility for solution operators of differential equations. As one might expect, even if a PDE is compatible in the sense of Proposition 2.3, the associated solution operator is generically not. Nevertheless, there are families of PDEs whose solution operator does have a simple parametric dependence on the dimension of the space they are defined on; in such cases, one may hope that a lower-dimensional solution operator can be ‘lifted’ to a higher dimensional space. For example, the heat equation ∂u ∂t = ∆ u on Rn satisfies 
+
+u(x, t ) = 1(4 πt )n/ 2
+
+Z
+
+> Rn
+
+exp 
+
+
+
+−∥ x − y∥22/4t
+
+
+
+u0(y)dy , (13) with the dimension dependence appearing purely as a scaling factor outside the integral. If such a straightfor-ward dependence on dimension (as a parameter) is known, it would in principle allow us to transfer the solution operator between Rn subsets for varying dimension n. However, even if a PDE admits a solution operator in the form of a convolution, the dimension-dependent terms rarely factor outside the domain-dependent integral, and direct transferability cannot be expected. Instead, we consider a weaker equivalence framework outlined below. All the proofs of the statements of this section are in Section E.1. 
+
+Definition 3.1. If Dn satisfies the compatibility condition of Proposition 2.3, then we say that Fn(u) =  
+
+> ∂u ∂t
+
+− bDn(su) is a compatible scalar PDE , where su is the prolongation of u.
+
+Definition 3.2. Let Fn(u) = 0 be a scalar PDE defined on a set U ⊆ Rn. The associated solution operator 
+
+StFn : ( u0) 7 → (ut) is the mapping from initial conditions to the solution of the equation at time t.We then have the following result: 
+
+Lemma 3.1 (Operator Symmetry) . Suppose Fn(u) = 0 is a compatible scalar PDE with associated solution operator StFn (u0) 7 → ut. If there is a uniqueness theorem for the equation Fn = 0 , then StFn is E( n)-equivariant, i.e. for all initial conditions u0 and g ∈ E( n),
+
+StFn (g · u0) = g · S tFn (u0) . (14) Next, we note that any solution u satisfying Fn(u) = 0 in Rn can be embedded to the solution space of Fn+1 
+
+in Rn+1 as follows: 
+
+Lemma 3.2 (Solution Embeddings) . For any u ∈ C∞(Rn × [0 , ∞)) satisfying the compatible scalar PDE 
+
+Fn(u) = 0 on Rn, we have that Fn+1 (ϕn(u)) = 0 on Rn+1 . Furthermore, the same statement holds with ϕn
+
+replaced by arbitrary ϕ′ 
+
+> n
+
+as in Section 2. 
+
+For example, If ∂u ∂t = ∂2u∂x 21
+
+on R, the embedded ϕn(u) satisfies ∂u ∂t = ∂2u∂x 21
+
++ ∂2u∂x 22
+
+on R2, since the last term 
+
+> ∂2u∂x 22
+
+= 0 is identically zero. The previous two technical lemmas can be used to show that, under this ‘duplication’ embedding framework, the solution operators for SF for n and n + 1 dimensions ‘agree’, namely: 
+
+Proposition 3.3. Let Fn be a compatible scalar PDE with a uniqueness theorem for Fn = 0 . Let u0 be any initial conditions on U ⊆ Rn, and let ϕn be the embedding from Definition 2.1. Then, StFn+1 (ϕn(u0)) = 
+
+ϕn(StFn (u0)) . Furthermore, the same statement holds with ϕn replaced by ϕ′ 
+
+> n
+
+as in Section 2. 
+
+Remark 3.1 (Perturbations) . If a solution operator satisfies a Lipschitz condition, it is possible to control the error between solutions arising from exact- and slightly perturbed compatible embeddings. See Section E. 5Remark 3.2 (Vector-valued PDEs) . A similar proof strategy could be followed for vector-valued evolution PDEs, where the ‘lift’ and ‘projection’ operations apply to each vector individually. In that case u is vector-valued, and the right-hand-side Dn of the PDE is equivariant with respect to O( n). Thus, for ( n + 1)-dimensional initial conditions that are a ϕn embedding of n-dimensional initial conditions, the solution operator StFn+1 of a higher-dimensional problem can be identified with that of a lower one StFn ,after an appropriate projection πn. This does not give us a strong equivalence between operators in different dimensions. Instead, it suggests that the parametrization for a lower solution operator can be transferred to a higher-dimensional space while agreeing with the true high dimensional solution operator for a subset of initial data. Thus, it provides a possible warm-start strategy for learning high-dimensional operators, which can be ‘initialized’ by training in lower dimensions. We discuss this approach theoretically and implement it computationally in the following sections. 
+
+# 4 Lifting PDE solvers to higher dimensions 
+
+In this section, we extend the ideas for transferring PDE solution operators to transferring machine learning models that emulate solution operators. In place of continuous fields, the dynamics are modeled in a grid where each pixel can have scalar, (pseudo-)vector, and (pseudo-)tensor features that discretize the corresponding fields. To this end, we consider the models from [16], which extend equivariant convolutional neural networks to vector and tensor images. 
+
+## 4.1 Geometric convolutional neural networks 
+
+We first define the space of (pseudo-)vectors and tensors, which will correspond to the features at each pixel (Definition 4.1). We then define the tensor images (Definition 4.2). 
+
+Definition 4.1 (k(p)-tensors) . A 1 (p)-tensor is an element of Rn equipped with the action of O( n)
+
+g · v = det( M (g)) 1−p 
+
+> 2
+
+M (g) v, (15) where the parity p is either +1 for vectors or −1 for pseudovectors. Given k 1(pi)-tensors denoted vi, then 
+
+T := v1 ⊗ . . . ⊗ vk is a rank-1 k(p)-tensor , where p = Qki=1 pi and the action of O( n) is defined as 
+
+g · (v1 ⊗ . . . ⊗ vk) = ( g · v1) ⊗ . . . ⊗ (g · vk) . (16) Thus a tensor T is an element of a vector space ( Rn)⊗k, which we denote Tk(Rn, p ). To get higher rank tensors, we can add tensors of the same order k and parity p, and the action of O( n) extends linearly. To get a discretized version of the scalar, vector, and tensor fields in the previous sections, we construct a tensor image, a grid or lattice of tensors. 
+
+Definition 4.2 (k(p)-tensor image) . Consider images supported in ( Z/N Z)n, the n-dimensional discrete torus. Then a k(p)-tensor image is a function A : ( Z/N Z)n → T k(Rn, p ). The vector space of k(p)-tensor images with side lengths N is denoted AN,n,k,p .Instead of being equipped with the action of the continuous E( n), AN,n,k,p is equipped with the action of the discrete group Gn, the semidirect product of discrete translations ( Z/N Z)n and Bn, the group of rotations of 90 degrees and reflections. Using tensor images, [16] defines geometric convolutional neural networks analogous to standard convolutional networks. The geometric convolution, denoted A ∗ C for input image A
+
+and filter C, is the same as standard image convolution except that the image-filter pixel multiplication is implemented as a tensor product, followed by a tensor contraction. These geometric convolutions characterize linear Gd-equivariant functions, and hence preserve the output as a tensor image, if the filters are symmetric with respect Bd. See Section D for the mathematical details, and see Fig. 1 for an illustration. Further layers such as point-wise nonlinearities and max pooling can be defined for tensor images (Section D). 6Figure 1: (Left) The 5x5 scalar, pseudoscalar, vector, and pseudovector symmetric filters for 2-D images. (Right) Convolution of a scalar image with different geometric filters. The convolution with a scalar filter can be seen as the discretization of a diffusion operator, and the convolution with the vector filter approximates a discretization of the gradient. In general any symmetric discretization of any coordinate-free operator (gradient, divergence, curl) could be expressed in terms of these symmetric filters. 
+
+## 4.2 Embedding of tensor images 
+
+It is straightforward to extend the projection πn and embedding ϕn to the tensor image case. 
+
+Definition 4.3. The tensor projection πn : Tk
+
+ Rn+1 , p  → T k(Rn, p ) is defined for all a ∈ T k
+
+ Rn+1 , p  as [πn(a)] i1,...,i k := [ a]i1,...,i k , for i1, . . . , i k ranging from 1 to n. The pseudoinverse will be the zero padding map ˜ϕn : Tk(Rn, p ) → T k
+
+ Rn+1 , p , analogous to Definition 2.2. 
+
+Definition 4.4 (Tensor image embedding) . Let A ∈ A N,n,k,p . Then the tensor image embedding from n
+
+to n + 1 of A, denoted ϕn : AN,n,k,p → A N,n +1 ,k,p , is defined for all ¯ ın+1 ∈ (Z/N Z)n+1 as ϕn(A)(¯ ın+1 ) = ˜ϕn(A(πn(¯ ın+1 ))). The pseudoinverse ρn : AN,n +1 ,k,p → A N,n,k,p takes an n-dimensional slice: ρn(A′)(¯ ın) = 
+
+πn
+
+
+
+A′
+
+ ˜ϕn(¯ ın)
+
+ 
+
+, for A′ ∈ A N,n +1 ,k,p and all ¯ ın ∈ (Z/N Z)n.We say that a sequence of functions {fn} are compatible with the embeddings {ϕn} if the following diagram commutes: 
+
+. . . AN,n,k,p AN,n +1 ,k,p AN,n +2 ,k,p . . . . . . AN,n,k ′,p ′ AN,n +1 ,k ′,p ′ AN,n +2 ,k ′,p ′ . . .     
+
+> ... ϕn
+> fn
+> ϕn+1
+> fn+1
+> ... fn+2
+> ... ϕnϕn+1 ...
+
+(17) We consider our entire neural networks as the functions fn, and we enforce overall compatibility by requiring compatibility of every layer in the network. The following theorem specifies when compatibility with respect to (17) holds for geometric convolutions with a particular filter. 
+
+Theorem 4.1 (Geometric convolution compatibility) . Let C ∈ A M,n,k +k′,p p ′ and C′ ∈ A M,n +1 ,k +k′,p p ′ be convolution filters. Let the functions fn : AN,n,k,p → A N,n,k ′,p ′ and fn+1 : AN,n +1 ,k,p → A N,n +1 ,k ′,p ′ be defined respectively as fn(A) = A ∗ C for all A ∈ A N,n,k,p and fn+1 (A′) = A′ ∗ C′ for all A′ ∈ A N,n +1 ,k,p .Then fn, fn+1 are compatible with respect to (17) if 
+
+C(¯ ın) = X 
+
+> ¯ın+1 ∈π−1
+> n(¯ ın)
+
+πn(C′(¯ ın+1 )) , (18) 
+
+for all ¯ın ∈ (Z/N Z)n, where π−1 
+
+> n
+
+(¯ ın) is the pre-image of the tensor projection to ¯ın.
+
+The proof is given in Section E.2. Since tensor images form a vector space, we can think of either side of (18) as a linear combination of filters, and the same result holds (see Corollary E.1). It is additionally straightforward to show that all other common layers in the network (point-wise nonlinearities, max pooling, etc.) are compatible with our embedding ϕn (Section E.2). 74.3 Algorithm for warm-starting PDEs 
+
+The previous section proves conditions under which the various layers of a CNN exactly satisfy compatibility with the tensor image embedding (17). This would be the conclusion to the story if we expected all our higher dimensional images to look like the embedding: N copies of the lower dimensional image stacked on top of each other. This is unlikely to be true in practice, so we would like our lifted models to work for generic initial conditions in higher dimensions. In this section we will provide an algorithm for transferring filters and their coefficients in a way that satisfies compatibility (18), while simultaneously achieving better performance on generic input images. Let A′ be an ( n + 1)-dimensional image, let C′ be an ( n + 1)-dimensional filter, and let C be an n-dimensional filter. We will say C′ and C are close if the convolution A′ ∗ C′ followed by taking any n-dimensional slice is close to taking the same n-dimensional slice of A′, then convolving with C. We combine ρ with a random isometry to get a random slice. This random slice projection is similar to the 2D to 3D embedding used in the Walrus model [39]. 
+
+Definition 4.5 (Warm-start coefficients) . Let C0, . . . , C Ln ∈ A M,n,k,p be a basis of Bn-invariant filters with coefficients α0, . . . , α Ln and let C = PLn 
+
+> i=0
+
+αiCi. Let C′
+
+> 0
+
+, . . . , C ′ 
+
+> Ln+1
+
+∈ A M,n +1 ,k,p be a basis of Bn+1 -invariant filters, and let A′ be some distribution of ( n + 1)-dimensional images. Then the warm-start coefficients for 
+
+A′ are the coefficients α′
+
+> 0
+
+, . . . , α ′ 
+
+> Ln+1
+
+with C′ = PLn+1  
+
+> i=0
+
+α′
+
+> i
+
+C′ 
+
+> i
+
+that satisfy arg min 
+
+> α′
+> i,...,α ′
+> Ln+1
+
+E
+
+> h∈Gn+1
+
+h
+
+E
+
+> A′∼A ′
+
+[L(( ρn(h · A′) ∗ C) − ρn(h · (A′ ∗ C′)))] 
+
+i
+
+, (19) subject to the constraint that C, C ′ satisfy the compatibility condition (17). L is the MSE loss. Equation 19 can be thought of as a soft compatibility constraint, whereas (17) is a hard constraint. Solving (19) exactly for particular distributions of input images A′ could be an involved problem by itself, further complicated by the fact that we would need to solve this problem for each layer of our network. For a warm start however, we only require a reasonable starting guess from which we will further train our network end-to-end on fine-tuning data. Thus we consider A′ as a distribution of scalar images with simplifying assumptions, and we derive a convenient form of (19) to solve. 
+
+Proposition 4.2. Let the filters and coefficients be as defined in Definition 4.5. If A′ is the distribution of scalar images with independent identically distributed (iid) pixels with E
+
+> A′∼A ′
+
+[A′(¯ ı)] = 0 and E
+
+> A′∼A ′
+
+A′(¯ ı)2 = 1 ,then (19) is equivalent to 
+
+arg min 
+
+> α′
+> 0,...,α ′
+> Ln+1
+
+L(πn(φn(C) − C′)) , (20) 
+
+subject to the constraint that C, C ′ satisfy the compatibility condition (17) .
+
+Note that πn is acting on tensor images here by projecting all the pixels, and φn embeds an n-dimensional filter in the center slice of an ( n + 1)-dimensional filter with zeros everywhere else. The proof and full details are given in Section F. We can now describe the full algorithm. We call it the Nepo Warm-start because we use our influence and connections, the n-dimensional data, to gain a huge advantage for our offspring, the (n + 1)-dimensional model. The second step of Algorithm 1, computing the coefficients from (20), can be done in advance analytically based on the coefficients for the n-dimensional filters. These values are given in Table 2 in Section F. 
+
+# 5 Numerical experiments 
+
+We demonstrate our method on three PDEs: the heat equation, Burgers’ equation, and the compressible Navier–Stokes equations. For each equation, our ultimate goal is to train a neural network to approximate the solution operator StFn+1 (u0) 7 → ut. To do this, we use the Nepo Warm-start (Algorithm 1) to train a model on Dn data, convert the model to work with Dn+1 data, and fine-tune on data sets of varying size. We 8Algorithm 1: Nepo Warm-start 
+
+Input: k(p)-tensor filters C0, C 1, . . . , C Ln in n dimensions and k(p)-tensor filters C′
+
+> 0
+
+, C ′
+
+> 1
+
+, . . . , C ′ 
+
+> Ln+1
+
+in 
+
+n + 1 dimensions for each required tensor order k and parity p. Data Dn in n dimensions and optionally data Dn+1 in n + 1 dimensions. 1. Train a ginjax model [16] with the n-dimensional k(p)-tensor filters C0, . . . , C Ln on Dn.2. For each tensor order k and parity p, solve (20) to convert the coefficients α0, . . . , α Ln for the 
+
+n-dimensional filters to the coefficients α′
+
+> 0
+
+, . . . , α ′ 
+
+> Ln+1
+
+for the ( n + 1)-dimensional filters. 3. For each tensor order k and parity p, replace the n-dimensional filters C0, . . . , C Ln with the (n + 1)-dimensional filters C′
+
+> 0
+
+, . . . , C ′ 
+
+> Ln+1
+
+.4. Optionally, continue to fine-tune the model on Dn+1 data. 
+
+Output: The ( n + 1)-dimensional ginjax model. then compare each of these models with a held-out data set to a baseline model with identical architecture that was only trained on the fine-tuning data. For the heat equation, we used 128 1D pre-training data points, 0 , 1, 4, 8, 32 , and 128 2D fine-tuning data points, and 128 2D test data points. For Burgers’ equation, we used 8 2D trajectories of pre-training data, 0, 1, 4, and 8 3D trajectories of fine-tuning data, and 8 3D trajectories of test data. Each trajectory had 50 time steps which became 49 input-output data points. Finally, for the Navier–Stokes equations, we used 128 2D trajectories of pre-training data, 0 , 1, 4, 8, and 32 3D trajectories of fine-tuning data, and 32 3D trajectories of test data. Each trajectory had 21 time steps which became 17 input-output data points, using 4 time steps for input and 1 time step for the output. Full data and training details are in Section G. 
+
+(a) (b) (c) 
+
+Figure 2: Relative error performance of (a) the heat equation, (b) Burgers’ equation, and (c) the compressible Navier–Stokes equations over varying numbers of fine tuning points, indexed by the total number of gigaflops to pre-train and fine-tune the models. Note the order of magnitude of the x-tick values, and the log values of the y-axis. We ran 5 trials, with the lines representing the median value, the shaded region representing the interquartile range, and a dot for each value. The results under the relative error metric are shown in Fig. 2, and the values are in Table 1. We first note that the pre-train results are more accurate than the baseline results in 12/13 cases, with a negligible difference in the last case. The improvement is most dramatic for the most challenging PDE, the compressible Navier–Stokes equations. The warm-start model with no additional fine-tuning performs better than the baseline model trained with 8 trajectories while using 12% of the flops (Table 6) and 20% of the total data size. We see a mild overfitting effect when fine-tuning the Nepo warm-start for Navier–Stokes with 1 training trajectory. Although pre-training the model requires some additional computational time, in order to achieve comparable performance, the baseline model requires significantly more computational time. Aside from computational time, memory is often an additional bottleneck in simulating higher dimensions. When the data is too large to be processed all at once, it can require additional cumbersome strategies, such 9PDE Models 0 1 4 8 32 128 Heat Baseline 105.3% 21.0% 20.8% 19.8% 3.3% 0.5% 
+
+Nepo 5.7% 2.2% 2.2% 2.1% 0.7% 0.5 %Burgers Baseline 105.3% 2.5% 1.8% 1.6% Time out Time out Nepo 12.8% 1.8% 1.6% 1.4% Time out Time out N-S Baseline 1,565.7% 97.0% 56.3% 27.2% 5.2% Time out Nepo 22.8% 28.9% 17.8% 14.3% 3.8% Time out Table 1: The median relative error performance over 5 trials of each PDE over varying numbers of fine tuning points. N-S refers to compressible Navier–Stokes. For the heat equation, the column labels represent the number of fine-tuning points, while for Burgers and Navier–Stokes, they refer to the number of trajectories of 17 and 49 time steps each, respectively. The positions in the table labeled “Time out” were training loops that would have taken longer than 15 hours per trial. With higher precision, the baseline method does better than Nepo for the heat equation by 0 .001%. as splitting the spatial domain into sections to be processed individually [7]. For the heat equation, a single tensor image in dimension n with side length N requires O(N n) memory, while for Burgers’ equation and the Navier–Stokes equations, it requires O(n N n). Our any-dimensional method therefore provides memory benefits in addition to the computational benefits. To confirm that Definition 4.5 is an effective method of selecting coefficients for higher dimensional filters, we perform an ablation over other reasonable strategies in Section G.3. Finally, additional plots and a table with the l2 error are shown in Section G.4 along with a table of the flops values. 
+
+# 6 Discussion and limitations 
+
+Inspired by the graph neural network transferability literature, this paper focuses on the transferability of PDE solvers across ambient dimensions. One key aspect for transferability in this framework is the existence of symmetries that maintain the expressive power as the dimension increases. In this work we assume that the right hand side of the PDE we are solving is orthogonally symmetric, but this could be changed to other symmetries (permutations or Lorentz for example) with further theoretical development. However, some amount of symmetry in the equations will be an unavoidable assumption for this framework to apply. This assumption covers many applications of interest because any PDEs arising from the laws of physics will naturally have these symmetries. Another limitation of this work is that it only focuses on flat geometries. A priori we do not know whether the approach could be adapted to general manifolds. Finally, the main limitation is that the conditions under which the solver generalizes exactly correspond to a subspace where the problem is basically a n-dimensional problem in ( n + 1)-dimensions. That is also the case in the graph neural networks setting, but they can show that difference goes to zero as the number of nodes in the graph goes to infinity. In our PDE application, it is impractical to consider the dimension growing to infinity, but we show that the solution in n dimensions can be used as a viable warm-start for 
+
+n + 1 dimensions in practice. Our results numerically demonstrate that this approach gives a significant computational advantage for many problems in many settings. 
+
+## AI use statement 
+
+We only used AI to produce the figure next to Definition 2.1. 10 Reproducibility statement 
+
+The details to reproduce all experiments are provided in Section G. The data sets, described in Section G.1, are either publicly available, or generated with open source code. Our code is open source and available at 
+
+https://github.com/WilsonGregory/ginjax .
+
+## Acknowledgments 
+
+WG would like to thank David W. Hogg, Mateo Diaz, and Dmitriy (Tim) Kunisky for helpful feedback on this work. WG was partially supported by the Johns Hopkins Mathematical Institute for Data Science (MINDS) Fellowship during the development of this work. BBS was partially supported by Soledad Villar’s NSF CAREER award, NSF CAREER 2339682 and NSF DMS 2031985. SV was partially funded by NSF–Simons Research Collaboration on the Mathematical and Scientific Foundations of Deep Learning (MoDL) (NSF DMS 2031985), NSF CAREER 2339682, and NSF BSF 2430292. 
+
+# References 
+
+[1] Yulia Alexandr, Joe Kileel, and Bernd Sturmfels. Moment varieties for mixtures of products. In 
+
+Proceedings of the 2023 International Symposium on Symbolic and Algebraic Computation , pages 53–60, 2023. [2] Eray Unsal Atay, Eitan Levin, Venkat Chandrasekaran, and Victoria Kostina. Poset-markov channels: Capacity via group symmetry. IEEE Transactions on Information Theory , 2025. [3] Pablo Barcel´ o, Egor V Kostylev, Mika¨ el Monet, Jorge P´ erez, Juan Reutter, and Juan-Pablo Silva. The logical expressiveness of graph neural networks. In 8th International Conference on Learning Representations (ICLR 2020) , Virtual conference, Ethiopia, April 2020. [4] Ben Blum-Smith, Marco Cuturi, Soledad Villar, et al. Learning functions on symmetric matrices and point clouds via lightweight invariant features. arXiv preprint arXiv:2405.08097 , 2024. [5] Ben Blum-Smith and Soledad Villar. Machine learning and invariant theory. Notices of the American Mathematical Society , 70(8):1205–1213, 2023. [6] Jan B¨ oker, Ron Levie, Ningyuan Huang, Soledad Villar, and Christopher Morris. Fine-grained expressivity of graph neural networks. Advances in Neural Information Processing Systems , 36, 2024. [7] Thomas Bolton and Laure Zanna. Applications of deep learning to ocean data inference and subgrid parameterization. Journal of Advances in Modeling Earth Systems , 11(1):376–399, 2019. [8] Thomas Church. Homological stability for configuration spaces of manifolds. Inventiones mathematicae ,188(2):465–504, 2012. [9] Thomas Church, Jordan S Ellenberg, and Benson Farb. Representation stability in cohomology and asymptotics for families of varieties over finite fields. arXiv preprint arXiv:1309.6038 , 2013. [10] Thomas Church and Benson Farb. Representation theory and homological stability. Advances in Mathematics , 245:250–314, 2013. [11] Taco Cohen and Max Welling. Group equivariant convolutional networks. In International conference on machine learning , pages 2990–2999. PMLR, 2016. [12] Aldo Conca, Sandra Di Rocco, Jan Draisma, June Huh, Bernd Sturmfels, Filippo Viviani, and Jan Draisma. Noetherianity up to symmetry. Combinatorial Algebraic Geometry: Levico Terme, Italy 2013, Editors: Sandra Di Rocco, Bernd Sturmfels , pages 33–61, 2014. 11 [13] Congyue Deng, Or Litany, Yueqi Duan, Adrien Poulenard, Andrea Tagliasacchi, and Leonidas Guibas. Vector neurons: A general framework for so(3)-equivariant networks, 2021. [14] Mateo D´ ıaz, Dmitriy Drusvyatskiy, Jack Kendrick, and Rekha R Thomas. Invariant kernels: Rank stabilization and generalization across dimensions. arXiv preprint arXiv:2502.01886 , 2025. [15] Mario Geiger and Tess Smidt. e3nn: Euclidean neural networks. arXiv preprint arXiv:2207.09453 , 2022. [16] Wilson G. Gregory, David W. Hogg, Ben Blum-Smith, Maria Teresa Arias, Kaze W. K. Wong, and Soledad Villar. Equivariant geometric convolutions for dynamical systems on vector and tensor images. 
+
+Philosophical Transactions of the Royal Society A: Mathematical, Physical and Engineering Sciences ,383(2298):20240247, 2025. [17] Martin Grohe. The logic of graph neural networks. In 2021 36th Annual ACM/IEEE Symposium on Logic in Computer Science (LICS) , pages 1–17. IEEE, 2021. [18] S´ ekou-Oumar Kaba, Arnab Kumar Mondal, Yan Zhang, Yoshua Bengio, and Siamak Ravanbakhsh. Equivariance with learned canonicalization functions. In International Conference on Machine Learning ,pages 15546–15566. PMLR, 2023. [19] George Em Karniadakis, Ioannis G Kevrekidis, Lu Lu, Paris Perdikaris, Sifan Wang, and Liu Yang. Physics-informed machine learning. Nature Reviews Physics , 3(6):422–440, 2021. [20] Sammy Khalife and Josu´ e Tonelli-Cueto. Is uniform expressivity too restrictive? towards efficient expressivity of GNNs. In The Thirteenth International Conference on Learning Representations , 2024. [21] Felix Koehler, Simon Niedermayr, Rudiger Westermann, and Nils Thuerey. APEBench: A benchmark for autoregressive neural emulators of PDEs. Advances in Neural Information Processing Systems (NeurIPS) ,38, 2024. [22] Risi Kondor. N-body networks: a covariant hierarchical neural network architecture for learning atomic potentials. arXiv preprint arXiv:1803.01588 , 2018. [23] Risi Kondor and Shubhendu Trivedi. On the generalization of equivariance and convolution in neural networks to the action of compact groups. In International conference on machine learning , pages 2747–2755. PMLR, 2018. [24] Ron Levie. A graphon-signal analysis of graph neural networks. Advances in Neural Information Processing Systems , 36, 2024. [25] Ron Levie, Wei Huang, Lorenzo Bucci, Michael Bronstein, and Gitta Kutyniok. Transferability of spectral graph convolutional neural networks. Journal of Machine Learning Research , 22(272):1–59, 2021. [26] Eitan Levin. Any-Dimensional Data Science: Learning, Optimization, and Sampling . PhD thesis, CALIFORNIA INSTITUTE OF TECHNOLOGY, 2026. [27] Eitan Levin and Venkat Chandrasekaran. Free descriptions of convex sets. arXiv preprint arXiv:2307.04230 , 2023. [28] Eitan Levin and Venkat Chandrasekaran. Any-dimensional polynomial optimization via de finetti theorems. arXiv preprint arXiv:2507.15632 , 2025. [29] Eitan Levin and Venkat Chandrasekaran. Any-dimensional learning by sampling. arXiv preprint arXiv:2607.07680 , 2026. [30] Eitan Levin and Mateo D´ ıaz. Any-dimensional equivariant neural networks. In International Conference on Artificial Intelligence and Statistics , pages 2773–2781. PMLR, 2024. 12 [31] Eitan Levin, Yuxin Ma, Mateo Diaz Diaz, and Soledad Villar. On transferring transferability: Towards a theory for size generalization. In The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. [32] Yi Li, Eric Perlman, Minping Wan, Yunke Yang, Charles Meneveau, Randal Burns, Shiyi Chen, Alexander Szalay, and Gregory Eyink. A public turbulence database cluster and applications to study lagrangian evolution of velocity increments in turbulence. Journal of Turbulence , 9:N31, January 2008. [33] Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Fourier neural operator for parametric partial differential equations. 
+
+arXiv preprint arXiv:2010.08895 , 2020. [34] Ilya Loshchilov and Frank Hutter. Sgdr: Stochastic gradient descent with warm restarts, 2017. [35] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In International Conference on Learning Representations , 2019. [36] Lu Lu, Pengzhan Jin, Guofei Pang, Zhongqiang Zhang, and George Em Karniadakis. Learning nonlinear operators via deeponet based on the universal approximation theorem of operators. Nature machine intelligence , 3(3):218–229, 2021. [37] Yuxin Ma, Nan Chen, Mateo D´ ıaz, Soufiane Hayou, Dmitriy Kunisky, and Soledad Villar. μpscaling small models: Principled warm starts and hyperparameter transfer. arXiv preprint arXiv:2602.10545 ,2026. [38] Sohir Maskey, Ron Levie, and Gitta Kutyniok. Transferability of graph neural networks: an extended graphon approach. Applied and Computational Harmonic Analysis , 63:48–83, 2023. [39] Michael McCabe, Payel Mukhopadhyay, Tanya Marwah, Bruno Regaldo-Saint Blancard, Francois Rozet, Cristiana Diaconu, Lucas Meyer, Kaze W. K. Wong, Hadi Sotoudeh, Alberto Bietti, Irina Espejo, Rio Fear, Siavash Golkar, Tom Hehir, Keiya Hirashima, Geraud Krawezik, Francois Lanusse, Rudy Morel, Ruben Ohana, Liam Parker, Mariel Pettee, Jeff Shen, Kyunghyun Cho, Miles Cranmer, and Shirley Ho. Walrus: A cross-domain foundation model for continuum dynamics, 2025. [40] Trung V Phan, George A Kevrekidis, Soledad Villar, Yannis G Kevrekidis, and Juan M Bello-Rivas. Towards coordinate-and dimension-agnostic machine learning for partial differential equations. arXiv preprint arXiv:2505.16549 , 2025. [41] Yorgos M Psarellis, Seungjoon Lee, Tapomoy Bhattacharjee, Sujit S Datta, Juan M Bello-Rivas, and Ioannis G Kevrekidis. Data-driven discovery of chemotactic migration of bacteria via coordinate-invariant machine learning. BMC bioinformatics , 25(1):337, 2024. [42] Eric Ramos and Graham White. Families of markov chains with compatible symmetric-group actions. 
+
+arXiv preprint arXiv:1810.08475 , 2018. [43] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net: Convolutional networks for biomedical image segmentation, 2015. [44] Eran Rosenbluth, Jan Toenshoff, and Martin Grohe. Some might say all you need is sum. arXiv preprint arXiv:2302.11603 , 2023. [45] Luana Ruiz, Fernando Gama, and Alejandro Ribeiro. Graph neural networks: Architectures, stability, and transferability. Proceedings of the IEEE , 109(5):660–682, 2021. [46] Steven Sam and Andrew Snowden. Gl-equivariant modules over polynomial rings in infinitely many variables. Transactions of the American Mathematical Society , 368(2):1097–1158, 2016. 13 [47] Steven Sam and Andrew Snowden. Gr¨ obner methods for representations of combinatorial categories. 
+
+Journal of the American Mathematical Society , 30(1):159–203, 2017. [48] Steven V Sam and Andrew Snowden. Stability patterns in representation theory. In Forum of Mathematics, Sigma , volume 3, page e11. Cambridge University Press, 2015. [49] Makoto Takamoto, Timothy Praditia, Raphael Leiteritz, Dan MacKinlay, Francesco Alesiani, Dirk Pfl¨ uger, and Mathias Niepert. Pdebench: An extensive benchmark for scientific machine learning, 2024. [50] Nathaniel Thomas, Tess Smidt, Steven Kearnes, Lusann Yang, Li Li, Kai Kohlhoff, and Patrick Riley. Tensor field networks: Rotation-and translation-equivariant neural networks for 3d point clouds. arXiv preprint arXiv:1802.08219 , 2018. [51] Mauricio Velasco, Kaiying O’Hare, Bernardo Rychtenberg, and Soledad Villar. Graph neural networks and non-commuting operators. Advances in neural information processing systems , 37:95662–95691, 2024. [52] Soledad Villar, David W Hogg, Kate Storey-Fisher, Weichi Yao, and Ben Blum-Smith. Scalars are universal: Equivariant machine learning, structured like classical physics. Advances in Neural Information Processing Systems , 34:28848–28863, 2021. [53] Soledad Villar, Weichi Yao, David W Hogg, Ben Blum-Smith, and Bianca Dumitrascu. Dimensionless machine learning: Imposing exact units equivariance. Journal of Machine Learning Research , 24(109):1– 32, 2023. [54] Shengtai Yao, Eitan Levin, and Mateo D´ ıaz. Any-dimensional invariant universality. arXiv preprint arXiv:2605.23156 , 2026. [55] P.K. Yeung, Kiran Ravikumar, Rohini Uma-Vaideswaran, Daniel L. Dotson, Katepalli R. Sreenivasan, Stephen B. Pope, Charles Meneveau, and Stephen Nichols. Small-scale properties from exascale computations of turbulence on a 32 768 3 periodic cube. Journal of Fluid Mechanics , 1019:R2, 2025. 14 A Related work 
+
+Any-dimensional optimization and machine learning with representation stability. A recent line of research shows how ideas from representation stability [8, 9] can be applied to optimization [27, 28] and machine learning [30, 31]. This framework has been recently applied to PDE identification [40], kernel regression [14], and information theory [2]. These ideas in particular explain why finitely-parameterized equivariant machine learning models can have uniform expressivity across growing input sizes. In GNNs, the notion of uniform expressivity has been explored with other techniques in [17, 3, 20, 44, 6]. Beyond learning, representation stability has been used to study limits of a number of mathematical objects, see for example [47, 48, 46, 12, 42, 1]. Closest to our work is the recent work [37], which combines ideas of any-dimensional machine learning and μP hyperparameter transfer to warm-start large models from pretrained smaller models. 
+
+Equivariant machine learning. The theory of any-dimensional machine learning applies to equivariant machine learning models, i.e., neural networks with symmetries imposed. There is a wide class of equivariant models, including the ones expressed in terms of group convolutions [11, 23], representation theory [22, 50, 15], canonicalization [18], and invariant theory [52, 5, 53, 4], among others. In this work, we use the equivariant models on scalars and tensor fields designed to solve PDEs from [16]. 
+
+Graph neural network transferability. The GNN transferability literature explains why one can train a GNN on small graphs and generalize to larger graphs [45, 25, 24, 51, 38]. These results were extended beyond graphs (to all any-dimensional models) in [31]. The key idea is that a GNN implicitly identifies graphs of different sizes as the same object, and this induces a metric that we can use to compare graphs of different sizes under which the GNN is continuous. This allows us to derive size-generalization theoretical guarantees. In this paper, we develop a similar principle for PDE learning across dimensions. 
+
+# B Proof of Proposition 2.3 
+
+Here we prove Proposition 2.3. Recall that the proposition states that if an n-indexed family of differential equations Dn:1. makes diagram (11) commute as written, with ϕn the standard projections Rn+1 → Rn, and 2. the Dn do not depend on the space coordinate x and so are functions of Un,k alone, and 3. furthermore they are invariant with respect to the natural action of O( n) on Un,k ,then they would also make diagram (11) commute if the ϕn were replaced by any other affine-orthogonal projections Rn+1 → Rn. We use this numbering for the hypotheses of the theorem in the proof. The proof itself is routine: the majority of the work is in unwinding definitions. A notational note: it will be convenient in this proof, in order to avoid a proliferation of parentheses, to be able to write both evaluations and compositions of maps using juxtaposition, as needed. Parentheses are therefore only used when there is a danger of ambiguity, and of necessity in maps that take multiple arguments. 
+
+Proof of Proposition 2.3. We begin by unwinding definitions to translate the commutativity of diagram (11) into a statement about the Dn, in terms of the explicit maps πn (Definition 2.1) and ˜ϕn (Definition 2.2). Prima facie, the diagram says that bDn+1 ϕn = ϕn bDn for all n. Applying both sides to an arbitrary s ∈ C∞(Rn, U n,k )and then evaluating at an arbitrary x ∈ Rn, we obtain the statement that ( bDn+1 (ϕns))( x) = ( ϕn( bDns))( x) (21) 15 for all such n, s, x. Applying the definition first of bDn+1 and then of ϕn : C∞(Rn, U n,k ) → C∞(Rn, U n,k ) on the left side, and the definition first of ϕn : C∞(Rn) → C∞(Rn) and then of bDn on the right, we get 
+
+Dn+1 (x, ˜ϕnsπ nx) = Dn(πnx, sπ nx). (22) This equation, quantified over all n, s, and x, expresses hypothesis 1 above. We now assume this along with hypotheses 2 and 3, and aim to conclude that (22) would also hold with the πn replaced with an arbitrary affine-orthogonal projection Rn+1 → Rn, and a corresponding modification to ˜ϕn.An arbitrary affine-orthogonal projection π′ 
+
+> n
+
+: Rn+1 → Rn has the form π′ 
+
+> n
+
+= πng, where g ∈ E( n + 1) is an arbitrary Euclidean-isometric self-map of Rn+1 . The action of E( n + 1) on Rn+1 also induces a corresponding action on Un+1 ,k , which we denote by ˜ g. Then the induced embedding ˜ϕ′ 
+
+> n
+
+: Un,k ,→ Un+1 ,k has the form ˜ϕ′ 
+
+> n
+
+= ˜ g ˜ϕn. Translations act trivially on the fiber of jet space, so the action of E( n + 1) on Un+1 ,k factors through O( n + 1), and ˜ g can be seen as an element of O( n + 1) in its action on Un+1 ,k .After this setup, the proof is very short. Applying hypothesis 2 to (22), we can write Dn+1 and Dn in terms of the second argument only, so we have 
+
+Dn+1 ( ˜ϕnsπ nx) = Dn(sπ nx), (23) for all x ∈ Rn+1 and all s. For any g ∈ E( n + 1) (and so any π′ 
+
+> n
+
+= πng and corresponding ˜ϕ′ 
+
+> n
+
+= ˜ g ˜ϕn), we thus have 
+
+Dn+1 (x, ˜ϕ′
+
+> n
+
+sπ ′
+
+> n
+
+x) = Dn+1 (˜ g ˜ϕnsπ ngx) (24) = Dn+1 ( ˜ϕnsπ ngx) (25) = Dn(sπ ngx) (26) = Dn(πngx, sπ ngx) (27) = Dn(π′
+
+> n
+
+x, sπ ′
+
+> n
+
+x), (28) where the first equality is hypothesis 2 and the definitions of π′ 
+
+> n
+
+and ˜ϕ′
+
+> n
+
+, the second equality is hypothesis 3, the third is from (23) with gx in place of x, the fourth is again hypothesis 2, and the fifth is the definition of 
+
+π′
+
+> n
+
+. This establishes (22) with π′ 
+
+> n
+
+in place of πn and ˜ϕ′ 
+
+> n
+
+in place of ˜ϕn, and thus it establishes (11) with the corresponding ϕ′ 
+
+> n
+
+in place of ϕn, completing the proof. 
+
+# C Representation stability 
+
+Representation stability is a phenomenon first noted in connection with algebraic topology [9, 8]. First, given a naturally n-indexed sequence of groups Gn (such as the symmetric groups Sn, the general linear groups GL (n, R), or the orthogonal groups O( n)), there is often a natural way to identify the irreducible representations of Gn with some of the irreducible representations of Gn+1 . Then, given a natural n-indexed sequence of Gn-representations Vn and Gn-equivariant embeddings Vn → Vn+1 , it can come to pass under good circumstances that for sufficiently high n, the irreducible representations of Gn appearing in Vn are all the same with respect to this identification, and with the same multiplicities, for sufficiently high n. Such a sequence of Gn representations Vn is said to be representation stable .The canonical action of O( n) on Rn is an example of a representation-stable sequence of representations. From general theory, it follows that En,k ∼= R ⊕ Rn ⊕ Sym 2(Rn) ⊕ · · · ⊕ Sym k(Rn) is representation-stable as well. In turn, it follows that the space of homogeneous degree-d polynomial functions on En,k , which is isomorphic (as a representation of O( n)) to Sym d(En,k ), is representation-stable as well. In particular, for all sufficiently high n, the multiplicity of the trivial subrepresentation, i.e., the dimension of the space of O( n)-invariants inside Sym d(En,k ), does not depend on n.16 In fact, we can identify a basis of invariants in Sym d(En,k ) for any given d, whose description does not depend on n. Any element of this basis yields a sequence of Dn’s satisfying the compatibility condition, and every such sequence can be described in terms of this basis. The Laplacian ∆ u is an example of such an invariant. Other examples include u itself and the squared norm of the gradient of u (also known as the Dirichlet energy density of u). We illustrate further by describing all of the O( n)-invariants on order 2 jet space that are of degree 1, 2, or 3 as polynomials in u and its derivatives: 
+
+Example C.1. Given a smooth function u : Rn → R, view the gradient ∇u as a column vector, and denote by Hess u the Hessian matrix of u. Then every nonconstant O( n)-invariant polynomial of degree at most 3 in 
+
+u and its first and second derivatives, is in fact a polynomial in the following: 
+
+• u itself 
+
+• ∆u, the Laplacian 
+
+• ∇u · ∇ u, the Dirichlet energy density 
+
+• e2(Hess u), the coefficient of the t2 term in the characteristic polynomial det( I − t Hess u) of the Hessian 
+
+• ∇u⊤(Hess u)∇u, the norm of the gradient with respect to the symmetric bilinear form defined by the Hessian 
+
+• e3(Hess u), the coefficient of the t3 term in the characteristic polynomial of the Hessian The important takeaway is that this list of invariants does not depend on n (although some of the list items are zero for very low n). Note that the invariants listed here satisfy the compatibility requirement: for any invariant on the list, its instantiation for any n is equal to its instantiation for n + 1 upon zeroing out the derivatives that depend on xn+1 , so the diagram in (11) commutes; Proposition 2.3 then implies it would also commute beginning from a different sequence of orthogonal projections π′
+
+> n
+
+.
+
+Remark C.1. The determinant of the Hessian is an invariant for any n. However, unlike the invariants listed in Example C.1, it is not naturally identified by the above theory across n-values, as it does not satisfy the compatibility condition—in particular, (11) does not commute for this choice Dn(u) := det(Hess u)(since its degree depends on n). What is true is that for any fixed j, the coefficient of the degree j term of the characteristic polynomial, Dn(u) := ej (Hess u), satisfies compatibility across values of n. When n < j ,
+
+ej (Hess u) is zero; when n = j it is equal to the determinant. 
+
+# D Tensor Image and Geometric Convolution Background 
+
+In this section we will introduce the key concepts of tensor images and geometric convolution. For narrative flow we will include the definitions for some terms previously defined in Section 4.1. We first define the space of (pseudo-)vectors and tensors, which will correspond to the features at each pixel (Definition D.1). We then define the geometric images (Definition D.2). 
+
+Definition D.1 (k(p)-tensors) . A 1 (p)-tensor is an element of Rn equipped with the action of O( n)
+
+g · v = det( M (g)) 1−p 
+
+> 2
+
+M (g) v, (29) where the parity p is either +1 for vectors or −1 for pseudovectors. Given k 1(pi)-tensors denoted vi, then 
+
+T := v1 ⊗ . . . ⊗ vk is a rank-1 k(p)-tensor , where p = Qki=1 pi and the action of O( n) is defined as 
+
+g · (v1 ⊗ . . . ⊗ vk) = ( g · v1) ⊗ . . . ⊗ (g · vk) . (30) Thus a tensor T is an element of a vector space ( Rn)⊗k, which we denote Tk(Rn, p ). To get higher rank tensors, we can add tensors of the same order k and parity p, and the action of O( n) extends linearly. 17 The space Tk(Rn, p ) naturally has addition and scalar multiplication, but also it has tensor products and tensor contractions. The tensor product takes a k(p)-tensor and a k′(p′)-tensor and outputs a ( k + k′)(p p ′)-tensor whose components are defined as: [a ⊗ b]i1,...,i k+k′ = [ a]i1,...i k [b]ik+1 ,...,i k+k′ . (31) The tensor contraction ιk can be though of as analogous to the matrix trace where axes i1, . . . , i k are paired with ik+1 , . . . , i 2k and summed over where those axis indices are equal. Written in Einstein summation notation, the k-contraction of a (2 k + k′)(p)-tensor is defined as: [ιk(a)] i2k+1 ,...,i 2k+k′ = [ a]i1,...,i 2k+k′ . (32) To create a geometric image, we align tensors into a grid or lattice structure. 
+
+Definition D.2 (k(p)-tensor image) . Consider images supported in ( Z/N Z)n, the n-dimensional discrete torus. Then a k(p)-tensor image is a function A : ( Z/N Z)n → T k(Rn, p ). The set of k(p)-tensor images with side lengths N is denoted AN,n,k,p .For the four tensor operations described above—addition, scalar multiplication, tensor product, and tensor contraction—we have analogous definitions for the geometric image where the operation is performed pixel-wise. For example, if A, B ∈ A N,n,k,p , then for all ¯ ı ∈ (Z/N Z)n we have ( A + B)(¯ ı) = A(¯ ı) + B(¯ ı). In this space, the geometric convolutional neural networks are analogous to standard convolutional networks, except that the image-filter pixel multiplication is implemented as tensor products, followed by contractions. For example, if n = 2 (i.e. 2D images) the filters are symmetric with respect to 90 degree rotations, and either symmetric ( p = +1) or anti-symmetric ( p = −1) with respect to reflections. For general dimension n,this is the hyperoctahedral group, denoted Bn.
+
+Definition D.3 (Geometric convolution) . Let N, M be side lengths where M = 2 m+1 is odd, let A ∈ A N,n,k,p 
+
+be the input image, and let C ∈ A M,n,k +k′,p p ′ be the convolution filter. Then the geometric convolution is a tensor image ( A ∗ C) ∈ A N,n,k ′,p ′ such that: (A ∗ C)(¯ ı) = X 
+
+> ¯a∈(Z/M Z)n
+
+ιk(A(¯ ı − c(¯ a)) ⊗ C(¯ a)) , (33) where c : ( Z/M Z)n → Zn is the pixel centering function [ c(¯ a)] i = [¯ a]i − M −12 . Note that the pixel centering is not on the torus, but ¯ ı − c(¯ a) is on the torus of ( Z/N Z)n.Geometric convolutions characterize linear Gd-equivariant functions [16], but we also need nonlinear functions to build expressive networks. For this task, we will use the Vector neurons nonlinearity, originally from [13] and extended to tensors in [16]. 
+
+Definition D.4 (Vector Neuron nonlinearity for tensors) . Let Ai for i = 1 , . . . , r be input k(p)-tensor image channels. Let αi ∈ R be learned scalar parameters, let B = Pri=1 αi Ai, and let ˆB = B
+
+> ∥B∥2
+
+, where ∥·∥ 2 is the typical tensor norm, also known as the Frobenius norm. The projection of Ai to ˆB is Ai, ∥ := ιk
+
+
+
+Ai ⊗ ˆB
+
+ ˆB.Finally, let ˜ σ be a scalar nonlinearity defined on images pixel-wise. Then the Vector Neuron nonlinearity 
+
+σ : ( AN,n,k,p )r → (AN,n,k,p )r for the ith output σi is defined: 
+
+σi
+
+
+
+(Aj )rj=1 
+
+
+
+= Ai − Ai, ∥ +˜σ
+
+
+
+ιk
+
+
+
+Ai ⊗ ˆB
+
+ 
+
+ιk
+
+
+
+Ai ⊗ ˆB
+
+ Ai, ∥ (34) Additionally, we can define pooling layers such as max pooling, where the max is calculated using the ℓ2
+
+norm of a tensor as follows: 
+
+Definition D.5 (max pool) . Let A ∈ A N,n,k,p and let b be a positive integer that divides N . Then max pool is a function whose output is AN/b,n,k,p defined for each pixel index ¯ ı:max pool( A, b )(¯ ı) = A b ¯ı + arg max 
+
+> ¯a∈(Z/b Z)n
+
+∥A(b ¯ı + ¯ a)∥2
+
+!
+
+(35) 18 E Compatibility 
+
+## E.1 Compatibility of Solution Operators 
+
+Lemma (Restatement of 3.1) . Suppose Fn(u) = 0 is a compatible scalar PDE with associated solution operator 
+
+StFn (u0) 7 → ut. If there is a uniqueness theorem for the equation Fn = 0 , then StFn is E( n)-equivariant, i.e. for all initial conditions u0 and g ∈ E( n),
+
+StFn (g · u0) = g · S tFn (u0) . (36) 
+
+Proof. Let g ∈ E( n). Let ut be the evaluation of the function u at time t. Then consider StFn (g · u0). Because 
+
+StFn is a solution operator, this is the evaluation at time t of a solution to Fn = 0 with initial condition g · u0.Meanwhile, consider g · S tFn (u0). Because Fn is E( n)-invariant and Fn(StFn (u0)) = Fn(ut) = 0, we have 0 = Fn(ut) = Fn(g · ut) = Fn(g · S tFn (u0)) . (37) Thus, g · S tn(u0) is also a solution to Fn = 0, and its initial condition is σ · G0(u0) = g · u0. Because we assumed a uniqueness theorem for the equation Fn = 0, we conclude that 
+
+StFn (g · u0) = g · S tFn (u0), (38) so StFn is E( n)-equivariant. 
+
+Lemma (Restatement of 3.2) . For any u ∈ C∞(Rn × [0 , ∞)) satisfying the compatible scalar PDE Fn(u) = 0 
+
+on Rn, we have that Fn+1 (ϕn(u)) = 0 on Rn+1 . Furthermore, the same statement holds with ϕn replaced by arbitrary ϕ′ 
+
+> n
+
+as in Section 2. Proof. Compatibility implies that (11) commutes. Thus, bDn+1 ◦ ϕn = ϕn ◦ bDn. Applying both sides of the equality bDn+1 ◦ ϕn = ϕn ◦ bDn to the prolongation su of the time-evolving function u, and then evaluating at a point ( x, t ) in space and time, we get 
+
+bDn+1 (ϕn(su))( x, t ) = ϕn( bDn(su))( x, t ) = bDn(su)( πn(x), t ). (39) Also, d(ϕn(u))  
+
+> dt
+
+(x, t ) = du dt (πn(x), t ) by the chain rule. Since 
+
+ du dt − bDn(su)
+
+
+
+(πn(x), t ) = Fn(u)( πn(x), t ) = 0 (40) by assumption, it follows that 0 = Fn+1 (ϕn(u))( x, t ) = 
+
+ d(ϕn(u)) 
+
+dt − bDn+1 (ϕn(su)) 
+
+
+
+(x, t ) (41) as well. This proves the first statement. The statement for ϕ′ 
+
+> n
+
+follows from Proposition 2.3. 
+
+Proposition (Restatement of 3.3) . Let Fn be a compatible scalar PDE with a uniqueness theorem for 
+
+Fn = 0 . Let u0 be any initial conditions on U ⊆ Rn, and let ϕn be the embedding from Definition 2.1. Then, 
+
+StFn+1 (ϕn(u0)) = ϕn(StFn (u0)) . Furthermore, the same statement holds with ϕn replaced by ϕ′ 
+
+> n
+
+as in Section 2. Proof. The function StFn (u0) is a solution to Fn = 0 with initial condition u0, by definition of the solution operator. By Lemma 3.2, ϕn(StFn (u0)) is thus a solution to Fn+1 = 0, with initial condition ϕn(u0). Again by definition of the solution operator, StFn+1 (ϕn(u0)) is a solution to the same equation with the same initial condition. By uniqueness, they are equal. The statement for ϕ′ 
+
+> n
+
+then follows from Lemma 3.1. 19 On Remark 3.1 An evolutionary PDE induces a solution operator StFn : X → Y where Xn and Yn
+
+are Banach spaces of initial conditions and solutions at time t over the corresponding domain. Solution operators are often Lipschitz for many linear (and sometimes nonlinear) PDEs, with respect to the appropriate corresponding norms, satisfying: 
+
+StFn (u) − S tFn (v) Yn ≤ CF tn ∥u0 − v0∥Xn
+
+Thus, in higher dimension, if we embed w0 = ϕn(u0), and define a slightly perturbed initial condition ˜w0 = w0 + δ, we have: 
+
+StFn+1 (w0) − S tFn+1 ( ˜ w0) Yn+1 
+
+≤ CF tn+1 ∥δ∥Xn+1 .
+
+Then, since StFn+1 (w0) = ϕn(StFn (u0)), we have that integrating the ”compatible part” of a perturbed initial condition and subsequently lifting remains a good approximation for the full perturbed solution. We note that many of the quantities here are dependent on the PDE and corresponding solution operator, and the norms over the corresponding Banach spaces. In particular the constants CF tn can be dimension- and time-dependent, possibly resulting in vacuous bounds from a practical approximation perspective. At the same time, they can be more forgiving, and force small perturbations to become smaller over time, thus yielding a robust approximation result. 
+
+## E.2 Compatibility of Tensor Image Functions 
+
+Now we prove Theorem 4.1, compatibility for geometric convolutions. 
+
+Theorem (Restatement of 4.1) . Let C ∈ A M,n,k +k′,p p ′ and C′ ∈ A M,n +1 ,k +k′,p p ′ be convolution filters. Let the functions fn : AN,n,k,p → A N,n,k ′,p ′ and fn+1 : AN,n +1 ,k,p → A N,n +1 ,k ′,p ′ be defined respectively as 
+
+fn(A) = A ∗ C for all A ∈ A N,n,k,p and fn+1 (A′) = A′ ∗ C′ for all A′ ∈ A N,n +1 ,k,p . Then fn are compatible with respect to (17) if 
+
+C(¯ ın) = X 
+
+> ¯ın+1 ∈π−1
+> n(¯ ın)
+
+πn(C′(¯ ın+1 )) , (42) 
+
+for all ¯ın ∈ (Z/N Z)n, where π−1 
+
+> n
+
+(¯ ın) is the pre-image of the tensor projection to ¯ın.Proof. Let C, C ′, f n, f n+1 be defined as in the statement of the theorem. Suppose that C(¯ ın) = P  
+
+> ¯ın+1 ∈π−1
+> n(¯ ın)
+
+πn(C′(¯ ın+1 )) 20 for all ¯ ın ∈ (Z/N Z)n. Thus, 
+
+ϕn(fn(A))(¯ ın+1 ) (43) = ˜ϕn(fn(A)( πn(¯ ın+1 ))) (44) = ˜ϕn
+
+ X 
+
+> ¯an∈(Z/M Z)n
+
+ιk(A(πn(¯ ın+1 ) − c(¯ an)) ⊗ C(¯ an)) 
+
+ (45) = X 
+
+> ¯an∈(Z/M Z)n
+
+˜ϕn(ιk(A(πn(¯ ın+1 ) − c(¯ an)) ⊗ C(¯ an))) (46) = X 
+
+> ¯an∈(Z/M Z)n
+
+˜ϕn
+
+ιk
+
+A(πn(¯ ın+1 ) − πn(c(¯ an+1 ))) ⊗ X 
+
+> ¯an+1 ∈π−1
+> n(¯ an)
+
+πn(C′(¯ an+1 )) 
+
+ (47) = X 
+
+> ¯an∈(Z/M Z)n
+
+˜ϕn
+
+ιk
+
+πn(ϕn(A)(¯ ın+1 − c(¯ an+1 ))) ⊗ X 
+
+> ¯an+1 ∈π−1
+> n(¯ an)
+
+πn(C′(¯ an+1 )) 
+
+ (48) = X 
+
+> ¯an∈(Z/M Z)n
+
+X 
+
+> ¯an+1 ∈π−1
+> n(¯ an)
+
+˜ϕn(ιk(πn(ϕn(A)(¯ ın+1 − c(¯ an+1 ))) ⊗ πn(C′(¯ an+1 )))) (49) = X 
+
+> ¯an+1 ∈(Z/M Z)n
+
+ιk
+
+ ˜ϕn(πn(ϕn(A)(¯ ın+1 − c(¯ an+1 )) ⊗ C′(¯ an+1 ))) 
+
+
+
+(50) = X 
+
+> ¯an+1 ∈(Z/M Z)n
+
+ιk(ϕn(A)(¯ ın+1 − c(¯ an+1 )) ⊗ C′(¯ an+1 )) (51) = fn+1 (ϕn(A))(¯ ın+1 ) (52) In (47) we substitute C(¯ an) based on our assumption, and additionally say c(¯ an) = πn(c(¯ an+1 ), where an+1 
+
+is any pixel index in the pre-image π−1 
+
+> n
+
+(¯ an). In (50) we commute ˜ϕn with ιk(·) since the pseudoinverse fills the extra indices that would be added with zeros. Finally, in (51) we can remove ˜ϕn(πn(·)) because the embedded image ϕn(A) itself undergoes the projection pseudoinverse, so in effect we are saying that ˜ϕn(πn( ˜ϕn(a))) = ˜ϕn(a) which is true. The embedding and the function commute, so fn, f n+1 are compatible with (17), and this completes the proof. The following is a simple corollary of Theorem 4.1 for a linear combination of filters. 
+
+Corollary E.1 (Compatibility for a linear combination of filters) . Let C0, C 1, . . . , C Ln ∈ A M,n,k +k′,p p be a set of n-dimensional convolution filters with associated coefficients α0, α 1, . . . , α Ln ∈ R. Let C′
+
+> 0
+
+, C ′
+
+> 1
+
+, . . . , C ′ 
+
+> Ln+1
+
+∈AM,n +1 ,k +k′,p p ′ be a set of (n+1) -dimensional convolution filters with associated coefficients α′
+
+> 0
+
+, . . . , α ′ 
+
+> Ln+1
+
+∈ R.Let the functions fn : AN,n,k,p → A N,n,k ′,p ′ and fn+1 : AN,n +1 ,k,p → A N,n +1 ,k ′,p ′ be defined respectively as fn(A) = A ∗
+
+PLn 
+
+> ℓ=0
+
+αℓCℓ
+
+
+
+and fn+1 (A) = A ∗
+
+PLn+1  
+
+> ℓ=0
+
+α′
+
+> ℓ
+
+C′
+
+> ℓ
+
+
+
+for all A ∈ A N,n,k,p . Then fn, f n+1 are compatible with (17) if 
+
+> Ln
+
+X
+
+> ℓ=0
+
+αℓCℓ(¯ ın) = X 
+
+> ¯ın+1 ∈π−1
+> n(¯ ın)
+> Ln+1
+
+X
+
+> ℓ=0
+
+πn(α′
+
+> ℓ
+
+C′
+
+> ℓ
+
+(¯ ın+1 )) , (53) 
+
+for all ¯ın ∈ (Z/N Z)n, where π−1 
+
+> n
+
+(¯ ın) is the pre-image of the tensor projection to ¯ın.Proof. This follows immediately from Theorem 4.1. 
+
+Proposition E.2 (Compatibility of point-wise functions) . Let fn : AN,n,k,p → A N,n,k ′,p ′ be a function defined point-wise, that is there exists some hn : Tk(Rn, p ) → T k′ (Rn, p ′) such that fn(A)(¯ ı) = hn(A(¯ ı)) for all A ∈ A N,n,k,p and all ¯ı ∈ (Z/N Z)n. Then fn, f n+1 with associated hn, h n+1 are compatible with (17) if 
+
+hn+1 ( ˜ϕn(a)) = ˜ϕn(hn(a)) for all a ∈ T k(Rn, p ).
+
+21 Proof. Let fn, f n+1 , h n, h n+1 be as described in the statement of the proposition, and suppose that hn+1 ( ˜ϕn(a)) = ˜ϕn(hn(a)) for all a ∈ T k(Rn, p ). Let A ∈ A N,n +1 ,k,p and let ¯ ın+1 ∈ (Z/N Z)n+1 . Thus: 
+
+fn+1 (ϕn(A))(¯ ın+1 ) = hn+1 (ϕn(A)(¯ ın+1 )) (54) = hn+1 ( ˜ϕn(A(πn(¯ ın+1 )))) (55) = ˜ϕn(hn(A(πn(¯ ın+1 )))) (56) = ˜ϕn(fn(A)( πn(¯ ın+1 ))) (57) = ϕn(fn(A))(¯ ın+1 ) (58) This completes the proof. Now we would like to confirm that the Vector Neuron nonlinearity [13, 16] used in our models satisfies the tensor embedding condition and is therefore compatible. 
+
+Corollary E.3 (Compatibility of Vector Neuron nonlinearity) . The Vector Neuron nonlinearity (Defini-tion D.4) is compatible with (17) .Proof. The Vector Neuron nonlinearity is defined for (multiple channels of) an entire tensor image because the function is the same at each pixel. Thus it suffices to show that the definition on a single pixel commutes with ˜ϕn. Let ai ∈ T k(Rn, p ) for i = 1 , . . . , r be the channels of tensors at a particular pixel index. If we consider b = Pri=1 αiai as a function of the ai, then clearly by linearity 
+
+b( ˜ϕn(ai)) = 
+
+> r
+
+X
+
+> i=1
+
+αi ˜ϕn(ai) = ˜ϕn
+
+> r
+
+X
+
+> i=1
+
+αiai
+
+!
+
+= ˜ϕn(b(ai)) . (59) Also, ˜ϕn(b) 2
+
+= ∥b∥2 because zero-padding does not change the tensor norm, so ˆb( ˜ϕn(ai)) = 
+
+b
+
+ ˜ϕn(ai)
+
+
+
+b
+
+ ˜ϕn(ai)
+
+
+
+> 2
+
+= ˜ϕn(b(ai)) 
+
+∥b(ai)∥2
+
+= ˜ϕn
+
+ b(ai)
+
+∥b(ai)∥2
+
+
+
+= ˜ϕn
+
+ˆb(ai)
+
+
+
+. (60) Thus, 
+
+ιk
+
+ ˜ϕn(ai) ⊗ ˆb( ˜ϕn(ai)) 
+
+
+
+= ιk
+
+ ˜ϕn(ai) ⊗ ˜ϕn
+
+ˆb(ai)
+
+ 
+
+= ιk
+
+
+
+ai ⊗ ˆb(ai)
+
+
+
+(61) Finally, we conclude that, 
+
+σ
+
+ ˜ϕn(aj )
+
+rj=1 
+
+
+
+= ˜ϕn(ai) − ˜ϕn(ai, ∥) + ˜σ
+
+
+
+ιk
+
+ ˜ϕn(ai) ⊗ ˆb
+
+ ˜ϕn(ai)
+
+ 
+
+ιk
+
+ ˜ϕn(ai) ⊗ ˆb
+
+ ˜ϕn(ai)
+
+ ˜ϕn(ai, ∥) (62) = ˜ϕn(ai) − ˜ϕn(ai, ∥) + ˜σ
+
+
+
+ιk
+
+
+
+ai ⊗ ˆb(ai)
+
+ 
+
+ιk
+
+
+
+ai ⊗ ˆb(ai)
+
+ ˜ϕn(ai, ∥) (63) = ˜ϕn
+
+ai − ai, ∥ +˜σ
+
+
+
+ιk
+
+
+
+ai ⊗ ˆb(ai)
+
+ 
+
+ιk
+
+
+
+ai ⊗ ˆb(ai)
+
+ ai, ∥
+
+ (64) = ˜ϕn
+
+ σ (aj )rj=1 
+
+ . (65) Thus the single pixel function commutes with ˜ϕn, so the Vector neuron nonlinearity is compatible. Next we will show that max pooling is compatible. 22 Proposition E.4. The max pool layer (Definition D.5) is compatible with (17) .Proof. Let A ∈ A N,n,k,p , let b be an integer that divides N , and let ¯ ın+1 ∈ (Z/N Z)n+1 . Then 
+
+ϕn(max pool( A, b ))(¯ ın+1 ) (66) = ˜ϕn(max pool( A, b )( πn(¯ ın+1 ))) (67) = ˜ϕn A b π n(¯ ın+1 ) + arg max 
+
+> ¯a∈(Z/b Z)n
+
+∥A(b π n(¯ ın+1 ) + ¯ a)∥2
+
+!! 
+
+(68) = ˜ϕn A b π n(¯ ın+1 ) + πn arg max 
+
+> ¯a∈(Z/b Z)n+1
+
+∥A(b π n(¯ ın+1 ) + πn(¯ a)) ∥2
+
+!!! 
+
+(69) = ˜ϕn A πn b ¯ın+1 + arg max 
+
+> ¯a∈(Z/b Z)n+1
+
+˜ϕn(A(πn(b ¯ın+1 + ¯ a))) 2
+
+!!! 
+
+(70) = ϕn(A) b ¯ın+1 + arg max 
+
+> ¯a∈(Z/b Z)n+1
+
+∥ϕn(A)( b ¯ın+1 + ¯ a)∥2
+
+!
+
+(71) = max pool( ϕn(A), b )(¯ ın+1 ) . (72) The key insight of this proof is line (69) where we note that the projection πn of the arg max over the 
+
+n + 1-dimensional hypercube of side length b pixels is equivalent to the arg max over the n-dimensional hypercube. This completes the proof. 
+
+# F Lifting filters 
+
+We first define the zero-pad embedding. 
+
+Definition F.1 (Zero-pad embedding) . The zero-pad embedding , denoted φn : AM,n,k,p → A M,n +1 ,k,p , is defined for all images C ∈ A M,n,k,p and all ¯ ın+1 ∈ (Z/M Z)n+1 as 
+
+φn(C)(¯ ın+1 ) = 
+
+( ˜ϕn(C(πn(¯ ın+1 ))) for ˜ϕn(πn(¯ ın+1 )) = ¯ ın+1 
+
+0 otherwise . (73) Note that for filters, the indices are centered so that ¯ ı = {0, . . . , 0} is the center pixel. 
+
+Proposition (Restatement of Proposition 4.2) . Let filters and coefficients be as defined in Definition 4.5. If we let A′ be the distribution of scalar images with independent identically distributed (iid) pixels with 
+
+E
+
+> A′∼A ′
+
+[A′(¯ ı)] = 0 and E
+
+> A′∼A ′
+
+A′(¯ ı)2 = 1 , then (19) is equivalent to L(πn(φn(C) − C′)) .Proof. Let filters and coefficients be as defined in Definition 4.5. Thus 
+
+E
+
+> h∈Gn+1
+
+h
+
+E
+
+> A′∼A ′
+
+[L(( ρn(h · A′) ∗ C) − ρn(h · (A′ ∗ C′)))] 
+
+i
+
+(74) = E
+
+> h∈Gn+1
+
+h
+
+E
+
+> A′∼A ′
+
+[L(( ρn(h · A′) ∗ C) − ρn(( h · A′) ∗ C′))] 
+
+i
+
+(75) = E
+
+> A′∼A ′
+
+[L(( ρn(A′) ∗ C) − ρn(A′ ∗ C′))] (76) = E
+
+> A′∼A ′
+
+[L(ρn(A′ ∗ φn(C)) − ρn(A′ ∗ C′))] (77) = E
+
+> A′∼A ′
+
+[L(ρn(A′ ∗ (φn(C) − C′)))] . (78) 23 Now we further break down the loss function L:
+
+E
+
+> A′∼A ′
+
+[L(ρn(A′ ∗ (φn(C) − C′)))] (79) = E
+
+> A′∼A ′
+
+ 1
+
+N n
+
+X 
+
+> ¯ın∈(Z/N Z)n
+
+∥ρn(A′ ∗ (φn(C) − C′))(¯ ın)∥22
+
+ (80) = E
+
+> A′∼A ′
+
+ 1
+
+N n
+
+X 
+
+> ¯ın∈(Z/N Z)n
+
+∥ρn(A′ ∗ (φn(C) − C′))(¯ ın)∥22
+
+ (81) = E
+
+> A′∼A ′
+
+ 1
+
+N n
+
+X 
+
+> ¯ıd∈(Z/N Z)n
+
+πn
+
+
+
+(A′ ∗ (φn(C) − C′)) 
+
+ ˜ϕn(¯ ın)
+
+ 22
+
+ (82) = E
+
+> A′∼A ′
+
+ 1
+
+N n
+
+X 
+
+> ¯ın∈(Z/N Z)n
+
+πn
+
+ X 
+
+> ¯an+1 ∈(Z/M Z)n+1
+
+A′ ˜ϕn(¯ ın) − ¯an+1 
+
+
+
+⊗ (φn(C) − C′)(¯ an+1 )
+
+
+
+> 22
+
+ (83) = E
+
+> A′∼A ′
+
+ 1
+
+N n
+
+X 
+
+> ¯ın∈(Z/N Z)n
+
+X 
+
+> ¯an+1 ∈(Z/M Z)n+1
+
+πn
+
+
+
+A′ ˜ϕn(¯ ın) − ¯an+1 
+
+ 
+
+⊗ πn(( φn(C) − C′)(¯ an+1 )) 
+
+> 22
+
+ . (84) Now we note that the squared norm of a sum of vectors can be decomposed as two sums, the first given by a norm on the matching vectors, and the second a double sum over the inner product of the different vectors. In our setting, the norm is still the tensor norm, and the inner product is the full k-contraction. Thus, the first sum is, 
+
+X 
+
+> ¯an+1 ∈(Z/M Z)n+1
+
+πn
+
+
+
+A′ ˜ϕn(¯ ın) − ¯an+1 
+
+ 
+
+⊗ πn(( φn(C) − C′)(¯ an+1 )) 22
+
+(85) = X 
+
+> ¯an+1 ∈(Z/M Z)n+1
+
+A′ ˜ϕn(¯ ın) − ¯an+1 
+
+2
+
+∥πn(( φn(C) − C′)(¯ an+1 )) ∥22 , (86) with the equality following from the assumption that A′ is a scalar image. Likewise, the second sum, after moving the scalars outside the contraction, is = 2 X  
+
+> ¯an+1 ̸=¯bn+1 ∈(Z/M Z)n+1
+
+A′ ˜ϕn(¯ ın) − ¯an+1 
+
+
+
+A′ ˜ϕn(¯ ın) − ¯bn+1 
+
+
+
+(87) 
+
+ιk
+
+ πn(( φn(C) − C′)(¯ an+1 )) ⊗ πn
+
+ (φn(C) − C′)( ¯bn+1 ) (88) By linearity we can now directly apply the expectation to the terms with A′. Since E
+
+> A′∼A ′
+
+h
+
+A′
+
+ ˜ϕn(¯ ın) − ¯an+1 
+
+i 
+
+=0 by assumption, the second sum is 0. By assumption E
+
+> A′∼A ′
+
+
+
+A′
+
+ ˜ϕn(¯ ın) − ¯an+1 
+
+2
+
+= 1 in the first sum. If 24 we plug these results back into (84) we have: 
+
+E
+
+> A′∼A ′
+
+ 1
+
+N n
+
+X 
+
+> ¯ın∈(Z/N Z)n
+
+X 
+
+> ¯an+1 ∈(Z/M Z)n+1
+
+πn
+
+
+
+A′ ˜ϕn(¯ ın) − ¯an+1 
+
+ 
+
+⊗ πn(( φn(C) − C′)(¯ an+1 )) 
+
+> 22
+
+ (89) = 1
+
+N n
+
+X 
+
+> ¯ın∈(Z/N Z)n
+
+X 
+
+> ¯an+1 ∈(Z/M Z)n+1
+
+∥πn(( φn(C) − C′)(¯ an+1 )) ∥22 (90) = X 
+
+> ¯an+1 ∈(Z/M Z)n+1
+
+∥πn(( φn(C) − C′)(¯ an+1 )) ∥22 (91) = L(πn(φn(C) − C′)) . (92) This completes the proof. We now show the coefficients derived from Proposition 4.2. Type Dimension Weights Scalar filters 1D α0 α1
+
+2D Nepo α0 − 23 α1 13 α1 13 α1
+
+2D Copy α0 + 2 α1 −α1 α1
+
+2D Zeros α0 − 2α1 α1 0Scalar filters 2D α0 α1 α2
+
+3D α0 − 10 9 α1 + 49 α2 59 α1 − 29 α2 29 α1 + 19 α2 − 19 α1 + 49 α2
+
+Vector filters 2D α0 α1
+
+3D α0 − 23 α1 13 α1 13 α1
+
+2-tensor filters 2D α0 α1 α2 α3
+
+3D α0 − 23 α1 + 23 α3 59 α1 − 29 α2 + 19 α3 19 α1 + 29 α2 − 19 α3 13 α2
+
+2D α4
+
+3D α4 0 − 49 α1 + 49 α2 − 89 α3 29 α1 − 29 α2 − 29 α3
+
+Table 2: Coefficients for positive parity filters with side length 3. For each set of two, the first row is the weights for the lower dimensional filters, in order from the center of the filter outwards. The second row is the weights for the higher dimensional filters in terms of the weights of the lower dimensional filters. The 2D Copy and 2D Zeros coefficient transfer strategies are explained in Section G.3. 
+
+# G Experimental Details 
+
+## G.1 Data 
+
+We use data from three PDEs, the heat equation (left), Burgers’ equation (right): 
+
+du dt = ∆ u , du dt = −b 12 ∇ · (u ⊗ u) + ν∇2u , (93) and the compressible Navier–Stokes equations: 
+
+∂tρ + ∇ · (ρ⃗ v) = 0 , ρ(∂ t⃗v +⃗v · ∇ ⃗v) = −∇ p + η∆⃗v + ( ζ + η/ 3) ∇(∇ · ⃗v), (94) 
+
+∂t
+
+ ϵ + ρv 2/2 + ∇ ·   p + ϵ + ρv 2/2⃗v −⃗v · σ ′ = 0 (95) 25 These are equations are used to generate fields which we discretize to images. All images had a side length of 64 pixels. The initial heat data u0 is generated with a uniform distribution from −√3 to √3 in each pixel, and then the value at time t = 1 was calculated using the analytic heat kernel with all points, where the distance to each point was the closest distance on the torus. The data for Burgers’ equation was generated by the Apebench package [21] using the difficulty scenario. The diffusion coefficient for 2D was 0.75 and for 3D was 2.25, while the convection coefficient was -0.75 for 2D and -2.25 for 3D. This was to undue the automatic scaling of the coefficients by dimension in the difficulty scenario so that the same parameters were used across dimensions. Each trajectory was run for 50 time steps with 0 warmup steps. Each trajectory of 50 steps was then split into 49 input output pairs of one timestep as part of the training data. The data for the compressible Navier–Stokes equations is generated by PDEBench [49]. Although PDEBench has many datasets including Navier–Stokes in 2D and 3D, we require that exactly the same hyperparameters are used to generate data across dimensions. Thus we used their code to generate additional data with shear and bulk viscosity of 1e-08, and Mach number 0.1. Each trajectory was run for 21 time steps which where split into 17 data points of 4 input steps and 1 output step. The size of the datasets in number of float values for n dimensions, b trajectories, t time steps, image side length N , s scalar channels, and v vector channels is btN n(s + vn ). 
+
+## G.2 Model and Training 
+
+We used a UNet [43] as that was the best performing model in [16]. We used filter side lengths of 3 with four downsampling blocks by max pooling and two convolution layers between each downsample. For nonlinearities we used the Vector Neuron [13] described in [16] with GeLU nonlinearity. We used 48 channels as the convolution default which doubles every downsample. We used two metrics during training and evaluation. The first is the sum of mean squared error (SMSE) which takes the mean squared error over each field, then takes the sum over the fields. If Aj is the true 
+
+k(p)-tensor image for field j and ˆAj is our predicted k(p)-tensor image for field j, then the LSMSE is defined as, 
+
+LSMSE 
+
+
+
+{Aj }Jj=1 ,
+
+n ˆAj
+
+oJj=1 
+
+
+
+= X
+
+> j
+
+1
+
+N n
+
+X
+
+> ¯ı
+
+Aj (¯ ı) − ˆAj (¯ ı) 22
+
+, (96) where ∥·∥ 2 is the tensor norm. The second metric is the relative error which is defined as, 
+
+Lrel 
+
+
+
+{Aj }Jj=1 ,
+
+n ˆAj
+
+oJj=1 
+
+
+
+= 1
+
+J
+
+X
+
+> j
+
+rP 
+
+> ¯ı
+
+Aj (¯ ı) − ˆAj (¯ ı) 22
+
+qP 
+
+> ¯ı
+
+∥Aj (¯ ı)∥22 + ϵ
+
+∗ 100 , (97) where ϵ is some fixed small value to prevent division by 0 numerical issues, and we multiply by 100 to get the error as a percent. We set ϵ = 1e-5 . We found that calculating the relative error per pixel led to numerical instability during training, so we use the above version which can be viewed as taking the norm over the entire image for a field. We train all models with the relative error, and report results for the relative error and SMSE. We followed a similar training regime as in [16]. We train for 50 epochs using the AdamW optimizer [35] with a weight decay of 1e-5 and a cosine decay schedule [34] to 1e-7 with 5 epochs of warmup from 1e-8 . Peak learning rates were tuned for each problem for each dimension and for each different number of tuning points. Learning rates were chosen from the set {1e − 5, 5e − 5, 1e − 4, 5e − 4, 1e − 3, 5e − 3} based on performance on a validation set of 128 points for the heat equation, 8 trajectories for Burgers’ equation, or 32 trajectories for Navier–Stokes. For the ablation over the alternative coefficient transfer strategies, the same learning rates tuned for our warm-start strategy were used for all the strategies. It is possible that the performance could be 26 improved by individually tuning the learning rates for each strategy, but the results for 0 tuning points shows that our warm-start strategy is likely to remain the best. The resulting learning rates are shown in Table 3. PDE Models Params 1 4 8 32 128 1D Pre-train 3,926,737 1e-3 
+
+Heat 2D Baseline 5,691,697 5e-4 5e-4 5e-4 5e-4 5e-4 
+
+2D Fine-tune 5,691,697 5e-4 5e-4 5e-4 5e-4 5e-4 
+
+2D Pre-train 11,576,305 1e-4 
+
+Burgers 3D Baseline 16,871,185 1e-4 1e-4 1e-4 
+
+3D Fine-tune 16,871,185 1e-4 1e-4 1e-4 
+
+2D Pre-train 25,114,131 1e-4 
+
+N-S 3D Baseline 35,705,235 5e-4 1e-4 1e-4 1e-4 
+
+3D Fine-tune 35,705,235 1e-4 1e-4 1e-4 5e-5 
+
+Table 3: Pre-training and fine-tuning learning rates for the number of data points or trajectories. We trained on a single RTX 6000 Ada GPU with a batch size of 8 for all experiments except for the Burgers’ and Navier–Stokes 3D experiments where we used 2 GPUs with a batch size of 2 per GPU for an effective batch size of 4. 
+
+## G.3 Warm-start Ablation 
+
+We explored whether the warm-start coefficient transfer, Definition 4.5 and Proposition 4.2, is the correct equation to optimize. We experimented with two reasonable alternative strategies that satisfied compatibility but made different choices with the free parameter. In the Copy strategy, we set the new coefficient for the outermost weight equal to the old coefficient for the outermost weight, then adjusted the other weights to maintain compatibility. In the Zeros strategy, we set the new weight to 0 and adjusted the others likewise. We tried these strategies for the heat equation, with the results shown in Fig. 3 and Table 4. Clearly our warm-start strategy performs better. It is also interesting to note that in some cases, and particularly for the Copy strategy, a naive weight transfer strategy is worse than no pre-training at all. This is true even though all strategies satisfy compatibility. PDE Models 0 1 4 8 32 128 Baseline 105.3% 21.0% 20.8% 19.8% 3.3% 0.5% 
+
+Heat Copy 12,797.3% 131.6% 138.5% 152.5% 52.7% 15.0% Zeros 138.3% 8.1% 8.1% 8.4% 3.1% 1.0% Nepo 5.7% 2.2% 2.2% 2.1% 0.7% 0.5 %Table 4: The median relative error performance over 5 trials of each warm-start strategy with the heat equation over varying numbers of fine tuning points. The column labels represent the number of fine-tuning points. With higher precision, the baseline method does better than Nepo by 0 .001%. 
+
+## G.4 Additional Results 
+
+27 Figure 3: The median relative error performance of each warm-start strategy with the heat equation over varying numbers of fine tuning points, indexed by the total number of gigaflops to pre-train and fine-tune the models. Note the order of magnitude of the x-tick values, and the log values of the y-axis. Each experiment was run 5 times, with the lines representing the median value, the shaded region representing the interquartile range, and a dot for each value. 
+
+(a) (b) (c) 
+
+Figure 4: ℓ2 error performance of each PDE over varying numbers of fine tuning points, indexed by the total number of gigaflops to pre-train and fine-tune the models. Note the order of magnitude of the x-tick values, and the log values of the y-axis. Each experiment was run 5 times, with the lines representing the median value, the shaded region representing the interquartile range, and a dot for each value. (a) The heat equation trained on 0, 1, 4, 8, 32, and 128 fine-tuning points. (b) Burgers’ equation trained on 0, 1, 4, and 8 trajectories. (c) The compressible Navier–Stokes equations trained on 0, 1, 4, 8, and 32 trajectories. 28 PDE Models 0 1 4 8 32 128 Baseline 4.4e-02 1.7e-03 1.7e-03 1.5e-03 4.5e-05 1.0e-06 
+
+Heat Copy 6.5e+02 6.9e-02 7.6e-02 9.3e-02 1.1e-02 9.0e-04 Zeros 7.6e-02 2.6e-04 2.9e-04 2.8e-04 3.8e-05 4.8e-06 Nepo 1.3e-04 2.0e-05 1.9e-05 1.9e-05 2.2e-06 1.0e-06 
+
+Burgers Baseline 3.3e-02 6.3e-05 4.1e-05 3.7e-05 Time out Time out Nepo 5.5e-04 3.8e-05 3.5e-05 3.2e-05 Time out Time out N-S Baseline 6.9e+03 4.3e+01 9.3e+00 1.8e+00 2.4e-01 Time out Nepo 1.9e+01 1.2e+01 1.5e+00 9.0e-01 1.4e-01 Time out Table 5: The median ℓ2 error performance over 5 trials of each PDE over varying numbers of fine tuning points. N-S refers to compressible Navier–Stokes. For the heat equation, the column labels represent the number of fine-tuning points, while for Burgers and Navier–Stokes, they refer to the number of trajectories of 17 and 49 time steps each, respectively. The positions in the table labeled “Time out” were training loops that would have taken longer than 15 hours per trial. With higher precision, the baseline method does better than Nepo for the heat equation by 1e-09. PDE Models n=0 n=1 n=4 n=8 n=32 n=128 Heat Baseline 0 8.732e+04 3.493e+05 6.986e+05 2.794e+06 1.117e+07 Nepo 3.594e+05 4.467e+05 7.087e+05 1.058e+06 3.153e+06 1.153e+07 Burgers Baseline 0 2.965e+09 1.186e+10 2.372e+10 Nepo 1.396e+08 3.105e+09 1.200e+10 2.386e+10 N-S Baseline 0 1.846e+09 7.386e+09 1.477e+10 5.908e+10 Nepo 1.724e+09 3.571e+09 9.110e+09 1.649e+10 6.081e+10 Table 6: Estimated gigaflops of training process. Nepo warm-start includes the time to pre-train on lower dimensional data and convert the model. 29

@@ -1,0 +1,322 @@
+Title: Adaptive Conformal Prediction for Image Regression Models with Application to an Inertial Confinement Fusion Emulator
+
+URL Source: https://arxiv.org/pdf/2610.00535v1
+
+Published Time: Fri, 02 Oct 2026 00:21:33 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Adaptive Conformal Prediction for Image Regression Models with Application to an Inertial Confinement Fusion Emulator 
+
+Carrie J. Lei-Cramer ∗ Michael S. Jones † Laura J. Wendelberger ‡
+
+Abstract 
+
+Uncertainty quantification is critical in scientific machine learning, where black-box, image-based models are increasingly deployed in high-stakes settings. In many such applications, model outputs inform costly decisions, yet most methods provide only point estimates without quantifying predictive uncertainty. This challenge is compounded by the limited accessibility and interpretability of model internals, making it difficult to assess reliability across different regions of the input space. As a result, there is a growing need for methods that can provide input-dependent uncertainty estimates to guide both model development and downstream ex-perimentation. To address this need, we propose Adaptive Conformal Prediction using Nearest Neighbors (ACPNN), an input-adaptive conformal framework for image regression. ACPNN leverages information from neighboring samples to produce locally adaptive uncertainty esti-mates while maintaining low computational cost. The neighborhood structure is defined using a scaled distance metric learned via a Gaussian Process with an automatic relevance determi-nation (ARD) kernel. We demonstrate the effectiveness of ACPNN on a diffusion model for emulating inertial confinement fusion (ICF) simulations, showing that it achieves reliable and adaptive uncertainty quantification. 
+
+# 1 Introduction 
+
+Uncertainty quantification (UQ) in machine learning (ML) has become increasingly important as ML models are more widely adopted in scientific research, particularly in high-stakes domains such as inertial confinement fusion (ICF) (Ben Tayeb et al. (2024), Anirudh et al. (2020), Spears et al. (2025)), where both simulations and experiments are costly. ICF seeks to induce fusion by confining matter under extreme pressure and temperature and has the potential to produce clean energy at scale; however, its success is highly sensitive to experimental design under extreme pressure and temperature. High-fidelity multiphysics simulations can model the forward problem, but they are computationally expensive. To address the inverse problem—identifying input designs that achieve desired outputs—ML-based emulators (e.g., Kang et al. (2022)) have been developed. Despite their efficiency, these models often lack rigorous uncertainty quantification, raising critical concerns about their reliability as “black-box” predictors. These challenges are further amplified when working with image-based data, which introduces additional complexity compared to scalar quantities. Incorporating UQ improves confidence in model predictions, which helps guide experimental design across a range of fields—such as protein folding (Jumper et al. (2021), Baek et al. (2021)) and 
+
+> ∗
+
+Department of Statistics, Texas A&M University, College Station, TX, USA. 
+
+> †
+
+Lawrence Livermore National Laboratory, Livermore, CA, USA. 
+
+> ‡
+
+Lawrence Livermore National Laboratory, Livermore, CA, USA. Corresponding author: 
+
+wendelberger1@llnl.gov 
+
+1arXiv:2610.00535v1 [stat.ML] 30 Sep 2026 material discovery (Butler et al. (2018), Gao et al. (2023))—where confidence can vary dramatically across predicted structures. A wide range of methods have been developed to achieve UQ in the field of computer vision, including Deep Ensembles (Lakshminarayanan et al., 2017; Kall-Nielsen et al., 2021) and Bayesian Neural Networks (Kendall and Gal, 2017; Blundell et al., 2015), which often works with approxi-mation techniques like Monte Carlo Dropout (Lemay et al., 2022; Abdollahi et al., 2023; Gal and Ghahramani, 2016). Bayesian methods depend on prior distributions that may be misspecified and are usually computationally expensive, while ensemble-based methods provide heuristic uncertainty estimates. Moreover, these approaches requires significant modification to the model architecture and typically lack formal guarantees of reliability. The conformal prediction (CP) framework has attracted substantial attention as a model-agnostic approach to uncertainty quantification. Its key advantage lies in providing coverage guarantee under minimal assumptions, i.e. its prediction sets contain the true outcome with a user-specified significance level, regardless of the underlying model. It requires only one key as-sumption: data exchangeability, i.e. the joint distribution of data is permutation invariant. This condition can be implied by independent and identically distributed (i.i.d.), which is a common assumption used in statistics. Beyond its coverage guarantees, the potential input-adaptiveness of CP further enhances its utility in scientific discovery, as it can help identify regions of high uncertainty, thereby guiding model refinement and informing future experimental directions. CP has been incorporated into various computer vision models (Angelopoulos et al., 2021; Roy et al., 2025; de Grancey et al., 2022), including input-adaptive approaches for tasks like image segmentation (Bereska et al., 2025; Luo and Zhou, 2026) and object detection (Timans et al., 2024). Although the related works also involve image-input models, they primarily analyze pixel-level uncertainty, while our method concentrates on the image’s overall structure. In this work, we propose Adaptive Conformal Prediction with Nearest Neighbors (ACPNN), a novel conformal prediction approach designed to produce input-adaptive conformal sets using information from nearest neighbors. Building on the Adaptive Conformal Prediction framework of Papadopoulos et al. (2011), our method extends adaptive uncertainty quantification to high-dimensional input spaces, such as images, where classical approaches may struggle to capture local structure. Our method fills a gap in adaptive UQ by producing statistically reliable prediction sets for image regression models. We apply ACPNN to an ICF dataset and evaluate several CP approaches. The remainder of this paper is organized as follows. Section 2 presents the application moti-vating our method. Section 3 reviews building blocks of our proposed method and introduces our proposed method. Section 4 demonstrates the validity and adaptiveness of our proposed method, benchmarked with other methods. 
+
+# 2 Motivation: Inertial Confinement Fusion 
+
+Inertial confinement fusion (ICF) aims to produce energy by compressing and heating hydrogen isotopes to extreme temperatures and pressures, offering a potential path toward clean and sustain-able energy production (Nuckolls et al., 1972). In 2022, controlled ignition at the National Ignition Facility (NIF) achieved the first positive net energy gain (Abu-Shawareb et al., 2024), (Kritcher et al., 2024). Achieving ignition and high fusion gain requires precise control of energy delivery and capsule symmetry, as well as extremely high temperatures and pressures. Because these experiments are resource-intensive and limited in number, researchers often rely on large-scale radiation-hydrodynamics 2Output X-ray Images Simulation Inputs   
+
+> Scale Mode 1 Asymmetry Mode 2 Asymmetry …
+> NIF Implosions (~weeks between shots)
+> Capsule Inputs ???…
+> HYDRA simulations (1000s of CPU hours)
+> Energy out Energy in
+> Inputs
+> Inputs
+> Generative Forward Generative Inverse
+
+# A BCFigure 1: Schematic overview of ICF simulation, experiment, and emulation workflows. (A) HY-DRA simulations, driven by input parameters such as capsule scale and asymmetry, are performed in parallel with NIF implosion experiments. Both workflows produce diagnostic X-ray images; how-ever, HYDRA simulations require substantial computational resources, while NIF experiments are limited by the weeks-long timescale between shots. (B) In the generative forward setting, models are conditioned on input parameters to produce corresponding diagnostic X-ray images. (C) In the generative inverse setting, models are conditioned on diagnostic X-ray images to produce input parameter values. simulations such as HYDRA (Marinak et al., 2001) to explore capsule designs and predict exper-imental outcomes. These physics-based simulators generate datasets comprising scalar quantities and images that capture implosion dynamics. Recent advances in machine learning enables emulation of the fusion process at lower com-putational cost, for example the diffusion-based foundation models by Jones et al. (2026) and autoencoder-based neural-network models by Anirudh et al. (2020). The former supports image-only inverse prediction (see illustration in Figure 1)—i.e., inferring capsule inputs directly from X-ray and neutron images—which is valuable for diagnosing degradations to experiments and improving future designs. Despite these advances, such models often lack reliable uncertainty quantification. Without it, assessing a model’s ability to capture underlying relationships is difficult, and it becomes hard to determine which regions of the input space are physically reliable or experimentally consistent. Establishing methods to adaptively quantify uncertainty across the input space is therefore critical for emulator validation, interpretation of experimental data, and, ultimately, for guiding the design of next-generation ICF targets with reproducible, high-yield performance. We aim to generate uncertainty-quantifying prediction sets for a “black-box” model that predicts numeric values from images, ensuring these sets maintain a targeted average coverage rate. What’s more, the bandwidth of these sets are input adaptive, reflecting uncertainty of model prediction at different input regions. Formally, given a trained model f : Rd → R, a new image x ∈ Rd, and a confidence level α, we seek to produce an adaptive prediction set C(x) such that P y ∈ C (x) ≥ 1−α.33 Methodology 
+
+3.1 Conformal Prediction 
+
+Introduced by Saunders et al. (1999), conformal prediction (CP) is a framework that provides statistically reliable uncertainty quantification for machine learning models by constructing predic-tion sets or intervals with guaranteed coverage performance. Unlike traditional point predictions, conformal methods output sets of possible labels (in classification) or intervals (in regression) that contain the true outcome with a user-specified confidence level 1-α, such as 90% or 95%. The core idea is to measure how “conformal”, or consistent, a new data point is with previously ob-served data using a nonconformity score, and then calibrate thresholds through permutation - or exchangeability-based arguments. Crucially, permuting the random variables does not change their joint distribution, and therefore the rank of the new data point among all data points is uniformly distributed from 1 to the total number of variables. Since CP relies on empirical quantiles, its guarantees are agnostic to model correctness and the form of the error distribution, provided the data are exchangeable. In other words, conformal prediction is distribution-free, model-agnostic, and computationally simple to apply on top of any black-box predictor, offering a practical and theoretically sound way to quantify prediction uncertainty. 
+
+Conformal prediction: In the split conformal prediction framework (Vovk et al., 2005), the dataset D = {Zi = ( xi, y i)}ni=1 , where xi ∈ X ⊆ Rd and yi ∈ Y ⊆ R is randomly spitted into two disjoint subsets Dtrain and Dcal . These two subsets are defined as Dtrain = {(xi, y i) : i ∈ Itrain }
+
+and Dcal = {(xi, y i) : i ∈ Ical }, where Itrain and Ical are subsets of indices from 1 to n, such that 
+
+Itrain ∩ Ical = ∅, Itrain ∪ Ical = {1, . . . , n }. Denote n1 = |Itrain |, n 2 = |Ical |, n = n1 + n2.Given a predicted model f that is trained on Dtrain , and a new testing data point Zn+1 =(xn+1 , y n+1 ) ∈ D test and D∩D test = ∅, conformal prediction uses absolute error as a (non)conformity score: si = |f (xi)−yi|, i ∈ I cal to form prediction intervals. With the assumption that Dcal ∪{ Zn+1 }
+
+are exchangeable, the (1 − α) quantile of scores q1−α determines the conformal interval: C(xn+1 ) = [f (xn+1 ) − q1−α, f (xn+1 ) + q1−α]. This ensures finite-sample marginal coverage at level (1 − α), such that: 
+
+P yn+1 ∈ C 1−α(xn+1 ) ≥ 1 − α. 
+
+The method for applying conformal prediction is shown in Algorithm 1. 
+
+Scaled conformal prediction: Conformal intervals constructed produced by conformal pre-diction produced intervals of equal widths, regardless of the input values. Scaled conformal pre-diction is a variation of conformal prediction designed to improve the efficiency of prediction in-tervals, particularly in regression tasks where the magnitude of uncertainty varies across inputs (heteroskedasticity). Instead of using raw residuals from a fitted model as nonconformity scores, scaled conformal prediction divides each residual by an estimate of the local variability ˆ σ(xi), which is a measure of the dispersion of the residuals at xi. Common choices of xi are conditional mean absolute deviation (MAD) of Yi − ¯f (x) given X = x (Romano et al., 2019) or standard deviation of f (x) (Angelopoulos and Bates, 2022). The conformal scores then take the mathematical form: 
+
+si = | ¯f (xi)−yi|  
+
+> std (f(xi))
+
+. This scaling step adjusts the widths of prediction intervals so that they expand in regions with high uncertainty and shrink in regions with low uncertainty, leading to intervals that are more adaptive and informative while still maintaining the rigorous marginal coverage guarantees of conformal prediction. 
+
+Conformal prediction with nearest neighbors: Papadopoulos et al. (2011) proposed new nonconformal scores to make the measure more adaptive to local inputs by leveraging information 4from nearest neighbors of the inputs. One specification for the nonconformal scores is 
+
+si = f (xi) − yi
+
+γ + ξki
+
+, (1) where ξki is the normalized standard deviation of response values for the i-th data point and its 
+
+k neighbors from the training data set. Formally, ξki = vki /median( {vkj : j ∈ I train }), where Itrain 
+
+is the data index set used for the training regression model f , vki is the standard deviation of response values of neighbors found in the training dataset for data xi. A higher vki value means larger variance for a prediction at xi and thus leads to wider uncertainty bandwidth at xi. The tuning parameter γ ≥ 0 governs the sensitivity of the measure to changes in ξki . Higher γ leads to less sensitive measure; when γ = 0, si = f (xi) − yi/ξ ki . Instead of normalizing conformal scores using the standard deviation of f (xi) for each input xi, this new measure is normalized using the standard deviation of the response values for its neighbors. This approach enables local adaptivity based on local variance instead of requiring a built-in heuristic notion of uncertainty associated with each point. 
+
+Algorithm 1 Conformal Prediction 
+
+Input: Dcal = {(xi, y i)}, i ∈ I cal , xn+1 , f : X → R, α ∈ (0 , 1) 
+
+Output: C1−α(xn+1 )
+
+for i ∈ I cal do 
+
+si ← | f (xi) − yi|
+
+end for 
+
+q1−α ← ⌈ (1 − α)( n2 + 1) ⌉-th smallest of {s1, . . . , s n2 }
+
+return C1−α(xn+1 ) ← f (xn+1 ) − q1−α, f (xn+1 ) + q1−α
+
+
+
+3.2 Gaussian Process with Automatic Relevance Determination (ARD) Kernel 
+
+Gaussian Processes (GPs) provide a flexible Bayesian nonparametric framework for regression and classification, where the response variable is modeled as a distribution over functions. Formally, a GP is defined as a collection of random variables: 
+
+f (x) ∼ GP (m(x), k (x, x′)) ,
+
+where m(x) = E[f (x)] is the mean function and k(x, x′) = Cov( f (x), f (x′)) is the covariance kernel. Any finite subset X = {x1, x2, . . . , xn} follows a multivariate normal distribution: 
+
+
+
+f (x1)
+
+f (x2)...
+
+f (xn)
+
+ ∼ N 
+
+
+
+m(x1)...
+
+m(xn)
+
+ ,
+
+
+
+k(x1, x1) k(x1, x2) · · · k(x1, xn)
+
+k(x2, x1) k(x2, x2) · · · k(x2, xn)... ... . . . ...
+
+k(xn, x1) k(xn, x2) · · · k(xn, xn)
+
+
+
+One powerful application of GPs is estimating the relevance of each input variable to the response through the Automatic Relevance Determination (ARD) kernel (Rasmussen and Williams, 2006). The ARD kernel assigns a separate length-scale parameter ℓj to each input dimension xj ,
+
+kθ(x, x′) = kθ′ (x ◦ ℓ−1, x′ ◦ ℓ−1), ℓ = ( ℓ1, . . . , ℓ d), x ◦ ℓ−1 = ( x1 
+
+> ℓ1
+
+, x2 
+
+> ℓ2
+
+, · · · , xd 
+
+> ℓd
+
+), kθ is a kernel with parameters represented as θ including length-scales ℓ.Here, a small ℓj indicates that the response varies sharply along the j-th input dimension, im-plying high relevance of feature xj , while a large ℓj smooths out variation, suggesting that xj has 5little effect. By optimizing the marginal likelihood of the GP with respect to the kernel hyperpa-rameters {ℓj }, one can automatically infer the importance of each input, effectively adjusting for feature importance in a probabilistic and interpretable manner. The marginal likelihood of a GP regression model, given training inputs X = {xi}ni=1 and outputs y, is 
+
+p(y | X, θ) = N y m(x), K θ + σ2
+
+> n
+
+I,
+
+where Kθ is the covariance matrix computed from the kernel (here the ARD kernel), Kθ,i,j =
+
+kθ(xi, xj ), m(x) is the mean of y at x , σ2 
+
+> n
+
+is the noise variance, and θ = {ℓ1, . . . , ℓ d, σ n} are kernel hyperparameters. The log marginal likelihood is log p(y | X, θ) = − 12 y⊤(Kθ + σ2
+
+> n
+
+I)−1y − 12 log Kθ + σ2
+
+> n
+
+I − n 
+
+> 2
+
+log(2 π). (2) The length scales ℓ were estimated by maximizing the GP log marginal likelihood with respect to the hyperparameters. If the j-th input is irrelevant, the optimizer tends to learn a large ℓj , making the kernel nearly insensitive to changes along that dimension. Conversely, if xj strongly influences 
+
+y, the optimizer finds a small ℓj , allowing the GP to vary rapidly along that input. In this way, the ARD mechanism embedded in the GP provides a principled Bayesian method for feature relevance estimation, balancing model fit and complexity through the log marginal likelihood. Estimating the full GP is computationally expensive for high-dimensional data, with compu-tational complexity scaling as O(n3), where n denotes the number of training observations in our setting. Several scalable GP approximation methods have been developed, including inducing point methods (Snelson and Ghahramani, 2006), covariance tapering (Furrer et al., 2006), and the Vecchia approximation (Vecchia, 1988; Katzfuss and Guinness, 2021). At a high level, the Vecchia method approximates the joint Gaussian density using conditional distributions conditioned on subsets of neighboring observations. In our framework, we adopt the Vecchia approximation because it pre-serves local dependence structures through nearest-neighbor conditioning, which aligns naturally with our overall approach of leveraging neighbor information for uncertainty quantification (UQ). This method is implemented in the GpGp package developed by Guinness (2019). 
+
+3.3 Adaptive Conformal Prediction with Gaussian Process Regression for Im-age Based Models 
+
+While adaptive conformal prediction using nearest neighbors guarantees a desired coverage rate, its application to image-based models is challenging. The primary difficulty lies in defining a meaningful set of “nearest neighbors” for images. Standard image similarity metrics, such as the Structural Similarity Index (SSIM) and Peak Signal-to-Noise Ratio (PSNR), are inadequate as they only assess pixel-level variations and ignore the relationship between an image and the response variable of interest. To address this, we propose a novel framework that integrates the computational benefits of nearest-neighbor adaptive conformal prediction with the feature-relevance estimation capabilities of GPs. This approach yields prediction sets with guaranteed coverage for image-based regression or classification models. 
+
+Problem Formulation: Formally, given datasets Dtrain , Dcal as defined in section 3.1, and set of new data Dtest = {(xi, y i)}. Let Xtrain = {xi, i ∈ I train } ∈ Rn1×d1×d2×d3 be a set of n1 images and ytrain = {yi, i ∈ I train } ∈ Rn1 be the corresponding responses. Each image has d1 channels, a height of d2 and a width of d3, d = d1 × d2 × d3. Given a model f trained on this data, our goal is to generate an adaptive prediction set, C1−α(xi), for any new test image xi ∈ Xtest , such that the marginal coverage probability for the response at xi meets a user-defined level, 1 − α
+
+P yi ∈ C 1−α(xi) ≥ 1 − α. 
+
+6The performance of our method is evaluated based on the adaptivity of the prediction set sizes and the empirical coverage rate on the test data. 
+
+Proposed Methodology: Our approach consists of three main stages: dimensionality reduc-tion, feature relevance estimation, and nearest-neighbor-based conformalization. First, we project images into a lower-dimensional latent space of size m, where m ≪ d. This is based on the manifold hypothesis (Tenenbaum et al. (2000)), which argues that the essential information in high-dimensional data can be captured in a much lower-dimensional representation. In this paper we use Principal Component Analysis (PCA) for this purpose. Other embeddings like the latent space from an autoencoder could also be used. We denote the projection by h : Rd → Rm
+
+and the condensed data by ˜X = h(X). Second, we estimate the relevance of each latent feature with respect to the response variable, 
+
+y. This is achieved by modeling the relationship between the low-dimensional training data and its responses using a Gaussian Process with an Automatic Relevance Determination (ARD) kernel. The ARD kernel yields a unique length-scale parameter, ℓj , for each latent dimension j, where smaller length-scales indicate higher relevance to the prediction task. In the case when data size is large ( > 10 4), we use scalable Vecchia Gaussian Process (Katzfuss and Guinness (2021)), which imposes sparsity in the covariance matrix by assuming conditionally independent of distant data given a small set of its neighbors. Third, for each test sample x, we identify its k nearest neighbors from the training set. The search is performed using a scaled Euclidean distance metric weighted by the inverse of the learned ARD length-scales. This ensures that dimensions more relevant to the response variable have a greater influence on the distance calculation. The set of k nearest neighbors, Nk(x), is defined as: 
+
+Nk(x) = arg min  
+
+> S⊆I train ={1,...,n },|S|=k
+
+X
+
+> i∈S
+
+D(x, xi) (3) where the distance metric D(·, ·) is: 
+
+D(x, z) = 
+
+vuut dX
+
+> j=1
+
+(xj − zj )2
+
+ℓ2
+
+> j
+
+To perform this search efficiently, we utilize a KD-tree algorithm, which has an average-case query time complexity of O(k log n). This neighborhood set, Nk(x), is then used to calculate a local conformity score using Equation 1, which in turn determines the bandwidth of the final prediction interval. The remaining steps follow the standard adaptive conformal prediction procedure. Our complete framework is summarized in Algorithm 2. 7Image 1 Image 2 Image 3 Image 4 Image 5 Image 6 Figure 2: Examples of X-ray images from the BigFoot dataset. From left to right, the images were selected based on their relatively large scores along principal components 1–6, respectively (approximately the 500th largest score among 90,000 images for each component). These images highlight characteristic image features associated with each principal component. 
+
+Algorithm 2 Adaptive Conformal Prediction using GP-Informed Nearest Neighbors 
+
+Input: Xtrain , ytrain , Xcal , ycal , xtest , f
+
+Parameters: k, d, γ, α
+
+Output: C1−α(xtest ). Dimension reduction: [ ˜Xtrain , ˜Xcal , ˜xtest ] ← h([ Xtrain , X cal , xtest ]). Estimate ℓ via maximize equation (2) with ARD kernel κ.
+
+for ∀ ˜xi ∈ { ˜Xtrain , ˜Xcal , ˜xtest } do 
+
+Find Nk( ˜ xi) via equation (3) 
+
+vi ← std( {yj }j∈Nk (˜ xi)). 
+
+end for 
+
+vmedian ← median( {vi}i∈I train ). 
+
+for ∀ ˜xi ∈ ˜Xcal do 
+
+ξi ← vi/v median .
+
+si ← | yi − f (xi)|/(γ + ξi). 
+
+end for 
+
+Compute quantile: q = Quantile( {si}, 1 − α). 
+
+return C(xtest ) = [ f (xtest ) ± q · (γ + ξtest )]. 
+
+# 4 Motivating Application: Inertial Confinment Fusion 
+
+4.1 Setups 
+
+Our work focuses on the multi-modal diffusion model introduced by Jones et al. Jones and Kus-towski (2025), which is designed to model the joint and conditional distributions of scalar and image data generated in inertial confinement fusion experiments. Specifically, this joint multi-modal diffusion-based generative model acts as a forward and inverse surrogate for the radiation hydrodynamic code HYDRA (Marinak et al. (2001)), enabling prediction of simulation inputs, our response variable y, from their corresponding radiation hydrodynamic images, x. Sample images are visualized in Figure 2. HYDRA radiation-hydrodynamics simulations played a central role in the “Bigfoot” campaign by providing a computational means to evaluate capsule and drive design parameters (Nora et al. (2017)). In parallel with experiments performed at the National Ignition Facility (NIF) from 2016 to 2017, which sought to increase implosion velocity and reduce low-mode asymmetries by varying laser drive and capsule scale, a large ensemble of 2D HYDRA simulations was generated 8(Casey et al. (2018)). This ensemble was constructed by varying nine capsule inputs and produced approximately 90,000 high-resolution simulations, along with a suite of synthetic scalar outputs and diagnostic images. Producing these data required more than 20 million CPU-hours, making the Bigfoot simulation ensemble one of the largest ICF simulation datasets containing X-ray images. The goal here is to augment the pre-trained point prediction model, f , with rigorous uncertainty quantification. Because f is a diffusion model, a heuristic notion of uncertainty is available by taking the standard deviation of n draws from the model. This is not true for many ML models that are deterministic and we aim to develop a method that can be applied more generally. The diffusion model variability provides a reasonable comparison. We aim to construct adaptive prediction intervals, C1−α(xi), for any given image xi ∈ R48 ×48 , such that the true input yi is contained within the interval with a user-specified probability, formally P yi ∈ C1−α(xi) ≥ 1 − α.
+
+Data and Model Setup: The existing model f was trained on a large dataset of 90,000 image-input pairs simulated by HYDRA (Marinak et al. (2001)), which we denote as Dtrain . For our uncertainty analysis, we utilize an additional 2,630 held-out samples. We randomly partition this unused data evenly into a calibration set Dcal and a test set Dtest , each containing 1,315 data points. This random split ensures that the calibration and test data are drawn from the same distribution, which is a key assumption for conformal prediction. The model generatively predicts capsule simulation inputs R9 (response variables) from simulation output X-ray images R48 ×48 .While X-ray images can be measured in experiment, capsule inputs are challenging to measure and therefore must be inferred from simulation data. These inputs include symmetry parameters and laser energy delivery, which provide crucial information about possible failure modes in ICF experiments. In this work, we focus our analysis on predicting two inputs from this ensemble in particular — the drive mode 1 and mode 2 asymmetries. In indirect drive ICF, lasers do not strike the capsule directly but rather heat the surface of an outer container called a “hohlraum” which produces an X-ray radiation bath that subsequently drives the capsule implosion. Under ideal conditions, this radiation profile is uniform and the capsule remains round as it compresses. More commonly, however, there are small perturbations to the drive which are amplified during the implosion and degrade performance. Mode 1 refers to a net perturbation in any direction, and mode 2 refers to more or less energy being delivered to the pole or equator of the capsule. X-ray images are critical for diagnosing these drive asymmetries, however the mapping is complex and degenerate, as multiple types of perturbations can produce similar images. 
+
+Dimension Reduction: We first reduce the dimensionality of the input images from 48 × 48 to 6 using Principal Component Analysis (PCA). These 6 components capture 90% of the data variance. The visualization of the top 6 principal components (PC) are shown in Figure 3. This projection captures the most significant features of the X-ray images while drastically reducing computational cost for late steps. For example, PC2 can be deemed associated with response variable mode 2 asymmetries. Also, PCA is more computationally efficient compared to other techniques like using Variational Autoencoder(VAE), which can suffer from its sensitivity to the architecture of the neural network and hyperparameter tuning. 
+
+Relevance Estimation: To learn the relative importance of the input features with respect to the response variables of interest, we modeled the relationship between the latent-space inputs and the response variables using a Gaussian process with an ARD Mat’ern kernel (smoothness parameter fixed at 1.5) implemented via the GpGp package. The estimated relevance for PC 5 was lower than that of the other principal components for both response variables, indicating that PC 5 is relatively less informative for the prediction task and contributes less to the construction of the neighborhood-based conditional sets in later stages. 
+
+Uncertainty Estimation: Our adaptive uncertainty estimate, ξi, is derived using a nearest-9PC 1 PC 2 PC 3 PC 4 PC 5 PC 6 Figure 3: Visualization of the first six principal components (PCs) obtained from PCA of the 90,000 training X-ray images in the BigFoot dataset.Each component is displayed as an eigenimage by reshaping the corresponding PCA loading vector to the original image dimensions. The PCs represent the dominant modes of variation in the training data, with PC1 explaining the greatest amount of variance and subsequent PCs explaining progressively less. neighbors approach in the reduced 6-dimensional PCA space. For each point in the calibration and test sets, we use a KD-tree to efficiently find its k = 30 nearest neighbors within the large training set Dtrain under the scaled Euclidean distance metric. We chose k = 30 because we observed that pairwise distance stabilized and become insignificant after the 31-th neighbor in our empirical study. The variance of the true response variables ( y values) corresponding to these k neighbors is then calculated and scaled to serve as our local uncertainty metric, ξi.
+
+Conformalization: We use a split conformal prediction scheme to generate the intervals. We first define a non-conformity score for each sample ( xi, y i) in the calibration set, which measures the normalized error of the model: si = |f (xi) − yi|/ξ i. Next, we calculate the quantile q1−α of the non-conformity score. Finally, the adaptive prediction interval for a new test image xj ∈ D test 
+
+is constructed as: C1−α(xj ) = f (xj ) ± q1−α · ξj
+
+. This formulation ensures that the prediction intervals are wider for test points with higher estimated local variance ( ξj ) and narrower for those in well-sampled, low-variance regions, all while maintaining the guaranteed long-run coverage of 1 − α.
+
+4.2 Results 
+
+We benchmark our method against conformal prediction (CP) and scaled conformal prediction (SCP) by evaluating predictive accuracy, uncertainty bandwidths, and input-conditional coverage rates. Our results show that all three methods achieve the desired coverage levels, successfully cap-turing the true response values. Moreover, both SCP and ACPNN produce more input-adaptive prediction intervals than CP (see Figure 4). We also investigated the prediction performance of ACPNN using different numbers of ensembles, with the corresponding results presented in Ap-pendix A (Figure 6). We further examine the conformal interval widths of ACPNN with different ensemble sizes (3, 5, 10, and 30) and compare them with SCP, which is based on 30 ensembles throughout this paper. A summary of the results is provided in Table 1, with representative examples visualized in Figure 5. Our experiments indicate that when the underlying diffusion model demonstrates varying lev-els of predictive performance (e.g., it predicts mode 1 asymmetry more accurately than mode 2 asymmetry), ACPNN achieves interval widths comparable to those of SCP, particularly in input regions with abundant data (see Figure 5b). In contrast, when predictive performance is weaker, SCP tends to perform better in data-rich regions, whereas ACPNN shows advantages in data-scarce regions (see Figure 5a). This observa-tion can be explained by the fact that interval widths under SCP are more closely tied to model performance, as ensemble outputs are heavily used for both mean and variance estimation. In 10 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2                          
+
+> y = x CP 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> y = x ACPNN 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> y = x SCP 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> y = x CP 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> y = x ACPNN 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> y = x SCP mode 2 asymmetry mode 1 asymmetry
+
+CP ACPNN SCP 
+
+True Values Predicted Values Figure 4: Visualization comparing conformal prediction sets with the true response values across different conformal prediction methods. The first row displays results for the predicted values of mode 2 asymmetry while the second row shows predictions for mode 1 asymmetry. All three methods achieve the desired coverage of the true responses. The compactness of the conformal sets reflects model performance, with adaptive conformal prediction and scaled conformal prediction producing similarly tight prediction intervals. Mode 2 asymmetry Mode 1 asymmetry Method Q1 Median Q3 Cov. Rate Q1 Median Q3 Cov. Rate CP 0.152 0.152 0.152 0.898 0.121 0.121 0.121 0.898 SCP 0.119 0.144 0.174 0.905 0.079 0.112 0.141 0.890 ACPNN3 0.149 0.179 0.211 0.900 0.105 0.143 0.177 0.902 ACPNN5 0.137 0.165 0.195 0.898 0.094 0.128 0.158 0.899 ACPNN10 0.135 0.162 0.192 0.903 0.086 0.117 0.145 0.884 ACPNN30 0.126 0.152 0.179 0.884 0.084 0.113 0.140 0.886 Table 1: Comparison of uncertainty interval distributions (Q1, median, Q3) and empirical coverage rates across methods for two drive asymmetry response variables: mode 2 asymmetry and mode 1 asymmetry. 11 [-3.42, -2.46) [-2.46, -1.51) [-1.51, -0.56) [-0.56, 0.39) [0.39, 1.33) [1.33, 2.28) [2.28, 3.23) [3.23, 4.18) 0.05 0.10 0.15 0.20 0.25 0.30 0.35 10 78 216 590 325 73 15 7SCP ACPNN5 ACPNN10 ACPNN30 (a) [-1.62, -1.08) [-1.08, -0.55) [-0.55, -0.01) [-0.01, 0.53) [0.53, 1.06) [1.06, 1.60) [1.60, 2.13) [2.13, 2.67) 0.0 0.1 0.2 0.3 0.4 206 285 232 183 158 142 81 27 SCP ACPNN5 ACPNN10 ACPNN30 
+
+(b) 
+
+Figure 5: Violin plots of uncertainty magnitudes across input bins. In Panel (a) PC 6 is used as the binned input and mode 2 asymmetry as the response variable; in panel (b) PC 1 is used as the input and mode 1 asymmetry as the response variable. The x-axis represents the input regions (bins), and the y-axis denotes the magnitude of predictive uncertainty. Numbers shown above each panel indicate the number of test samples within each corresponding input region. 12 contrast, ACPNN leverages information from nearest neighbors in the training data to estimate variance and is therefore less dependent on model performance. This feature of ACPNN creates opportunities for uncertainty quantification in scenarios where data are limited and the model is not well trained. We also observe that increasing the number of ensembles in ACPNN consistently reduces uncertainty bandwidths in both scenarios. This effect stabilizes beyond approximately 10 ensembles when the model exhibits strong predictive performance (see Figure 5b). Overall, both ACPNN and SCP maintain stable coverage rates across different input regions. While the two methods produce comparable uncertainty bandwidths on average, ACPNN tends to yield slightly narrower prediction intervals in regions with limited data. This suggests that, under data-scarce or extreme conditions, ACPNN provides more compact and informative uncertainty quantification, highlighting its advantage when training data are limited. 
+
+# 5 Conclusion and Discussion 
+
+Our experimental results demonstrate the effectiveness of the proposed method (ACPNN) in its application to ICF data. The method achieves the desired empirical coverage while providing adaptive, image-dependent conformal prediction intervals for code outputs, enabling more nuanced uncertainty quantification. While scaled conformal prediction (SCP) retains some advantage in certain regimes—yielding narrower intervals in regions with abundant data even when model performance is weak—its appli-cability is limited in more constrained settings. In particular, when generating multiple ensembles is computationally prohibitive, as is often the case when emulator evaluations are expensive, ACPNN provides a clear advantage and is better suited for practical deployment. Moreover, in scenarios where ensemble generation is infeasible due to the deterministic nature of the model (e.g., the lane-keeping CNN introduced in Chen and Huang (2017), the Fourier Neural Operator in Li et al. (2021), and vision transformer–style architectures such as ConvNeXt in Liu et al. (2022)), SCP is usually not applicable, whereas ACPNN remains effective and delivers competitive performance even with a single ensemble. These advantages are particularly relevant in scientific settings, where data is often limited and computational constraints favor lightweight models over more expensive approaches such as diffusion models, further reinforcing the practicality of ACPNN. Finally, although our framework employs a simple dimensionality reduction technique (PCA), it still achieves competitive overall performance, indicating robustness and suggesting potential gains from incorporating more advanced representation learning methods. Looking ahead, a compelling direction for future work is to extend this method to scenarios involving distribution shifts, i.e when training data and testing data have different distributions, as if often the case when comparing ICF simulations to experiments. A key challenge in this context will be to develop a meaningful and robust definition of “nearest neighbor”, and defining weighted conformal scores and weighted quintile, especially in the case when distributions of images are more complicated like bimodal distribution. This direction potentially involve exploring density ratio estimation in a learned latent space. Further research could also investigate the theoretical properties of the proposed adaptive sets and explore applications in other high-stakes domains where calibrated uncertainty is critical. 13 Acknowledgments 
+
+This work was performed under the auspices of the U.S. Department of Energy by Lawrence Livermore National Laboratory under Contract DE-AC52-07NA27344. Release number: LLNL-MI-2013347. 
+
+# References 
+
+Abdollahi, A., Chen, J., Chen, F., and Ma, F. (2023). Applying monte carlo dropout to quantify the uncertainty of skip connection-based convolutional neural networks optimized by big data. 
+
+Electronics , 12(6):1453. Abu-Shawareb, H., Acree, R., Adams, P., Adams, J., Addis, B., Aden, R., Adrian, P., Afeyan, B. B., Aggleton, M., Aghaian, L., Aguirre, A., Aikens, D., Akre, J., Albert, F., Albrecht, M., Albright, B. J., Albritton, J., Alcala, J., Alday, C., and Alessi, D. A. a. . T. I. D. I. C. (2024). Achievement of target gain larger than unity in an inertial fusion experiment. Physical Review Letters , 132(6):065102. Angelopoulos, A. N. and Bates, S. (2022). A gentle introduction to conformal prediction and distribution-free uncertainty quantification. Angelopoulos, A. N., Bates, S., Malik, J., and Jordan, M. I. (2021). Uncertainty sets for image classifiers using conformal prediction. In International Conference on Learning Representations (ICLR) .Anirudh, R., Thiagarajan, J. J., Bremer, P.-T., and Spears, B. K. (2020). Improved surrogates in inertial confinement fusion with manifold and cycle consistencies. Proceedings of the National Academy of Sciences , 117(18):9741–9746. Baek, M., DiMaio, F., Anishchenko, I., Dauparas, J., Ovchinnikov, S., Lee, G. R., Wang, J., Cong, Q., Kinch, L. N., Schaeffer, R. D., Mill´ an, C., Park, H., Adams, C., Glass, W. I., Gonen, T., Grishin, N. V., and Baker, D. (2021). Accurate prediction of protein structures and interactions using a three-track neural network. Science , 373(6557):871–876. Ben Tayeb, M., Tikhonchuk, V. T., and Feugeas, J.-L. (2024). ICF target optimization using generative AI. Physics of Plasmas , 31(10):103903. Bereska, J. I., Karimi, H., and Samavi, R. (2025). SACP: Spatially-adaptive conformal prediction in uncertainty quantification of medical image segmentation. In Medical Imaging with Deep Learning (MIDL) .Blundell, C., Cornebise, J., Kavukcuoglu, K., and Wierstra, D. (2015). Weight uncertainty in neural networks. In Proceedings of the 32nd International Conference on Machine Learning (ICML) ,volume 37 of PMLR , pages 1613–1622. Butler, K. T., Davies, D. W., Cartwright, H., Isayev, O., and Walsh, A. (2018). Machine learning for molecular and materials science. Nature , 559(7715):547–555. Casey, D. T., Thomas, C. A., Baker, K. L., Spears, B. K., Hohenberger, M., Khan, S. F., Nora, R. C., Weber, C. R., Woods, D. T., Hurricane, O. A., Callahan, D. A., Berger, R. L., Milovich, J. L., Patel, P. K., Ma, T., Pak, A., Benedetti, L. R., Millot, M., Jarrott, C., Landen, O. L., 14 Bionta, R. M., MacGowan, B. J., Strozzi, D. J., Stadermann, M., Biener, J., Nikroo, A., Goyon, C. S., Izumi, N., Nagel, S. R., Bachmann, B., Volegov, P. L., Fittinghoff, D. N., Grim, G. P., Yeamans, C. B., Gatu Johnson, M., Frenje, J. A., Rice, N., Kong, C., Crippen, J., Jaquez, J., Kangas, K., and Wild, C. (2018). The high velocity, high adiabat, “bigfoot” campaign and tests of indirect-drive implosion scaling. Physics of Plasmas , 25(5):056308. Chen, Z. and Huang, X. (2017). End-to-end learning for lane keeping of self-driving cars. In 2017 IEEE Intelligent Vehicles Symposium (IV) , pages 1856–1860. de Grancey, F., Adam, J.-L., Alecu, L., Gerchinovitz, S., Mamalet, F., and Vigouroux, D. (2022). Object detection with probabilistic guarantees: A conformal prediction approach. In Artificial Neural Networks and Machine Learning – ICANN 2022 , pages 316–329. Springer-Verlag. Furrer, R., Genton, M. G., and Nychka, D. (2006). Covariance tapering for interpolation of large spatial datasets. Journal of Computational and Graphical Statistics , 15(3):502–523. Gal, Y. and Ghahramani, Z. (2016). Dropout as a bayesian approximation: Representing model uncertainty in deep learning. In Proceedings of the 33rd International Conference on Machine Learning (ICML) , volume 48 of PMLR , pages 1050–1059. Gao, C., Fu, C.-C., Wang, G.-Y., Lee, J.-H., Wang, S., Han, L.-S., Li, S.-G., Wu, D., Wang, Y.-H., Lee, C. S., Xia, A., Yang, Z., and Yan, Y.-L. (2023). Autonomous discovery of stable sky-blue emitters for organic light-emitting diodes. Nature Materials , 22(5):621–628. Guinness, J. (2019). Gpgp: Fast gaussian process computation using vecchia’s approximation. The R Journal , 11(1):251–264. Jones, M., Kunimune, J., Casey, D., Kustowski, B., Kur, E., and Humbird, K. (2026). Joint diffusion approach to multimodal inference in inertial confinement fusion. PRX Intelligence ,1:013012. Jones, M. and Kustowski, B. (2025). Towards a multi-modal foundation model for inertial con-finement fusion: Combining structured data and diagnostic images. In 1st ICML Workshop on Foundation Models for Structured Data .Jumper, J., Evans, R., Pritzel, A., Green, T., Figurnov, M., Ronneberger, O., Tunyasuvunakool, K., Bates, R., ˇZ´ ıdek, A., Potapenko, A., Bridgland, A., Meyer, C., Kohl, S. A. A., Ballard, A. J., Cowie, A., Romera-Paredes, B., Nikolov, S., Jain, R., Adler, J., Back, T., Petersen, S., Reiman, D., Clancy, E., Zielinski, M., Steinegger, M., Pacholska, M., Berghammer, T., Bodenstein, S., Silver, D., Vinyals, O., Senior, A. W., Kavukcuoglu, K., Kohli, P., and Hassabis, D. (2021). Highly accurate protein structure prediction with AlphaFold. Nature , 596(7873):583–589. Kall-Nielsen, L., Petersen, J., Kofod-Petersen, A., Nielsen, M., Ladekjaer-Mikkelsen, A., Dahl, V. A., and Kalhauge, C. B. (2021). Deep ensembles for landmark detection in weekly-labeled 3d medical images. In Medical Imaging with Deep Learning (MIDL) , PMLR, pages 556–567. Kang, R., Kyritsis, D. C., and Liatsis, P. (2022). Self-validated physics-embedding network: Ageneral framework for inverse modelling. arXiv preprint arXiv:2210.06071. Katzfuss, M. and Guinness, J. (2021). A general framework for vecchia approximations of gaussian processes. Statistical Science , 36(1):124–141. 15 Kendall, A. and Gal, Y. (2017). What Uncertainties Do We Need in Bayesian Deep Learning for Computer Vision? In Advances in Neural Information Processing Systems 30 (NIPS 2017) ,pages 5574–5584. Kritcher, A. L., Schlossberg, D. J., Weber, C. R., Young, C. V., Hurricane, O. A., Dewald, E., Zylstra, A. B., Allen, A., Bachmann, B., Baker, K. L., Baxamusa, S., Braun, T., Brunton, G., Callahan, D. A., Casey, D. T., Chapman, T., Choate, C., Clark, D. S., Nicola, J.-M. G. D., Divol, L., Edwards, M. J., Haan, S., Fehrenbach, T., Hayes, S., Hinkel, D. E., Hohenberger, M., Humbird, K., Izumi, N., Jones, O., Kur, E., Kustowski, B., Kong, C., Landen, O. L., Larson, D., Lepro-Chavez, X., Lindl, J. D., MacGowan, B. J., Maclaren, S., Marinak, M., Michel, P., Millot, M., Nikroo, A., Nora, R., Pak, A., Patel, P. K., Ralph, J. E., Ratledge, M., Rubery, M. S., Ruof, N. W., Sepke, S. M., Stadermann, M., Strozzi, D. J., Suratwala, T. I., Tommasini, R., Town, R., Woodworth, B., Van Wonterghem, B., and Wild, C. (2024). Design of first experiment to achieve fusion target gain &gt; 1. Physics of Plasmas , 31(7):070502. Lakshminarayanan, B., Pritzel, A., and Blundell, C. (2017). Simple and scalable predictive un-certainty estimation using deep ensembles. In Proceedings of the 31st Conference on Neural Information Processing Systems (NeurIPS) , pages 6402–6413. Lemay, A., Hoebel, K., Bridge, C. P., Befano, B., De Sanjos´ e, S., Egemen, D., Rodriguez, A. C., Schiffman, M., Campbell, J. P., and Kalpathy-Cramer, J. (2022). Improving the repeatability of deep learning models with monte carlo dropout. npj Digital Medicine , 5(1):174. Li, Z., Kovachki, N. B., Azizzadenesheli, K., liu, B., Bhattacharya, K., Stuart, A., and Anandkumar, A. (2021). Fourier neural operator for parametric partial differential equations. In International Conference on Learning Representations .Liu, Z., Mao, H., Wu, C.-Y., Feichtenhofer, C., Darrell, T., and Xie, S. (2022). A convnet for the 2020s. Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) .Luo, R. and Zhou, Z. (2026). Enhancing conditional risk control in image segmentation with adaptive conformal prediction. Marinak, M. M., Kerbel, G. D., Gentile, N. A., Jones, O., Munro, D., Pollaine, S., Dittrich, T. R., and Haan, S. W. (2001). Three-dimensional hydra simulations of national ignition facility targets. 
+
+Physics of Plasmas , 8(5):2275–2280. Nora, R., Peterson, J. L., Spears, B. K., Field, J. E., and Brandon, S. (2017). Ensemble simulations of inertial confinement fusion implosions. Statistical Analysis and Data Mining: The ASA Data Science Journal , 10(4):230–237. Nuckolls, J., Wood, L., Thiessen, A., and Zimmerman, G. (1972). Laser compression of matter to super-high densities: Thermonuclear (ctr) applications. Nature , 239(5368):139–142. Papadopoulos, H., Vovk, V., and Gammerman, A. (2011). Regression conformal prediction with nearest neighbours. Technical report. Rasmussen, C. E. and Williams, C. K. I. (2006). Gaussian processes for machine learning . MIT Press, Cambridge, Massachusetts. Romano, Y., Patterson, E., and Cand` es, E. (2019). Conformalized quantile regression. In Advances in Neural Information Processing Systems , volume 32. 16 Roy, C.-A., Sol´ e-Casals, P.-J., and Dm-Trki, B. (2025). Are foundation models for computer vision good conformal predictors? arXiv preprint arXiv:2502.13813 .Saunders, C., Gammerman, A., and Vovk, V. (1999). Transduction with confidence and credibility. In Proceedings of the 16th International Joint Conference on Artificial Intelligence - Volume 2 ,IJCAI’99, page 722–726, San Francisco, CA, USA. Morgan Kaufmann Publishers Inc. Snelson, E. and Ghahramani, Z. (2006). Sparse gaussian processes using pseudo-inputs. Advances in Neural Information Processing Systems , 18. Spears, B. K., Brandon, S., Casey, D. T., Field, J. E., Gaffney, J. A., Humbird, K. D., Kritcher, A. L., Kruse, M. K. G., Kur, E., Kustowski, B., Langer, S., Munro, D., Nora, R., Peterson, J. L., Schlossberg, D. J., Springer, P., and Zylstra, A. (2025). Predicting fusion ignition at the national ignition facility with physics-informed deep learning. Science , 389(6761):727–731. Tenenbaum, J. B., de Silva, V., and Langford, J. C. (2000). A global geometric framework for nonlinear dimensionality reduction. Science , 290(5500):2319–2323. Timans, A., Straehle, C.-N., Sakmann, K., and Nalisnick, E. (2024). Adaptive bounding box uncertainties via two-step conformal prediction. In Proceedings of the European Conference on Computer Vision (ECCV) .Vecchia, A. V. (1988). Estimation and model identification for continuous spatial processes. Journal of the Royal Statistical Society: Series B , 50(2):297–312. Vovk, V., Gammerman, A., and Shafer, G. (2005). Algorithmic Learning in a Random World .Springer, New York, NY. 17 A Additional Simulation Results 
+
+Additional prediction performance results for the ACPNN method using different numbers of en-sembles are shown in Figure 6. 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2                          
+
+> y = x ACPNN_3 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> y = x ACPNN_5 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> y = x ACPNN_10 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> y = x ACPNN_3 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> y = x ACPNN_5 0.0 0.2 0.4 0.6 0.8 1.0 0.0 0.2 0.4 0.6 0.8 1.0 1.2
+> y = x ACPNN_10
+> Mode 2 Asymmetry Mode 1 Asymmetry
+
+ACPNN3 ACPNN5 ACPNN10 
+
+True Values Predicted Values Figure 6: Visualization comparing conformal prediction sets with the true response values across ACPNN method with different number of ensembles. The first row displays results for the predicted values of mode 2 asymmetry, while the second row shows predictions for mode 1 asymmetry. All three methods achieve the desired coverage of the true responses. The compactness of the conformal sets reflects method performance, with increase of number of ensembles used in the calculation, higher compactness of the conformal sets. 18
